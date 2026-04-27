@@ -26,6 +26,13 @@ interface UnhealthyEmail {
   last_error: string;
 }
 
+interface UnhealthyBank {
+  id: string;
+  bank_name: string;
+  provider: string;
+  status: string;
+}
+
 const DISMISS_KEY = 'connection-health-banner-dismissed';
 
 function reconnectPath(providerType: string): string {
@@ -46,7 +53,8 @@ function readableStatus(status: string, lastError: string): string {
 }
 
 export default function ConnectionHealthBanner() {
-  const [unhealthy, setUnhealthy] = useState<UnhealthyEmail[]>([]);
+  const [email, setEmail] = useState<UnhealthyEmail[]>([]);
+  const [bank, setBank] = useState<UnhealthyBank[]>([]);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
@@ -60,25 +68,43 @@ export default function ConnectionHealthBanner() {
       .then((r) => r.ok ? r.json() : null)
       .then((d) => {
         if (cancelled || !d) return;
-        setUnhealthy(d.unhealthy_email ?? []);
+        setEmail(d.unhealthy_email ?? []);
+        setBank(d.unhealthy_bank ?? []);
       })
       .catch(() => { /* silent — banner just won't render */ });
 
     return () => { cancelled = true; };
   }, []);
 
-  if (dismissed || unhealthy.length === 0) return null;
+  const total = email.length + bank.length;
+  if (dismissed || total === 0) return null;
 
   const handleDismiss = () => {
     setDismissed(true);
     try { sessionStorage.setItem(DISMISS_KEY, '1'); } catch { /* ignore */ }
   };
 
-  // One or many — different copy so a single expiry doesn't read as "they all broke".
-  const primary = unhealthy[0];
-  const headline = unhealthy.length === 1
-    ? `${primary.email_address} — ${readableStatus(primary.status, primary.last_error)}`
-    : `${unhealthy.length} email connections need attention`;
+  // Headline adapts to whether it's email, banks, or a mix — so a single
+  // expired bank doesn't read as "all your accounts broke".
+  let headline: string;
+  if (total === 1) {
+    if (email.length === 1) {
+      headline = `${email[0].email_address} — ${readableStatus(email[0].status, email[0].last_error)}`;
+    } else {
+      headline = `${bank[0].bank_name} — ${bank[0].status.replace(/_/g, ' ')}`;
+    }
+  } else if (email.length > 0 && bank.length > 0) {
+    headline = `${email.length} email + ${bank.length} bank connection${bank.length === 1 ? '' : 's'} need attention`;
+  } else if (email.length > 0) {
+    headline = `${email.length} email connections need attention`;
+  } else {
+    headline = `${bank.length} bank connections need attention`;
+  }
+
+  const explain =
+    email.length > 0 && bank.length === 0 ? "Watchdog has paused — dispute replies, renewal reminders and cancellation confirmations won't come through until you reconnect."
+    : bank.length > 0 && email.length === 0 ? "Transaction sync has stopped — Money Hub and price-increase detection won't see new activity until you reconnect."
+    : "Email + bank sync is paused — alerts, replies and transactions won't update until each connection is reconnected.";
 
   return (
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
@@ -86,13 +112,9 @@ export default function ConnectionHealthBanner() {
         <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-amber-900">{headline}</p>
-          <p className="text-xs text-amber-700 mt-0.5">
-            Watchdog has paused on {unhealthy.length === 1 ? 'this account' : 'these accounts'} — dispute replies,
-            renewal reminders and cancellation confirmations won&apos;t come through
-            until you reconnect.
-          </p>
+          <p className="text-xs text-amber-700 mt-0.5">{explain}</p>
           <div className="mt-2 flex flex-wrap gap-2">
-            {unhealthy.slice(0, 3).map((c) => (
+            {email.slice(0, 2).map((c) => (
               <Link
                 key={c.id}
                 href={reconnectPath(c.provider_type)}
@@ -101,12 +123,21 @@ export default function ConnectionHealthBanner() {
                 Reconnect {c.email_address}
               </Link>
             ))}
-            {unhealthy.length > 3 && (
+            {bank.slice(0, 2).map((c) => (
+              <Link
+                key={c.id}
+                href="/dashboard/subscriptions?connectBank=true"
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white transition-colors"
+              >
+                Reconnect {c.bank_name}
+              </Link>
+            ))}
+            {total > 4 && (
               <Link
                 href="/dashboard/profile"
                 className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors"
               >
-                View all {unhealthy.length} in Profile
+                View all {total} in Profile
               </Link>
             )}
           </div>
