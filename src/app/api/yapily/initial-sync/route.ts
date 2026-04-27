@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getTransactions } from '@/lib/yapily';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
+import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes for full 12-month sync
@@ -17,8 +18,19 @@ function getAdmin() {
 /**
  * POST /api/yapily/initial-sync
  *
- * Background endpoint triggered by the callback route.
- * Syncs 12 months of transactions without blocking the user redirect.
+ * Background endpoint triggered by the OAuth callback. Pulls 12 months
+ * of transaction history per account and writes them via the dedup-
+ * aware store, which keys on (user, account_identifications_hash,
+ * stable_tx_hash). Re-running this endpoint against the same consent
+ * is a no-op for transactions we already have — the partial unique
+ * index makes duplicates physically impossible.
+ *
+ * Body: { connectionId, userId, consentToken, accountSnapshots }
+ *
+ * Note on accountSnapshots: the callback computes them once and passes
+ * them in here, rather than us re-fetching /accounts. This guarantees
+ * the hashes the sync writes match what the callback stored on
+ * bank_connections, and saves a Yapily round-trip.
  */
 export async function POST(request: NextRequest) {
   const auth = request.headers.get('authorization');
@@ -26,9 +38,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { connectionId, userId, consentToken, accountIds } = await request.json();
+  const body = await request.json().catch(() => ({}));
+  const connectionId: string | undefined = body?.connectionId;
+  const userId: string | undefined = body?.userId;
+  const consentToken: string | undefined = body?.consentToken;
+  const accountSnapshots: AccountSnapshot[] | undefined = body?.accountSnapshots;
 
-  if (!connectionId || !userId || !consentToken || !accountIds) {
+  if (!connectionId || !userId || !consentToken || !Array.isArray(accountSnapshots)) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
@@ -42,62 +58,40 @@ export async function POST(request: NextRequest) {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const toDate = tomorrow.toISOString().split('T')[0];
 
-  let totalSynced = 0;
+  let totalInserted = 0;
+  let totalDuplicateSkipped = 0;
+  let totalNoHashSkipped = 0;
   let apiCallsMade = 0;
 
-  for (const accountId of accountIds) {
+  for (const account of accountSnapshots) {
     try {
-      const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
+      const transactions = await getTransactions(account.yapilyAccountId, consentToken, fromDate, toDate);
       apiCallsMade++;
-
       if (transactions.length === 0) continue;
 
-      const rows = transactions.map((tx) => ({
-        user_id: userId,
-        connection_id: connectionId,
-        transaction_id: tx.id,
-        account_id: accountId,
-        amount: tx.transactionAmount?.amount ?? tx.amount,
-        currency: tx.transactionAmount?.currency ?? tx.currency ?? 'GBP',
-        description:
-          tx.description ||
-          tx.transactionInformation?.join(' ') ||
-          tx.reference ||
-          null,
-        merchant_name: tx.merchantName || null,
-        category: null,
-        timestamp: tx.bookingDateTime || tx.date,
-      }));
-
-      // Upsert in batches of 500 to avoid payload limits
-      for (let i = 0; i < rows.length; i += 500) {
-        const batch = rows.slice(i, i + 500);
-        const { error } = await supabase
-          .from('bank_transactions')
-          .upsert(batch, {
-            onConflict: 'user_id,transaction_id',
-            ignoreDuplicates: true,
-          });
-
-        if (error) {
-          console.error('Error upserting Yapily transactions batch:', error);
-        } else {
-          totalSynced += batch.length;
-        }
-      }
+      const result = await upsertYapilyTransactions({
+        userId,
+        connectionId,
+        account,
+        transactions,
+      });
+      totalInserted += result.inserted;
+      totalDuplicateSkipped += result.skippedAsDuplicate;
+      totalNoHashSkipped += result.skippedNoHash;
     } catch (err) {
-      console.error(`Error syncing Yapily account ${accountId}:`, err);
+      console.error(`[yapily.initial-sync] account ${account.yapilyAccountId} failed:`, err);
     }
   }
 
-  // Detect recurring payments
+  // Run the existing post-sync enrichment chain. These are RPCs that
+  // categorise + detect recurring patterns; they're idempotent so
+  // running them after every sync is safe.
   try {
     await detectRecurring(userId, supabase);
   } catch (err) {
-    console.error('detectRecurring failed:', err);
+    console.error('[yapily.initial-sync] detectRecurring failed:', err);
   }
 
-  // Run post-sync enrichment (idempotent — must run for every user on every sync)
   const postSyncFunctions = [
     'fix_ee_card_merchant_names',
     'auto_categorise_transactions',
@@ -106,9 +100,10 @@ export async function POST(request: NextRequest) {
   for (const fn of postSyncFunctions) {
     try {
       const { error } = await supabase.rpc(fn, { p_user_id: userId });
-      if (error) console.error(`initial-sync: ${fn} error:`, error.message);
-    } catch (err: any) {
-      console.error(`initial-sync: ${fn} threw:`, err.message);
+      if (error) console.error(`[yapily.initial-sync] ${fn} error:`, error.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      console.error(`[yapily.initial-sync] ${fn} threw:`, msg);
     }
   }
 
@@ -128,11 +123,19 @@ export async function POST(request: NextRequest) {
     api_calls_made: apiCallsMade,
   });
 
-  console.log(`Yapily initial sync complete: ${totalSynced} transactions across ${accountIds.length} accounts`);
+  console.log(
+    `[yapily.initial-sync] complete: inserted=${totalInserted}, dup_skipped=${totalDuplicateSkipped}, ` +
+    `no_hash_skipped=${totalNoHashSkipped}, accounts=${accountSnapshots.length}, api_calls=${apiCallsMade}`,
+  );
 
   // Push newly-synced transactions to the user's connected Google Sheet (if any).
-  // Fire-and-forget; a missing sheets connection is a no-op.
   await triggerSheetsExport(supabase, userId);
 
-  return NextResponse.json({ ok: true, synced: totalSynced, apiCalls: apiCallsMade });
+  return NextResponse.json({
+    ok: true,
+    inserted: totalInserted,
+    duplicatesSkipped: totalDuplicateSkipped,
+    noHashSkipped: totalNoHashSkipped,
+    apiCalls: apiCallsMade,
+  });
 }

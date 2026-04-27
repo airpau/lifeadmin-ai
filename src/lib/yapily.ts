@@ -174,7 +174,9 @@ export async function getTransactions(
 
 /**
  * Reconfirms (extends) an existing consent for the UK 90-day renewal cycle.
- * Uses PUT /account-auth-requests/{consentId}.
+ * Uses PUT /account-auth-requests/{consentId}. Preserves the consent-id
+ * and consent-token — no new connection row should be created on our
+ * side after a successful reconfirm.
  */
 export async function reconfirmConsent(
   consentId: string
@@ -187,4 +189,41 @@ export async function reconfirmConsent(
   );
 
   return response.data;
+}
+
+/**
+ * Returns the metadata for an account-auth-request (consent), including
+ * its current status. Used during reconnect flows to decide whether to
+ * call reconfirmConsent (status AWAITING_RE_AUTHORIZATION) or to start
+ * a fresh authorisation (status REVOKED / EXPIRED / failed).
+ */
+export async function getConsent(
+  consentId: string
+): Promise<YapilyAuthResponse['data']> {
+  const response = await yapilyRequest<YapilyAuthResponse>(
+    `/account-auth-requests/${consentId}`,
+  );
+  return response.data;
+}
+
+// ── Account-identity helpers ──
+
+/**
+ * Build a stable display name from a Yapily account. Prefers the
+ * account-holder name (e.g. "PREMIER REWARD BLACK"), falls back to
+ * nickname, then to the account type, then to a generic label.
+ *
+ * Splitting this out so the callback and the initial-sync — both of
+ * which need a human-readable label per account — produce identical
+ * strings; if these drift the user sees the same account named two
+ * different things across the UI.
+ */
+export function buildYapilyAccountDisplayName(account: import('@/types/yapily').YapilyAccount): string {
+  return (
+    account.accountNames?.[0]?.name ||
+    account.nickname ||
+    account.accountType ||
+    account.type ||
+    'Account'
+  );
 }
