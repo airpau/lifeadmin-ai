@@ -18,6 +18,7 @@ import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
 import SavingsSkeleton from '@/components/dashboard/SavingsSkeleton';
+import SavingsHero from '@/components/dashboard/SavingsHero';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
@@ -727,6 +728,7 @@ export default function DashboardPage() {
   return (
     <div>
       <PlanLimitsBanner />
+      <SavingsHero />
       {userTier === 'free' && <UpgradePrompt variant="banner" />}
 
       {syncMessage && (

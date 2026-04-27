@@ -5,13 +5,10 @@
       "schedule": "*/15 * * * *"
     },
     {
-<<<<<<< HEAD
       "path": "/api/cron/refresh-cancellation-info",
       "schedule": "0 3 * * 1"
     },
     {
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       "path": "/api/cron/dispute-reply-sync",
       "schedule": "*/30 * * * *"
     },
@@ -180,10 +177,10 @@
       "schedule": "0 5,8,9,10,13,18 * * *"
     },
     {
-<<<<<<< HEAD
       "path": "/api/cron/google-sheets-sync",
       "schedule": "0 6 * * *"
-=======
+    },
+    {
       "path": "/api/cron/content-ideas-generator",
       "schedule": "0 7 * * *"
     },
@@ -194,7 +191,10 @@
     {
       "path": "/api/cron/press-outreach",
       "schedule": "0 9 * * 1-5"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
+    },
+    {
+      "path": "/api/cron/whatsapp-alerts",
+      "schedule": "0 */6 * * *"
     }
   ]
 }
