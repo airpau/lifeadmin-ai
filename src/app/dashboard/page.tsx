@@ -821,29 +821,27 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ─── Hero Action Centre ─────────────────────────────────────── */}
-      <div
+      {/* ─── Action Centre CTA card ─────────────────────────────────────
+          Single launchpad lives at /dashboard/action-centre. Previously
+          this dashboard rendered a "Hero Action Centre" inline plus a
+          separate Deals tile, which felt repetitive — same information
+          surfaced in two places. Now we just send users to the dedicated
+          page where every actionable item lives. */}
+      <Link
+        href="/dashboard/action-centre"
         className="card"
         style={{
-          padding: 0,
-          overflow: 'hidden',
+          display: 'block',
+          textDecoration: 'none',
+          color: 'inherit',
+          padding: '20px 22px',
           marginBottom: 16,
           border: '1px solid #BBF7D0',
           background: 'linear-gradient(180deg, #F0FDF4 0%, #fff 100%)',
         }}
       >
-        <div
-          style={{
-            padding: '20px 22px 10px',
-            borderBottom: '1px solid #D1FAE5',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 280px', minWidth: 0 }}>
             <div
               style={{
                 display: 'inline-flex',
@@ -863,104 +861,30 @@ export default function DashboardPage() {
             >
               ⚡ Action Centre · {dealsLoading ? '…' : `${totalActions} item${totalActions === 1 ? '' : 's'}`}
             </div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-.015em' }}>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: '-.015em' }}>
               {dealsLoading
                 ? 'Crunching cheaper-alternatives + price alerts…'
-                : `${formatGBP(potentialSavings)} of potential savings — ready to claim`}
+                : totalActions > 0
+                  ? `${formatGBP(potentialSavings)} of potential savings — ready to claim`
+                  : 'You’re all caught up'}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-2)' }}>
-              Based on cheaper alternatives and price increase alerts we&apos;ve detected.
+              Disputes in progress, subscriptions about to renew, price increases on your bills, and cheaper alternatives — all in one place.
             </p>
           </div>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: 'var(--mint-deep)',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+            }}
+          >
+            Open Action Centre →
+          </div>
         </div>
-        <div style={{ padding: '8px 22px 18px' }}>
-          {actionRowsTop.length === 0 ? (
-            <div
-              style={{
-                textAlign: 'center',
-                padding: '24px 0',
-                color: 'var(--text-3)',
-                fontSize: 13,
-              }}
-            >
-              Ready to find your first saving? Connect a bank account to scan transactions for forgotten subscriptions and silent price rises — we&apos;ll flag every one automatically.
-            </div>
-          ) : (
-            actionRowsTop.map((r, i) => (
-              <div
-                key={r.key}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 14,
-                  padding: '14px 0',
-                  borderTop: i ? '1px solid #D1FAE5' : '0',
-                }}
-              >
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    background: r.tileBg,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: r.tileFg,
-                    flexShrink: 0,
-                  }}
-                >
-                  {r.icon}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      marginBottom: 2,
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>{r.title}</div>
-                    <span className={`pill ${r.pillClass}`}>{r.pillText}</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{r.meta}</div>
-                </div>
-                <div style={{ textAlign: 'right', minWidth: 100 }}>
-                  <div
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 800,
-                      color: r.amountClass === 'neg' ? 'var(--rose-deep)' : 'var(--mint-deep)',
-                    }}
-                  >
-                    {r.amountLabel}
-                  </div>
-                </div>
-                <Link href={r.ctaHref} className="cta" style={{ fontSize: 12, padding: '8px 12px' }}>
-                  {r.ctaLabel} →
-                </Link>
-              </div>
-            ))
-          )}
-          {actionRows.length > actionRowsTop.length && (
-            <div style={{ textAlign: 'center', paddingTop: 8 }}>
-              <Link
-                href="/dashboard/subscriptions"
-                style={{
-                  fontSize: 12,
-                  color: 'var(--text-3)',
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                }}
-              >
-                Show {actionRows.length - actionRowsTop.length} more action{actionRows.length - actionRowsTop.length === 1 ? '' : 's'} →
-              </Link>
-            </div>
-          )}
-        </div>
-      </div>
+      </Link>
 
       {/* ─── KPI row ────────────────────────────────────────────────── */}
       <div className="kpi-row c4" style={{ marginBottom: 16 }}>
@@ -1360,12 +1284,6 @@ export default function DashboardPage() {
               <h3><CreditCard className="h-4 w-4" style={{ color: 'var(--mint-deep)' }} /> Track subs</h3>
               <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>
                 Every subscription in one place. Sync from your bank or add manually.
-              </p>
-            </Link>
-            <Link href="/dashboard/deals" className="card" style={{ textDecoration: 'none', color: 'inherit' }}>
-              <h3><Tag className="h-4 w-4" style={{ color: 'var(--mint-deep)' }} /> Browse deals</h3>
-              <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>
-                Compare energy, broadband, mobile, insurance. Find cheaper alternatives.
               </p>
             </Link>
           </div>
