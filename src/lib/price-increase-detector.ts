@@ -23,6 +23,37 @@ function getAdmin() {
   );
 }
 
+// Pull tokens from the user's full name so we can spot transfers-to-self
+// in descriptions like "PAUL AIREY HALIFAX VIA MOBILE — PYMT". Tokens
+// shorter than 3 chars are dropped to avoid false positives ("LE", "MR").
+async function loadUserNameTokens(userId: string): Promise<string[]> {
+  const supabase = getAdmin();
+  const { data } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', userId)
+    .maybeSingle();
+  const name: string = String(data?.full_name ?? '');
+  return name
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t: string) => t.replace(/[^a-z]/g, ''))
+    .filter((t: string) => t.length >= 3);
+}
+
+function looksLikeTransferToSelf(
+  description: string,
+  merchantName: string | null | undefined,
+  userNameTokens: string[],
+): boolean {
+  if (userNameTokens.length === 0) return false;
+  const haystack = `${description} ${merchantName ?? ''}`.toLowerCase();
+  // Both first + last (or all) name tokens must appear — single-token
+  // matches are too noisy (common surnames hit unrelated merchants).
+  const hits = userNameTokens.filter((t) => haystack.includes(t)).length;
+  return hits >= Math.min(2, userNameTokens.length);
+}
+
 export interface PriceIncrease {
   merchantName: string;
   merchantNormalized: string;

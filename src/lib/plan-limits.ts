@@ -5,6 +5,12 @@ export type PlanTier = 'free' | 'essential' | 'pro';
 export interface PlanLimits {
   complaintsPerMonth: number | null; // null = unlimited
   scanRunsPerMonth: number | null;
+  // null = unlimited. Enforced at the connect endpoints (truelayer/yapily/google/microsoft).
+  maxBanks: number | null;
+  maxEmails: number | null;
+  // Custom Account Spaces. Default "Everything" Space is always free; this
+  // caps user-created Spaces. Pro-only feature — free/essential get 1.
+  maxSpaces: number | null;
   /**
    * Max number of active dispute→email-thread links (Watchdog feature).
    * null = unlimited. A "link" is one row in dispute_watchdog_links with
@@ -52,6 +58,9 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
     complaintsPerMonth: 3,
     scanRunsPerMonth: 1, // one-time bank scan, email scan, opportunity scan
+    maxBanks: 2,
+    maxEmails: 1,
+    maxSpaces: 1,
     disputeThreadLinks: 1,
     watchdogSyncIntervalMinutes: null, // manual only
     features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan', 'watchdog_manual'],
@@ -59,16 +68,22 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   essential: {
     complaintsPerMonth: null,
     scanRunsPerMonth: 4, // monthly re-scans (bank daily auto, email/opportunity monthly)
+    maxBanks: 3,
+    maxEmails: 3,
+    maxSpaces: 1,
     disputeThreadLinks: 5,
     watchdogSyncIntervalMinutes: 60,
-    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'watchdog_auto'],
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'budgets_goals', 'watchdog_auto'],
   },
   pro: {
     complaintsPerMonth: null,
     scanRunsPerMonth: null, // unlimited everything
+    maxBanks: null,
+    maxEmails: null,
+    maxSpaces: null,
     disputeThreadLinks: null,
     watchdogSyncIntervalMinutes: 30,
-    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support', 'pocket_agent', 'watchdog_auto', 'watchdog_telegram_instant'],
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'budgets_goals', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support', 'pocket_agent', 'watchdog_auto', 'watchdog_telegram_instant', 'top_merchants', 'export', 'mcp', 'price_alert_telegram'],
   },
 };
 

@@ -85,6 +85,31 @@ export const templates = {
   ${Footer()}
 </div>`,
 
+  trialExpired: (name: string) => `
+<div style="${wrap}">
+  <div style="${header}">${Logo()}</div>
+  <div style="${body}">
+    <h1 style="${h1}">Your Paybacker Pro trial has ended, ${name}</h1>
+    <p style="${pWhite}">Your 14-day Pro trial is up. We've moved your account to the Free plan — your data, subscriptions, and dispute letters are all still here.</p>
+
+    <div style="${box}">
+      <h2 style="${h2}">What changes on Free:</h2>
+      <ul style="color:#6B7280;font-size:14px;line-height:1.7;">
+        <li style="margin-bottom:8px;">3 AI dispute letters per month (was unlimited)</li>
+        <li style="margin-bottom:8px;">2 connected banks &amp; 1 email account</li>
+        <li>Top-5 spending categories instead of the full 20+</li>
+      </ul>
+    </div>
+
+    <p style="${p}">Loved the unlimited letters and full Money Hub? Upgrade any time — your data is preserved.</p>
+
+    <div style="text-align:center;margin:28px 0;">
+      <a href="https://paybacker.co.uk/pricing" style="${cta}">See pricing</a>
+    </div>
+  </div>
+  ${Footer()}
+</div>`,
+
   retention: (name: string) => `
 <div style="${wrap}">
   <div style="${header}">${Logo()}</div>
