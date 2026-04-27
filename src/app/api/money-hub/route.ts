@@ -182,7 +182,9 @@ export async function GET(request: Request) {
       // active the JS summariser below recomputes the actual totals
       // from the filtered transaction set, so these RPC values are only
       // used for the default "Everything" Space.
-      { data: rpcSpendingTotal },
+      // rpcBreakdown shape: [{ fixed_cost_total, variable_cost_total,
+      //   discretionary_total, spending_total, internal_transfer_total }]
+      { data: rpcBreakdown },
       { data: rpcIncomeTotal },
       { data: rpcSpendingCategories },
       { data: rpcIncomeCategories },
@@ -196,8 +198,11 @@ export async function GET(request: Request) {
       admin.from('money_hub_category_overrides').select('*').eq('user_id', user.id),
       admin.from('subscriptions').select('*').eq('user_id', user.id).is('dismissed_at', null),
       admin.from('money_hub_alerts').select('*').eq('user_id', user.id).eq('status', 'active').limit(20),
-      // Authoritative spending/income from DB RPCs (handles transfer exclusion, dedup, overrides)
-      admin.rpc('get_monthly_spending_total', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
+      // Authoritative spending/income from DB RPCs (handles transfer exclusion, dedup, overrides).
+      // get_monthly_spending_breakdown is the canonical replacement for
+      // get_monthly_spending_total — returns fixed_cost / variable_cost /
+      // discretionary / spending_total / internal_transfer_total.
+      admin.rpc('get_monthly_spending_breakdown', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
       admin.rpc('get_monthly_income_total', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
       admin.rpc('get_monthly_spending', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
       admin.rpc('get_monthly_income', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
@@ -215,6 +220,19 @@ export async function GET(request: Request) {
     // Authoritative income/spending via JS computation (to support AI rule mapping and local recategorisation)
     const authSpending = currentSummary.monthlyOutgoings;
     const authIncome = currentSummary.monthlyIncome;
+
+    // Canonical bucket breakdown from the DB. Single row; treat null/missing
+    // values as 0 so we still hand the UI a consistent shape on a fresh
+    // account with no transactions yet. RPCs aggregate at user level, so when
+    // a non-default Space is active these will be slightly wider than the
+    // JS summariser; the UI uses these only for the default "Everything"
+    // Space (matching how rpcSpendingCategories etc. are gated below).
+    const breakdownRow = Array.isArray(rpcBreakdown) ? rpcBreakdown[0] : rpcBreakdown;
+    const fixedCostTotal = parseFloat(String(breakdownRow?.fixed_cost_total ?? 0)) || 0;
+    const variableCostTotal = parseFloat(String(breakdownRow?.variable_cost_total ?? 0)) || 0;
+    const discretionaryTotal = parseFloat(String(breakdownRow?.discretionary_total ?? 0)) || 0;
+    const internalTransferTotal = parseFloat(String(breakdownRow?.internal_transfer_total ?? 0)) || 0;
+    const rpcSpendingTotal = parseFloat(String(breakdownRow?.spending_total ?? 0)) || 0;
 
     // Build authoritative category breakdown via JS learning rules
     const authCategoryBreakdown = currentSummary.categoryBreakdown;
@@ -320,6 +338,17 @@ export async function GET(request: Request) {
         topMerchants: isPro ? topMerchants : [],
         monthlyTrends: isPaid ? monthlyTrends : [],
         totalSpent: parseFloat(authSpending.toFixed(2)),
+        // Canonical bucket split — UI renders Fixed / Variable / Discretionary
+        // side by side. spending_total = sum of the three buckets.
+        // internalTransferTotal is informational (NOT spending) — useful for
+        // an "also moved between own accounts" footnote.
+        breakdown: {
+          fixedCost:        parseFloat(fixedCostTotal.toFixed(2)),
+          variableCost:     parseFloat(variableCostTotal.toFixed(2)),
+          discretionary:    parseFloat(discretionaryTotal.toFixed(2)),
+          spendingTotal:    parseFloat(rpcSpendingTotal.toFixed(2)),
+          internalTransfer: parseFloat(internalTransferTotal.toFixed(2)),
+        },
       },
       accounts,
       subscriptions: activeSubs, // Tracked, but NOT added to spend
