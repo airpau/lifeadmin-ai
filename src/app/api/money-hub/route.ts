@@ -11,6 +11,12 @@ import { bucketFor } from '@/lib/category-taxonomy';
 import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits';
 
 export const runtime = 'nodejs';
+// Money Hub aggregates transactions across all connections, runs
+// several RPC enrichment calls (categorisation, recurring detection,
+// pair-matching) and computes the health score. With heavy users
+// (Paul has 300+ txns/month) the default 15s timeout was tripping
+// and surfacing as a blank Money Hub. 60s gives headroom.
+export const maxDuration = 60;
 
 function getAdmin() {
   return createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);

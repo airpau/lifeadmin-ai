@@ -1124,7 +1124,16 @@ export default function ProfilePage() {
           Financial Reports
         </h2>
 
-        {effectiveTier === 'pro' ? (
+        {/* Show the button for paid tiers and let /api/reports/generate
+            enforce the Pro gate server-side. The client tier read can
+            drift when a user upgrades and the React state hasn't
+            refetched, which produced the "Generate Annual Report says
+            Upgrade to Pro even though I AM Pro" bug Paul reported
+            2026-04-27. The API uses getUserPlan() which is the
+            authoritative source. If a paying-but-not-Pro user clicks,
+            the 403 surfaces via reportError and the upgrade prompt
+            renders just below. */}
+        {effectiveTier !== 'free' ? (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-3">
               <button
@@ -1200,9 +1209,7 @@ export default function ProfilePage() {
         ) : (
           <div>
             <p className="text-slate-600 text-sm mb-4">
-              {effectiveTier === 'essential'
-                ? 'Upgrade to Pro to unlock personalised annual financial reports with PDF download.'
-                : 'Pro users get personalised annual financial reports with spending analysis, savings tracking, and PDF download.'}
+              Personalised annual financial reports are a Pro feature. Upgrade to unlock spending analysis, savings tracking and PDF export.
             </p>
             <FinancialReport type="sample" />
           </div>
