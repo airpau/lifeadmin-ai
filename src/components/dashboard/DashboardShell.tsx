@@ -249,10 +249,10 @@ export default function DashboardShell({
         {sidebar}
         <div className="main">
           <Topbar crumb={crumb} />
-          <div className="main-inner">
+          <main id="main-content" tabIndex={-1} className="main-inner">
             {topBanner}
             {children}
-          </div>
+          </main>
         </div>
       </div>
     </div>

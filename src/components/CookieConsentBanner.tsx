@@ -15,7 +15,7 @@ export default function CookieConsentBanner() {
   const [visible, setVisible] = useState(false);
   const [showPreferences, setShowPreferences] = useState(false);
   const [prefs, setPrefs] = useState({ analytics: false, marketing: false, functional: false });
-  const cardRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!hasConsentBeenGiven()) {
@@ -33,19 +33,22 @@ export default function CookieConsentBanner() {
       document.body.style.paddingBottom = '';
       return;
     }
-    const card = cardRef.current;
-    if (!card) return;
+    // Measure the outer fixed wrapper (not the inner card) so the reserved
+    // padding includes the wrapper's p-4 vertical padding — otherwise we
+    // under-reserve by ~32px and controls near the viewport bottom can still
+    // sit under the banner on small screens. Codex P2 finding on PR #333.
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
 
     const apply = () => {
-      const h = card.offsetHeight;
-      // Add a small gap (12px) so content never visually butts against the card.
-      document.body.style.paddingBottom = `${h + 12}px`;
+      const h = wrapper.offsetHeight;
+      document.body.style.paddingBottom = `${h}px`;
     };
     apply();
 
     // Re-measure if banner content changes (preferences view is taller)
     const ro = new ResizeObserver(apply);
-    ro.observe(card);
+    ro.observe(wrapper);
     return () => {
       ro.disconnect();
       document.body.style.paddingBottom = '';
@@ -86,8 +89,8 @@ export default function CookieConsentBanner() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-[9999] p-4" role="region" aria-label="Cookie consent">
-      <div ref={cardRef} className="max-w-2xl mx-auto card shadow-2xl p-6">
+    <div ref={wrapperRef} className="fixed bottom-0 inset-x-0 z-[9999] p-4" role="region" aria-label="Cookie consent">
+      <div className="max-w-2xl mx-auto card shadow-2xl p-6">
         {!showPreferences ? (
           <>
             <p className="text-sm text-slate-700 mb-4">

@@ -129,7 +129,7 @@ export default function LoginPage() {
   return (
     <div className="m-land-root">
       <MarkNav />
-      <main className="auth-shell">
+      <main id="main-content" tabIndex={-1} className="auth-shell">
         <div className="auth-wrap">
           <Link href="/" className="auth-brand">
             <span className="pay">Pay</span>

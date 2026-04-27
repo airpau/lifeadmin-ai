@@ -136,7 +136,10 @@ export default function RootLayout({
           Skip to main content
         </a>
         <PostHogProvider>
-          <div id="main-content" tabIndex={-1} className="flex-1 flex flex-col">
+          {/* Each route attaches `id="main-content" tabIndex={-1}` to its
+              real <main> (dashboard shell, auth pages, marketing pages) so
+              the skip link lands AFTER any in-page navigation. */}
+          <div id="app-shell" className="flex-1 flex flex-col">
             {children}
           </div>
           <ChatWidget />

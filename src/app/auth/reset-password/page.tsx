@@ -45,7 +45,7 @@ export default function ResetPasswordPage() {
   return (
     <div className="m-land-root">
       <MarkNav />
-      <main className="auth-shell">
+      <main id="main-content" tabIndex={-1} className="auth-shell">
         <div className="auth-wrap" style={{ maxWidth: 440, textAlign: 'center' }}>
           <div
             style={{
