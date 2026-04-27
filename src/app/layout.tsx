@@ -5,6 +5,7 @@ import PostHogProvider from "@/components/PostHogProvider";
 import ChatWidget from "@/components/ChatWidget";
 import CookieConsentBanner from "@/components/CookieConsentBanner";
 import TrackingScripts from "@/components/TrackingScripts";
+import ChunkErrorReload from "@/components/ChunkErrorReload";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -128,6 +129,16 @@ export default function RootLayout({
             }),
           }}
         />
+        {/*
+          ChunkErrorReload listens for `error` and `unhandledrejection`
+          window events that match a chunk-load failure pattern, and
+          one-shot reloads the page (sessionStorage cooldown). Without
+          this, a stale browser cache after a deploy surfaces as a
+          dead Vercel "this page couldn't load" with no recovery.
+          Mounted at the very start of <body> so it's active before
+          anything else can trigger a chunk fetch.
+        */}
+        <ChunkErrorReload />
         <PostHogProvider>
           {children}
           <ChatWidget />
