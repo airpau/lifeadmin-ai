@@ -21,8 +21,6 @@ import DisputeOverviewCard from '@/components/dispute/DisputeOverviewCard';
 import EditDisputeDetailsModal from '@/components/dispute/EditDisputeDetailsModal';
 import EmailCorrespondenceBody from '@/components/dispute/EmailCorrespondenceBody';
 import WatchdogCard from '@/components/dispute/WatchdogCard';
-import { createClient } from '@/lib/supabase/client';
-import { pickEmailCompose } from '@/lib/email-compose';
 
 // ============================================================
 // Types
@@ -227,58 +225,18 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
   const [sending, setSending] = useState(false);
   const [sentNote, setSentNote] = useState<string | null>(null);
 
-  // Signals for routing the "Open in Email" button to the right client.
-  // We check three things:
-  //   - the user's account email (gmail.com / googlemail.com → Gmail)
-  //   - the user's connected email connections (Google → Gmail, Outlook → Outlook)
-  //   - fallback: mailto: handed to the OS default
-  // Without this, macOS users with Gmail accounts hit Mac Mail because
-  // the OS routes mailto: to whatever's set as default — often Mail.app.
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [hasGoogleConnection, setHasGoogleConnection] = useState(false);
-  const [hasOutlookConnection, setHasOutlookConnection] = useState(false);
-
-  // Look up the provider's contact email so the mailto pre-addresses
-  // to them rather than forcing the user to find it themselves.
+  // Look up the provider's contact email so the user can copy it and
+  // paste into their email client themselves. We no longer offer an
+  // "Open in Email" button — see notes below the action row.
   useEffect(() => {
     if (!providerName) return;
     let cancelled = false;
     fetch(`/api/subscriptions/cancel-info?provider=${encodeURIComponent(providerName)}`)
       .then((r) => r.json())
       .then((d) => { if (!cancelled) setProviderEmail(d?.info?.email ?? null); })
-      .catch(() => { /* non-fatal — just no pre-addressed mailto */ });
+      .catch(() => { /* non-fatal */ });
     return () => { cancelled = true; };
   }, [providerName]);
-
-  // Pull the user's account email + connected providers so we can route
-  // "Open in Email" correctly. Two requests in parallel; both can fail
-  // silently — the worst case is the mailto fallback.
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-    Promise.all([
-      supabase.auth.getUser().then(({ data }) => data?.user?.email ?? null),
-      fetch('/api/email/connections', { cache: 'no-store' })
-        .then(r => r.ok ? r.json() : null)
-        .catch(() => null),
-    ]).then(([email, connections]) => {
-      if (cancelled) return;
-      setUserEmail(email);
-      const conns: Array<{ provider_type?: string; status?: string }> = connections?.connections ?? [];
-      const active = conns.filter(c => c.status === 'active');
-      setHasGoogleConnection(active.some(c => /^google$|^gmail$/i.test(c.provider_type ?? '')));
-      setHasOutlookConnection(active.some(c => /^outlook$|^microsoft$/i.test(c.provider_type ?? '')));
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  // Build the actual "Open in Email" route. Gmail web compose if any of
-  // the Gmail signals fire, Outlook web compose if Outlook signals fire,
-  // mailto: otherwise.
-  const composeRoute = pickEmailCompose(
-    { to: providerEmail, subject: title, body: content },
-    { userEmail, hasGoogleConnection, hasOutlookConnection },
-  );
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -419,25 +377,21 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
             <button onClick={handlePDF} className="flex-1 min-w-[120px] flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
               <Download className="h-4 w-4" /> Download PDF
             </button>
-            {/* Open-in-Email — opens Gmail web compose / Outlook web compose
-                when the user has those connected (or has a matching account
-                email). Falls back to mailto: which uses the OS default mail
-                handler. This avoids the Mac Mail trap where a Gmail user
-                clicks the button and gets a Mail.app draft they don't want. */}
-            <a
-              href={composeRoute.url}
-              target={composeRoute.newTab ? '_blank' : undefined}
-              rel={composeRoute.newTab ? 'noopener noreferrer' : undefined}
-              className="flex-1 min-w-[160px] flex items-center justify-center gap-2 cta py-3 rounded-lg transition-all font-semibold"
-            >
-              <Mail className="h-4 w-4" />
-              {composeRoute.provider === 'gmail'
-                ? (providerEmail ? 'Open in Gmail' : 'Open in Gmail (add recipient)')
-                : composeRoute.provider === 'outlook'
-                  ? (providerEmail ? 'Open in Outlook' : 'Open in Outlook (add recipient)')
-                  : (providerEmail ? 'Open in Email' : 'Open in Email (add recipient)')}
-            </a>
           </div>
+          {/* "Open in Email" was removed because mailto: routes through
+              the OS default mail handler — which on macOS is Mail.app even
+              when the user lives in Gmail. The web-compose alternative
+              (Gmail / Outlook deep-links) opens a fresh draft outside the
+              dispute thread, which makes the Watchdog reply-tracking less
+              useful. Proper thread-aware drafting needs the gmail.compose
+              OAuth scope, which we don't request yet. Until we do, Copy
+              Letter + Download PDF cover the workflow without the
+              wrong-app footgun. */}
+          {providerEmail && (
+            <p className="text-[11px] text-slate-500 text-center -mt-1">
+              Tip: copy the letter, then paste into a new email to <span className="font-mono">{providerEmail}</span>.
+            </p>
+          )}
           {disputeId && !sentNote && (
             <button
               onClick={handleMarkSent}
@@ -1681,23 +1635,13 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                           Draft response to this
                         </button>
                       )}
-                      {entry.sender_address && (
-                        // TODO: route through pickEmailCompose() like the
-                        // LetterModal does — this is a secondary surface and
-                        // the userEmail / connection signals aren't in scope
-                        // here yet. For now mailto: still uses the OS default
-                        // mail handler (so Gmail users on macOS still hit
-                        // Mail.app). Tracked as a follow-up.
-                        <a
-                          href={`mailto:${entry.sender_address}?subject=${encodeURIComponent('Re: ' + (entry.title || dispute.issue_summary || dispute.provider_name || ''))}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 rounded-lg text-sm transition-all font-medium"
-                          title={`Reply to ${entry.sender_address}`}
-                        >
-                          <Mail className="h-4 w-4" />
-                          Reply by email
-                        </a>
-                      )}
+                      {/* "Reply by email" mailto: button removed — it
+                          routed through the OS default mail handler which
+                          on macOS sends Gmail users to Mail.app. The
+                          Gmail / Outlook deep-links below cover the
+                          provider-specific cases. Users on other clients
+                          can copy the sender address from the entry
+                          metadata and paste into their own client. */}
                       {/* Gmail deep-link — only for Gmail users. Uses
                           the Gmail internal message ID we store as
                           supplier_message_id; mail.google.com accepts
