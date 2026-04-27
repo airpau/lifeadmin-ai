@@ -213,10 +213,32 @@ export default function DashboardPage() {
             const compData = await compRes.json();
             const { saving: filteredSaving, count: filteredCount, deals: dealsList } = parseComparisonDeals(compData);
             const compared = compData.subscriptionsCompared || 0;
-            const shouldRefresh = compared === 0 || filteredCount === 0 || (compared > 0 && filteredCount < compared * 0.5) || (compared > 20 && filteredSaving < 500);
+            // Throttle the POST refresh — it re-runs comparison-engine
+            // (external API calls) and is the slow step on dashboard load.
+            // Only allow one refresh per 6 hours unless the cache is
+            // genuinely empty.
+            const REFRESH_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+            let lastRefreshAt = 0;
+            try { lastRefreshAt = Number(localStorage.getItem('pb_compare_last_refresh') || '0'); } catch { /* private mode */ }
+            const cooldownActive = Date.now() - lastRefreshAt < REFRESH_COOLDOWN_MS;
+            const cacheEmpty = compared === 0 || filteredCount === 0;
+            const shouldRefresh = cacheEmpty || (
+              !cooldownActive && (
+                (compared > 0 && filteredCount < compared * 0.5) ||
+                (compared > 20 && filteredSaving < 500)
+              )
+            );
             if (shouldRefresh) {
+              // Render cached results immediately so the user sees
+              // numbers right away, then update in place once the POST
+              // refresh comes back. Avoids a 5-15s blank state while
+              // comparison-engine talks to external APIs.
+              setComparisonSaving(filteredSaving);
+              setComparisonCount(filteredCount);
+              setComparisonDeals(dealsList);
               const r = await fetch('/api/subscriptions/compare', { method: 'POST' });
               if (r.ok) {
+                try { localStorage.setItem('pb_compare_last_refresh', String(Date.now())); } catch { /* ignore */ }
                 const freshData = await r.json();
                 const { saving: freshSaving, count: freshCount, deals: freshDeals } = parseComparisonDeals(freshData);
                 setComparisonSaving(freshSaving);
@@ -722,7 +744,14 @@ export default function DashboardPage() {
         <div>
           <h1 className="page-title">{greeting} 👋</h1>
           <p className="page-sub">
-            {totalActions > 0 ? (
+            {/* Hold off the headline number until both data sources are
+                in. Showing it the moment price-alerts arrive (and again
+                a few seconds later when the deals fetch finishes) makes
+                the value tick up visibly — looks broken. Match the
+                action-centre card's gating below. */}
+            {dealsLoading ? (
+              <>Loading your action centre…</>
+            ) : totalActions > 0 ? (
               <>
                 You have{' '}
                 <strong style={{ color: 'var(--mint-deep)' }}>
@@ -781,10 +810,12 @@ export default function DashboardPage() {
                 marginBottom: 10,
               }}
             >
-              ⚡ Action Centre · {totalActions} item{totalActions === 1 ? '' : 's'}
+              ⚡ Action Centre · {dealsLoading ? '…' : `${totalActions} item${totalActions === 1 ? '' : 's'}`}
             </div>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-.015em' }}>
-              {formatGBP(potentialSavings)} of potential savings — ready to claim
+              {dealsLoading
+                ? 'Crunching cheaper-alternatives + price alerts…'
+                : `${formatGBP(potentialSavings)} of potential savings — ready to claim`}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-2)' }}>
               Based on cheaper alternatives and price increase alerts we&apos;ve detected.

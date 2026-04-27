@@ -249,7 +249,7 @@ export default function ChatWidget() {
     <>
       {/* Chat teaser bubble - auto-engages after 5 seconds */}
       {showTeaser && !open && (
-        <div className="fixed bottom-36 right-6 z-50 max-w-[260px] sm:max-w-[280px] md:bottom-24 animate-bounce-slow">
+        <div className="fixed bottom-24 right-6 z-50 max-w-[260px] sm:max-w-[280px] animate-bounce-slow">
           <div className="bg-white text-slate-900 rounded-2xl rounded-br-sm shadow-xl p-4 relative">
             <button
               onClick={() => {
@@ -285,7 +285,7 @@ export default function ChatWidget() {
             sessionStorage.setItem('pb_chat_teaser_dismissed', '1');
             setOpen(true);
           }}
-          className="fixed bottom-20 right-6 z-50 bg-mint-400 hover:bg-mint-500 text-navy-950 w-14 h-14 rounded-full shadow-lg shadow-[--shadow-glow-mint] flex items-center justify-center transition-all hover:scale-105 md:bottom-6"
+          className="fixed bottom-6 right-6 z-50 bg-mint-400 hover:bg-mint-500 text-navy-950 w-14 h-14 rounded-full shadow-lg shadow-[--shadow-glow-mint] flex items-center justify-center transition-all hover:scale-105"
           aria-label="Open chat"
         >
           <MessageCircle className="h-6 w-6" />
