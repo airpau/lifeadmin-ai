@@ -2,6 +2,7 @@ export const EXCLUDED_SAVINGS_CATEGORIES = new Set([
   'mortgage', 'mortgages', 'loan', 'loans', 'council_tax', 'tax',
   'credit_card', 'credit cards', 'credit-cards', 'car_finance', 'car finance', 'car-finance',
   'fee', 'parking',
+  'water', 'water_company', // Can't switch UK water suppliers
 ]);
 
 export function isDealValid(deal: { category?: string | null; currentPrice?: number; annualSaving?: number; subscriptionName?: string; providerName?: string }): boolean {
