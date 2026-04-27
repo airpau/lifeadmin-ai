@@ -70,17 +70,25 @@ export default function DashboardPage() {
   // Disconnect bank function
   const disconnectBank = async (connectionId: string, bankName: string) => {
     if (!confirm(`Disconnect ${bankName || 'this bank'}? This will stop syncing transactions.`)) return;
+    const removeTransactions = confirm(
+      `Also delete all past transaction data for ${bankName || 'this bank'}?\n\n` +
+      `OK — wipes transactions from Money Hub, spending charts and price-increase detection.\n` +
+      `Cancel — keep your historical data so charts still show past spending.`
+    );
     try {
       setDisconnectingId(connectionId);
       const res = await fetch('/api/bank/disconnect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId }),
+        body: JSON.stringify({ connectionId, removeTransactions }),
       });
       if (res.ok) {
-        // Remove from local state optimistically
+        const data = await res.json().catch(() => ({}));
         setBankAccounts(bankAccounts.filter(b => b.id !== connectionId));
-        setToast({ message: `${bankName || 'Bank'} disconnected`, type: 'success' });
+        const suffix = data.transactionsRemoved
+          ? ` — ${data.transactionsRemoved} transactions removed`
+          : '';
+        setToast({ message: `${bankName || 'Bank'} disconnected${suffix}`, type: 'success' });
       } else {
         setToast({ message: 'Failed to disconnect bank', type: 'error' });
       }

@@ -923,15 +923,29 @@ export default function SubscriptionsPage() {
   };
 
   const handleDisconnectBank = async (connectionId?: string) => {
+    const conn = bankConnections.find((c) => c.id === connectionId);
+    const bankName = conn?.bank_name || 'this bank';
+    if (!confirm(`Disconnect ${bankName}? This will stop syncing transactions.`)) return;
+    const removeTransactions = confirm(
+      `Also delete all past transaction data for ${bankName}?\n\n` +
+      `OK — wipes transactions from Money Hub, spending charts and price-increase detection.\n` +
+      `Cancel — keep your historical data so charts still show past spending.`
+    );
     setDisconnecting(true);
     try {
       const res = await fetch('/api/bank/disconnect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId }),
+        body: JSON.stringify({ connectionId, removeTransactions }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
         setBankConnections((prev) => prev.filter((c) => c.id !== connectionId));
+        const suffix = data.transactionsRemoved
+          ? ` — ${data.transactionsRemoved} transactions removed`
+          : '';
+        setBankToast(`${bankName} disconnected${suffix}`);
+        setTimeout(() => setBankToast(null), 5000);
       }
     } catch (err) {
       console.error('Disconnect failed:', err);
