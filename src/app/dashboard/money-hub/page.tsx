@@ -571,8 +571,13 @@ export default function MoneyHubPage() {
  const captionTimer = !silent
    ? setInterval(() => setScanCaption((prev) => (prev + 1) % SCAN_CAPTIONS.length), 3000)
    : null;
+ // 90s hard timeout. Without this, if /api/gmail/scan hangs (Claude
+ // upstream stall, Gmail API rate limit) the rotating caption spins
+ // forever and the user has no way to recover. Addresses UX_AUDIT MH2.
+ const controller = new AbortController();
+ const timeoutId = setTimeout(() => controller.abort(), 90_000);
  try {
-   const res = await fetch('/api/gmail/scan', { method: 'POST' });
+   const res = await fetch('/api/gmail/scan', { method: 'POST', signal: controller.signal });
    if (!res.ok) throw new Error('Scan failed');
    const payload = await res.json();
    await refreshData();
@@ -599,11 +604,22 @@ export default function MoneyHubPage() {
      showToast(summary, 'success');
    }
  }
- catch {
-   if (!silent) showToast('Scan failed. Check your email connection in Profile.', 'error');
+ catch (err) {
+   if (!silent) {
+     const aborted = err instanceof Error && err.name === 'AbortError';
+     showToast(
+       aborted
+         ? 'Scan timed out after 90s. Try again or check your email connection in Profile.'
+         : 'Scan failed. Check your email connection in Profile.',
+       'error',
+     );
+   }
  }
- if (captionTimer) clearInterval(captionTimer);
- if (!silent) setScanning(false);
+ finally {
+   clearTimeout(timeoutId);
+   if (captionTimer) clearInterval(captionTimer);
+   if (!silent) setScanning(false);
+ }
  };
 
  // ─── Auto-scan ────────────────────────────────────────────────────────

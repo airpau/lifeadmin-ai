@@ -65,6 +65,13 @@ export default function DashboardPage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
 
+  useEffect(() => {
+    if (!toast) return;
+    const ms = toast.type === 'error' ? 8000 : 3000;
+    const id = setTimeout(() => setToast(null), ms);
+    return () => clearTimeout(id);
+  }, [toast]);
+
   const potentialSavings = calculateTotalSavings(comparisonDeals, priceAlerts);
 
   // Disconnect bank function
@@ -78,7 +85,6 @@ export default function DashboardPage() {
         body: JSON.stringify({ connectionId }),
       });
       if (res.ok) {
-        // Remove from local state optimistically
         setBankAccounts(bankAccounts.filter(b => b.id !== connectionId));
         setToast({ message: `${bankName || 'Bank'} disconnected`, type: 'success' });
       } else {
@@ -1625,6 +1631,9 @@ export default function DashboardPage() {
       {/* Toast */}
       {toast && (
         <div
+          role="status"
+          aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
+          onClick={() => setToast(null)}
           style={{
             position: 'fixed',
             bottom: 24,
@@ -1637,6 +1646,7 @@ export default function DashboardPage() {
             fontWeight: 600,
             zIndex: 60,
             boxShadow: '0 10px 30px -10px rgba(0,0,0,0.25)',
+            cursor: 'pointer',
           }}
         >
           {toast.message}

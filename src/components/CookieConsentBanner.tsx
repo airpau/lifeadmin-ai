@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
   getConsent,
@@ -15,12 +15,42 @@ export default function CookieConsentBanner() {
   const [visible, setVisible] = useState(false);
   const [showPreferences, setShowPreferences] = useState(false);
   const [prefs, setPrefs] = useState({ analytics: false, marketing: false, functional: false });
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!hasConsentBeenGiven()) {
       setVisible(true);
     }
   }, []);
+
+  // While the banner is visible, reserve bottom padding on the body equal
+  // to the banner's height so the banner can't sit over auth submit buttons,
+  // checkout CTAs, or any sticky bottom action. Without this, fixed-bottom
+  // overlay intercepts clicks at typical viewport heights (caught by e2e
+  // suite and surfaced as A8 in UX_AUDIT.md).
+  useEffect(() => {
+    if (!visible) {
+      document.body.style.paddingBottom = '';
+      return;
+    }
+    const card = cardRef.current;
+    if (!card) return;
+
+    const apply = () => {
+      const h = card.offsetHeight;
+      // Add a small gap (12px) so content never visually butts against the card.
+      document.body.style.paddingBottom = `${h + 12}px`;
+    };
+    apply();
+
+    // Re-measure if banner content changes (preferences view is taller)
+    const ro = new ResizeObserver(apply);
+    ro.observe(card);
+    return () => {
+      ro.disconnect();
+      document.body.style.paddingBottom = '';
+    };
+  }, [visible, showPreferences]);
 
   // Listen for "open cookie settings" events from footer link
   useEffect(() => {
@@ -56,8 +86,8 @@ export default function CookieConsentBanner() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-[9999] p-4">
-      <div className="max-w-2xl mx-auto card shadow-2xl p-6">
+    <div className="fixed bottom-0 inset-x-0 z-[9999] p-4" role="region" aria-label="Cookie consent">
+      <div ref={cardRef} className="max-w-2xl mx-auto card shadow-2xl p-6">
         {!showPreferences ? (
           <>
             <p className="text-sm text-slate-700 mb-4">

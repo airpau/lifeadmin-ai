@@ -240,7 +240,20 @@ export default function LoginPage() {
                     </>
                   )}
 
-                  {error && <div className="form-error">{error}</div>}
+                  {error && (
+                    <div className="form-error">
+                      <div>{error}</div>
+                      {lockoutUntil && Date.now() < lockoutUntil && (
+                        <div style={{ marginTop: 6, fontSize: 13 }}>
+                          Forgotten your password?{' '}
+                          <Link href="/auth/reset-password" style={{ textDecoration: 'underline', fontWeight: 600 }}>
+                            Reset it now
+                          </Link>{' '}
+                          or use a magic link instead.
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <button type="submit" disabled={loading} className="auth-submit">
                     {loading ? 'Please wait…' : useMagicLink ? 'Send magic link' : 'Sign in'}
