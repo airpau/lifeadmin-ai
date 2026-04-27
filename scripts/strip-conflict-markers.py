@@ -43,6 +43,14 @@ HEAD_FILES = [
     "src/app/dashboard/settings/telegram/page.tsx",
     "src/app/dashboard/money-hub/page.tsx",
     "src/app/dashboard/profile/page.tsx",
+    # Reclassified from BOTH to HEAD because naive concat broke JSX:
+    "src/components/NotificationBell.tsx",
+    "src/components/dispute/WatchdogCard.tsx",
+    "src/lib/dispute-sync/fetchers.ts",
+    "src/lib/dispute-sync/sync-runner.ts",
+    "src/app/dashboard/money-hub/payments/page.tsx",
+    # Reclassified from THEIRS to HEAD because of stray syntax issues:
+    "src/app/dashboard/spending/page.tsx",
     "src/app/api/disputes/[id]/link-email-thread/route.ts",
     "src/app/api/disputes/[id]/sync-replies-now/route.ts",
     "src/app/api/preview/homepage-stats/route.ts",
@@ -68,7 +76,6 @@ THEIRS_FILES = [
     "src/app/dashboard/contracts/page.tsx",
     "src/app/dashboard/contract-vault/page.tsx",
     "src/app/dashboard/deals/page.tsx",
-    "src/app/dashboard/spending/page.tsx",
     "src/app/dashboard/rewards/page.tsx",
     "src/app/dashboard/profile/report/page.tsx",
     "src/app/dashboard/admin/legal-refs/page.tsx",
@@ -78,13 +85,10 @@ THEIRS_FILES = [
 ]
 
 # Additive: keep both blocks, just strip the marker lines
-BOTH_FILES = [
-    "src/components/NotificationBell.tsx",
-    "src/components/dispute/WatchdogCard.tsx",
-    "src/lib/dispute-sync/fetchers.ts",
-    "src/lib/dispute-sync/sync-runner.ts",
-    "src/app/dashboard/money-hub/payments/page.tsx",
-]
+# (None active — the naive concat of two JSX blocks broke syntax in every
+# case, so we now take HEAD for these files. 6ed4f978 improvements can be
+# hand-cherry-picked into a follow-up PR.)
+BOTH_FILES: list[str] = []
 
 # Default = head (safer for the dangerous five — production stability wins)
 DEFAULT_SIDE = "head"
