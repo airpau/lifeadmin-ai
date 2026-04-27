@@ -7,6 +7,7 @@ import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { pickRawMerchantSource } from '@/lib/merchant-utils';
 import { loadLearnedRules } from '@/lib/learning-engine';
 import { ensureDefaultSpace, getSpace, spaceConnectionFilter, spaceTransactionFilter } from '@/lib/spaces';
+import { bucketFor } from '@/lib/category-taxonomy';
 
 export const runtime = 'nodejs';
 
@@ -221,18 +222,53 @@ export async function GET(request: Request) {
     const authSpending = currentSummary.monthlyOutgoings;
     const authIncome = currentSummary.monthlyIncome;
 
-    // Canonical bucket breakdown from the DB. Single row; treat null/missing
-    // values as 0 so we still hand the UI a consistent shape on a fresh
-    // account with no transactions yet. RPCs aggregate at user level, so when
-    // a non-default Space is active these will be slightly wider than the
-    // JS summariser; the UI uses these only for the default "Everything"
-    // Space (matching how rpcSpendingCategories etc. are gated below).
-    const breakdownRow = Array.isArray(rpcBreakdown) ? rpcBreakdown[0] : rpcBreakdown;
-    const fixedCostTotal = parseFloat(String(breakdownRow?.fixed_cost_total ?? 0)) || 0;
-    const variableCostTotal = parseFloat(String(breakdownRow?.variable_cost_total ?? 0)) || 0;
-    const discretionaryTotal = parseFloat(String(breakdownRow?.discretionary_total ?? 0)) || 0;
-    const internalTransferTotal = parseFloat(String(breakdownRow?.internal_transfer_total ?? 0)) || 0;
-    const rpcSpendingTotal = parseFloat(String(breakdownRow?.spending_total ?? 0)) || 0;
+    // Canonical bucket breakdown.
+    //
+    // The DB RPC aggregates at the user level — it doesn't see the Space
+    // filter applied to txnQuery. So when a non-default Space is active
+    // ("Business" / "Personal" / etc.) the RPC's breakdown is wider than
+    // the rest of the page. Codex P2 review flagged that this produced
+    // contradictory numbers within the same card.
+    //
+    // Resolution: when on the default "Everything" Space, trust the RPC.
+    // When on any filtered Space, recompute the bucket totals from the
+    // same filtered transaction set the JS summariser used. We mirror
+    // `category_bucket()` via `bucketFor()` (the canonical TS export)
+    // so the buckets match the RPC byte-for-byte.
+    const isDefaultSpace = !!(activeSpace?.is_default);
+    let fixedCostTotal: number;
+    let variableCostTotal: number;
+    let discretionaryTotal: number;
+    let internalTransferTotal: number;
+    let rpcSpendingTotal: number;
+
+    if (isDefaultSpace) {
+      const breakdownRow = Array.isArray(rpcBreakdown) ? rpcBreakdown[0] : rpcBreakdown;
+      fixedCostTotal        = parseFloat(String(breakdownRow?.fixed_cost_total ?? 0)) || 0;
+      variableCostTotal     = parseFloat(String(breakdownRow?.variable_cost_total ?? 0)) || 0;
+      discretionaryTotal    = parseFloat(String(breakdownRow?.discretionary_total ?? 0)) || 0;
+      internalTransferTotal = parseFloat(String(breakdownRow?.internal_transfer_total ?? 0)) || 0;
+      rpcSpendingTotal      = parseFloat(String(breakdownRow?.spending_total ?? 0)) || 0;
+    } else {
+      // Recompute from the filtered txn set used elsewhere in this response.
+      let f = 0, v = 0, d = 0, t = 0;
+      for (const tx of currentSummary.spendingTransactions) {
+        const amt = Math.abs(parseFloat(String(tx.amount)) || 0);
+        const cat = (tx as { user_category?: string | null; category?: string | null }).user_category
+                  || (tx as { category?: string | null }).category
+                  || '';
+        const bucket = bucketFor(cat);
+        if (bucket === 'fixed_cost') f += amt;
+        else if (bucket === 'variable_cost') v += amt;
+        else if (bucket === 'discretionary') d += amt;
+        else if (bucket === 'internal_transfer') t += amt;
+      }
+      fixedCostTotal        = f;
+      variableCostTotal     = v;
+      discretionaryTotal    = d;
+      internalTransferTotal = t;
+      rpcSpendingTotal      = f + v + d;
+    }
 
     // Build authoritative category breakdown via JS learning rules
     const authCategoryBreakdown = currentSummary.categoryBreakdown;

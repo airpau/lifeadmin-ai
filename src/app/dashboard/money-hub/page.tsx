@@ -934,7 +934,11 @@ export default function MoneyHubPage() {
  </div>
  )}
 
- {/* Active bank connections — with disconnect option */}
+ {/* Active bank connections — one row per connection (the unit you can
+      revoke). Multi-account consents (e.g. NatWest current + business on
+      one TrueLayer consent) cannot be partially revoked, so previously
+      rendering one row per account with the trash gated to i===0 misled
+      users into thinking they could remove a single account. */}
  {activeConnections.length > 0 && (
  <div className="card">
  <div className="flex items-center justify-between mb-3">
@@ -944,34 +948,40 @@ export default function MoneyHubPage() {
  </div>
  </div>
  <div className="space-y-2">
- {activeConnections.flatMap((conn) => {
+ {activeConnections.map((conn) => {
  const names: string[] = (conn.account_display_names && conn.account_display_names.length > 0)
  ? conn.account_display_names
  : [];
- const rows = names.length > 0 ? names : [null];
- return rows.map((accName, i) => (
- <div key={`${conn.id}-${i}`} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
+ return (
+ <div key={conn.id} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
  <div className="flex items-center gap-2 flex-wrap">
  <Building2 className="h-4 w-4 text-green-400" />
  <span className="text-slate-900 text-sm font-medium">{conn.bank_name || 'Bank'}</span>
- {accName && names.length > 1 && <span className="text-slate-500 text-xs">· {accName}</span>}
+ {names.length === 1 && (
+ <span className="text-slate-500 text-xs">· {names[0]}</span>
+ )}
+ {names.length > 1 && (
+ <span className="text-slate-500 text-xs" title={names.join(' · ')}>
+ · {names.length} accounts ({names.join(', ')})
+ </span>
+ )}
  <span className="text-slate-500 text-xs">· active</span>
- {i === 0 && conn.last_synced_at && (
+ {conn.last_synced_at && (
  <span className="text-slate-500 text-xs" title={`Last synced ${formatTimeAgo(conn.last_synced_at)}`}>
  · Last synced {formatAbsoluteDateTime(conn.last_synced_at)}
  </span>
  )}
  </div>
- {i === 0 && (
- <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" title="Disconnect this bank">
+ <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" title={names.length > 1 ? `Disconnect both accounts on this consent` : 'Disconnect this bank'}>
  <Trash2 className="h-4 w-4" />
  </button>
- )}
  </div>
- ));
+ );
  })}
  </div>
- <p className="text-slate-500 text-xs mt-2">Click the trash icon to disconnect a bank account</p>
+ <p className="text-slate-500 text-xs mt-2">
+   Click the trash icon to disconnect a bank. Multi-account consents (e.g. one bank with current + business) revoke as a pair — re-add only the accounts you want.
+ </p>
  </div>
  )}
 

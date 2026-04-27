@@ -42,6 +42,21 @@ $$;
 
 -- Match debit→credit pairs across the user's own connected accounts.
 -- Returns the number of rows freshly marked as internal_transfer.
+--
+-- Matching rules:
+--   * different connection_id, same user
+--   * amount within ±£0.01
+--   * timestamp within ±2h (FP) or ±72h (BACS-shaped descriptions)
+--   * eligibility: only rows whose user_category is NULL / empty / already
+--     'transfers' or 'internal_transfer'. Anything else is a user-asserted
+--     category and must NEVER be silently overwritten by the heuristic
+--     (per Codex review: a partial denylist let categories like 'streaming'
+--     or 'charity' get overwritten by an amount/time coincidence).
+--
+-- Greedy 1-to-1 pairing ranked by absolute time distance with a
+-- transaction-id tiebreaker — re-runs against the same data always pick
+-- the same pairing (per Codex review: random UUID ranking made pairing
+-- non-deterministic across runs).
 CREATE OR REPLACE FUNCTION public.mark_internal_transfers(p_user_id uuid)
 RETURNS integer
 LANGUAGE plpgsql
@@ -50,18 +65,12 @@ AS $$
 DECLARE
   v_marked integer := 0;
 BEGIN
-  -- Build candidate pairs: a negative-amount row (debit) on connection A
-  -- and a positive-amount row (credit) on a DIFFERENT connection B owned
-  -- by the same user, within the matching window, same magnitude.
-  --
-  -- Skip rows where the user has explicitly overridden the category
-  -- (user_category set to anything except NULL/'transfers'/'internal_transfer'),
-  -- because that's a stronger signal than our heuristic.
   WITH candidates AS (
     SELECT
       d.id              AS debit_id,
       c.id              AS credit_id,
-      gen_random_uuid() AS pair_id
+      gen_random_uuid() AS pair_id,
+      ABS(EXTRACT(EPOCH FROM (c.timestamp - d.timestamp))) AS time_distance_sec
     FROM bank_transactions d
     JOIN bank_transactions c
       ON  c.user_id = d.user_id
@@ -69,38 +78,37 @@ BEGIN
       AND c.amount > 0
       AND ABS(c.amount - ABS(d.amount)) <= 0.01
       AND (
-        -- Primary: ±2 hours
         ABS(EXTRACT(EPOCH FROM (c.timestamp - d.timestamp))) <= 2 * 3600
         OR (
-          -- BACS fallback: ±72 hours, only if either side looks BACS-shaped
           ABS(EXTRACT(EPOCH FROM (c.timestamp - d.timestamp))) <= 72 * 3600
           AND (public.is_bacs_shaped(d.description) OR public.is_bacs_shaped(c.description))
         )
       )
       AND c.transfer_pair_id IS NULL
-      AND COALESCE(c.user_category, '') NOT IN ('income', 'salary', 'freelance',
-                                                 'rental', 'benefits', 'pension',
-                                                 'dividends', 'investment',
-                                                 'refund', 'gift')
+      -- Allowlist: only consider rows that are uncategorised or already
+      -- transfer-shaped. Any other user_category is user-asserted and
+      -- must not be overwritten.
+      AND (c.user_category IS NULL OR c.user_category = ''
+           OR c.user_category IN ('transfers', 'internal_transfer'))
     WHERE d.user_id = p_user_id
       AND d.amount < 0
       AND d.transfer_pair_id IS NULL
-      -- Don't overwrite a user override that says this isn't a transfer
-      AND COALESCE(d.user_category, '') NOT IN ('mortgage', 'loan', 'loans',
-                                                  'credit_card', 'debt_repayment',
-                                                  'rent', 'insurance', 'utility',
-                                                  'energy', 'water', 'broadband',
-                                                  'mobile', 'council_tax', 'tax',
-                                                  'fee', 'parking', 'groceries',
-                                                  'fuel', 'eating_out', 'food',
-                                                  'shopping')
+      AND (d.user_category IS NULL OR d.user_category = ''
+           OR d.user_category IN ('transfers', 'internal_transfer'))
   ),
-  -- Greedy 1-to-1 pairing: each debit takes the closest-in-time credit.
-  -- Avoids one credit being claimed by multiple debits and vice versa.
+  -- Rank by absolute timestamp distance (closest pair wins) with a
+  -- deterministic id tiebreaker, so identical input data always
+  -- produces identical pairings.
   ranked AS (
     SELECT debit_id, credit_id, pair_id,
-           ROW_NUMBER() OVER (PARTITION BY debit_id  ORDER BY pair_id) AS d_rank,
-           ROW_NUMBER() OVER (PARTITION BY credit_id ORDER BY pair_id) AS c_rank
+           ROW_NUMBER() OVER (
+             PARTITION BY debit_id
+             ORDER BY time_distance_sec ASC, credit_id ASC
+           ) AS d_rank,
+           ROW_NUMBER() OVER (
+             PARTITION BY credit_id
+             ORDER BY time_distance_sec ASC, debit_id ASC
+           ) AS c_rank
     FROM candidates
   ),
   picked AS (
@@ -109,8 +117,7 @@ BEGIN
   applied AS (
     UPDATE bank_transactions bt
        SET user_category = 'internal_transfer',
-           transfer_pair_id = p.pair_id,
-           updated_at = NOW()
+           transfer_pair_id = p.pair_id
       FROM picked p
      WHERE bt.id IN (p.debit_id, p.credit_id)
     RETURNING bt.id

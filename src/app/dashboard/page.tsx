@@ -619,28 +619,42 @@ export default function DashboardPage() {
     ctaLabel: string;
   };
 
-  const actionRows: ActionRow[] = [
-    ...priceAlerts.filter(isPriceAlertValid).map((a) => {
-      const impact = priceAlertAnnualImpact(a);
-      const merchant = cleanMerchantName(a.merchant_name || 'Provider');
-      const pct = (parseFloat(a.increase_pct) || 0).toFixed(1);
-      return {
-        key: `price-${a.id}`,
-        title: `${merchant} price rise +${pct}%`,
-        meta: `£${Number(a.old_amount).toFixed(2)} → £${Number(a.new_amount).toFixed(2)}`,
-        tileBg: 'var(--rose-wash)',
-        tileFg: 'var(--rose-deep)',
-        icon: <TrendingUp className="h-5 w-5" />,
-        pillClass: 'red' as const,
-        pillText: 'Priority',
-        amountClass: 'neg' as const,
-        amountLabel: `+${formatGBP(impact)}/yr`,
-        impact,
-        ctaHref: `/dashboard/complaints?company=${encodeURIComponent(merchant)}&issue=${encodeURIComponent(`price increase from £${Number(a.old_amount).toFixed(2)} to £${Number(a.new_amount).toFixed(2)}`)}&amount=${impact}&alertId=${a.id}&new=1`,
-        ctaLabel: 'Start dispute',
-      };
-    }),
-    ...comparisonDeals.slice(0, 6).map((d, i) => ({
+  // Disputes (price rises) — money potentially recovered by complaining.
+  // Kept SEPARATE from deals because mixing "you'll lose £2,379 if you do
+  // nothing" with "you'll save £460 by switching" produces a misleading
+  // headline like "£4,669 of potential savings".
+  const disputeRows: ActionRow[] = priceAlerts.filter(isPriceAlertValid).map((a) => {
+    const impact = priceAlertAnnualImpact(a);
+    const merchant = cleanMerchantName(a.merchant_name || 'Provider');
+    const pct = (parseFloat(a.increase_pct) || 0).toFixed(1);
+    return {
+      key: `price-${a.id}`,
+      title: `${merchant} price rise +${pct}%`,
+      meta: `£${Number(a.old_amount).toFixed(2)} → £${Number(a.new_amount).toFixed(2)}`,
+      tileBg: 'var(--rose-wash)',
+      tileFg: 'var(--rose-deep)',
+      icon: <TrendingUp className="h-5 w-5" />,
+      pillClass: 'red' as const,
+      pillText: 'Dispute',
+      amountClass: 'neg' as const,
+      amountLabel: `+${formatGBP(impact)}/yr cost`,
+      impact,
+      ctaHref: `/dashboard/complaints?company=${encodeURIComponent(merchant)}&issue=${encodeURIComponent(`price increase from £${Number(a.old_amount).toFixed(2)} to £${Number(a.new_amount).toFixed(2)}`)}&amount=${impact}&alertId=${a.id}&new=1`,
+      ctaLabel: 'Start dispute',
+    };
+  });
+
+  // Deals — money saved by switching. Stable sort by annualSaving with id
+  // tiebreaker so the headline £-figure doesn't flicker between renders
+  // when multiple deals tie in savings (the previous slice(0,6) without a
+  // tiebreaker produced £4,609 / £4,669 oscillation).
+  const dealRows: ActionRow[] = [...comparisonDeals]
+    .sort((a, b) =>
+      (b.annualSaving || 0) - (a.annualSaving || 0)
+      || (a.subscriptionName || '').localeCompare(b.subscriptionName || '')
+    )
+    .slice(0, 6)
+    .map((d, i) => ({
       key: `deal-${i}-${d.subscriptionName}`,
       title: `${cleanMerchantName(d.subscriptionName)} — ${d.dealProvider} is cheaper`,
       meta: `Current £${d.currentPrice?.toFixed?.(2) ?? d.currentPrice} · Best alt £${d.dealPrice?.toFixed?.(2) ?? d.dealPrice}`,
@@ -654,9 +668,15 @@ export default function DashboardPage() {
       impact: d.annualSaving || 0,
       ctaHref: '/dashboard/deals',
       ctaLabel: 'Compare',
-    })),
-  ].sort((a, b) => b.impact - a.impact);
-  const actionRowsTop = actionRows.slice(0, 5);
+    }));
+
+  const actionRows: ActionRow[] = [...disputeRows, ...dealRows].sort(
+    (a, b) => b.impact - a.impact,
+  );
+  const dealsAnnualSaving = dealRows.reduce((s, d) => s + d.impact, 0);
+  const disputesAnnualImpact = disputeRows.reduce((s, d) => s + d.impact, 0);
+  const [showAllActions, setShowAllActions] = useState(false);
+  const actionRowsTop = showAllActions ? actionRows : actionRows.slice(0, 5);
   const totalActions = actionRows.length;
 
   // Greeting based on local time — no user-name dependency (name shown in shell).
@@ -868,10 +888,18 @@ export default function DashboardPage() {
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-.015em' }}>
               {dealsLoading
                 ? 'Crunching cheaper-alternatives + price alerts…'
-                : `${formatGBP(potentialSavings)} of potential savings — ready to claim`}
+                : dealRows.length === 0 && disputeRows.length === 0
+                  ? 'No actions waiting — you\'re all caught up.'
+                  : dealRows.length > 0 && disputeRows.length === 0
+                    ? `${formatGBP(dealsAnnualSaving)} of potential savings — ready to claim`
+                    : disputeRows.length > 0 && dealRows.length === 0
+                      ? `${formatGBP(disputesAnnualImpact)} of price rises to dispute`
+                      : `${formatGBP(dealsAnnualSaving)} to save · ${formatGBP(disputesAnnualImpact)} to dispute`}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-2)' }}>
-              Based on cheaper alternatives and price increase alerts we&apos;ve detected.
+              {disputeRows.length > 0 && dealRows.length > 0
+                ? 'Switch deals save you money. Disputed price rises recover money you\'d otherwise lose.'
+                : 'Based on cheaper alternatives and price increase alerts we\'ve detected.'}
             </p>
           </div>
         </div>
@@ -946,19 +974,26 @@ export default function DashboardPage() {
               </div>
             ))
           )}
-          {actionRows.length > actionRowsTop.length && (
+          {actionRows.length > 5 && (
             <div style={{ textAlign: 'center', paddingTop: 8 }}>
-              <Link
-                href="/dashboard/subscriptions"
+              <button
+                type="button"
+                onClick={() => setShowAllActions((prev) => !prev)}
                 style={{
                   fontSize: 12,
                   color: 'var(--text-3)',
                   fontWeight: 600,
                   textDecoration: 'none',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
                 }}
               >
-                Show {actionRows.length - actionRowsTop.length} more action{actionRows.length - actionRowsTop.length === 1 ? '' : 's'} →
-              </Link>
+                {showAllActions
+                  ? 'Show fewer actions ↑'
+                  : `Show ${actionRows.length - 5} more action${actionRows.length - 5 === 1 ? '' : 's'} ↓`}
+              </button>
             </div>
           )}
         </div>

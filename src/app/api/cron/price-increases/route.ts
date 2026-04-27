@@ -55,12 +55,15 @@ export async function GET(request: NextRequest) {
       const increases = await detectPriceIncreases(userId);
       if (increases.length === 0) continue;
 
-      // Get existing active alerts for this user to prevent duplicates
+      // Get existing alerts (any status) for this user to prevent duplicates.
+      // Without including dismissed/actioned, every cron run recreates an
+      // alert the user has already dealt with — confirmed in production
+      // where Winchester Council Tax accumulated 7 rows and HMRC 5.
       const { data: existingAlerts } = await supabase
         .from('price_increase_alerts')
         .select('merchant_normalized')
         .eq('user_id', userId)
-        .eq('status', 'active');
+        .in('status', ['active', 'dismissed', 'actioned']);
 
       const existingMerchants = new Set(
         (existingAlerts || []).map(a => a.merchant_normalized)

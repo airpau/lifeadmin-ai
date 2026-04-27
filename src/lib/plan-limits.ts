@@ -22,6 +22,16 @@ export interface PlanLimits {
    * Free tier has no background sync (manual only) — represented by null.
    */
   watchdogSyncIntervalMinutes: number | null;
+  /**
+   * WhatsApp Pocket Agent — outbound + interactive WhatsApp via Twilio/Meta.
+   *
+   * Pro-only because every outbound template costs us £0.003-0.06 in Meta
+   * fees, while Telegram (still available on every tier) is free for us.
+   * Confirmed with Paul 2026-04-27.
+   *
+   * Trial Pro users (active onboarding trial) inherit this via getEffectiveTier.
+   */
+  whatsappPocketAgent: boolean;
   features: string[];
 }
 
@@ -63,6 +73,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     maxSpaces: 1,
     disputeThreadLinks: 1,
     watchdogSyncIntervalMinutes: null, // manual only
+    whatsappPocketAgent: false,
     features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan', 'watchdog_manual'],
   },
   essential: {
@@ -73,6 +84,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     maxSpaces: 1,
     disputeThreadLinks: 5,
     watchdogSyncIntervalMinutes: 60,
+    whatsappPocketAgent: false,
     features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'budgets_goals', 'watchdog_auto'],
   },
   pro: {
@@ -83,7 +95,8 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     maxSpaces: null,
     disputeThreadLinks: null,
     watchdogSyncIntervalMinutes: 30,
-    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'budgets_goals', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support', 'pocket_agent', 'watchdog_auto', 'watchdog_telegram_instant', 'top_merchants', 'export', 'mcp', 'price_alert_telegram'],
+    whatsappPocketAgent: true,
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'budgets_goals', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support', 'pocket_agent', 'watchdog_auto', 'watchdog_telegram_instant', 'top_merchants', 'export', 'mcp', 'price_alert_telegram', 'whatsapp_pocket_agent'],
   },
 };
 
@@ -180,26 +193,53 @@ export async function incrementUsage(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the user's effective plan tier, applying the same
- * Stripe/founding-member logic as checkUsageLimit().
+ * Resolve the user's effective plan tier.
+ *
+ * Per CLAUDE.md (TIER MATRIX rule 1): paid tiers are NEVER auto-demoted.
+ * Demotion is webhook-driven — `customer.subscription.deleted` clears
+ * `subscription_tier` to 'free'. Until that webhook fires, the stored
+ * tier is the source of truth, matching how `checkUsageLimit()` treats it.
+ *
+ * The previous version silently downgraded any paid user without an
+ * active Stripe subscription_id back to 'free', which produced the
+ * contradictory dashboard state where the sidebar (reading
+ * profile.subscription_tier directly) showed "Pro Plan" while every
+ * banner / quota check via getEffectiveTier() showed "free tier
+ * allows X". Now both paths agree.
+ *
+ * Single override: an active onboarding trial flips the user to 'pro'
+ * for the trial window — same logic as checkUsageLimit().
  */
 export async function getEffectiveTier(userId: string): Promise<PlanTier> {
   const admin = getAdmin();
   const { data: profile } = await admin
     .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
+    .select('subscription_tier, trial_ends_at, trial_converted_at, trial_expired_at')
     .eq('id', userId)
     .single();
 
-  const tier = (profile?.subscription_tier as PlanTier) ?? 'free';
-  const isPaid = tier !== 'free';
-  const hasActiveStripe = profile?.stripe_subscription_id &&
-    ['active', 'trialing'].includes(profile?.subscription_status ?? '');
-  const isFoundingTrial = isPaid && !profile?.stripe_subscription_id &&
-    profile?.subscription_status === 'trialing' &&
-    profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
+  const storedTier = (profile?.subscription_tier as PlanTier) ?? 'free';
 
-  return (isPaid && !hasActiveStripe && !isFoundingTrial) ? 'free' : tier;
+  const onboardingTrialActive = !!profile?.trial_ends_at
+    && new Date(profile.trial_ends_at) > new Date()
+    && !profile?.trial_converted_at
+    && !profile?.trial_expired_at;
+
+  return onboardingTrialActive ? 'pro' : storedTier;
+}
+
+/**
+ * Whether this user can use the WhatsApp Pocket Agent right now.
+ *
+ * Reads `getEffectiveTier` (Stripe + onboarding-trial aware) and returns
+ * true when the resulting tier has `whatsappPocketAgent: true`. Used by:
+ *   - /api/whatsapp/opt-in       (block link-up for non-Pro)
+ *   - /api/whatsapp/webhook      (auto-reply non-Pro inbound with upgrade)
+ *   - /api/cron/whatsapp-alerts  (filter outbound recipients)
+ */
+export async function canUseWhatsApp(userId: string): Promise<boolean> {
+  const tier = await getEffectiveTier(userId);
+  return PLAN_LIMITS[tier].whatsappPocketAgent === true;
 }
 
 /**
