@@ -1,6 +1,24 @@
+// Categories the deal-matcher should never try to find a switch for.
+//
+// Trimmed 27 Apr 2026: previously this also blocked mortgages, loans,
+// credit cards, car finance, and (briefly) water — but all of these
+// ARE switchable in the UK and the affiliate catalogue at
+// /dashboard/deals already carries deals for each (Habito + L&C for
+// mortgages, Freedom Finance + AA Loans for loans, MSE + CtM for
+// credit-card balance transfers, Carwow + Zuto for car finance,
+// CCW + WaterSure links for water). Excluding them meant the deal
+// widget refused to surface real refinance / balance-transfer / meter
+// savings to users.
+//
+// What stays excluded:
+//   - council_tax / tax — one council per address, can't switch (the
+//     band-challenge flow is its own dispute, not a deal-match)
+//   - fee / parking — one-off transactions, not recurring bills
+//
+// The 80% saving cap downstream still protects against weird
+// matches (a £15k/yr "saving" on a £18k mortgage gets dropped).
 export const EXCLUDED_SAVINGS_CATEGORIES = new Set([
-  'mortgage', 'mortgages', 'loan', 'loans', 'council_tax', 'tax',
-  'credit_card', 'credit cards', 'credit-cards', 'car_finance', 'car finance', 'car-finance',
+  'council_tax', 'tax',
   'fee', 'parking',
 ]);
 
