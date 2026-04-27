@@ -128,8 +128,20 @@ export default function RootLayout({
             }),
           }}
         />
+        {/* Skip-to-main-content — keyboard / screen-reader users bypass nav */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[10000] focus:bg-mint-500 focus:text-white focus:px-4 focus:py-2 focus:rounded-lg focus:font-semibold focus:shadow-lg"
+        >
+          Skip to main content
+        </a>
         <PostHogProvider>
-          {children}
+          {/* Each route attaches `id="main-content" tabIndex={-1}` to its
+              real <main> (dashboard shell, auth pages, marketing pages) so
+              the skip link lands AFTER any in-page navigation. */}
+          <div id="app-shell" className="flex-1 flex flex-col">
+            {children}
+          </div>
           <ChatWidget />
         </PostHogProvider>
         <TrackingScripts />

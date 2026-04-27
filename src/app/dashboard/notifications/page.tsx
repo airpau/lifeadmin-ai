@@ -179,10 +179,24 @@ export default function NotificationsPage() {
                     {items.map((n, i) => {
                       const meta = TYPE_ICON[n.type || ''] || { icon: '🔔', tone: 'text' as const };
                       const unread = !n.read_at;
+                      const interactive = !!n.link_url;
                       return (
                         <div
                           key={n.id}
                           onClick={() => handleClick(n)}
+                          {...(interactive
+                            ? {
+                                role: 'button',
+                                tabIndex: 0,
+                                onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    handleClick(n);
+                                  }
+                                },
+                                'aria-label': `${n.title || 'Notification'}${unread ? ' (unread)' : ''}`,
+                              }
+                            : {})}
                           style={{
                             padding: '16px 20px',
                             borderBottom: i < items.length - 1 ? '1px solid var(--divider)' : 'none',
@@ -190,7 +204,7 @@ export default function NotificationsPage() {
                             gap: 14,
                             alignItems: 'flex-start',
                             background: unread ? '#FEFDF7' : 'transparent',
-                            cursor: n.link_url ? 'pointer' : 'default',
+                            cursor: interactive ? 'pointer' : 'default',
                           }}
                         >
                           <div

@@ -21,14 +21,15 @@ export default function ResetPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!email.includes('@')) {
-      setError('Enter the email you signed up with.');
+    const trimmed = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setError('Enter a valid email address (e.g. you@example.com).');
       return;
     }
     setLoading(true);
     try {
       const origin = typeof window !== 'undefined' ? window.location.origin : 'https://paybacker.co.uk';
-      const { error: supaErr } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error: supaErr } = await supabase.auth.resetPasswordForEmail(trimmed, {
         redirectTo: `${origin}/auth/update-password`,
       });
       if (supaErr) {
@@ -44,7 +45,7 @@ export default function ResetPasswordPage() {
   return (
     <div className="m-land-root">
       <MarkNav />
-      <main className="auth-shell">
+      <main id="main-content" tabIndex={-1} className="auth-shell">
         <div className="auth-wrap" style={{ maxWidth: 440, textAlign: 'center' }}>
           <div
             style={{
