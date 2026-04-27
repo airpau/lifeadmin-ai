@@ -1956,6 +1956,77 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .then(() => {});
     }
 
+    // -----------------------------------------------------------------
+    // Ticket-thread routing: if this user has an open Telegram-source
+    // support ticket, treat their message as a ticket reply rather than
+    // a fresh chatbot prompt. Insert into ticket_messages, reset status
+    // to 'open' so Riley re-engages on next 15-min cron, and send a
+    // brief acknowledgement instead of the chatbot's improvised answer.
+    // -----------------------------------------------------------------
+    try {
+      const { data: openTicket } = await supabase
+        .from('support_tickets')
+        .select('id, ticket_number, status, metadata')
+        .eq('user_id', session.user_id)
+        .eq('source', 'telegram')
+        .not('status', 'in', '("resolved","closed","dismissed")')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (openTicket?.id) {
+        // 1. Append the user's message to the ticket conversation history.
+        await supabase.from('ticket_messages').insert({
+          ticket_id: openTicket.id,
+          sender_type: 'user',
+          sender_name: 'Telegram User',
+          message: userMessage,
+        });
+
+        // 2. Reset status to 'open' + clear chase metadata so Riley re-processes.
+        const meta = (openTicket.metadata || {}) as Record<string, unknown>;
+        const userReplies = (meta.user_replies as Array<{ at: string; excerpt: string }>) || [];
+        const updatedMeta: Record<string, unknown> = {
+          ...meta,
+          user_replies: [
+            ...userReplies,
+            { at: new Date().toISOString(), excerpt: userMessage.slice(0, 200) },
+          ],
+          last_user_reply_at: new Date().toISOString(),
+        };
+        delete updatedMeta.chase_sent_at;
+        delete updatedMeta.auto_closed;
+        delete updatedMeta.auto_closed_at;
+
+        await supabase
+          .from('support_tickets')
+          .update({
+            status: 'open',
+            assigned_to: null,
+            metadata: updatedMeta,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', openTicket.id);
+
+        // 3. Brief acknowledgement (Riley will respond properly within ~15 min).
+        const ref = openTicket.ticket_number || openTicket.id.slice(0, 8).toUpperCase();
+        await ctx.reply(
+          `Got it — added to your ticket *${ref}*. Riley will respond shortly (usually within 15 minutes).\n\n` +
+            `If it's urgent, reply with the word *urgent* and we'll prioritise.`,
+          { parse_mode: 'Markdown' },
+        );
+
+        // Skip the chatbot processing for this message — Riley owns the conversation now.
+        console.log(
+          `[UserBot] Routed message into ticket ${ref} (chat_id=${chatId}, ticket_id=${openTicket.id})`,
+        );
+        return;
+      }
+    } catch (ticketLookupErr) {
+      // Non-fatal — fall through to normal chatbot processing.
+      console.error('[UserBot] Open-ticket lookup failed (non-fatal):', ticketLookupErr);
+    }
+
     // Show typing indicator immediately, then repeat every 4s while Claude processes
     await ctx.replyWithChatAction('typing').catch(() => {});
     const typingInterval = setInterval(() => {
