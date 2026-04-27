@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import {
   MessageCircle,
   CheckCircle2,
@@ -441,18 +442,25 @@ function WhatsAppPanel({
           The WhatsApp Pocket Agent is part of Paybacker Pro because every WhatsApp template message has a per-send cost on Meta&apos;s side. Pro covers it. Same agent intelligence as Telegram, just on the messaging app you probably use most.
         </p>
         <div className="flex gap-3 flex-wrap">
-          <a
+          {/*
+            Use Next.js <Link> rather than raw <a href>. <a> triggers a
+            full-page reload which drops the SPA-side auth state mid-flight
+            on /pricing, briefly looking like a logout to the user. <Link>
+            does client-side navigation, the cookie-based session stays
+            intact, and Stripe checkout works straight through.
+          */}
+          <Link
             href="/pricing?from=whatsapp"
             className="inline-flex items-center px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold"
           >
             Upgrade to Pro
-          </a>
-          <a
+          </Link>
+          <Link
             href="/dashboard/settings/telegram"
             className="inline-flex items-center px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold"
           >
             Use Telegram instead
-          </a>
+          </Link>
         </div>
       </div>
     );
