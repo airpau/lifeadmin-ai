@@ -449,6 +449,8 @@ export default function ProfilePage() {
   const [savedReports, setSavedReports] = useState<Array<{ id: string; report_type: string; year: number; month: number | null; created_at: string }>>([]);
   const [showReport, setShowReport] = useState(false);
   const [telegramLinked, setTelegramLinked] = useState<boolean | null>(null);
+  const [whatsappLinked, setWhatsappLinked] = useState<boolean | null>(null);
+  const [whatsappCanUse, setWhatsappCanUse] = useState<boolean | null>(null);
   
   const [newPassword, setNewPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
@@ -551,6 +553,13 @@ export default function ProfilePage() {
       .then(r => r.ok ? r.json() : null)
       .then(data => setTelegramLinked(data?.linked === true))
       .catch(() => setTelegramLinked(false));
+    fetch('/api/whatsapp/link-code')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        setWhatsappLinked(data?.linked === true);
+        setWhatsappCanUse(data?.canUse === true);
+      })
+      .catch(() => { setWhatsappLinked(false); setWhatsappCanUse(false); });
   }, []);
 
   const startEditing = () => {
@@ -1293,7 +1302,7 @@ export default function ProfilePage() {
           Where should alerts land?
         </h2>
         <p className="text-slate-600 text-sm mb-4">
-          Choose email, Telegram or push per event type — and set quiet hours if you\'d like the buzzes paused at night.
+          Choose email, Telegram, WhatsApp or push per event type — and set quiet hours if you&apos;d like the buzzes paused at night.
         </p>
         <Link
           href="/dashboard/settings/notifications"
@@ -1303,26 +1312,64 @@ export default function ProfilePage() {
         </Link>
       </div>
 
-      {/* Pocket Agent — only surfaced while unlinked. Once the user
-          has linked Telegram the manage flow lives at /dashboard/pocket-agent
-          and this pitch just wastes vertical space. */}
-      {telegramLinked === false && (
-        <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
-          <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-            <Mail className="h-5 w-5 text-amber-500" />
-            Pocket Agent
-          </h2>
-          <p className="text-slate-600 text-sm mb-4">
-            Connect your Paybacker account to Pocket Agent for proactive alerts, spending queries, and complaint letters — all from your phone.
-          </p>
-          <Link
-            href="/dashboard/pocket-agent"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-amber-600 rounded-xl text-sm font-medium transition-colors"
-          >
-            Set Up Pocket Agent
-          </Link>
+      {/* Pocket Agent — pick a channel. Telegram XOR WhatsApp.
+          Telegram is free on every plan; WhatsApp is Pro-only.
+          Mutex enforced server-side so only one is ever active. */}
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
+          Pocket Agent
+        </h2>
+        <p className="text-slate-600 text-sm mb-4">
+          Talk to your financial agent on your phone — proactive alerts, spending queries, complaint letters. Pick one channel; we&apos;ll keep them mutually exclusive so you never get double-pinged.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Telegram */}
+          <div className={`border rounded-xl p-4 ${telegramLinked ? 'border-emerald-300 bg-emerald-50/40' : 'border-slate-200'}`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-slate-900">Telegram</span>
+              {telegramLinked && <span className="text-xs text-emerald-600 font-semibold">Connected</span>}
+            </div>
+            <p className="text-xs text-slate-500 mb-3">Free on every plan.</p>
+            <Link
+              href="/dashboard/settings/telegram"
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
+            >
+              {telegramLinked ? 'Manage' : 'Set up'}
+            </Link>
+          </div>
+          {/* WhatsApp */}
+          <div className={`border rounded-xl p-4 ${whatsappLinked ? 'border-emerald-300 bg-emerald-50/40' : whatsappCanUse === false ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200'}`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-slate-900">
+                WhatsApp
+                {whatsappCanUse === false && <span className="ml-2 text-[10px] uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Pro</span>}
+              </span>
+              {whatsappLinked && <span className="text-xs text-emerald-600 font-semibold">Connected</span>}
+            </div>
+            <p className="text-xs text-slate-500 mb-3">
+              {whatsappCanUse ? 'Included in Pro.' : 'Upgrade to Pro to unlock.'}
+            </p>
+            {whatsappCanUse === false ? (
+              <Link
+                href="/pricing?from=whatsapp"
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 rounded-lg text-xs font-semibold transition-colors"
+              >
+                Upgrade to Pro
+              </Link>
+            ) : (
+              <Link
+                href="/dashboard/settings/whatsapp"
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
+              >
+                {whatsappLinked ? 'Manage' : 'Set up'}
+              </Link>
+            )}
+          </div>
         </div>
-      )}
+        <p className="text-[11px] text-slate-500 mt-3">
+          Connecting one disconnects the other automatically.
+        </p>
+      </div>
       </>)}
 
       {section === 'privacy' && (<>

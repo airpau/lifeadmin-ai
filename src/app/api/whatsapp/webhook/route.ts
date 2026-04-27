@@ -111,9 +111,85 @@ export async function POST(req: NextRequest) {
     });
 
     if (!userId) {
-      // Unlinked number: prompt them to link via the website.
-      await safeReply(msg.from,
-        `Hi! To use Paybacker via WhatsApp, link your account at https://paybacker.co.uk/dashboard/profile (look for "Connect WhatsApp"). Your account stays under your control.`,
+      // Unlinked number — try to redeem a link code first.
+      // Accepted formats (case-insensitive):
+      //   "LINK ABC123"   "link abc123"   "ABC123"
+      // We grab the last 6-char alphanumeric run from the message.
+      const codeMatch = (msg.text ?? '')
+        .toUpperCase()
+        .match(/\b([A-Z2-9]{6})\b/);
+      if (codeMatch) {
+        const code = codeMatch[1];
+        const { data: codeRow } = await sb
+          .from('whatsapp_link_codes')
+          .select('id, user_id, expires_at, used')
+          .eq('code', code)
+          .eq('used', false)
+          .gt('expires_at', new Date().toISOString())
+          .maybeSingle();
+
+        if (codeRow) {
+          // Mark code used + create session row. The mutex trigger on
+          // whatsapp_sessions enforces no-conflicting-Telegram. If it
+          // does fire, /api/whatsapp/link-code's POST already called
+          // set_pocket_agent_channel('whatsapp') so this should be safe.
+          await sb
+            .from('whatsapp_link_codes')
+            .update({ used: true })
+            .eq('id', codeRow.id);
+
+          const { error: sessErr } = await sb.from('whatsapp_sessions').upsert(
+            {
+              user_id: codeRow.user_id,
+              whatsapp_phone: msg.from,
+              is_active: true,
+              opted_in_at: new Date().toISOString(),
+              opted_out_at: null,
+              provider: msg.provider,
+              last_message_at: new Date().toISOString(),
+            },
+            { onConflict: 'whatsapp_phone' },
+          );
+
+          if (sessErr) {
+            console.error('[whatsapp/webhook] link redeem failed', sessErr);
+            await safeReply(
+              msg.from,
+              `Hmm — couldn't link your account: ${sessErr.message}. Try again from the dashboard, or reply STOP to opt out.`,
+            );
+          } else {
+            // Backfill profiles.phone if it's empty — the user has just
+            // verified ownership of this number, so we can safely use it
+            // as their primary phone. We DO NOT overwrite an existing
+            // phone (they may have given a landline / different mobile
+            // for OTP / dispute correspondence).
+            const { data: profile } = await sb
+              .from('profiles')
+              .select('phone')
+              .eq('id', codeRow.user_id)
+              .maybeSingle();
+            if (profile && !profile.phone) {
+              await sb
+                .from('profiles')
+                .update({ phone: msg.from })
+                .eq('id', codeRow.user_id);
+            }
+
+            await safeReply(
+              msg.from,
+              `✓ Linked! I'm your Paybacker Pocket Agent.\n\n` +
+                `Ask me anything — "show my subs", "write a complaint to EE", "what's due this week", or forward me a bill to look at. Reply STOP any time to opt out.`,
+            );
+          }
+          processed += 1;
+          continue;
+        }
+      }
+
+      // Either no code in the message, or the code was invalid/expired.
+      await safeReply(
+        msg.from,
+        `Hi! To use Paybacker via WhatsApp, generate a link code at https://paybacker.co.uk/dashboard/settings/whatsapp and send it back to me here. (Pro plan required.)`,
       );
       continue;
     }
