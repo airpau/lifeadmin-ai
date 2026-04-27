@@ -495,12 +495,16 @@ export async function GET(request: NextRequest) {
         throw new Error(`All account sync attempts failed: ${detail}`);
       }
 
-      // Post-sync enrichment: fix merchant names, auto-categorise, detect recurring
-      // These DB functions must run for every user after every sync (they are idempotent)
+      // Post-sync enrichment: fix merchant names, auto-categorise, detect recurring,
+      // pair-match internal transfers across the user's connected accounts.
+      // These DB functions must run for every user after every sync (they are idempotent).
+      // Order matters: categorise first (sets user_category), then pair-match
+      // (which respects existing user_category), then recurring detection.
       const enrichmentFunctions = [
         { name: 'deduplicate_bank_transactions', args: { p_user_id: connection.user_id } },
         { name: 'fix_ee_card_merchant_names', args: { p_user_id: connection.user_id } },
         { name: 'auto_categorise_transactions', args: { p_user_id: connection.user_id } },
+        { name: 'mark_internal_transfers', args: { p_user_id: connection.user_id } },
         { name: 'detect_and_sync_recurring_transactions', args: { p_user_id: connection.user_id } },
       ] as const;
 

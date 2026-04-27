@@ -153,15 +153,11 @@ const FALLBACK_DEALS_BY_CATEGORY: Record<string, DealData[]> = {
   ],
 };
 
-// Categories that should never produce deal comparisons
-const EXCLUDED_COMPARISON_CATEGORIES = new Set([
-  'mortgages', 'loans', 'credit-cards', 'car-finance',
-]);
-
-// Provider types that should never produce deal comparisons
-const EXCLUDED_PROVIDER_TYPES = new Set([
-  'mortgage', 'loan', 'credit_card', 'council_tax',
-]);
+// Switchability is owned by category-taxonomy.ts — these legacy sets
+// stay in case the canonical isSwitchable() ever needs to be augmented
+// with comparison-engine-specific overrides, but the runtime check now
+// goes through isSwitchable().
+import { isSwitchable } from './category-taxonomy';
 
 /**
  * Normalise a subscription's provider_type/category/provider_name into a deals category.
@@ -256,15 +252,16 @@ export async function findCheaperAlternatives(
 
   if (error || !sub) return [];
 
-  // Skip excluded provider types (mortgages, loans, council_tax, etc.)
-  if (sub.provider_type && EXCLUDED_PROVIDER_TYPES.has(sub.provider_type)) return [];
+  // Skip non-switchable provider types (mortgages, loans, council_tax, etc.)
+  // via the canonical taxonomy.
+  if (sub.provider_type && !isSwitchable(sub.provider_type)) return [];
 
   // Try to determine deal category (works even without category/provider_type via provider_name keywords)
   const dealCategory = normaliseToDealCategory(sub);
   if (!dealCategory) return [];
 
-  // Skip excluded deal categories
-  if (EXCLUDED_COMPARISON_CATEGORIES.has(dealCategory)) return [];
+  // Skip non-switchable deal categories — same canonical rule.
+  if (!isSwitchable(dealCategory)) return [];
 
   // Update category_normalized if not set
   if (!sub.category_normalized && dealCategory) {

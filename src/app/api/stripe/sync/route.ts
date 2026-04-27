@@ -144,14 +144,28 @@ export async function POST() {
 
     console.log(`Sync: tier=${currentTier} pendingChange=${JSON.stringify(pendingChange)}`);
 
-    // Update profile
+    // Update profile. Surface any error (was silently swallowed before — the
+    // 'plus'/'essential' check-constraint bug went undetected for weeks
+    // because this update failed every time without anyone noticing).
     const admin = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-    await admin.from('profiles').update({
+    const { error: updateError } = await admin.from('profiles').update({
       subscription_tier: currentTier,
       subscription_status: sub.status,
       stripe_subscription_id: sub.id,
       updated_at: new Date().toISOString(),
     }).eq('id', user.id);
+
+    if (updateError) {
+      console.error('Stripe sync: profile UPDATE FAILED:', updateError.message, {
+        userId: user.id,
+        attemptedTier: currentTier,
+        stripeSubId: sub.id,
+      });
+      return NextResponse.json(
+        { error: `Profile update failed: ${updateError.message}`, attemptedTier: currentTier },
+        { status: 500 },
+      );
+    }
 
     // Build period end date safely
     const periodEndTimestamp = sub.current_period_end || sub.cancel_at;

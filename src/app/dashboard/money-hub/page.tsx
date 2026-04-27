@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { fmtNum } from '@/lib/format';
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
+import DisconnectBankModal from '@/components/money-hub/DisconnectBankModal';
 import { isDealValid } from '@/lib/savings-utils';
 import PlanLimitsBanner from '@/components/PlanLimitsBanner';
 
@@ -501,29 +502,51 @@ export default function MoneyHubPage() {
  };
 
  // ─── Disconnect Bank ──────────────────────────────────────────────────
+ // The browser confirm() prompt was replaced with DisconnectBankModal,
+ // which gives the user three explicit choices about what to do with
+ // the existing transaction history (keep / soft-delete / erase). The
+ // legacy confirm() defaulted to keep_history but didn't make that
+ // visible — users couldn't request deletion without contacting support.
 
- const disconnectBank = async (connectionId: string, bankName: string) => {
- if (!confirm(`Disconnect ${bankName || 'this bank'}? This will stop syncing transactions.`)) return;
- try {
- setDisconnectingId(connectionId);
- const res = await fetch('/api/bank/disconnect', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ connectionId }),
- });
- if (res.ok) {
- setActiveConnections(activeConnections.filter(c => c.id !== connectionId));
- setExpiredConnections(expiredConnections.filter(c => c.id !== connectionId));
- showToast(`${bankName || 'Bank'} disconnected`, 'success');
- await refreshData();
- } else {
- showToast('Failed to disconnect bank', 'error');
- }
- } catch {
- showToast('Failed to disconnect bank', 'error');
- } finally {
- setDisconnectingId(null);
- }
+ const [disconnectModal, setDisconnectModal] = useState<{
+   connectionId: string;
+   bankName: string;
+   multiAccount: boolean;
+ } | null>(null);
+
+ const openDisconnectModal = (
+   connectionId: string,
+   bankName: string,
+   multiAccount: boolean,
+ ) => {
+   setDisconnectModal({ connectionId, bankName: bankName || 'this bank', multiAccount });
+ };
+
+ const handleDisconnectConfirmed = async (
+   mode: 'keep_history' | 'delete_transactions' | 'erase_all',
+   txAffected: number,
+ ) => {
+   if (!disconnectModal) return;
+   const { connectionId, bankName } = disconnectModal;
+   setActiveConnections(activeConnections.filter(c => c.id !== connectionId));
+   setExpiredConnections(expiredConnections.filter(c => c.id !== connectionId));
+   const message = mode === 'erase_all'
+     ? `${bankName} erased — ${txAffected} transactions deleted permanently`
+     : mode === 'delete_transactions'
+       ? `${bankName} disconnected — ${txAffected} transactions binned (recoverable for 30 days)`
+       : `${bankName} disconnected — transaction history kept`;
+   showToast(message, 'success');
+   setDisconnectModal(null);
+   await refreshData();
+ };
+
+ // Compatibility shim — keeps the old call sites working while the modal
+ // takes over. Routes everything through the new modal.
+ const disconnectBank = (connectionId: string, bankName: string) => {
+   const conn = activeConnections.find(c => c.id === connectionId)
+              ?? expiredConnections.find(c => c.id === connectionId);
+   const multiAccount = (conn?.account_display_names?.length ?? 0) > 1;
+   openDisconnectModal(connectionId, bankName, multiAccount);
  };
 
  // ─── AI Chat ──────────────────────────────────────────────────────────
@@ -934,7 +957,11 @@ export default function MoneyHubPage() {
  </div>
  )}
 
- {/* Active bank connections — with disconnect option */}
+ {/* Active bank connections — one row per connection (the unit you can
+      revoke). Multi-account consents (e.g. NatWest current + business on
+      one TrueLayer consent) cannot be partially revoked, so previously
+      rendering one row per account with the trash gated to i===0 misled
+      users into thinking they could remove a single account. */}
  {activeConnections.length > 0 && (
  <div className="card">
  <div className="flex items-center justify-between mb-3">
@@ -944,34 +971,40 @@ export default function MoneyHubPage() {
  </div>
  </div>
  <div className="space-y-2">
- {activeConnections.flatMap((conn) => {
+ {activeConnections.map((conn) => {
  const names: string[] = (conn.account_display_names && conn.account_display_names.length > 0)
  ? conn.account_display_names
  : [];
- const rows = names.length > 0 ? names : [null];
- return rows.map((accName, i) => (
- <div key={`${conn.id}-${i}`} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
+ return (
+ <div key={conn.id} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
  <div className="flex items-center gap-2 flex-wrap">
  <Building2 className="h-4 w-4 text-green-400" />
  <span className="text-slate-900 text-sm font-medium">{conn.bank_name || 'Bank'}</span>
- {accName && names.length > 1 && <span className="text-slate-500 text-xs">· {accName}</span>}
+ {names.length === 1 && (
+ <span className="text-slate-500 text-xs">· {names[0]}</span>
+ )}
+ {names.length > 1 && (
+ <span className="text-slate-500 text-xs" title={names.join(' · ')}>
+ · {names.length} accounts ({names.join(', ')})
+ </span>
+ )}
  <span className="text-slate-500 text-xs">· active</span>
- {i === 0 && conn.last_synced_at && (
+ {conn.last_synced_at && (
  <span className="text-slate-500 text-xs" title={`Last synced ${formatTimeAgo(conn.last_synced_at)}`}>
  · Last synced {formatAbsoluteDateTime(conn.last_synced_at)}
  </span>
  )}
  </div>
- {i === 0 && (
- <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" title="Disconnect this bank">
+ <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" title={names.length > 1 ? `Disconnect both accounts on this consent` : 'Disconnect this bank'}>
  <Trash2 className="h-4 w-4" />
  </button>
- )}
  </div>
- ));
+ );
  })}
  </div>
- <p className="text-slate-500 text-xs mt-2">Click the trash icon to disconnect a bank account</p>
+ <p className="text-slate-500 text-xs mt-2">
+   Click the trash icon to disconnect a bank. Multi-account consents (e.g. one bank with current + business) revoke as a pair — re-add only the accounts you want.
+ </p>
  </div>
  )}
 
@@ -1552,6 +1585,16 @@ export default function MoneyHubPage() {
  )}
 
  {showBankPicker && <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />}
+ {disconnectModal && (
+   <DisconnectBankModal
+     open={!!disconnectModal}
+     bankName={disconnectModal.bankName}
+     connectionId={disconnectModal.connectionId}
+     multiAccount={disconnectModal.multiAccount}
+     onClose={() => setDisconnectModal(null)}
+     onConfirmed={handleDisconnectConfirmed}
+   />
+ )}
  </div>
  );
 }

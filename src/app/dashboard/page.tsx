@@ -23,6 +23,7 @@ import { cleanMerchantName } from '@/lib/merchant-utils';
 import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 import { calculateTotalSavings, parseComparisonDeals, isPriceAlertValid, priceAlertAnnualImpact } from '@/lib/savings-utils';
+import { disputeWinnabilityHook } from '@/lib/category-taxonomy';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -619,28 +620,57 @@ export default function DashboardPage() {
     ctaLabel: string;
   };
 
-  const actionRows: ActionRow[] = [
-    ...priceAlerts.filter(isPriceAlertValid).map((a) => {
-      const impact = priceAlertAnnualImpact(a);
-      const merchant = cleanMerchantName(a.merchant_name || 'Provider');
-      const pct = (parseFloat(a.increase_pct) || 0).toFixed(1);
-      return {
-        key: `price-${a.id}`,
-        title: `${merchant} price rise +${pct}%`,
-        meta: `£${Number(a.old_amount).toFixed(2)} → £${Number(a.new_amount).toFixed(2)}`,
-        tileBg: 'var(--rose-wash)',
-        tileFg: 'var(--rose-deep)',
-        icon: <TrendingUp className="h-5 w-5" />,
-        pillClass: 'red' as const,
-        pillText: 'Priority',
-        amountClass: 'neg' as const,
-        amountLabel: `+${formatGBP(impact)}/yr`,
-        impact,
-        ctaHref: `/dashboard/complaints?company=${encodeURIComponent(merchant)}&issue=${encodeURIComponent(`price increase from £${Number(a.old_amount).toFixed(2)} to £${Number(a.new_amount).toFixed(2)}`)}&amount=${impact}&alertId=${a.id}&new=1`,
-        ctaLabel: 'Start dispute',
-      };
-    }),
-    ...comparisonDeals.slice(0, 6).map((d, i) => ({
+  // Price alerts split into THREE classes by the canonical taxonomy
+  // (see classifyDispute() / dispute_classification column). The Action
+  // Centre renders each in its own visual section so users don't see
+  // "Start dispute" buttons on bills they can't actually dispute (council
+  // tax, HMRC, loan rate changes, etc).
+  const buildDisputeRow = (a: typeof priceAlerts[number]): ActionRow & { classification: 'disputable' | 'track_only' | 'unknown'; hook: string | null } => {
+    const impact = priceAlertAnnualImpact(a);
+    const merchant = cleanMerchantName(a.merchant_name || 'Provider');
+    const pct = (parseFloat(a.increase_pct) || 0).toFixed(1);
+    const classification = (a.dispute_classification as 'disputable' | 'track_only' | 'unknown') || 'unknown';
+    const hook = disputeWinnabilityHook(a.category);
+    return {
+      key: `price-${a.id}`,
+      title: `${merchant} price rise +${pct}%`,
+      meta: `£${Number(a.old_amount).toFixed(2)} → £${Number(a.new_amount).toFixed(2)}`,
+      tileBg: classification === 'disputable' ? 'var(--rose-wash)' : 'var(--bg-2, #F5F5F4)',
+      tileFg: classification === 'disputable' ? 'var(--rose-deep)' : 'var(--text-3)',
+      icon: <TrendingUp className="h-5 w-5" />,
+      pillClass: classification === 'disputable' ? ('red' as const) : ('amb' as const),
+      pillText: classification === 'disputable' ? 'Dispute' : classification === 'track_only' ? 'Track only' : 'Worth a look',
+      amountClass: 'neg' as const,
+      amountLabel: `+${formatGBP(impact)}/yr cost`,
+      impact,
+      ctaHref: classification === 'disputable'
+        ? `/dashboard/complaints?company=${encodeURIComponent(merchant)}&issue=${encodeURIComponent(`price increase from £${Number(a.old_amount).toFixed(2)} to £${Number(a.new_amount).toFixed(2)}`)}&amount=${impact}&alertId=${a.id}&new=1`
+        : `/dashboard/money-hub`,
+      ctaLabel: classification === 'disputable' ? 'Start dispute' : 'View',
+      classification,
+      hook,
+    };
+  };
+
+  const allDisputes = priceAlerts.filter(isPriceAlertValid).map(buildDisputeRow);
+  const disputableRows = allDisputes.filter(d => d.classification === 'disputable');
+  const trackOnlyRows = allDisputes.filter(d => d.classification === 'track_only');
+  const unknownDisputeRows = allDisputes.filter(d => d.classification === 'unknown');
+
+  // Backwards compat for downstream KPI rows that read disputeRows
+  const disputeRows = disputableRows;
+
+  // Deals — money saved by switching. Stable sort by annualSaving with id
+  // tiebreaker so the headline £-figure doesn't flicker between renders
+  // when multiple deals tie in savings (the previous slice(0,6) without a
+  // tiebreaker produced £4,609 / £4,669 oscillation).
+  const dealRows: ActionRow[] = [...comparisonDeals]
+    .sort((a, b) =>
+      (b.annualSaving || 0) - (a.annualSaving || 0)
+      || (a.subscriptionName || '').localeCompare(b.subscriptionName || '')
+    )
+    .slice(0, 6)
+    .map((d, i) => ({
       key: `deal-${i}-${d.subscriptionName}`,
       title: `${cleanMerchantName(d.subscriptionName)} — ${d.dealProvider} is cheaper`,
       meta: `Current £${d.currentPrice?.toFixed?.(2) ?? d.currentPrice} · Best alt £${d.dealPrice?.toFixed?.(2) ?? d.dealPrice}`,
@@ -654,10 +684,24 @@ export default function DashboardPage() {
       impact: d.annualSaving || 0,
       ctaHref: '/dashboard/deals',
       ctaLabel: 'Compare',
-    })),
-  ].sort((a, b) => b.impact - a.impact);
-  const actionRowsTop = actionRows.slice(0, 5);
-  const totalActions = actionRows.length;
+    }));
+
+  // The PRIMARY action list: disputable price rises + cheaper-deal switches.
+  // These are the things the user can act on right now with high confidence.
+  const primaryActions: ActionRow[] = [...disputableRows, ...dealRows].sort(
+    (a, b) => b.impact - a.impact,
+  );
+  const dealsAnnualSaving = dealRows.reduce((s, d) => s + d.impact, 0);
+  const disputesAnnualImpact = disputableRows.reduce((s, d) => s + d.impact, 0);
+  const trackOnlyAnnualImpact = trackOnlyRows.reduce((s, d) => s + d.impact, 0);
+  const [showAllActions, setShowAllActions] = useState(false);
+  const [showTrackOnly, setShowTrackOnly] = useState(false);
+  const actionRowsTop = showAllActions ? primaryActions : primaryActions.slice(0, 5);
+  // Total count includes everything the user can see (primary + track-only +
+  // unknown), so the headline pill matches what's actually on screen.
+  const totalActions = primaryActions.length + trackOnlyRows.length + unknownDisputeRows.length;
+  // Backwards-compat alias for downstream KPI cards that read actionRows.
+  const actionRows = primaryActions;
 
   // Greeting based on local time — no user-name dependency (name shown in shell).
   const hour = new Date().getHours();
@@ -868,10 +912,18 @@ export default function DashboardPage() {
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-.015em' }}>
               {dealsLoading
                 ? 'Crunching cheaper-alternatives + price alerts…'
-                : `${formatGBP(potentialSavings)} of potential savings — ready to claim`}
+                : dealRows.length === 0 && disputeRows.length === 0
+                  ? 'No actions waiting — you\'re all caught up.'
+                  : dealRows.length > 0 && disputeRows.length === 0
+                    ? `${formatGBP(dealsAnnualSaving)} of potential savings — ready to claim`
+                    : disputeRows.length > 0 && dealRows.length === 0
+                      ? `${formatGBP(disputesAnnualImpact)} of price rises to dispute`
+                      : `${formatGBP(dealsAnnualSaving)} to save · ${formatGBP(disputesAnnualImpact)} to dispute`}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-2)' }}>
-              Based on cheaper alternatives and price increase alerts we&apos;ve detected.
+              {disputeRows.length > 0 && dealRows.length > 0
+                ? 'Switch deals save you money. Disputed price rises recover money you\'d otherwise lose.'
+                : 'Based on cheaper alternatives and price increase alerts we\'ve detected.'}
             </p>
           </div>
         </div>
@@ -928,6 +980,14 @@ export default function DashboardPage() {
                     <span className={`pill ${r.pillClass}`}>{r.pillText}</span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{r.meta}</div>
+                  {/* "Why this is winnable" microcopy on disputable cards.
+                      Pulled from the canonical disputeWinnabilityHook() so the
+                      copy is the same wherever a dispute is shown. */}
+                  {('hook' in r) && (r as { hook: string | null }).hook && (
+                    <div style={{ fontSize: 11, color: 'var(--rose-deep)', marginTop: 4, fontWeight: 600 }}>
+                      ⚖ {(r as { hook: string }).hook}
+                    </div>
+                  )}
                 </div>
                 <div style={{ textAlign: 'right', minWidth: 100 }}>
                   <div
@@ -946,19 +1006,77 @@ export default function DashboardPage() {
               </div>
             ))
           )}
-          {actionRows.length > actionRowsTop.length && (
+          {actionRows.length > 5 && (
             <div style={{ textAlign: 'center', paddingTop: 8 }}>
-              <Link
-                href="/dashboard/subscriptions"
+              <button
+                type="button"
+                onClick={() => setShowAllActions((prev) => !prev)}
                 style={{
                   fontSize: 12,
                   color: 'var(--text-3)',
                   fontWeight: 600,
                   textDecoration: 'none',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
                 }}
               >
-                Show {actionRows.length - actionRowsTop.length} more action{actionRows.length - actionRowsTop.length === 1 ? '' : 's'} →
-              </Link>
+                {showAllActions
+                  ? 'Show fewer actions ↑'
+                  : `Show ${actionRows.length - 5} more action${actionRows.length - 5 === 1 ? '' : 's'} ↓`}
+              </button>
+            </div>
+          )}
+
+          {/* Track-only section: real price rises that aren't winnable as
+              disputes (council tax, HMRC, mortgage rate changes, loan
+              repayments). Collapsed by default so they don't clutter the
+              headline but still surface in the count. */}
+          {trackOnlyRows.length > 0 && (
+            <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px dashed #D1FAE5' }}>
+              <button
+                type="button"
+                onClick={() => setShowTrackOnly((prev) => !prev)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  width: '100%', padding: 0,
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  fontSize: 12, color: 'var(--text-3)', fontWeight: 600,
+                }}
+                aria-expanded={showTrackOnly}
+              >
+                <span>{showTrackOnly ? '▾' : '▸'}</span>
+                <span>
+                  {trackOnlyRows.length} price rise{trackOnlyRows.length === 1 ? '' : 's'} worth tracking
+                  {' '}({formatGBP(trackOnlyAnnualImpact)}/yr extra) — not disputable
+                </span>
+              </button>
+              {showTrackOnly && (
+                <div style={{ marginTop: 8 }}>
+                  {trackOnlyRows.map((r) => (
+                    <div
+                      key={r.key}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 0', borderTop: '1px solid #F1F5F9',
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-2)' }}>{r.title}</div>
+                        <div style={{ color: 'var(--text-3)', fontSize: 11 }}>{r.meta}</div>
+                      </div>
+                      <div style={{ color: 'var(--text-3)', fontSize: 12, fontWeight: 700, minWidth: 90, textAlign: 'right' }}>
+                        +{formatGBP(r.impact)}/yr
+                      </div>
+                    </div>
+                  ))}
+                  <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8, fontStyle: 'italic' }}>
+                    Council tax, mortgage rate changes, HMRC, loan repayments, parking and statutory fees follow contractual or legal terms — they can&apos;t be challenged via a consumer-rights letter. We&apos;re tracking them so you can see them in your spending picture.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -7,6 +7,7 @@ import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { pickRawMerchantSource } from '@/lib/merchant-utils';
 import { loadLearnedRules } from '@/lib/learning-engine';
 import { ensureDefaultSpace, getSpace, spaceConnectionFilter, spaceTransactionFilter } from '@/lib/spaces';
+import { bucketFor } from '@/lib/category-taxonomy';
 
 export const runtime = 'nodejs';
 
@@ -182,7 +183,9 @@ export async function GET(request: Request) {
       // active the JS summariser below recomputes the actual totals
       // from the filtered transaction set, so these RPC values are only
       // used for the default "Everything" Space.
-      { data: rpcSpendingTotal },
+      // rpcBreakdown shape: [{ fixed_cost_total, variable_cost_total,
+      //   discretionary_total, spending_total, internal_transfer_total }]
+      { data: rpcBreakdown },
       { data: rpcIncomeTotal },
       { data: rpcSpendingCategories },
       { data: rpcIncomeCategories },
@@ -196,8 +199,11 @@ export async function GET(request: Request) {
       admin.from('money_hub_category_overrides').select('*').eq('user_id', user.id),
       admin.from('subscriptions').select('*').eq('user_id', user.id).is('dismissed_at', null),
       admin.from('money_hub_alerts').select('*').eq('user_id', user.id).eq('status', 'active').limit(20),
-      // Authoritative spending/income from DB RPCs (handles transfer exclusion, dedup, overrides)
-      admin.rpc('get_monthly_spending_total', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
+      // Authoritative spending/income from DB RPCs (handles transfer exclusion, dedup, overrides).
+      // get_monthly_spending_breakdown is the canonical replacement for
+      // get_monthly_spending_total — returns fixed_cost / variable_cost /
+      // discretionary / spending_total / internal_transfer_total.
+      admin.rpc('get_monthly_spending_breakdown', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
       admin.rpc('get_monthly_income_total', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
       admin.rpc('get_monthly_spending', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
       admin.rpc('get_monthly_income', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
@@ -215,6 +221,54 @@ export async function GET(request: Request) {
     // Authoritative income/spending via JS computation (to support AI rule mapping and local recategorisation)
     const authSpending = currentSummary.monthlyOutgoings;
     const authIncome = currentSummary.monthlyIncome;
+
+    // Canonical bucket breakdown.
+    //
+    // The DB RPC aggregates at the user level — it doesn't see the Space
+    // filter applied to txnQuery. So when a non-default Space is active
+    // ("Business" / "Personal" / etc.) the RPC's breakdown is wider than
+    // the rest of the page. Codex P2 review flagged that this produced
+    // contradictory numbers within the same card.
+    //
+    // Resolution: when on the default "Everything" Space, trust the RPC.
+    // When on any filtered Space, recompute the bucket totals from the
+    // same filtered transaction set the JS summariser used. We mirror
+    // `category_bucket()` via `bucketFor()` (the canonical TS export)
+    // so the buckets match the RPC byte-for-byte.
+    const isDefaultSpace = !!(activeSpace?.is_default);
+    let fixedCostTotal: number;
+    let variableCostTotal: number;
+    let discretionaryTotal: number;
+    let internalTransferTotal: number;
+    let rpcSpendingTotal: number;
+
+    if (isDefaultSpace) {
+      const breakdownRow = Array.isArray(rpcBreakdown) ? rpcBreakdown[0] : rpcBreakdown;
+      fixedCostTotal        = parseFloat(String(breakdownRow?.fixed_cost_total ?? 0)) || 0;
+      variableCostTotal     = parseFloat(String(breakdownRow?.variable_cost_total ?? 0)) || 0;
+      discretionaryTotal    = parseFloat(String(breakdownRow?.discretionary_total ?? 0)) || 0;
+      internalTransferTotal = parseFloat(String(breakdownRow?.internal_transfer_total ?? 0)) || 0;
+      rpcSpendingTotal      = parseFloat(String(breakdownRow?.spending_total ?? 0)) || 0;
+    } else {
+      // Recompute from the filtered txn set used elsewhere in this response.
+      let f = 0, v = 0, d = 0, t = 0;
+      for (const tx of currentSummary.spendingTransactions) {
+        const amt = Math.abs(parseFloat(String(tx.amount)) || 0);
+        const cat = (tx as { user_category?: string | null; category?: string | null }).user_category
+                  || (tx as { category?: string | null }).category
+                  || '';
+        const bucket = bucketFor(cat);
+        if (bucket === 'fixed_cost') f += amt;
+        else if (bucket === 'variable_cost') v += amt;
+        else if (bucket === 'discretionary') d += amt;
+        else if (bucket === 'internal_transfer') t += amt;
+      }
+      fixedCostTotal        = f;
+      variableCostTotal     = v;
+      discretionaryTotal    = d;
+      internalTransferTotal = t;
+      rpcSpendingTotal      = f + v + d;
+    }
 
     // Build authoritative category breakdown via JS learning rules
     const authCategoryBreakdown = currentSummary.categoryBreakdown;
@@ -320,6 +374,17 @@ export async function GET(request: Request) {
         topMerchants: isPro ? topMerchants : [],
         monthlyTrends: isPaid ? monthlyTrends : [],
         totalSpent: parseFloat(authSpending.toFixed(2)),
+        // Canonical bucket split — UI renders Fixed / Variable / Discretionary
+        // side by side. spending_total = sum of the three buckets.
+        // internalTransferTotal is informational (NOT spending) — useful for
+        // an "also moved between own accounts" footnote.
+        breakdown: {
+          fixedCost:        parseFloat(fixedCostTotal.toFixed(2)),
+          variableCost:     parseFloat(variableCostTotal.toFixed(2)),
+          discretionary:    parseFloat(discretionaryTotal.toFixed(2)),
+          spendingTotal:    parseFloat(rpcSpendingTotal.toFixed(2)),
+          internalTransfer: parseFloat(internalTransferTotal.toFixed(2)),
+        },
       },
       accounts,
       subscriptions: activeSubs, // Tracked, but NOT added to spend

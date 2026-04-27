@@ -1,20 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
-
-// Categories where amounts follow an amortisation schedule (loan balance
-// shrinks, interest changes, credit-card balances vary) so a "price
-// increase" is meaningless. These are a narrower set than the
-// EXCLUDED_SAVINGS_CATEGORIES used by the deals widget — council_tax
-// and business_rates are specifically NOT here, because annual hikes on
-// those bills are exactly what we want to flag.
-const EXCLUDED_FROM_PRICE_DETECTION = new Set([
-  'mortgage', 'mortgages',
-  'loan', 'loans',
-  'credit_card', 'credit cards', 'credit-cards', 'credit',
-  'car_finance', 'car finance', 'car-finance',
-  'fee', 'fees',
-  'parking',
-]);
+import { hasMeaningfulPriceSignal, bucketFor } from '@/lib/category-taxonomy';
 
 function getAdmin() {
   return createClient(
@@ -66,27 +52,16 @@ export interface PriceIncrease {
   category: string;
 }
 
-// Categories where amounts vary naturally — skip outright.
-const VARIABLE_CATEGORIES = new Set([
-  'groceries', 'fuel', 'eating_out', 'shopping', 'cash', 'transfers',
-  'income', 'other', 'transport', 'gambling',
-  // Bank categories that are one-off purchases, not recurring bills
+// Bank-level (raw) transaction-type codes that are never recurring bills.
+// Category-level filtering goes through hasMeaningfulPriceSignal() —
+// those rules live in category-taxonomy.ts.
+const RAW_BANK_TYPES_NO_PRICE_SIGNAL = new Set([
   'PURCHASE', 'ATM', 'TRANSFER', 'FEE_CHARGE', 'CASH',
   'CREDIT', 'INTEREST', 'OTHER',
-  // Variable-by-design bills -- flagging these as "price increases" is noise
-  // because they legitimately move month to month (amortisation, council tax
-  // 10-month cycle, variable credit card balances, BNPL).
-  'mortgage', 'loans', 'credit', 'credit_card', 'council_tax',
-  'bank_transfer', 'debt_repayment',
 ]);
 
-// Only these transaction categories can be recurring bills with a stable price
-const RECURRING_CATEGORIES = new Set([
-  'DIRECT_DEBIT', 'STANDING_ORDER',
-  // Mapped internal categories (fixed-price subscriptions only)
-  'energy', 'broadband', 'mobile', 'streaming', 'insurance',
-  'water', 'fitness', 'software', 'bills',
-]);
+// Only these (raw) transaction-type codes signal a recurring bill.
+const RECURRING_BANK_TYPES = new Set(['DIRECT_DEBIT', 'STANDING_ORDER']);
 
 // Merchant-name heuristics -- block even if category looks recurring
 const BLOCKED_MERCHANT_PATTERNS = [
@@ -148,10 +123,17 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
 
     // Use user_category if set, otherwise category
     const cat = tx.user_category || tx.category || '';
-    const catLower = cat.toLowerCase();
-    if (VARIABLE_CATEGORIES.has(cat) || EXCLUDED_FROM_PRICE_DETECTION.has(catLower)) continue;
-    // Only track categories that represent recurring bills
-    if (!RECURRING_CATEGORIES.has(cat)) continue;
+    // Bank-level codes that are never recurring (raw transaction-type strings)
+    if (RAW_BANK_TYPES_NO_PRICE_SIGNAL.has(cat)) continue;
+    // Canonical filter: skip variable / amortising / transfer / income categories.
+    // Replaces VARIABLE_CATEGORIES + EXCLUDED_FROM_PRICE_DETECTION drift.
+    if (!hasMeaningfulPriceSignal(cat)) continue;
+    // Only track rows that look like recurring bills — either a bank-level
+    // DD/SO type, OR a fixed-cost-bucket category that the canonical
+    // taxonomy says has a price signal.
+    const bucket = bucketFor(cat);
+    const isRecurringRow = RECURRING_BANK_TYPES.has(cat) || bucket === 'fixed_cost';
+    if (!isRecurringRow) continue;
 
     // Transfers to self (e.g. "PAUL AIREY … HALIFAX VIA MOBILE — PYMT") can
     // otherwise look like huge price rises when amounts vary. Skip them.
