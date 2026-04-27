@@ -84,6 +84,12 @@ const CATEGORY_TO_SUBJECT: Record<string, string> = {
     'a smooth retro TV silhouette with a glowing mint pound coin hovering over its blank dark screen, amber rim light',
   employment:
     'a polished gold pound coin pulled out of a sealed mint envelope by a stylised hand, amber glow at the seal',
+  subscriptions:
+    'a stack of polished mint subscription cards fanned out diagonally with a single gold pound coin floating above the top card, amber rim light',
+  'money-saving':
+    'a polished mint piggy bank silhouette with several gold pound coins orbiting around it like planets, amber glow at the centre',
+  benefits_v2:
+    'a stylised open hand reaching upward with a glowing mint pound coin floating just above the palm, amber rim light',
   default:
     'a polished gold pound coin breaking through a smooth mint barrier, amber light bursting outward, dramatic angle',
 };
