@@ -607,13 +607,19 @@ export default function MoneyHubPage() {
  };
 
  // ─── Auto-scan ────────────────────────────────────────────────────────
+ // Background inbox scan — runs silently on Money Hub mount, capped to
+ // once per 24h via localStorage. Previously the condition included
+ // `alerts.length === 0` which short-circuited the timestamp guard:
+ // every page load with empty alerts kicked off a fresh /api/gmail/scan,
+ // a 10-30s Claude call that hung networkidle and noticeably slowed
+ // mobile loads. The 24h timestamp is the only signal we need — empty
+ // alerts is the steady state for users who've already actioned them.
  useEffect(() => {
  if (data && data.tier === 'pro') {
  const lastScan = localStorage.getItem('pb_last_gmail_scan');
  const now = Date.now();
- const alerts = data.alerts || [];
- // Trigger if: no previous scan, scan older than 24h, or alerts are empty
- if (!lastScan || now - parseInt(lastScan) > 24 * 60 * 60 * 1000 || alerts.length === 0) {
+ const stale = !lastScan || now - parseInt(lastScan, 10) > 24 * 60 * 60 * 1000;
+ if (stale) {
  localStorage.setItem('pb_last_gmail_scan', now.toString());
  scanInbox(true);
  }
