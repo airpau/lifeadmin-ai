@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendWeeklyDigestEmail } from '@/lib/email/weekly-money-digest';
 import { canSendEmail } from '@/lib/email-rate-limit';
+import { isRealSpend, sumRealSpend, groupRealSpend } from '@/lib/spending';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -94,38 +95,46 @@ export async function GET(request: NextRequest) {
 
       const userName = profile.first_name || profile.full_name?.split(' ')[0] || 'there';
 
-      // This week's transactions
+      // This week's transactions. Pull user_category alongside category
+      // because Yapily/TrueLayer writes the auto-category into
+      // user_category — the `category` column is null on every row
+      // ingest writes today, which is why every digest used to show
+      // "Other 100%". See lib/spending.ts for the resolution rule.
       const { data: thisWeekTx } = await admin
         .from('bank_transactions')
-        .select('amount, description, category, timestamp')
+        .select('amount, description, merchant_name, category, user_category, timestamp')
         .eq('user_id', userId)
         .gte('timestamp', weekStart.toISOString())
         .lt('amount', 0);
 
-      // Last week's transactions (for comparison)
+      // Last week's transactions (for comparison) — same shape so the
+      // exclusion filter applies to both halves of the +/- vs last
+      // week comparison.
       const { data: lastWeekTx } = await admin
         .from('bank_transactions')
-        .select('amount')
+        .select('amount, description, merchant_name, category, user_category')
         .eq('user_id', userId)
         .gte('timestamp', lastWeekStart.toISOString())
         .lt('timestamp', weekStart.toISOString())
         .lt('amount', 0);
 
-      const weekSpend = (thisWeekTx || []).reduce((sum, tx) => sum + Math.abs(parseFloat(String(tx.amount))), 0);
-      const lastWeekSpend = (lastWeekTx || []).reduce((sum, tx) => sum + Math.abs(parseFloat(String(tx.amount))), 0);
+      // Real spend only — strips self-transfers, credit-card bill
+      // repayments, loan principal, and investments. The earlier
+      // implementation summed every debit and reported £20,733 for
+      // a week that had ~£10k of internal transfers in it.
+      const weekSpend = sumRealSpend(thisWeekTx || []);
+      const lastWeekSpend = sumRealSpend(lastWeekTx || []);
+      const realThisWeek = (thisWeekTx || []).filter(isRealSpend);
 
-      // Skip if no spending data this week
-      if (weekSpend === 0 && (thisWeekTx || []).length === 0) {
+      // Skip if no spending data this week (after exclusions — a user
+      // whose only debits were internal transfers shouldn't get a
+      // digest).
+      if (weekSpend === 0 && realThisWeek.length === 0) {
         skipped++;
         continue;
       }
 
-      // Category breakdown
-      const categoryTotals: Record<string, number> = {};
-      for (const tx of (thisWeekTx || [])) {
-        const cat = tx.category?.toLowerCase() || 'other';
-        categoryTotals[cat] = (categoryTotals[cat] || 0) + Math.abs(parseFloat(String(tx.amount)));
-      }
+      const categoryTotals = groupRealSpend(thisWeekTx || []);
 
       const topCategories = Object.entries(categoryTotals)
         .sort(([, a], [, b]) => b - a)
@@ -160,20 +169,18 @@ export async function GET(request: NextRequest) {
         .select('category, monthly_limit')
         .eq('user_id', userId);
 
-      // Get current month spending for budget comparison
+      // Get current month spending for budget comparison — same
+      // exclusions apply (a user whose budget category is "loans"
+      // shouldn't have their loan principal counted).
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       const { data: monthTx } = await admin
         .from('bank_transactions')
-        .select('amount, category')
+        .select('amount, description, merchant_name, category, user_category')
         .eq('user_id', userId)
         .gte('timestamp', monthStart)
         .lt('amount', 0);
 
-      const monthCategorySpend: Record<string, number> = {};
-      for (const tx of (monthTx || [])) {
-        const cat = tx.category?.toLowerCase() || 'other';
-        monthCategorySpend[cat] = (monthCategorySpend[cat] || 0) + Math.abs(parseFloat(String(tx.amount)));
-      }
+      const monthCategorySpend = groupRealSpend(monthTx || []);
 
       const budgetAlerts = (budgets || [])
         .map(b => {
@@ -210,7 +217,11 @@ export async function GET(request: NextRequest) {
           upcomingRenewals,
           budgetAlerts,
           totalSaved,
-          transactionCount: (thisWeekTx || []).length,
+          // Use the post-exclusion count so the headline matches the
+          // actual spend total (52 raw debits → 35 real outgoings,
+          // 17 self-transfers / loan principal hidden). Without this
+          // we'd say "£800 across 52 transactions" which is incoherent.
+          transactionCount: realThisWeek.length,
         },
         tier,
       );
