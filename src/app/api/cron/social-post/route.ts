@@ -272,26 +272,49 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
       }
     }
     const tweet = await postTweet(tweetText);
-    results.twitter = tweet ? { ok: true, tweetId: tweet.id } : { error: 'Post failed' };
+    results.twitter = { ok: true, tweetId: tweet.id };
   } catch (err: any) {
     results.twitter = { error: err.message };
   }
 
-  // Log to content_drafts
+  // Detect Meta (FB/IG) token expiry errors
+  function isTokenExpiredError(err: string | undefined): boolean {
+    if (!err) return false;
+    const lower = err.toLowerCase();
+    return lower.includes('access token') || lower.includes('session has expired') || lower.includes('oauthexception') || lower.includes('token');
+  }
+
+  const anySuccess = results.facebook?.ok || results.instagram?.ok || results.twitter?.ok;
+
+  // Log to content_drafts — status reflects actual outcome
   await supabase.from('content_drafts').insert({
     platform: 'facebook',
     content_type: 'text_post',
     caption,
     asset_url: imageUrl,
-    status: 'posted',
-    posted_at: new Date().toISOString(),
+    status: anySuccess ? 'posted' : 'failed',
+    posted_at: anySuccess ? new Date().toISOString() : null,
   });
 
-  // Notify founder via Telegram
+  // Notify founder via Telegram with clear platform summary
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
   const founderChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
   if (telegramToken && founderChatId) {
-    const msg = `Daily social post published:\n\nFB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\nIG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\nX: ${results.twitter?.ok ? 'Posted' : results.twitter?.error || 'Failed'}\n\nCaption: ${caption.substring(0, 150)}...`;
+    const fbOk = results.facebook?.ok;
+    const igOk = results.instagram?.ok;
+    const xOk = results.twitter?.ok;
+    const igSkipped = results.instagram?.skipped;
+
+    const fbStatus = fbOk ? 'FB ✓' : (isTokenExpiredError(results.facebook?.error) ? 'FB ✗ (token expired)' : `FB ✗ (${results.facebook?.error || 'failed'})`);
+    const igStatus = igOk ? 'IG ✓' : (igSkipped ? 'IG (no image)' : (isTokenExpiredError(results.instagram?.error) ? 'IG ✗ (token expired)' : `IG ✗ (${results.instagram?.error || 'failed'})`));
+    const xStatus = xOk ? 'X ✓' : `X ✗ (${results.twitter?.error || 'failed'})`;
+
+    const heading = anySuccess ? 'Social post result:' : 'Social post FAILED — no platforms succeeded:';
+    const tokenWarning = (isTokenExpiredError(results.facebook?.error) || isTokenExpiredError(results.instagram?.error))
+      ? '\n\n⚠️ Facebook/Instagram tokens have expired and need to be reconnected. Go to Dashboard → Settings → Social Media to reconnect.'
+      : '';
+
+    const msg = `${heading}\n\nPosted to: ${fbStatus} | ${igStatus} | ${xStatus}${tokenWarning}\n\nCaption: ${caption.substring(0, 150)}...`;
     await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

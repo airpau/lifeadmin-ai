@@ -18,7 +18,9 @@ export async function POST(request: NextRequest) {
 
     const sent = await sendOnboardingEmail(email, name || 'there', 'welcome');
 
-    // Send admin notification about new signup
+    const signupTime = new Date().toLocaleString('en-GB', { timeZone: 'Europe/London' });
+
+    // Send admin notification about new signup (email)
     await resend.emails.send({
       from: FROM_EMAIL,
       to: 'hello@paybacker.co.uk',
@@ -28,11 +30,25 @@ export async function POST(request: NextRequest) {
           <h2 style="color: #34d399; margin-top: 0;">New Member Signup</h2>
           <p style="color: #94a3b8;">Name: <strong style="color: #fff;">${name || 'Not provided'}</strong></p>
           <p style="color: #94a3b8;">Email: <strong style="color: #fff;">${email}</strong></p>
-          <p style="color: #94a3b8;">Time: ${new Date().toLocaleString('en-GB', { timeZone: 'Europe/London' })}</p>
+          <p style="color: #94a3b8;">Time: ${signupTime}</p>
           <a href="https://paybacker.co.uk/dashboard/admin" style="color: #34d399;">View in Admin Dashboard</a>
         </div>
       `,
     }).catch(err => console.error('Admin signup notification failed:', err));
+
+    // Telegram alert to founder
+    const tgToken = process.env.TELEGRAM_BOT_TOKEN;
+    const tgChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+    if (tgToken && tgChatId) {
+      fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: Number(tgChatId),
+          text: `New signup: ${name || 'Unknown'} (${email}) at ${signupTime} — tier: Free`,
+        }),
+      }).catch(() => {});
+    }
 
     // Notify AI agents about new signup
     notifyAgents('new_signup', `New signup: ${name || email}`, `New user signed up: ${email} (${name || 'no name'}). User ID: ${userId || 'unknown'}. Time: ${new Date().toISOString()}`, 'system').catch(() => {});

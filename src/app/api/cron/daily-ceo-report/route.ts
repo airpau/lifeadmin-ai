@@ -68,9 +68,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
+  // Use the executive bot (Charlie) so founder replies go to the Charlie webhook,
+  // not the Pocket Agent, and conversation history is maintained for follow-ups.
+  const token = (process.env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_USER_BOT_TOKEN);
   if (!token) {
-    return NextResponse.json({ error: 'TELEGRAM_USER_BOT_TOKEN not set' }, { status: 500 });
+    return NextResponse.json({ error: 'TELEGRAM_BOT_TOKEN not set' }, { status: 500 });
   }
 
   const supabase = getAdmin();
@@ -365,6 +367,17 @@ export async function GET(request: NextRequest) {
 
   const message = lines.join('\n');
   const ok = await sendTelegram(token, chatId, message);
+
+  // Save to telegram_messages so the Charlie bot has this context for follow-up questions.
+  // When Paul asks "who were the two new signups?", Charlie loads conversation history
+  // and can answer from both the cached briefing and live DB queries.
+  if (ok) {
+    await supabase.from('telegram_messages').insert({
+      chat_id: chatId,
+      role: 'assistant',
+      content: message,
+    }).then(() => {}, () => {});
+  }
 
   // Log to business_log
   await supabase.from('business_log').insert({
