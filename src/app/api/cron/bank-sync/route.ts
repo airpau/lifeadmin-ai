@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAccounts, getTransactions } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
+import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import {
@@ -21,12 +22,14 @@ interface BankConnection {
   // Yapily fields
   consent_token: string | null;
   consent_expires_at: string | null;
-  // TrueLayer fields
+  // TrueLayer fields (legacy — archived 2026-04-27)
   access_token: string | null;
   refresh_token: string | null;
   token_expires_at: string | null;
   // Common
   account_ids: string[] | null;
+  account_identifications_hashes: string[] | null;
+  account_display_names: string[] | null;
   bank_name: string | null;
   status: string;
   last_synced_at: string | null;
@@ -270,38 +273,49 @@ export async function GET(request: NextRequest) {
           throw new Error('No bank accounts available to sync');
         }
 
-        // Sync transactions
-        for (const accountId of accountIds) {
+        // Route through connection-store so the cron uses the same
+        // dedup invariants as the OAuth callback's initial-sync.
+        // Replaced 2026-04-28 — the OLD upsert pattern keyed on
+        // (user_id, transaction_id) and Yapily reissues IDs across
+        // calls, so each cron run was inserting phantom duplicates.
+        const storedHashes: string[] = Array.isArray(connection.account_identifications_hashes)
+          ? connection.account_identifications_hashes
+          : [];
+        const storedDisplayNames: string[] = Array.isArray(connection.account_display_names)
+          ? connection.account_display_names
+          : [];
+        const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const toDate = tomorrow.toISOString().split('T')[0];
+
+        for (let i = 0; i < accountIds.length; i++) {
+          const accountId = accountIds[i];
+          const accountHash = storedHashes[i] || null;
+          if (!accountHash) {
+            console.warn(`Bank sync: connection ${connection.id} account ${accountId} has no stored hash — skipping`);
+            continue;
+          }
           try {
-            const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const toDate = tomorrow.toISOString().split('T')[0];
             const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
             connectionApiCalls++;
             transactionSyncSucceeded = true;
-
             if (transactions.length === 0) continue;
 
-            const rows = transactions.map((tx) => ({
-              user_id: connection.user_id,
-              connection_id: connection.id,
-              transaction_id: tx.id,
-              account_id: accountId,
-              amount: tx.transactionAmount.amount,
-              currency: tx.transactionAmount.currency || 'GBP',
-              description: tx.description || null,
-              merchant_name: tx.merchantName || null,
-              category: null,
-              timestamp: tx.bookingDateTime,
-            }));
-
-            const { error: upsertError } = await supabase
-              .from('bank_transactions')
-              .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
-
-            if (!upsertError) totalSynced += rows.length;
-            else console.error(`Bank sync: upsert error for ${accountId}:`, upsertError);
+            const accountSnapshot: AccountSnapshot = {
+              yapilyAccountId: accountId,
+              displayName: storedDisplayNames[i] || 'Account',
+              accountIdentificationsHash: accountHash,
+              accountIdentificationsRaw: [],
+              currency: 'GBP',
+            };
+            const result = await upsertYapilyTransactions({
+              userId: connection.user_id,
+              connectionId: connection.id,
+              account: accountSnapshot,
+              transactions,
+            });
+            totalSynced += result.inserted;
           } catch (err: any) {
             console.error(`Bank sync: error on account ${accountId}:`, err.message);
           }

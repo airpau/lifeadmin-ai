@@ -96,8 +96,15 @@ interface CancellationEmail {
 const BILLING_CYCLES = ['monthly', 'quarterly', 'yearly', 'one-time'];
 
 /** Normalise a raw bank merchant name (e.g. "DELIVEROO PLUS SUBS") to a clean display name */
-function normaliseProviderName(raw: string): string {
-  return cleanMerchantName(raw);
+function normaliseProviderName(raw: string | null | undefined): string {
+  // Defensive guard — sub.provider_name can be NULL on rows imported
+  // straight from bank_transactions where merchant_name was missing.
+  // The recurring-payments page renders provider_name + .charAt(0)
+  // for an avatar fallback, which crashed with "Cannot read properties
+  // of null" before this guard (Paul, 2026-04-28).
+  if (raw == null) return 'Unknown';
+  const cleaned = cleanMerchantName(raw);
+  return cleaned && cleaned.length > 0 ? cleaned : 'Unknown';
 }
 const STATUTORY_KEYWORDS = ['council', 'testvalley', 'winchester', 'lbh', 'l.b.hounslow', 'dvla', 'hmrc'];
 

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getAccounts, getTransactions } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
+import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
@@ -23,12 +24,16 @@ interface BankConnection {
   // Yapily fields
   consent_token: string | null;
   consent_expires_at: string | null;
-  // TrueLayer fields
+  // TrueLayer fields (legacy — provider='truelayer' connections were
+  // archived 2026-04-27, kept here only so the type still matches old
+  // bank_connections rows in the result set if filtering ever drifts)
   access_token: string | null;
   refresh_token: string | null;
   token_expires_at: string | null;
   // Common
   account_ids: string[] | null;
+  account_identifications_hashes: string[] | null;
+  account_display_names: string[] | null;
   bank_name: string | null;
   status: string;
   last_synced_at: string | null;
@@ -241,39 +246,57 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      for (const accountId of accountIds) {
+      // Route through the connection-store so manual syncs use the
+      // same dedup invariants as the OAuth callback's initial-sync.
+      // The OLD upsert pattern keyed on (user_id, transaction_id) and
+      // bypassed the stable_tx_hash partial unique index — Modelo
+      // Sandbox happily reissued fresh transaction_ids on every call,
+      // so each manual Sync click inserted ~2000 phantom duplicates
+      // (Paul, 2026-04-28). Keying on stable_tx_hash + account hash
+      // makes the second sync a pure no-op.
+      const storedHashes: string[] = Array.isArray(conn.account_identifications_hashes)
+        ? conn.account_identifications_hashes
+        : [];
+      const storedDisplayNames: string[] = Array.isArray(conn.account_display_names)
+        ? conn.account_display_names
+        : [];
+      const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const toDate = tomorrow.toISOString().split('T')[0];
+
+      for (let i = 0; i < accountIds.length; i++) {
+        const accountId = accountIds[i];
+        const accountHash = storedHashes[i] || null;
+        if (!accountHash) {
+          // Legacy connection from before Phase A — skip rather than
+          // insert no-hash rows the partial UNIQUE index can't dedupe.
+          // The user can reconnect to repopulate hashes.
+          console.warn(`Sync: connection ${conn.id} account ${accountId} has no stored hash — skipping`);
+          continue;
+        }
         try {
-          const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          const toDate = tomorrow.toISOString().split('T')[0];
           const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
           apiCallsMade++;
           transactionSyncSucceeded = true;
-
           if (transactions.length === 0) continue;
 
-          const rows = transactions.map((tx) => ({
-            user_id: user.id,
-            connection_id: conn.id,
-            transaction_id: tx.id,
-            account_id: accountId,
-            amount: tx.transactionAmount.amount,
-            currency: tx.transactionAmount.currency || 'GBP',
-            description: tx.description || null,
-            merchant_name: tx.merchantName || null,
-            category: null,
-            timestamp: tx.bookingDateTime,
-          }));
-
-          const { error } = await supabase
-            .from('bank_transactions')
-            .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
-
-          if (!error) totalSynced += rows.length;
-          else console.error(`Sync: upsert error for Yapily account ${accountId}:`, error);
+          const accountSnapshot: AccountSnapshot = {
+            yapilyAccountId: accountId,
+            displayName: storedDisplayNames[i] || 'Account',
+            accountIdentificationsHash: accountHash,
+            accountIdentificationsRaw: [],
+            currency: 'GBP',
+          };
+          const result = await upsertYapilyTransactions({
+            userId: user.id,
+            connectionId: conn.id,
+            account: accountSnapshot,
+            transactions,
+          });
+          totalSynced += result.inserted;
         } catch (err: any) {
-          console.error(`Sync: Yapily fetch error for account ${accountId}:`, err?.message || err);
+          console.error(`Sync: Yapily error for account ${accountId}:`, err?.message || err);
         }
       }
 
