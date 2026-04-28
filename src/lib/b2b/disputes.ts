@@ -35,14 +35,32 @@ export interface DisputeRequest {
   consumer_name?: string;
 }
 
+export type DisputeType =
+  | 'energy' | 'broadband' | 'finance' | 'travel' | 'rail' | 'insurance'
+  | 'council_tax' | 'parking' | 'hmrc' | 'dvla' | 'nhs' | 'gym' | 'debt' | 'general';
+
 export interface DisputeResponse {
+  /** Primary UK statute / regulation grounding the response. */
   statute: string;
+  /** Coarse sector tag the caller can route on. */
+  dispute_type: DisputeType;
+  /** Primary regulator with jurisdiction, when applicable. */
+  regulator: string | null;
   entitlement: {
     summary: string;
     rationale: string;
     additional_rights?: string[];
     estimated_success: 'low' | 'medium' | 'high';
   };
+  /** Short paragraph a CX agent can paste into a customer reply. */
+  customer_facing_response: string;
+  /** Bullet points the CX agent should hit. */
+  agent_talking_points: string[];
+  /** Estimated claim value range in GBP, where the statute quantifies it. */
+  claim_value_estimate: { min: number; max: number; currency: 'GBP' } | null;
+  /** Time pressure: 'high' means a statutory deadline is close. */
+  time_sensitivity: 'high' | 'medium' | 'low';
+  /** Draft letter — most B2B callers edit, do not send verbatim. */
   draft_letter_excerpt: string;
   escalation_path: Array<{ step: number; to: string; wait_days?: number; url?: string }>;
   legal_references: string[];
@@ -227,8 +245,27 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
     : verifiedRefs
   ).slice(0, 3).map((r: any) => r.law_name);
 
+  const disputeType = classifyDisputeType(req.scenario, matchCategory);
+  const regulator = pickRegulator(disputeType);
+  const claimValue = estimateClaimValue(disputeType, req.scenario, req.amount);
+  const timeSensitivity = scoreTimeSensitivity(disputeType, req.scenario);
+
+  // Customer-facing response: a short paragraph the agent can lift
+  // verbatim into a reply. Pulled from the draft letter's opening, not
+  // its sign-off, so it stays neutral and product-of-the-business voice.
+  const customerFacingResponse = extractCustomerResponse(letter, rationale, legalRefs[0]);
+
+  // Agent talking points: bulleted form of nextSteps, capped, prefixed
+  // with the cited statute so the agent leads with authority.
+  const agentTalkingPoints: string[] = [];
+  if (legalRefs[0]) agentTalkingPoints.push(`Cited authority: ${legalRefs[0]}`);
+  agentTalkingPoints.push(...nextStepsArr.slice(0, 4));
+  if (timeSensitivity === 'high') agentTalkingPoints.push('Statutory deadline applies — flag urgency.');
+
   return {
     statute: inferStatute(legalRefs),
+    dispute_type: disputeType,
+    regulator,
     entitlement: {
       summary: nextStepsArr.length > 0
         ? nextStepsArr.join(' ')
@@ -237,6 +274,10 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
       additional_rights: additionalRights,
       estimated_success: successLabel,
     },
+    customer_facing_response: customerFacingResponse,
+    agent_talking_points: agentTalkingPoints,
+    claim_value_estimate: claimValue,
+    time_sensitivity: timeSensitivity,
     draft_letter_excerpt: letter.slice(0, 1200),
     escalation_path: Array.isArray(result?.escalationPath) && result.escalationPath.length > 0
       ? result.escalationPath.map((step: string, i: number) => ({ step: i + 1, to: step }))
@@ -244,4 +285,81 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
     legal_references: legalRefs,
     confidence: typeof result?.confidence === 'number' ? result.confidence : 0.8,
   };
+}
+
+function classifyDisputeType(scenario: string, refCategory?: string): DisputeType {
+  if (refCategory && ['energy','broadband','finance','travel','rail','insurance','council_tax','parking','hmrc','dvla','nhs','gym','debt','general'].includes(refCategory)) {
+    return refCategory as DisputeType;
+  }
+  const s = scenario.toLowerCase();
+  if (/flight|airline|cancell?ed|delay|baggage|boarding/.test(s)) return 'travel';
+  if (/train|rail|delay\s*repay|tfl/.test(s)) return 'rail';
+  if (/broadband|mobile|isp|ofcom|sky|virgin|bt\b/.test(s)) return 'broadband';
+  if (/energy|gas|electric|ofgem|british\s*gas|octopus|edf|ovo|eon|sse/.test(s)) return 'energy';
+  if (/section\s*75|credit\s*card|chargeback|payment\s*dispute|bank/.test(s)) return 'finance';
+  if (/insurance|claim\s*declined|underwriter|loss\s*adjuster/.test(s)) return 'insurance';
+  if (/council\s*tax|band\b/.test(s)) return 'council_tax';
+  if (/parking|pcn|penalty\s*charge/.test(s)) return 'parking';
+  if (/hmrc|tax\s*rebate|paye/.test(s)) return 'hmrc';
+  if (/dvla|driving\s*licence/.test(s)) return 'dvla';
+  if (/nhs|hospital/.test(s)) return 'nhs';
+  if (/gym|membership/.test(s)) return 'gym';
+  if (/debt|bailiff|enforcement|statute\s*barred/.test(s)) return 'debt';
+  return 'general';
+}
+
+function pickRegulator(t: DisputeType): string | null {
+  return ({
+    energy: 'Ofgem',
+    broadband: 'Ofcom',
+    finance: 'FCA / Financial Ombudsman Service',
+    travel: 'Civil Aviation Authority (CAA)',
+    rail: 'Office of Rail and Road (ORR)',
+    insurance: 'FCA / Financial Ombudsman Service',
+    council_tax: 'Valuation Office Agency / Valuation Tribunal',
+    parking: 'POPLA / Independent Appeals Service / local council',
+    hmrc: 'HMRC',
+    dvla: 'DVLA',
+    nhs: 'Parliamentary and Health Service Ombudsman',
+    gym: 'Trading Standards / Citizens Advice',
+    debt: 'FCA / Financial Ombudsman Service',
+    general: 'Trading Standards / Citizens Advice',
+  } as Record<DisputeType, string>)[t] ?? null;
+}
+
+function estimateClaimValue(
+  type: DisputeType,
+  scenario: string,
+  amount?: number,
+): { min: number; max: number; currency: 'GBP' } | null {
+  if (typeof amount === 'number' && amount > 0) {
+    return { min: Math.round(amount * 0.6), max: Math.round(amount), currency: 'GBP' };
+  }
+  // UK261 short-haul / long-haul bands.
+  if (type === 'travel') {
+    if (/long.?haul|6,?000\s*km|3,500/.test(scenario)) return { min: 350, max: 520, currency: 'GBP' };
+    return { min: 220, max: 350, currency: 'GBP' };
+  }
+  return null;
+}
+
+function scoreTimeSensitivity(type: DisputeType, scenario: string): 'high' | 'medium' | 'low' {
+  // UK261 has a 6-year limitation but eligibility windows; energy back-
+  // billing is 12 months; FOS final response window is 8 weeks. Flag
+  // 'high' when the scenario implies a near-term deadline.
+  if (/14[- ]?day|7[- ]?day|tomorrow|this\s*week|expires/.test(scenario.toLowerCase())) return 'high';
+  if (type === 'travel' || type === 'finance' || type === 'broadband') return 'medium';
+  return 'low';
+}
+
+function extractCustomerResponse(letter: string, rationale: string, statute?: string): string {
+  // Prefer a paragraph from the engine's draft. Strip headers / addresses
+  // by skipping until we hit "Dear" or a paragraph that mentions the
+  // statute by name.
+  const body = letter.replace(/^\s*[\s\S]*?Dear[\s\S]*?\n\n/, '').trim();
+  const firstPara = body.split(/\n\n+/)[0] ?? '';
+  if (firstPara.length > 80) return firstPara.slice(0, 600);
+  return statute
+    ? `Under ${statute}, the customer has rights here. ${rationale}`
+    : rationale;
 }

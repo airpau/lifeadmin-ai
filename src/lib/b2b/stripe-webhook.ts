@@ -157,7 +157,8 @@ export async function handleB2bCheckoutCompleted(
     }
   }
 
-  // Founder ping
+  // Founder ping — Telegram + email on every sale (free pilots ping
+  // separately from /api/v1/free-pilot).
   const tgToken = process.env.TELEGRAM_BOT_TOKEN;
   const tgChat = process.env.TELEGRAM_FOUNDER_CHAT_ID;
   if (tgToken && tgChat) {
@@ -170,6 +171,24 @@ export async function handleB2bCheckoutCompleted(
           text: `💰 *B2B API sale*\n\n*${tier}* tier · ${customerEmail}\nCompany: ${company || '(not given)'}\nKey prefix: \`${minted.prefix}\``,
           parse_mode: 'Markdown',
         }),
+      });
+    } catch {}
+  }
+  if (process.env.RESEND_API_KEY) {
+    try {
+      await resend.emails.send({
+        from: process.env.B2B_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'Paybacker for Business <noreply@paybacker.co.uk>',
+        to: process.env.FOUNDER_EMAIL || 'business@paybacker.co.uk',
+        replyTo: customerEmail,
+        subject: `💰 B2B sale — ${company || customerEmail} (${tier})`,
+        html: `<div style="font-family:-apple-system,sans-serif;max-width:560px;margin:auto;color:#0f172a;">
+          <h2 style="margin:0 0 6px;">B2B API sale</h2>
+          <p style="margin:0 0 4px;"><strong>${escapeHtml(company || '(not given)')}</strong> — ${escapeHtml(tier)}</p>
+          <p style="margin:0 0 4px;">Contact: ${escapeHtml(contactName || '—')} · <a href="mailto:${escapeHtml(customerEmail)}">${escapeHtml(customerEmail)}</a></p>
+          <p style="margin:0 0 12px;">Key prefix: <code>${minted.prefix}</code> · Subscription: <code>${escapeHtml(subscriptionId || '—')}</code></p>
+          <p style="background:#ecfdf5;border-left:3px solid #047857;padding:10px 14px;color:#065f46;border-radius:6px;font-size:14px;">Customer has been emailed their plaintext key once. Send a personal welcome reply within 24h to land the relationship.</p>
+          <p><a href="https://paybacker.co.uk/dashboard/admin/b2b" style="background:#0f172a;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Open admin</a></p>
+        </div>`,
       });
     } catch {}
   }
