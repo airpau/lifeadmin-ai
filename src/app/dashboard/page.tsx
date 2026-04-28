@@ -1,7 +1,7 @@
 'use client';
 
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import UpgradePrompt from '@/components/UpgradePrompt';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
@@ -10,14 +10,12 @@ import PlanLimitsBanner from '@/components/PlanLimitsBanner';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
-  CreditCard, FileText, Building2, BarChart3, CheckCircle, CheckCircle2,
-  ArrowRight, Loader2, AlertTriangle, Clock, Sparkles, PiggyBank, TrendingUp, Tag,
-  Mail, ScanSearch, RefreshCw, ChevronDown, ChevronUp, Trash2,
+  CreditCard, FileText, Building2, CheckCircle, CheckCircle2,
+  Loader2, AlertTriangle, Clock, Sparkles, PiggyBank, TrendingUp, Tag,
+  Mail, ScanSearch, ChevronDown, ChevronUp, Trash2,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
-import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
-import SavingsSkeleton from '@/components/dashboard/SavingsSkeleton';
 import SavingsHero from '@/components/dashboard/SavingsHero';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
@@ -31,7 +29,7 @@ export default function DashboardPage() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [subscriptionCount, setSubscriptionCount] = useState(0);
   const [monthlySpend, setMonthlySpend] = useState(0);
-  const [spendBreakdown, setSpendBreakdown] = useState<{
+  const [, setSpendBreakdown] = useState<{
     subscriptions_monthly: number; subscriptions_count: number;
     mortgages_monthly: number; mortgages_count: number;
     loans_monthly: number; loans_count: number;
@@ -47,10 +45,10 @@ export default function DashboardPage() {
   const [trialExpired, setTrialExpired] = useState(false);
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
   const [showAllTasks, setShowAllTasks] = useState(false);
-  const [comparisonSaving, setComparisonSaving] = useState(0);
-  const [comparisonCount, setComparisonCount] = useState(0);
+  const [, setComparisonSaving] = useState(0);
+  const [, setComparisonCount] = useState(0);
   const [comparisonDeals, setComparisonDeals] = useState<Array<{ subscriptionName: string; currentPrice: number; dealProvider: string; dealPrice: number; annualSaving: number; dealUrl: string; category: string }>>([]);
-  const [activeSubscriptions, setActiveSubscriptions] = useState<any[]>([]);
+  const [, setActiveSubscriptions] = useState<any[]>([]);
   const [emailConnected, setEmailConnected] = useState(false);
   const [emailAddress, setEmailAddress] = useState<string | null>(null);
   const [emailLastScanned, setEmailLastScanned] = useState<string | null>(null);
@@ -58,7 +56,6 @@ export default function DashboardPage() {
   const [emailScanResults, setEmailScanResults] = useState<number | null>(null);
   const [emailOpportunities, setEmailOpportunities] = useState<any[]>([]);
   const [showBankPicker, setShowBankPicker] = useState(false);
-  const [bankSyncing, setBankSyncing] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null; status: string }>>([]);
   const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email_address: string; provider_type: string }>>([]);
   const [connectionsCollapsed, setConnectionsCollapsed] = useState(false);
@@ -218,8 +215,10 @@ export default function DashboardPage() {
       let hasBankConnection = false;
       let hasStoredAlerts = false;
 
-      // Start deals loading in parallel immediately (non-blocking)
-      const dealsPromise = (async () => {
+      // Start deals loading in parallel immediately (non-blocking).
+      // The IIFE result is intentionally not awaited — UI updates happen
+      // via the setComparison*/setDealsLoading calls inside the closure.
+      void (async () => {
         try {
           const compRes = await fetch('/api/subscriptions/compare?all=1', { method: 'GET' });
           if (compRes.ok) {
@@ -282,7 +281,7 @@ export default function DashboardPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { setLoading(false); return; }
 
-        const [profile, subs, tasks, banks, userTasks, cancelledSubs, resolvedTasks] = await Promise.all([
+        const [profile, subs, tasks, banks, userTasks] = await Promise.all([
           supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).maybeSingle(),
           supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
@@ -292,11 +291,7 @@ export default function DashboardPage() {
             .eq('user_id', user.id).neq('status', 'disconnected'),
           supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority')
             .eq('user_id', user.id).eq('status', 'pending_review')
-            .order('created_at', { ascending: false }).limit(20),
-          supabase.from('subscriptions').select('id, provider_name, amount, billing_cycle, money_saved, cancelled_at, notes')
-            .eq('user_id', user.id).eq('status', 'cancelled'),
-          supabase.from('tasks').select('money_recovered')
-            .eq('user_id', user.id).eq('status', 'resolved'),
+            .order('created_at', { ascending: false }).limit(50),
         ]);
 
         setUserTier(profile.data?.subscription_tier || 'free');
@@ -402,22 +397,32 @@ export default function DashboardPage() {
           }
         }
         setComplaintsGenerated(tasks.count || 0);
-        // Filter out Paybacker's own transactions from action items
-        setPendingTasks((userTasks.data || []).filter((t: any) =>
+        // Filter out Paybacker's own transactions, then collapse near-duplicates
+        // (same provider + same type) into one row showing the group size.
+        // A single bank-sync run can fan out 20+ identical "review" tasks
+        // for the same merchant (one per matching transaction) — these
+        // were drowning the action-items card.
+        const cleanTasks = (userTasks.data || []).filter((t: any) =>
           !((t.provider_name || '').toLowerCase().includes('paybacker'))
+        );
+        const taskGroups = new Map<string, any>();
+        for (const t of cleanTasks) {
+          const key = `${(t.provider_name || '').toLowerCase()}::${(t.type || '').toLowerCase()}`;
+          const cur = taskGroups.get(key);
+          if (!cur) {
+            taskGroups.set(key, { ...t, _groupIds: [t.id], _groupCount: 1, _groupTotal: parseFloat(t.disputed_amount) || 0 });
+          } else {
+            cur._groupIds.push(t.id);
+            cur._groupCount += 1;
+            cur._groupTotal += parseFloat(t.disputed_amount) || 0;
+          }
+        }
+        setPendingTasks(Array.from(taskGroups.values()).sort((a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         ));
 
-        // Potential savings: estimate from active subscriptions (assume 15% could be saved by switching)
-        const activeSubs = subs.data || [];
-        const annualSpend = activeSubs.reduce((sum, s) => {
-          const amt = parseFloat(String(s.amount)) || 0;
-          if (s.billing_cycle === 'yearly') return sum + amt;
-          if (s.billing_cycle === 'quarterly') return sum + amt * 4;
-          return sum + amt * 12;
-        }, 0);
-
-        // potentialSavings will be calculated after all data loads (see below)
-
+        // potentialSavings is calculated downstream from comparisonDeals
+        // + priceAlerts via calculateTotalSavings — single source of truth.
         const subsList = subs.data || [];
         // Single source of truth for "active subscriptions" — dedupe +
         // finance-strip handled by shared helper so every page agrees.
@@ -476,11 +481,6 @@ export default function DashboardPage() {
           .eq('user_id', user.id)
           .in('status', ['active', 'dismissed', 'actioned']);
         hasStoredAlerts = (anyAlertsCount || 0) > 0;
-
-        const priceAlertImpact = (priceAlertData || []).reduce((sum: number, a: any) => {
-          const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
-          return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
-        }, 0);
 
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -671,39 +671,60 @@ export default function DashboardPage() {
   // Backwards compat for downstream KPI rows that read disputeRows
   const disputeRows = disputableRows;
 
-  // Deals — money saved by switching. Stable sort by annualSaving with id
-  // tiebreaker so the headline £-figure doesn't flicker between renders
-  // when multiple deals tie in savings (the previous slice(0,6) without a
-  // tiebreaker produced £4,609 / £4,669 oscillation).
-  const dealRows: ActionRow[] = [...comparisonDeals]
-    .sort((a, b) =>
-      (b.annualSaving || 0) - (a.annualSaving || 0)
-      || (a.subscriptionName || '').localeCompare(b.subscriptionName || '')
-    )
-    .slice(0, 6)
-    .map((d, i) => ({
-      key: `deal-${i}-${d.subscriptionName}`,
-      title: `${cleanMerchantName(d.subscriptionName)} — ${d.dealProvider} is cheaper`,
-      meta: `Current £${d.currentPrice?.toFixed?.(2) ?? d.currentPrice} · Best alt £${d.dealPrice?.toFixed?.(2) ?? d.dealPrice}`,
-      tileBg: 'var(--mint-wash)',
-      tileFg: 'var(--mint-deep)',
-      icon: <Tag className="h-5 w-5" />,
-      pillClass: 'grn' as const,
-      pillText: 'Save',
-      amountClass: 'pos' as const,
-      amountLabel: `–${formatGBP(d.annualSaving || 0)}/yr`,
-      impact: d.annualSaving || 0,
-      ctaHref: '/dashboard/deals',
-      ctaLabel: 'Compare',
-    }));
+  // Deals — money saved by switching. Dedupe by merchant first so a
+  // user with 3 OneStream subscriptions (one per property) doesn't
+  // see 3 identical "OneStream — switch to Sky" rows. Sum the
+  // savings across the merchant's matched subs so the headline £
+  // is the actual money on the table from that merchant.
+  //
+  // Stable sort by annualSaving with subscriptionName tiebreaker so
+  // the headline £-figure doesn't flicker between renders when
+  // multiple deals tie in savings.
+  const collapsedDealsByMerchant = (() => {
+    const map = new Map<string, { sub: string; provider: string; current: number; alt: number; saving: number; count: number }>();
+    for (const d of comparisonDeals) {
+      const key = (cleanMerchantName(d.subscriptionName) || d.subscriptionName || '').toLowerCase();
+      const cur = map.get(key) ?? {
+        sub: cleanMerchantName(d.subscriptionName) || d.subscriptionName,
+        provider: d.dealProvider,
+        current: d.currentPrice || 0,
+        alt: d.dealPrice || 0,
+        saving: 0,
+        count: 0,
+      };
+      cur.saving += d.annualSaving || 0;
+      cur.count += 1;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => b.saving - a.saving || a.sub.localeCompare(b.sub),
+    );
+  })();
+  const dealRows: ActionRow[] = collapsedDealsByMerchant.map((d, i) => ({
+    key: `deal-${i}-${d.sub}`,
+    title: d.count > 1
+      ? `${d.sub} (×${d.count}) — ${d.provider} is cheaper`
+      : `${d.sub} — ${d.provider} is cheaper`,
+    meta: d.count > 1
+      ? `${d.count} subs · combined saving across all`
+      : `Current £${d.current.toFixed(2)} · Best alt £${d.alt.toFixed(2)}`,
+    tileBg: 'var(--mint-wash)',
+    tileFg: 'var(--mint-deep)',
+    icon: <Tag className="h-5 w-5" />,
+    pillClass: 'grn' as const,
+    pillText: 'Save',
+    amountClass: 'pos' as const,
+    amountLabel: `–${formatGBP(d.saving)}/yr`,
+    impact: d.saving,
+    ctaHref: '/dashboard/deals',
+    ctaLabel: 'Compare',
+  }));
 
   // The PRIMARY action list: disputable price rises + cheaper-deal switches.
   // These are the things the user can act on right now with high confidence.
   const primaryActions: ActionRow[] = [...disputableRows, ...dealRows].sort(
     (a, b) => b.impact - a.impact,
   );
-  const dealsAnnualSaving = dealRows.reduce((s, d) => s + d.impact, 0);
-  const disputesAnnualImpact = disputableRows.reduce((s, d) => s + d.impact, 0);
   const trackOnlyAnnualImpact = trackOnlyRows.reduce((s, d) => s + d.impact, 0);
   // showAllActions / showTrackOnly state moved to the top of the
   // component (Rule of Hooks). They were declared here historically but
@@ -928,16 +949,16 @@ export default function DashboardPage() {
                 ? 'Crunching cheaper-alternatives + price alerts…'
                 : dealRows.length === 0 && disputeRows.length === 0
                   ? 'No actions waiting — you\'re all caught up.'
-                  : dealRows.length > 0 && disputeRows.length === 0
-                    ? `${formatGBP(dealsAnnualSaving)} of potential savings — ready to claim`
-                    : disputeRows.length > 0 && dealRows.length === 0
-                      ? `${formatGBP(disputesAnnualImpact)} of price rises to dispute`
-                      : `${formatGBP(dealsAnnualSaving)} to save · ${formatGBP(disputesAnnualImpact)} to dispute`}
+                  : `${formatGBP(potentialSavings)} of potential savings`}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-2)' }}>
-              {disputeRows.length > 0 && dealRows.length > 0
-                ? 'Switch deals save you money. Disputed price rises recover money you\'d otherwise lose.'
-                : 'Based on cheaper alternatives and price increase alerts we\'ve detected.'}
+              {dealRows.length > 0 && disputeRows.length > 0
+                ? `${dealRows.length} cheaper deal${dealRows.length === 1 ? '' : 's'} found · ${disputeRows.length} price rise${disputeRows.length === 1 ? '' : 's'} to dispute`
+                : dealRows.length > 0
+                  ? `${dealRows.length} cheaper deal${dealRows.length === 1 ? '' : 's'} found across your subscriptions`
+                  : disputeRows.length > 0
+                    ? `${disputeRows.length} price rise${disputeRows.length === 1 ? '' : 's'} detected — disputable under UK consumer law`
+                    : 'Connect a bank account to start finding savings.'}
             </p>
           </div>
         </div>
@@ -1220,12 +1241,13 @@ export default function DashboardPage() {
             );
           })()}
 
-          {/* Savings Opportunity Widget — existing */}
-          {dealsLoading ? (
-            <SavingsSkeleton />
-          ) : (
-            <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} deals={comparisonDeals} />
-          )}
+          {/* Savings Opportunity Widget intentionally removed 2026-04-28.
+              It duplicated what the Action Centre already shows — same
+              deals, different total, surfaced TWICE on the same page.
+              Paul flagged this as deeply confusing for the first thing
+              users see post-login. The Action Centre is now the single
+              "things to act on" surface; the KPI card above shows the
+              total. Better Deals widget = redundant. */}
 
           {/* Price-increase alert list */}
           {priceAlerts.length > 0 && (
@@ -1394,7 +1416,6 @@ export default function DashboardPage() {
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {pendingTasks
-                  .filter((t) => !((t.provider_name || '').toLowerCase().includes('paybacker')))
                   .slice(0, showAllTasks ? 50 : 5)
                   .map((task, i) => {
                     const parsedDesc = (() => {
@@ -1406,13 +1427,17 @@ export default function DashboardPage() {
                     })();
                     const descText = parsedDesc?.description || task.description || '';
                     const provider = cleanMerchantName(task.provider_name || parsedDesc?.provider || '');
-                    const amount = task.disputed_amount || parsedDesc?.amount || '';
+                    const groupCount: number = task._groupCount || 1;
+                    const groupTotal: number = task._groupTotal || 0;
+                    const groupIds: string[] = task._groupIds || [task.id];
+                    const amount = groupCount > 1 ? groupTotal : (task.disputed_amount || parsedDesc?.amount || 0);
                     const type = parsedDesc?.type || task.type || '';
                     const complaintParams = new URLSearchParams();
                     if (provider) complaintParams.set('company', provider);
                     if (descText && descText.length < 500) complaintParams.set('issue', descText);
                     if (amount) complaintParams.set('amount', String(amount));
                     complaintParams.set('new', '1');
+                    const titleSuffix = groupCount > 1 ? ` (×${groupCount})` : '';
                     return (
                       <div
                         key={task.id}
@@ -1425,11 +1450,11 @@ export default function DashboardPage() {
                         }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>{task.title}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{task.title}{titleSuffix}</div>
                           <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.35, marginTop: 2 }}>
                             {provider ? `${provider} · ` : ''}
                             {(type || 'review').replace(/_/g, ' ')}
-                            {amount && Number(amount) > 0 ? ` · ${formatGBP(parseFloat(String(amount)))}` : ''}
+                            {amount && Number(amount) > 0 ? ` · ${formatGBP(parseFloat(String(amount)))}${groupCount > 1 ? ' total' : ''}` : ''}
                           </div>
                         </div>
                         <Link
@@ -1444,7 +1469,7 @@ export default function DashboardPage() {
                             await supabase
                               .from('tasks')
                               .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
-                              .eq('id', task.id);
+                              .in('id', groupIds);
                             setPendingTasks((prev) => prev.filter((t) => t.id !== task.id));
                           }}
                           style={{
@@ -1455,7 +1480,7 @@ export default function DashboardPage() {
                             fontSize: 11.5,
                           }}
                         >
-                          Dismiss
+                          Dismiss{groupCount > 1 ? ' all' : ''}
                         </button>
                       </div>
                     );
