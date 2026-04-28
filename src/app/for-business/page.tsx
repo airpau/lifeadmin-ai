@@ -340,8 +340,10 @@ function Header() {
           <span className="m-business-brand-product">Business</span>
         </Link>
         <nav>
-          <a href="#example">Example</a>
-          <a href="#waitlist" className="m-business-nav-cta">Join waitlist</a>
+          <a href="/for-business/docs">Docs</a>
+          <a href="/for-business/coverage">Coverage</a>
+          <a href="/dashboard/api-keys">Sign in</a>
+          <a href="#buy" className="m-business-nav-cta">Get a key</a>
         </nav>
       </div>
     </header>

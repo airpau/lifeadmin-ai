@@ -28,9 +28,11 @@ export default function DocsPage() {
           <Link href="/for-business" style={{ color: '#64748b', textDecoration: 'none' }}>← Back to /for-business</Link>
         </nav>
 
-        <h1 style={{ fontSize: 36, fontWeight: 600, letterSpacing: '-0.02em', margin: 0 }}>UK Consumer Rights API — manual</h1>
+        <h1 style={{ fontSize: 36, fontWeight: 600, letterSpacing: '-0.02em', margin: 0 }}>API manual for engineering teams</h1>
         <p style={{ marginTop: 12, fontSize: 18, color: MUTED }}>
-          One endpoint. Verified UK statute citations, structured entitlement, draft letter, escalation path. Built on the same engine that powers <a style={{ color: TEXT }} href="https://paybacker.co.uk">paybacker.co.uk</a>.
+          Drop UK consumer-law reasoning into your CX flow, claims pipeline, or product copilot in one POST.
+          Verified statute citation, sector classification, entitlement scoring, customer-facing copy your agents can paste,
+          and a draft letter as a starting point.
         </p>
 
         <ul style={{ marginTop: 40, padding: 0, listStyle: 'none', display: 'grid', gap: 4, fontSize: 14, color: MUTED }}>
@@ -48,7 +50,16 @@ export default function DocsPage() {
         </ul>
 
         <Section id="getting-a-key" title="1. Getting a key">
-          <p>Request a key by filling the form at <Link href="/for-business" style={{ color: TEXT }}>paybacker.co.uk/for-business</Link>. Approved keys are issued within one working day. Each key starts with <Inline>pbk_</Inline> and is shown to you <strong>once</strong>. Store it as a secret. If lost, contact us to revoke and re-issue.</p>
+          <p>
+            Get a key in seconds at <Link href="/for-business" style={{ color: TEXT }}>paybacker.co.uk/for-business</Link>.
+            Free tier (1,000 calls/month) is self-serve. Growth (£499/month, 10k calls) and Enterprise (£1,999/month, 100k calls) go via Stripe Checkout — your key is emailed within seconds of payment success.
+          </p>
+          <p>
+            Each key starts with <Inline>pbk_</Inline> and is shown <strong>once</strong> at provisioning time. Treat it like any other API credential — push it to your secret manager (1Password, AWS Secrets Manager, Vault, Doppler) immediately and never check it into git.
+          </p>
+          <p>
+            Lost a key? Sign in to your <Link href="/dashboard/api-keys" style={{ color: TEXT }}>customer portal</Link> with your work email and click <strong>Re-issue</strong> — this revokes the old key and shows the new plaintext once.
+          </p>
         </Section>
 
         <Section id="authentication" title="2. Authentication">
@@ -77,13 +88,21 @@ export default function DocsPage() {
 
         <Section id="response" title="5. Response schema">
           <Code>{`{
-  "statute": string,
+  "statute": string,                    // primary cited authority
+  "dispute_type": "energy" | "broadband" | "finance" | "travel" | "rail"
+                | "insurance" | "council_tax" | "parking" | "hmrc"
+                | "dvla" | "nhs" | "gym" | "debt" | "general",
+  "regulator": string | null,           // e.g. "Ofgem", "FCA / FOS"
   "entitlement": {
     "summary": string,
     "rationale": string,
     "additional_rights": string[],
     "estimated_success": "low" | "medium" | "high"
   },
+  "customer_facing_response": string,   // paste-ready paragraph for your agent
+  "agent_talking_points": string[],     // bullets your agent should hit
+  "claim_value_estimate": { "min": number, "max": number, "currency": "GBP" } | null,
+  "time_sensitivity": "high" | "medium" | "low",
   "draft_letter_excerpt": string,
   "escalation_path": [
     { "step": number, "to": string, "wait_days"?: number, "url"?: string }
@@ -91,7 +110,12 @@ export default function DocsPage() {
   "legal_references": string[],
   "confidence": number
 }`}</Code>
-          <p>Shape is stable across statute domains — a UK261 case and a Section 75 case populate the same fields. Parse one schema, not many.</p>
+          <p>
+            Shape is stable across statute domains — a UK261 cancellation and a Section 75 chargeback populate the same fields. Parse one schema, route on <Inline>dispute_type</Inline>, score on <Inline>entitlement.estimated_success</Inline>, render <Inline>customer_facing_response</Inline> verbatim in your agent UI, expose <Inline>claim_value_estimate</Inline> in self-serve flows.
+          </p>
+          <p style={{ background: '#f8fafc', borderLeft: '3px solid #0f172a', padding: '12px 16px', borderRadius: 6 }}>
+            <strong>Most B2B integrations don&rsquo;t use <Inline>draft_letter_excerpt</Inline>.</strong> It&rsquo;s a starting point your team can edit into your tone of voice — useful for self-serve dispute portals and for first-line agents who want a base to work from. CX-assist and triage workflows typically only consume the structured fields.
+          </p>
         </Section>
 
         <Section id="examples" title="6. Worked examples">
@@ -159,12 +183,26 @@ X-RateLimit-Remaining: <calls left this calendar month>`}</Code>
         </Section>
 
         <Section id="integration" title="9. Integration patterns">
-          <H3>CX agent assist</H3>
-          <p>Trigger on every inbound complaint ticket. Surface the cited statute and draft letter inside the agent UI; the agent edits and sends rather than drafting from scratch. Typical handle-time reduction: <strong>40–60%</strong>.</p>
-          <H3>Self-serve dispute resolution</H3>
-          <p>Embed in your customer portal. User describes the problem, your front-end POSTs to /v1/disputes, you render the entitlement summary and let them download the draft letter.</p>
-          <H3>Webhook / async pipeline</H3>
-          <p>For batch jobs (e.g. nightly review of all open disputes), the API tolerates concurrent requests up to your tier’s cap. Latency is dominated by the LLM call — parallelise aggressively.</p>
+          <H3>CX agent assist (most common pattern)</H3>
+          <p>
+            Trigger on every inbound complaint ticket. Render <Inline>statute</Inline> + <Inline>entitlement.summary</Inline> + <Inline>agent_talking_points</Inline> in a sidebar of your agent UI. Surface <Inline>customer_facing_response</Inline> as a paste-ready reply. Route by <Inline>dispute_type</Inline>; escalate when <Inline>time_sensitivity</Inline> is <Inline>high</Inline>. Handle-time reduction observed in early deployments: <strong>40–60%</strong>.
+          </p>
+          <H3>Self-serve dispute portal</H3>
+          <p>
+            Embed in your authenticated customer area. User describes the issue, your front-end POSTs to /v1/disputes, you render <Inline>entitlement.summary</Inline> + <Inline>claim_value_estimate</Inline> + <Inline>escalation_path</Inline>. Offer the <Inline>draft_letter_excerpt</Inline> as a download.
+          </p>
+          <H3>Refund / claims triage queue</H3>
+          <p>
+            Score every inbound ticket on <Inline>entitlement.estimated_success</Inline>. Auto-approve <Inline>high</Inline>, fast-track <Inline>medium</Inline>, escalate <Inline>low</Inline> for human judgement. Cuts ops backlog without touching customer-facing copy.
+          </p>
+          <H3>Statute-grounded chatbot</H3>
+          <p>
+            Wrap your LLM in this API. Inject <Inline>legal_references</Inline> + <Inline>entitlement.rationale</Inline> as grounding context for every consumer-rights question. Eliminates hallucinated UK statute citations regardless of base model.
+          </p>
+          <H3>Compliance / second-line review</H3>
+          <p>
+            Run nightly batches against open disputes; surface anomalies where your team&rsquo;s outgoing response diverges from the engine&rsquo;s recommended <Inline>customer_facing_response</Inline>. Latency is LLM-bound — parallelise aggressively up to your tier&rsquo;s cap.
+          </p>
         </Section>
 
         <Section id="legal" title="10. Legal & data handling">
