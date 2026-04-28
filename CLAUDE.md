@@ -59,7 +59,55 @@ The same engine exposed as a single REST endpoint for UK fintechs, insurers, ene
 - **Daily B2B alerts** (Telegram + founder email): free-pilot mint, Stripe checkout started, sale, abandonment.
 - **Customer portal:** `/dashboard/api-keys` (token-gated via passwordless email link, 30-min expiry, single-use on mutating actions). Reveal/Re-issue/Revoke.
 
-**B2B-product rule for future Claude sessions:** the engine + statute index is shared. Don't fork. Any change to `src/lib/agents/complaints-agent.ts` or to `legal_references` schema affects BOTH products — flag it. The B2B API response shape (`DisputeResponse` in `src/lib/b2b/disputes.ts`) is a public contract — don't break it without a `/v2` path. Keep CLAUDE.md updated when new B2B endpoints, env vars, or Stripe prices are added.
+### Treat B2C and B2B as two separate businesses sharing one codebase
+
+The two products are **functionally distinct** — different audiences, different
+voices, different inboxes, different feature sets, different pricing logic.
+Future Claude sessions MUST treat them as two entities and avoid crossover:
+
+| Aspect | Consumer (B2C) | Business (B2B) |
+|---|---|---|
+| **Domain surface** | `/`, `/dashboard`, `/blog`, `/pricing`, `/deals`, etc. | `/for-business`, `/for-business/{docs,coverage,thanks}`, `/dashboard/admin/b2b`, `/dashboard/api-keys` |
+| **Audience** | UK households, individual consumers | UK fintechs, insurers, energy retailers, claims platforms, CX/eng teams |
+| **Tone of voice** | "Fight unfair bills", first-person empathy, household savings stories | Engineering buyer voice — precise, evidence-led, no consumer empathy copy |
+| **From-email** | `Paybacker <noreply@paybacker.co.uk>` (consumer) / `hello@paybacker.co.uk` (founder) | `Paybacker for Business <noreply@paybacker.co.uk>` with `replyTo: business@paybacker.co.uk` |
+| **Founder inbox** | Consumer → `aireypaul@googlemail.com` only when explicitly required | B2B → `business@paybacker.co.uk` (set via `FOUNDER_EMAIL` env) |
+| **Telegram** | Consumer flow alerts | B2B flow alerts — different message prefixes (🛒 / 💰 / 🛒💀) |
+| **Auth** | Supabase Auth (sign up / log in / OAuth) | Bearer API key + passwordless portal magic link (no Supabase user account) |
+| **Tables** | `profiles`, `subscriptions`, `complaints`, `tasks`, `bank_*`, `gmail_*`, `whatsapp_*` etc. | `b2b_waitlist`, `b2b_api_keys`, `b2b_api_usage`, `b2b_portal_tokens` |
+| **Pricing** | Free / Essential £4.99/mo / Pro £9.99/mo (per individual) | Starter free / Growth £499/mo / Enterprise £1,999/mo (per company) |
+| **Stripe metadata** | No `product` tag (default consumer flow) | `metadata.product = 'b2b_api'` — webhook routes by this tag |
+| **Demotion logic** | Webhook-driven, never auto-demote (see "System rules" above) | Webhook revokes the linked B2B key on `customer.subscription.deleted` |
+| **Marketing channels** | r/ukpersonalfinance, MoneySavingExpert, Reddit, consumer TikTok | LinkedIn DMs, Show HN, dev blogs, fintech newsletters |
+| **Crons** | Bank sync, digest, price alerts, etc. | `b2b-nurture` only — separate from consumer crons |
+
+**Concrete rules to enforce the separation:**
+
+1. **Never link consumer dashboards from B2B surfaces or vice versa.** A B2B
+   customer should never land on `/dashboard/complaints`; a consumer should
+   never land on `/for-business/docs` from the consumer dashboard.
+2. **Never copy consumer marketing copy into B2B surfaces.** The £2,000+
+   founder-recovery story belongs on consumer pages and the LinkedIn
+   personal profile — not on `/for-business`. The "10 qualified signups"
+   gate is B2B-only and must not appear on consumer pages.
+3. **Consumer-tier helpers (`canUseWhatsApp`, `getEffectiveTier`,
+   `PLAN_LIMITS`) must not be called from B2B routes.** B2B uses its own
+   tier model in `b2b_api_keys.tier`.
+4. **`generateComplaintLetter` is the ONLY shared helper** — it's the
+   engine. Both products call it. Any change to its contract must keep
+   both call-sites working. Run `grep -r "generateComplaintLetter" src/`
+   before touching it.
+5. **`legal_references` table is shared.** A schema change affects both
+   products. Always check both `/api/complaints/generate` (consumer) and
+   `/lib/b2b/disputes.ts` (B2B) when migrating it.
+6. **Don't bundle B2C and B2B work in the same PR** unless the change
+   genuinely touches both. Split PRs by product surface for cleaner
+   review and rollback.
+7. **The B2B API response shape (`DisputeResponse` in
+   `src/lib/b2b/disputes.ts`) is a public contract.** Don't break it
+   without a `/v2` path.
+8. **Keep this CLAUDE.md updated** when new B2B endpoints, env vars,
+   Stripe products, or crons are added.
 
 ---
 
