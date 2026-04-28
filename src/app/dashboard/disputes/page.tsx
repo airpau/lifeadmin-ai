@@ -1602,10 +1602,20 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             // page reads top-to-bottom from "what happened most recently"
             // backwards through history. Collapsed by default past the
             // first entry; "Show full history" expands the rest.
-            const orderedAll = [...(dispute.correspondence ?? [])].sort(
-              (a, b) => new Date((b.entry_date as any) || (b as any).occurred_at || 0).getTime()
-                       - new Date((a.entry_date as any) || (a as any).occurred_at || 0).getTime(),
-            );
+            //
+            // created_at is the tiebreaker so a row added now via the
+            // manual-paste modal beats older same-date rows even if the
+            // user back-dated the entry_date. Without this, a paste
+            // whose entry_date got stamped to start-of-day UTC could
+            // sort below other same-day events from earlier in the day.
+            const orderedAll = [...(dispute.correspondence ?? [])].sort((a, b) => {
+              const aDate = new Date((a.entry_date as any) || (a as any).occurred_at || 0).getTime();
+              const bDate = new Date((b.entry_date as any) || (b as any).occurred_at || 0).getTime();
+              if (bDate !== aDate) return bDate - aDate;
+              const aCreated = new Date((a as any).created_at || 0).getTime();
+              const bCreated = new Date((b as any).created_at || 0).getTime();
+              return bCreated - aCreated;
+            });
             const HEAD = 1;
             const visible = (orderedAll.length > HEAD && !showFullHistory) ? orderedAll.slice(0, HEAD) : orderedAll;
             const hidden = Math.max(0, orderedAll.length - visible.length);

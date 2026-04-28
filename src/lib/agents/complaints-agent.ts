@@ -57,7 +57,7 @@ IMPORTANT: Only cite legislation that is DIRECTLY relevant to the specific indus
 - DO NOT use section headings, bold headers, or CAPS LOCK headings like "WHY THIS IS INADEQUATE" or "MY LEGAL RIGHTS". These make the letter feel robotic and AI-generated. Instead, use natural paragraph transitions
 - DO NOT use bullet points or numbered lists in the letter body. Write in continuous prose with clear paragraphs
 - The letter should feel like a well-written personal email or formal letter, not a legal brief
-- Formal UK letter format: date, addressee, subject line (the subject line can be bold/caps, but nothing else)
+- Formal UK letter format: sender details (top-right), then date, then addressee, then subject line, THEN the salutation, THEN body. The subject line uses "Re:" prefix (NOT "Subject:") and is placed BEFORE "Dear …" — never after. Keep subject lines under 12 words. Do NOT include the subject line as a separate paragraph after "Dear Sir or Madam," — that breaks UK letter convention.
 - State facts chronologically in natural paragraphs
 - Weave legal references naturally into sentences (e.g. "Under the Consumer Rights Act 2015, I am entitled to..." NOT a separate "LEGAL BASIS" section)
 - State the specific remedy required and set a 14-day deadline
