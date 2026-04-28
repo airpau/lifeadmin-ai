@@ -92,7 +92,7 @@ async function fetchVerifiedRefs(scenario: string): Promise<any[]> {
 
   const { data } = await supabase
     .from('legal_references')
-    .select('law_name, section, summary, full_text, url, category')
+    .select('law_name, section, summary, full_text, source_url, category')
     .limit(20);
   if (!data) return [];
 
@@ -165,6 +165,19 @@ function deriveEscalationPath(scenario: string): DisputeResponse['escalation_pat
 export async function resolveDispute(req: DisputeRequest): Promise<DisputeResponse | DisputeError> {
   const verifiedRefs = await fetchVerifiedRefs(req.scenario);
 
+  // Serialize the matched references into the prose-style block the
+  // complaint engine's prompt builder expects. Passing the raw array
+  // collapses to "[object Object]" inside the prompt and silently
+  // disables the anti-hallucination guard.
+  const verifiedRefsText = verifiedRefs
+    .map((r: any) => {
+      const head = [r.law_name, r.section].filter(Boolean).join(' — ');
+      const body = r.summary ?? r.full_text ?? '';
+      const url = r.source_url ? ` (${r.source_url})` : '';
+      return `• ${head}${url}\n  ${body}`.trim();
+    })
+    .join('\n\n');
+
   let result: any;
   try {
     result = await generateComplaintLetter({
@@ -173,7 +186,7 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
       desiredOutcome: req.desired_outcome ?? '',
       amount: req.amount != null ? String(req.amount) : undefined,
       letterType: 'complaint',
-      verifiedLegalRefs: verifiedRefs as any,
+      verifiedLegalRefs: verifiedRefsText || undefined,
     });
   } catch (e: any) {
     return {
@@ -184,15 +197,19 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
 
   const legalRefs: string[] = Array.isArray(result?.legalReferences) ? result.legalReferences : [];
   const letter: string = typeof result?.letter === 'string' ? result.letter : '';
+  const nextStepsArr: string[] = Array.isArray(result?.nextSteps) ? result.nextSteps : [];
+
+  // Engine returns estimatedSuccess as 0-100. Bucket it.
+  const score = typeof result?.estimatedSuccess === 'number' ? result.estimatedSuccess : 65;
   const successLabel: 'low' | 'medium' | 'high' =
-    result?.estimatedSuccess === 'high' || result?.estimatedSuccess === 'low'
-      ? result.estimatedSuccess
-      : 'medium';
+    score >= 70 ? 'high' : score < 55 ? 'low' : 'medium';
 
   return {
     statute: inferStatute(legalRefs),
     entitlement: {
-      summary: result?.nextSteps ?? 'See draft letter for the entitlement narrative.',
+      summary: nextStepsArr.length > 0
+        ? nextStepsArr.join(' ')
+        : 'See draft letter for the entitlement narrative.',
       rationale: verifiedRefs[0]?.summary ?? 'Reasoning grounded in the cited UK statute.',
       additional_rights: verifiedRefs.slice(0, 3).map((r: any) => r.law_name),
       estimated_success: successLabel,
