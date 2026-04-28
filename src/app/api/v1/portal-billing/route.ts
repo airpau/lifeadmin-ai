@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
 import Stripe from 'stripe';
+import { authPortal } from '@/lib/b2b/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,12 +35,10 @@ async function verifyToken(supabase: any, token: string, email: string): Promise
 export async function POST(request: NextRequest) {
   let body: any;
   try { body = await request.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
-  const token = String(body?.token || '');
-  const email = String(body?.email || '').toLowerCase();
-  if (!token || !email) return NextResponse.json({ error: 'token + email required' }, { status: 400 });
-
+  const auth = await authPortal(request, body, null);
+  if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  const email = auth.email;
   const supabase = getAdmin();
-  if (!(await verifyToken(supabase, token, email))) return NextResponse.json({ error: 'Link expired.' }, { status: 401 });
 
   const { resolveOwner } = await import('../portal-members/route');
   const { owner } = await resolveOwner(supabase as any, email);

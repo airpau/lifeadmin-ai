@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
 import { audit, extractClientMeta } from '@/lib/b2b/audit';
+import { authPortal } from '@/lib/b2b/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,13 +36,12 @@ export async function POST(request: NextRequest) {
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  const token = String(body?.token || '');
-  const email = String(body?.email || '').toLowerCase();
   const id = String(body?.id || '');
-  if (!token || !email || !id) return NextResponse.json({ error: 'token + email + id required' }, { status: 400 });
-
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  const auth = await authPortal(request, body, null);
+  if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  const email = auth.email;
   const supabase = getAdmin();
-  if (!(await verifyToken(supabase, token, email))) return NextResponse.json({ error: 'Link expired.' }, { status: 401 });
 
   // Resolve owner; member must be admin to mutate.
   const { resolveOwner } = await import('../portal-members/route');

@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
+import { authPortal } from '@/lib/b2b/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,22 +33,11 @@ function csvEscape(v: unknown): string {
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const token = url.searchParams.get('token') ?? '';
-  const email = (url.searchParams.get('email') ?? '').toLowerCase();
   const type = url.searchParams.get('type') ?? 'usage';
-  if (!token || !email) return NextResponse.json({ error: 'token + email required' }, { status: 400 });
-
+  const auth = await authPortal(request, null, { token: url.searchParams.get('token'), email: url.searchParams.get('email') });
+  if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  const email = auth.email;
   const supabase = getAdmin();
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-  const { data: tk } = await supabase
-    .from('b2b_portal_tokens')
-    .select('id, expires_at, used_at')
-    .eq('token_hash', tokenHash)
-    .eq('email', email)
-    .maybeSingle();
-  if (!tk || tk.used_at || new Date(tk.expires_at) < new Date()) {
-    return NextResponse.json({ error: 'Link expired.' }, { status: 401 });
-  }
 
   if (type === 'usage') {
     const { data: keys } = await supabase
