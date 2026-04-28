@@ -215,11 +215,19 @@ export async function POST(request: NextRequest) {
       latency_ms: latency,
       error: err,
     });
+    // Operator-precedence-safe: (existing ?? 0) + 1, not existing ?? 1.
+    let nextFailures = 0;
+    if (!(status && status >= 200 && status < 300)) {
+      const { data: cur } = await supabase.from('b2b_webhooks').select('consecutive_failures').eq('id', id).single();
+      nextFailures = ((cur?.consecutive_failures ?? 0) as number) + 1;
+    }
     await supabase.from('b2b_webhooks').update({
       last_delivery_at: new Date().toISOString(),
       last_delivery_status: status,
-      consecutive_failures: status && status >= 200 && status < 300 ? 0 : (await supabase
-        .from('b2b_webhooks').select('consecutive_failures').eq('id', id).single()).data?.consecutive_failures ?? 0 + 1,
+      consecutive_failures: nextFailures,
+      // Auto-disable after 5 consecutive failures so we don't keep
+      // hammering a customer's broken endpoint.
+      ...(nextFailures >= 5 ? { is_active: false } : {}),
     }).eq('id', id);
 
     return NextResponse.json({ ok: status != null && status >= 200 && status < 300, status, error: err, latency });

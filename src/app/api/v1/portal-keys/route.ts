@@ -196,12 +196,18 @@ export async function POST(request: NextRequest) {
   const ok = await verifyToken(supabase, token, email, true);
   if (!ok) return NextResponse.json({ error: 'Invalid or expired link. Request a new one.' }, { status: 401 });
 
-  // Make sure the key actually belongs to this email.
+  // Mutations must respect the member→owner mapping so admins on a
+  // teammate-invited account can revoke / reissue keys they can see.
+  const { resolveOwner } = await import('../portal-members/route');
+  const { owner, role } = await resolveOwner(supabase as any, email);
+  if (role !== 'admin') {
+    return NextResponse.json({ error: 'Admin role required to mutate keys.' }, { status: 403 });
+  }
   const { data: row } = await supabase
     .from('b2b_api_keys')
     .select('id, tier, monthly_limit, name, owner_email')
     .eq('id', id)
-    .eq('owner_email', email)
+    .eq('owner_email', owner)
     .maybeSingle();
   if (!row) return NextResponse.json({ error: 'Key not found' }, { status: 404 });
 
@@ -231,8 +237,8 @@ export async function POST(request: NextRequest) {
       key_prefix: minted.prefix,
       tier: row.tier,
       monthly_limit: row.monthly_limit,
-      owner_email: email,
-      notes: `Self-serve re-issue at ${new Date().toISOString()}`,
+      owner_email: owner,
+      notes: `Self-serve re-issue at ${new Date().toISOString()} by ${email}`,
     }).select('id').single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     audit({ email, action: 'key_reissued', key_id: inserted?.id ?? null, ...meta, metadata: { tier: row.tier, prefix: minted.prefix } });

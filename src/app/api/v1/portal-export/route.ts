@@ -22,7 +22,11 @@ function getAdmin() {
 
 function csvEscape(v: unknown): string {
   if (v == null) return '';
-  const s = String(v);
+  let s = String(v);
+  // Neutralise spreadsheet formula injection: any cell whose first
+  // char is =, +, -, @, tab, or CR could be parsed as a formula by
+  // Excel / Numbers / Sheets. Prefix a single quote to defang it.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

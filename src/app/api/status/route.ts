@@ -54,23 +54,28 @@ export async function GET() {
     : errorRate >= 1 ? 'degraded'
     : 'operational';
 
-  // Uptime over last 24h, sampled by hour. Hour is "up" if it has any
-  // 2xx response or zero traffic; "down" only if it has traffic and 100% errors.
+  // Uptime over the full last-24h window, not just hours that had
+  // traffic. Iterate every hourly bucket from now-24h to now; an hour
+  // is "up" if it had a 2xx response OR zero traffic, "down" only if
+  // every observation was a 5xx server error.
   const hourBuckets = new Map<string, { ok: number; err: number }>();
   for (const r of rows) {
-    const hour = r.created_at.slice(0, 13);
+    const hour = r.created_at.slice(0, 13); // YYYY-MM-DDTHH
     const cur = hourBuckets.get(hour) ?? { ok: 0, err: 0 };
     if (r.status_code >= 500) cur.err++;
     else if (r.status_code < 400) cur.ok++;
     hourBuckets.set(hour, cur);
   }
+  const totalHours = 24;
   let upHours = 0;
-  let totalHours = 0;
-  for (const [, b] of hourBuckets) {
-    totalHours++;
-    if (b.ok > 0 || (b.ok === 0 && b.err === 0)) upHours++;
+  for (let i = 0; i < totalHours; i++) {
+    const t = new Date(Date.now() - i * 3600_000).toISOString().slice(0, 13);
+    const b = hourBuckets.get(t);
+    // Up if either no traffic or at least one OK response and not 100% errors.
+    if (!b) upHours++;
+    else if (b.ok > 0 || b.err === 0) upHours++;
   }
-  const uptimePct = totalHours > 0 ? (upHours / totalHours) * 100 : 100;
+  const uptimePct = (upHours / totalHours) * 100;
 
   return NextResponse.json({
     status,
