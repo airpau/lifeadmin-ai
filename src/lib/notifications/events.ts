@@ -21,6 +21,7 @@
 
 export type NotificationEventType =
   | 'price_increase'         // Bill detected going up
+  | 'income_received'        // Money landed in user's account (Emma-style)
   | 'dispute_reply'          // Provider replied to an active dispute
   | 'dispute_reminder'       // Dispute escalation milestones (14/28/56d)
   | 'renewal_reminder'       // Contract renewing in 30/14/7 days
@@ -107,6 +108,17 @@ export const EVENT_CATALOG: EventMeta[] = [
     group: 'alerts',
     scheduleKind: 'system',
     critical: true,
+  },
+  {
+    event: 'income_received',
+    label: 'Money received',
+    description: 'A salary, refund, transfer-in, or other income has landed in your account. Think Emma\'s "Good news alert".',
+    // Telegram + push by default — these are short positive nudges
+    // that only need a buzz. Email defaults off so we don't clog the
+    // user's inbox with one mail per credit transaction.
+    defaultEmail: false, defaultTelegram: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'push'],
+    group: 'alerts',
   },
   {
     event: 'dispute_reply',
