@@ -265,10 +265,11 @@ export async function GET(request: NextRequest) {
 
   await supabase.from('business_log').insert(logEntry);
 
-  // ── 5. Telegram alert ────────────────────────────────────────────────────────
+  // ── 5. Telegram + email alert ───────────────────────────────────────────────
   if (summary.changesDetected > 0 || summary.errors > 0) {
     const telegramMsg = buildTelegramMessage(summary, detectedChanges);
     await sendTelegram(telegramMsg);
+    await sendFounderEmailDigest(summary, detectedChanges);
   }
 
   console.log('[legal-updates] Scan complete:', summary);
@@ -718,4 +719,60 @@ async function sendTelegram(text: string) {
 
 function delay(ms: number) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+async function sendFounderEmailDigest(
+  summary: { statutesChecked: number; regulatorsChecked: number; changesDetected: number; autoApplied: number; queued: number; errors: number },
+  changes: Array<{ law: string; change: string; confidence: string; action: string }>,
+) {
+  try {
+    if (!process.env.RESEND_API_KEY) return;
+    const { resend, FROM_EMAIL } = await import('@/lib/resend');
+    const founder = process.env.FOUNDER_EMAIL || 'aireypaul@googlemail.com';
+    const date = new Date().toISOString().slice(0, 10);
+    const items = changes
+      .map(
+        c => `<li style="margin-bottom:6px;"><strong>${escapeHtmlSafe(c.law)}</strong> — ${escapeHtmlSafe(c.change)} <em style="color:#64748b;">(${escapeHtmlSafe(c.confidence)} · ${escapeHtmlSafe(c.action)})</em></li>`,
+      )
+      .join('');
+    const errorBadge = summary.errors > 0
+      ? `<p style="background:#fef2f2;border-left:3px solid #b91c1c;padding:10px 14px;color:#991b1b;border-radius:6px;">${summary.errors} check(s) failed — investigate in /dashboard/admin/legal-refs.</p>`
+      : '';
+    const queuedBadge = summary.queued > 0
+      ? `<p style="background:#fefce8;border-left:3px solid #ca8a04;padding:10px 14px;color:#854d0e;border-radius:6px;"><strong>${summary.queued}</strong> change(s) queued for your review at <a href="https://paybacker.co.uk/dashboard/admin/legal-updates">/dashboard/admin/legal-updates</a>.</p>`
+      : '';
+    const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:640px;margin:auto;color:#0f172a;">
+        <h2 style="margin:0 0 6px;">Legal updates digest · ${date}</h2>
+        <p style="color:#475569;margin:0 0 18px;">Daily scan of UK statutes + regulator pages.</p>
+        <table style="border-collapse:collapse;font-size:14px;margin:0 0 18px;">
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Statutes checked</td><td><strong>${summary.statutesChecked}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Regulators checked</td><td><strong>${summary.regulatorsChecked}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Changes detected</td><td><strong>${summary.changesDetected}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Auto-applied</td><td><strong>${summary.autoApplied}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Queued for review</td><td><strong>${summary.queued}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Errors</td><td><strong>${summary.errors}</strong></td></tr>
+        </table>
+        ${queuedBadge}
+        ${errorBadge}
+        ${items ? `<h3 style="margin:18px 0 8px;">What changed</h3><ul style="margin:0 0 18px;padding-left:20px;">${items}</ul>` : ''}
+        <p style="font-size:13px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:12px;">paybacker.co.uk · automated digest from /api/cron/legal-updates</p>
+      </div>`;
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: founder,
+      subject: `📚 Legal digest · ${summary.changesDetected} changes${summary.errors > 0 ? ` · ${summary.errors} errors` : ''}`,
+      html,
+    });
+  } catch (e: any) {
+    console.error('[legal-updates] founder email failed:', e?.message);
+  }
+}
+
+function escapeHtmlSafe(s: string): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

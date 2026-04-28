@@ -104,6 +104,19 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
+
+        // B2B API checkouts have metadata.product='b2b_api' and skip the
+        // consumer profile-update path entirely. Mint key, email plaintext.
+        if (session.metadata?.product === 'b2b_api') {
+          try {
+            const { handleB2bCheckoutCompleted } = await import('@/lib/b2b/stripe-webhook');
+            await handleB2bCheckoutCompleted(supabase as any, stripe, session);
+          } catch (e: any) {
+            console.error('[stripe webhook] b2b checkout failed:', e?.message);
+          }
+          break;
+        }
+
         const userId = session.metadata?.user_id;
         console.log(`Webhook checkout.session.completed: userId=${userId} customer=${session.customer} subscription=${session.subscription}`);
 
@@ -270,6 +283,17 @@ export async function POST(request: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
         console.log(`Webhook subscription.deleted: customer=${customerId}`);
+
+        // B2B API subscription cancellation → revoke the linked key.
+        if (subscription.metadata?.product === 'b2b_api') {
+          try {
+            const { handleB2bSubscriptionDeleted } = await import('@/lib/b2b/stripe-webhook');
+            await handleB2bSubscriptionDeleted(supabase as any, subscription);
+          } catch (e: any) {
+            console.error('[stripe webhook] b2b sub.deleted failed:', e?.message);
+          }
+          break;
+        }
 
         const { data: existing } = await supabase
           .from('profiles')
