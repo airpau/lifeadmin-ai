@@ -144,12 +144,27 @@ export async function GET(request: NextRequest) {
   const usageDaily = await loadUsageDaily(supabase, allKeys.map((k: any) => k.id));
   const auditLog = await loadAudit(supabase, email);
 
+  // Calls this month on now-revoked keys — surfaces in the UI so a
+  // user who just re-issued doesn't think their old usage vanished.
+  const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+  const revokedKeyIds: string[] = (allKeys as any[]).filter((k: any) => k.revoked_at).map((k: any) => k.id);
+  let revokedKeyUsageThisMonth = 0;
+  if (revokedKeyIds.length > 0) {
+    const { count } = await supabase
+      .from('b2b_api_usage')
+      .select('id', { count: 'exact', head: true })
+      .in('key_id', revokedKeyIds)
+      .gte('created_at', monthStart.toISOString());
+    revokedKeyUsageThisMonth = count ?? 0;
+  }
+
   return NextResponse.json({
     keys,            // active keys with monthly usage
     all_keys: allKeys, // including revoked, for history
     recent_usage: recentUsage,
     usage_daily: usageDaily,
     audit_log: auditLog,
+    revoked_key_usage_this_month: revokedKeyUsageThisMonth,
   });
 }
 

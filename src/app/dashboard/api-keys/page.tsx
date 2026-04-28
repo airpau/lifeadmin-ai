@@ -16,7 +16,7 @@ interface Key { id: string; name: string; key_prefix: string; tier: string; mont
 interface UsageRow { key_id: string; endpoint: string; status_code: number; latency_ms: number | null; scenario_kind: string | null; error_code: string | null; created_at: string; }
 interface AuditRow { id: number; action: string; actor: string; key_id: string | null; ip_address: string | null; user_agent: string | null; metadata: Record<string, any>; created_at: string; }
 interface DailyUsage { day: string; ok: number; err: number; }
-interface PortalData { keys: Key[]; all_keys: Key[]; recent_usage: UsageRow[]; usage_daily: DailyUsage[]; audit_log: AuditRow[]; }
+interface PortalData { keys: Key[]; all_keys: Key[]; recent_usage: UsageRow[]; usage_daily: DailyUsage[]; audit_log: AuditRow[]; revoked_key_usage_this_month?: number; }
 interface Webhook { id: string; url: string; description: string | null; events: string[]; is_active: boolean; last_delivery_at: string | null; last_delivery_status: number | null; consecutive_failures: number; created_at: string; }
 interface Delivery { id: number; webhook_id: string; event: string; status_code: number | null; latency_ms: number | null; attempt: number; error: string | null; created_at: string; }
 interface WebhookData { webhooks: Webhook[]; recent_deliveries: Delivery[]; supported_events: string[]; }
@@ -168,7 +168,7 @@ export default function ApiKeysPortalPage() {
             </div>
 
             <div style={{ paddingTop: 20 }}>
-              {tab === 'keys' && <KeysTab keys={data.keys} status={status} token={token} email={email} onReissue={reissue} onRevoke={revoke} onChange={load} />}
+              {tab === 'keys' && <KeysTab keys={data.keys} status={status} token={token} email={email} revokedUsageThisMonth={data.revoked_key_usage_this_month ?? 0} onReissue={reissue} onRevoke={revoke} onChange={load} />}
               {tab === 'usage' && <UsageTab daily={data.usage_daily} onExport={() => exportCsv('usage')} />}
               {tab === 'activity' && <ActivityTab usage={data.recent_usage} keys={data.all_keys} onOpen={(r) => setDrawer({ kind: 'usage', row: r })} />}
               {tab === 'webhooks' && webhookData && <WebhooksTab data={webhookData} token={token} email={email} onChange={load} onOpen={(r) => setDrawer({ kind: 'delivery', row: r })} />}
@@ -188,7 +188,7 @@ export default function ApiKeysPortalPage() {
 
 // ─── Tabs ──────────────────────────────────────────────────────────────────
 
-function KeysTab({ keys, status, token, email, onReissue, onRevoke, onChange }: { keys: Key[]; status: StatusPayload | null; token: string; email: string; onReissue: (id: string) => void; onRevoke: (id: string) => void; onChange: () => void }) {
+function KeysTab({ keys, status, token, email, revokedUsageThisMonth, onReissue, onRevoke, onChange }: { keys: Key[]; status: StatusPayload | null; token: string; email: string; revokedUsageThisMonth: number; onReissue: (id: string) => void; onRevoke: (id: string) => void; onChange: () => void }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {/* Live status block */}
@@ -207,6 +207,13 @@ function KeysTab({ keys, status, token, email, onReissue, onRevoke, onChange }: 
       {keys.length === 0 ? <p style={{ color: '#64748b' }}>No active keys. <Link href="/for-business" style={{ color: '#0f172a' }}>Get one →</Link></p> : keys.map((k) => (
         <KeyCard key={k.id} k={k} token={token} email={email} onReissue={onReissue} onRevoke={onRevoke} onChange={onChange} />
       ))}
+      {revokedUsageThisMonth > 0 && (
+        <p style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+          ℹ️ <strong>{revokedUsageThisMonth.toLocaleString()}</strong> additional call{revokedUsageThisMonth === 1 ? '' : 's'} this month
+          went through previously-revoked keys. Active keys above show their own usage only.
+          See the <strong>Recent calls</strong> tab to inspect every request.
+        </p>
+      )}
     </div>
   );
 }
