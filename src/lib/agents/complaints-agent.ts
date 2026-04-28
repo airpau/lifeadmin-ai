@@ -291,7 +291,10 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
     text: `${input.issueDescription} ${input.companyName} ${input.desiredOutcome}`.toLowerCase(),
     letterType: input.letterType,
   };
-  const firstCheck: CitationCheckResult = checkCitations(scenarioCtx, result.legalReferences);
+  // Pass the letter body too — verification now requires the citation
+  // to appear in the prose, not just the legalReferences array. A
+  // statute that's only in metadata is a false-pass.
+  const firstCheck: CitationCheckResult = checkCitations(scenarioCtx, result.legalReferences, result.letter);
 
   const guarantee: CitationGuaranteeOutcome = {
     passed_first_pass: firstCheck.passed,
@@ -314,7 +317,7 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
     totalInputTokens += retried.usage?.input_tokens ?? 0;
     totalOutputTokens += retried.usage?.output_tokens ?? 0;
 
-    const recheck = checkCitations(scenarioCtx, retried.legalReferences);
+    const recheck = checkCitations(scenarioCtx, retried.legalReferences, retried.letter);
     if (recheck.passed) {
       // Retry succeeded — use it.
       result = retried;

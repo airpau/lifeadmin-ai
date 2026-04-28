@@ -48,8 +48,30 @@ export interface ScenarioContext {
 export interface RequiredCitation {
   /** Display string the engine MUST output verbatim or a recognisable variant of. */
   label: string;
-  /** Tokens used for fuzzy matching against the model's legalReferences. */
-  matchTokens: string[];
+  /**
+   * @deprecated kept for backwards compatibility only. New rules
+   * should set actTokens + sectionTokens instead.
+   *
+   * Old single-list match (any token hit = pass) was too loose —
+   * "Section 75" matched any "Section 75" in any statute.
+   */
+  matchTokens?: string[];
+  /**
+   * Tokens identifying the parent statute / regulation. AT LEAST ONE
+   * must appear in the citation OR letter body for the citation to
+   * be considered present. Examples: ['consumer credit act 1974',
+   * 'cca 1974'].
+   */
+  actTokens?: string[];
+  /**
+   * Optional. When set, AT LEAST ONE must also appear in addition
+   * to actTokens — used to distinguish a specific section / clause.
+   * Example for s.75 CCA: ['s.75', 'section 75'].
+   *
+   * Leave undefined for citations without a specific section
+   * identifier (e.g. UK261 — the whole regulation).
+   */
+  sectionTokens?: string[];
   /** One-line WHY for the regenerate instruction. */
   rationale: string;
 }
@@ -109,32 +131,33 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
     required: [
       {
         label: 'Payment Services Regulations 2017, regulation 76',
-        matchTokens: ['payment services regulations 2017', 'psr 2017', 'reg 76', 'regulation 76'],
+        actTokens: ['payment services regulations 2017', 'payment services regs 2017', 'psr 2017'],
+        sectionTokens: ['reg 76', 'regulation 76', 'r.76'],
         rationale:
           'Strongest ground for an unauthorised payment — the customer can demand an immediate refund directly from their payment service provider (PayPal, bank).',
       },
       {
         label: 'Consumer Rights Act 2015, Part 2, s.62 (unfair terms)',
-        matchTokens: ['consumer rights act 2015', 'cra 2015', 's.62', 'section 62', 'part 2'],
+        actTokens: ['consumer rights act 2015', 'cra 2015'],
+        sectionTokens: ['s.62', 'section 62', 'part 2'],
         rationale:
           'Any term purporting to allow a charge after cancellation creates a significant imbalance and is not binding.',
       },
       {
         label:
           'Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013',
-        matchTokens: [
-          'consumer contracts',
-          'ccr 2013',
+        actTokens: [
+          'consumer contracts (information, cancellation and additional charges)',
           'cancellation and additional charges',
-          'reg 29',
-          'reg 30',
+          'ccr 2013',
         ],
         rationale:
           'Subscription auto-renewal must be expressly disclosed and consented to; covers the 14-day cooling-off and additional-charges regime.',
       },
       {
         label: 'Consumer Protection from Unfair Trading Regulations 2008, regulation 6',
-        matchTokens: ['unfair trading', 'cpr 2008', 'regulation 6', 'reg 6', 'misleading omission'],
+        actTokens: ['consumer protection from unfair trading', 'cpr 2008', 'cputr'],
+        sectionTokens: ['reg 6', 'regulation 6', 'r.6', 'misleading omission'],
         rationale:
           'Failure to disclose an upcoming auto-renewal charge is a misleading omission under the CPRs.',
       },
@@ -159,13 +182,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
     required: [
       {
         label: 'Consumer Credit Act 1974, section 75',
-        matchTokens: ['consumer credit act 1974', 'cca 1974', 's.75', 'section 75'],
+        actTokens: ['consumer credit act 1974', 'cca 1974'],
+        sectionTokens: ['s.75', 'section 75', 's 75'],
         rationale:
           'Equal claim against the card issuer for breach of contract by the supplier on credit-card purchases £100–£30,000.',
       },
       {
         label: 'Consumer Rights Act 2015 (goods/services standards)',
-        matchTokens: ['consumer rights act 2015', 'cra 2015'],
+        actTokens: ['consumer rights act 2015', 'cra 2015'],
         rationale: 'Underpins the breach the s.75 claim is founded on.',
       },
     ],
@@ -189,13 +213,15 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
     required: [
       {
         label: 'Ofgem Standard Licence Condition 21BA (back-billing 12-month rule)',
-        matchTokens: ['slc 21ba', 'standard licence condition 21', 'back-billing'],
+        actTokens: ['standard licence condition', 'slc 21', 'back-billing', 'back billing'],
+        sectionTokens: ['21ba', '21b', 'slc 21'],
         rationale:
           '12-month limit on back-billing is the controlling rule for any bill covering usage older than that.',
       },
       {
         label: 'Consumer Rights Act 2015, s.49',
-        matchTokens: ['consumer rights act 2015', 's.49', 'section 49'],
+        actTokens: ['consumer rights act 2015', 'cra 2015'],
+        sectionTokens: ['s.49', 'section 49'],
         rationale: 'Services performed without reasonable care — applies where billing systems failed.',
       },
     ],
@@ -218,7 +244,7 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
       {
         label:
           'UK261 (Regulation (EC) No 261/2004 as retained in UK law)',
-        matchTokens: ['uk261', 'eu261', 'regulation 261', '261/2004'],
+        actTokens: ['uk261', 'uk 261', 'eu261', 'eu 261', 'regulation (ec) no 261', '261/2004'],
         rationale:
           'Primary statutory framework for flight delay and cancellation compensation.',
       },
@@ -273,19 +299,27 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
     required: [
       {
         label: 'Ofcom Voluntary Automatic Compensation Scheme (GC C3.13)',
-        matchTokens: ['automatic compensation scheme', 'auto-compensation', 'gc c3', 'voluntary automatic'],
+        actTokens: [
+          'automatic compensation scheme',
+          'auto-compensation',
+          'voluntary automatic compensation',
+          'voluntary compensation scheme',
+        ],
+        sectionTokens: ['gc c3', 'general condition c3', 'c3.13', '£10.07', '£31.19'],
         rationale:
           'Per-day compensation for total loss / delayed start / missed appointments at the rates currently published by Ofcom (£10.07/day total loss as at April 2026). Most major UK ISPs are in the scheme. Any provider offer below the per-day rate is non-compliant. THIS IS THE PRIMARY MONEY-BEARING RULE FOR LOSS-OF-SERVICE DISPUTES.',
       },
       {
         label: 'Consumer Rights Act 2015, s.49 (services — reasonable care and skill)',
-        matchTokens: ['consumer rights act 2015', 'cra 2015', 's.49', 'section 49'],
+        actTokens: ['consumer rights act 2015', 'cra 2015'],
+        sectionTokens: ['s.49', 'section 49', 's.55', 'section 55'],
         rationale:
           'Substantial / repeated service failure entitles the customer to a price reduction (s.55) on top of the Auto-Compensation per-day rate.',
       },
       {
         label: 'Ofcom General Conditions, GC C1 (refund of unused service)',
-        matchTokens: ['general conditions', 'gc c1', 'ofcom'],
+        actTokens: ['ofcom general condition', 'general conditions of entitlement'],
+        sectionTokens: ['gc c1', 'condition c1', 'c1.4', 'c1.'],
         rationale:
           'Customer is entitled to a refund of the monthly charges for the period of total loss — separate from and IN ADDITION TO the per-day Auto-Compensation. Providers often offer one OR the other; the rules require both.',
       },
@@ -307,12 +341,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
     required: [
       {
         label: 'Limitation Act 1980, section 5',
-        matchTokens: ['limitation act 1980', 's.5 limitation', 'statute barred', 'section 5'],
+        actTokens: ['limitation act 1980'],
+        sectionTokens: ['s.5', 'section 5', 'statute-barred', 'statute barred'],
         rationale: '6-year limitation on simple contract debts in England and Wales.',
       },
       {
         label: 'Consumer Credit Act 1974, sections 77–79 (information requests)',
-        matchTokens: ['cca 1974', 'consumer credit act', 's.77', 's.78', 's.79', 'section 77', 'section 78'],
+        actTokens: ['consumer credit act 1974', 'cca 1974'],
+        sectionTokens: ['s.77', 's.78', 's.79', 'section 77', 'section 78', 'section 79'],
         rationale:
           'Right to demand a true copy of the credit agreement; debt unenforceable until produced.',
       },
@@ -656,21 +692,47 @@ export interface CitationCheckResult {
   retryInstruction: string | null;
 }
 
-function citationMatches(modelCitation: string, tokens: string[]): boolean {
-  const haystack = modelCitation.toLowerCase();
-  // ANY token match counts — citations are usually one statute name plus a
-  // section. We treat the citation as satisfied if any of the rule's
-  // recognition tokens appear in the model's string.
-  return tokens.some((t) => haystack.includes(t.toLowerCase()));
+/**
+ * Strict citation match — a citation is considered "present" only
+ * when (a) ANY actToken appears AND (b) ANY sectionToken appears
+ * (if sectionTokens is defined).
+ *
+ * The legacy matchTokens list is treated as actTokens-only (any hit
+ * = pass) so existing rules keep working. New rules should set
+ * actTokens + sectionTokens explicitly to avoid the false-positive
+ * class — e.g. "Section 75" matching the wrong statute, or
+ * "Section 5" matching anything.
+ */
+function citationMatches(modelText: string, citation: RequiredCitation): boolean {
+  const haystack = modelText.toLowerCase();
+  // Resolve effective act tokens — prefer actTokens, fall back to legacy.
+  const acts = citation.actTokens ?? citation.matchTokens ?? [];
+  if (acts.length === 0) return false;
+  const actHit = acts.some((t) => haystack.includes(t.toLowerCase()));
+  if (!actHit) return false;
+  // Section is optional — only enforce when defined.
+  if (!citation.sectionTokens || citation.sectionTokens.length === 0) {
+    return true;
+  }
+  return citation.sectionTokens.some((t) => haystack.includes(t.toLowerCase()));
 }
 
 /**
- * Check whether the model's `legalReferences` array satisfies all required
- * citations triggered by the scenario.
+ * Check whether the model's `legalReferences` array AND letter body
+ * satisfy all required citations triggered by the scenario.
+ *
+ * 2026-04-28 — body verification added. The previous version only
+ * checked the legalReferences array; a letter could "cite" PSR 2017
+ * reg 76 in metadata while the prose said nothing about it. The user
+ * read a letter that was silent on a critical statute. We now require
+ * BOTH the array AND the body to contain the citation tokens.
  */
 export function checkCitations(
   ctx: ScenarioContext,
   modelCitations: string[],
+  /** Optional: the letter body. When provided, citations must appear in
+   * the prose too — not just the metadata array. */
+  letterBody?: string,
 ): CitationCheckResult {
   const triggered = GUARANTEE_RULES.filter((r) => r.matches(ctx));
   if (triggered.length === 0) {
@@ -689,9 +751,16 @@ export function checkCitations(
     }
   }
 
-  const missing = required.filter(
-    (c) => !modelCitations.some((m) => citationMatches(m, c.matchTokens)),
-  );
+  // For each required citation, BOTH the legalReferences array AND
+  // the letter body must contain it (when body is provided). A
+  // statute that only appears in metadata is a false-pass — the
+  // user reads a letter that doesn't actually cite it.
+  const missing = required.filter((c) => {
+    const inArray = modelCitations.some((m) => citationMatches(m, c));
+    if (!inArray) return true;
+    if (letterBody && !citationMatches(letterBody, c)) return true;
+    return false;
+  });
 
   if (missing.length === 0) {
     return {
