@@ -85,22 +85,28 @@ async function findGmailCandidates(
   // user-sent-and-CC'd-self complaint letters.
   const toClauses = domains.map((d) => `to:${d}`).join(' OR ');
 
+  // 2026-04-28 — narrowed the default window. Was 365d, which surfaced
+  // a July 2025 Nuki Smart Lock support ticket as the top candidate
+  // for a today-dated dispute. New disputes almost always relate to
+  // recent correspondence; an old thread is rarely the right link.
+  // We try 90d first; if nothing, fall back to 365d. Old threads stay
+  // findable but lose top-of-list bias.
   const queries: string[] = [];
   if (fromClauses && toClauses) {
-    // Prefer the broader "from OR to" query first — it picks up both
-    // supplier-initiated threads AND user-initiated threads in one
-    // shot, which avoids the older "from:supplier dominates" ranking
-    // problem that bumped Paul's just-sent Nuki letter off the list.
+    queries.push(`(${fromClauses} OR ${toClauses}) newer_than:90d`);
     queries.push(`(${fromClauses} OR ${toClauses}) newer_than:365d`);
   } else if (fromClauses) {
+    queries.push(`(${fromClauses}) newer_than:90d`);
     queries.push(`(${fromClauses}) newer_than:365d`);
   }
   // Broad full-text fallback: catches emails that mention the provider
   // anywhere in headers/body, even if the from/to domain isn't in our
   // allowlist (the case for new providers Paybacker doesn't yet have
   // a domain mapping for).
+  queries.push(`"${providerPhrase}" newer_than:90d`);
   queries.push(`"${providerPhrase}" newer_than:365d`);
   if (providerPhrase.toLowerCase() !== subjectTerm) {
+    queries.push(`"${subjectTerm}" newer_than:90d`);
     queries.push(`"${subjectTerm}" newer_than:365d`);
   }
 
@@ -219,9 +225,38 @@ async function findGmailCandidates(
       confidence += 0.1;
       reasons.push('subject mentions provider');
     }
-    if (msgs.length >= 2) {
-      confidence += 0.1;
-      reasons.push(`${msgs.length} messages in thread`);
+
+    // 2026-04-28 — recency aware. Was: msgs.length >= 2 → +0.1 (any
+    // age). That promoted old multi-message support threads above
+    // today's single-reply emails, which is exactly backwards for a
+    // freshly-created dispute. Paul hit this on Nuki: a July 2025
+    // support thread (5 messages) outranked tonight's "[Nuki] Re:
+    // Customer Service Form Submission" (1 message) and got linked
+    // by mistake.
+    //
+    // New scoring (reuses the ageMs computed above):
+    //   - Recency: thread latest within 7d → +0.20
+    //                          within 30d → +0.10
+    //                          older than 90d → −0.25 (heavy penalty)
+    //                          older than 30d → −0.10
+    //   - Multi-message: +0.05 ONLY when the thread is recent (<30d).
+    //     A multi-message ANCIENT thread no longer gets a boost.
+    if (ageMs < 7 * 86_400_000) {
+      confidence += 0.20;
+      reasons.push('latest message in last 7 days');
+    } else if (ageMs < 30 * 86_400_000) {
+      confidence += 0.10;
+      reasons.push('latest message in last 30 days');
+    } else if (ageMs > 90 * 86_400_000) {
+      confidence -= 0.25;
+      reasons.push('latest message over 90 days old — likely not this dispute');
+    } else if (ageMs > 30 * 86_400_000) {
+      confidence -= 0.10;
+      reasons.push('latest message over 30 days old');
+    }
+    if (msgs.length >= 2 && ageMs < 30 * 86_400_000) {
+      confidence += 0.05;
+      reasons.push(`${msgs.length} messages — active thread`);
     }
 
     candidates.push({

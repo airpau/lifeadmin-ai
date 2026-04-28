@@ -213,7 +213,18 @@ export async function syncLinkedThread(
     };
   }
 
-  const since = link.last_synced_at ? new Date(link.last_synced_at) : null;
+  // First-sync floor: when the link is brand new and we're about to
+  // pull the entire history of a Gmail thread, gate it to messages
+  // received within 30d of the dispute being created. Without this,
+  // a customer-service ticket that's been a multi-message thread
+  // since 2025 dumps every historical message into the new dispute's
+  // timeline (Paul's Nuki case — 5 emails from July 2025 imported
+  // into a dispute about a £69 charge today).
+  const since = link.last_synced_at
+    ? new Date(link.last_synced_at)
+    : link.created_at
+      ? new Date(new Date(link.created_at).getTime() - 30 * 86400_000)
+      : null;
   let messages: Awaited<ReturnType<typeof fetchNewMessages>> = [];
   // Domain-only links (created by the "I've sent it" cancellation flow)
   // have no thread_id because the message was sent via mailto, outside

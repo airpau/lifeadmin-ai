@@ -77,7 +77,9 @@ export async function GET(
     }
   }
 
-  // Sort across connections and take top 3
+  // Sort across connections and take top 5 (was 3 — close cases like
+  // "today's reply with 1 message" vs "old multi-message thread"
+  // were being lost when only the top 3 were shown).
   allCandidates.sort(
     (a, b) =>
       b.candidate.confidence - a.candidate.confidence ||
@@ -85,7 +87,7 @@ export async function GET(
   );
 
   return NextResponse.json({
-    candidates: allCandidates.slice(0, 3).map((a) => ({
+    candidates: allCandidates.slice(0, 5).map((a) => ({
       connectionId: a.connectionId,
       provider: a.candidate.provider,
       threadId: a.candidate.threadId,
