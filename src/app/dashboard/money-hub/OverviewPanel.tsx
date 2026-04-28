@@ -186,12 +186,43 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
           <div className="flex items-center gap-2 mb-2">
             <Target className="h-4 w-4 text-purple-400" />
             <span className="text-slate-500 text-xs">Health Score</span>
+            {/* Discoverable explainer — keyboard-focusable + hover-tooltip
+                describing what the four pillars actually measure. The
+                hover-overlay below shows the live numbers; this tooltip
+                explains the methodology so a first-time user knows what
+                a "good" score even means (Paul, 2026-04-28). */}
+            <span className="relative group/tip">
+              <button
+                type="button"
+                aria-label="How is the Health Score calculated?"
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-semibold text-slate-500 hover:bg-slate-200 hover:text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                tabIndex={0}
+              >
+                ?
+              </button>
+              <div
+                role="tooltip"
+                className="invisible absolute left-1/2 top-5 z-30 w-64 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-3 text-[11px] leading-snug text-slate-700 opacity-0 shadow-xl transition-opacity group-hover/tip:visible group-hover/tip:opacity-100 group-focus-within/tip:visible group-focus-within/tip:opacity-100"
+              >
+                <p className="mb-1.5 font-semibold text-slate-900">Score out of 100</p>
+                <p className="mb-2 text-slate-600">Average of four equal-weighted pillars over the last 90 days:</p>
+                <ul className="space-y-1">
+                  <li><strong className="text-slate-900">Spend</strong> — % of income going on essentials. Rewards spending below 70% of income.</li>
+                  <li><strong className="text-slate-900">Save</strong> — savings rate + balance trend. Rewards positive monthly save and growing balances.</li>
+                  <li><strong className="text-slate-900">Borrow</strong> — debt-to-income ratio + minimum-payment ratio on credit. Lower is better.</li>
+                  <li><strong className="text-slate-900">Plan</strong> — recurring-payment coverage + budget adherence. Rewards predictability.</li>
+                </ul>
+                <p className="mt-2 text-slate-500">≥80 strong · 40-79 fair · &lt;40 needs work. Hover the score for live pillar values.</p>
+              </div>
+            </span>
           </div>
           <p className={`text-2xl md:text-3xl font-bold ${data.score >= 80 ? 'text-green-400' : data.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
             {data.score}
           </p>
-          {/* Hover detail */}
-          <div className="absolute inset-0 bg-slate-100 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center px-4 text-xs rounded-2xl">
+          {/* Hover detail — live pillar scores. Kept as the primary
+              hover surface so the explainer tooltip and the live
+              numbers don't compete for the same space. */}
+          <div className="absolute inset-0 bg-slate-100 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center px-4 text-xs rounded-2xl pointer-events-none">
             <div className="flex justify-between mb-1"><span className="text-slate-500">Spend</span><span className="text-slate-900">{healthScore?.pillars?.spend?.score || 0}%</span></div>
             <div className="flex justify-between mb-1"><span className="text-slate-500">Save</span><span className="text-slate-900">{healthScore?.pillars?.save?.score || 0}%</span></div>
             <div className="flex justify-between mb-1"><span className="text-slate-500">Borrow</span><span className="text-slate-900">{healthScore?.pillars?.borrow?.score || 0}%</span></div>
