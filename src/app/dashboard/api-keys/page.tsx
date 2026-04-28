@@ -243,10 +243,8 @@ function KeysTab({ keys, status, token, email, revokedUsageThisMonth, onReissue,
         <KeyCard key={k.id} k={k} token={token} email={email} onReissue={onReissue} onRevoke={onRevoke} onChange={onChange} />
       ))}
       {revokedUsageThisMonth > 0 && (
-        <p style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
-          ℹ️ <strong>{revokedUsageThisMonth.toLocaleString()}</strong> additional call{revokedUsageThisMonth === 1 ? '' : 's'} this month
-          went through previously-revoked keys. Active keys above show their own usage only.
-          See the <strong>Recent calls</strong> tab to inspect every request.
+        <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+          Of this month&rsquo;s usage, <strong>{revokedUsageThisMonth.toLocaleString()}</strong> call{revokedUsageThisMonth === 1 ? '' : 's'} went through previously-revoked keys. See the <strong>Recent calls</strong> tab to inspect every request.
         </p>
       )}
     </div>
@@ -287,7 +285,7 @@ function KeyCard({ k, token, email, onReissue, onRevoke, onChange }: { k: Key; t
         </div>
       </div>
       <div style={{ marginTop: 14, fontSize: 13, color: '#64748b' }}>
-        Usage this month: <strong style={{ color: '#0f172a' }}>{k.monthly_used.toLocaleString()}</strong> / {k.monthly_limit.toLocaleString()} ({pct}%)
+        Account usage this month: <strong style={{ color: '#0f172a' }}>{k.monthly_used.toLocaleString()}</strong> / {k.monthly_limit.toLocaleString()} ({pct}%) <span style={{ color: '#94a3b8' }}>· counted across every key on this account</span>
       </div>
       <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, marginTop: 6, overflow: 'hidden' }}>
         <div style={{ width: `${pct}%`, height: '100%', background: pct >= 90 ? '#dc2626' : pct >= 60 ? '#d97706' : '#059669' }} />

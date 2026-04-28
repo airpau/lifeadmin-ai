@@ -108,21 +108,29 @@ export async function authenticate(authHeader: string | null, clientIp?: string 
     }
   }
 
-  // Live count of usage this calendar month.
+  // Rate limit is per OWNER per calendar month — sum usage across
+  // every key (active + revoked) for this owner_email. Otherwise a
+  // customer who re-issues N times would effectively get N× their
+  // tier cap, since each new key starts at 0.
   const monthStart = new Date();
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
+  const { data: ownerKeys } = await supabase
+    .from('b2b_api_keys')
+    .select('id')
+    .eq('owner_email', keyRow.owner_email);
+  const ownerKeyIds = (ownerKeys ?? []).map((k: any) => k.id as string);
   const { count } = await supabase
     .from('b2b_api_usage')
     .select('id', { count: 'exact', head: true })
-    .eq('key_id', keyRow.id)
+    .in('key_id', ownerKeyIds.length > 0 ? ownerKeyIds : [keyRow.id])
     .gte('created_at', monthStart.toISOString());
   const monthlyUsed = count ?? 0;
 
   if (monthlyUsed >= keyRow.monthly_limit) {
     return {
       ok: false,
-      error: `Monthly call limit reached (${keyRow.monthly_limit} on tier "${keyRow.tier}"). Upgrade or wait until the 1st.`,
+      error: `Monthly call limit reached (${keyRow.monthly_limit} on tier "${keyRow.tier}", counted across all keys on this account). Upgrade or wait until the 1st.`,
       status: 429,
     };
   }
