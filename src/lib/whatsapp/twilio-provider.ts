@@ -11,6 +11,7 @@
  */
 
 import crypto from 'node:crypto';
+import { TEMPLATES, type TemplateName } from './template-registry';
 import type {
   InboundMessage,
   SendTemplateOptions,
@@ -75,10 +76,15 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
   }
 
   async sendTemplate(opts: SendTemplateOptions): Promise<WhatsAppMessageResult> {
-    // Twilio uses Content SIDs for templates. ContentSid is looked up in Supabase
-    // (whatsapp_message_templates.twilio_content_sid). For sandbox testing we fall
-    // back to substituting the parameters into a plain-text send.
-    const contentSid = process.env[`TWILIO_TEMPLATE_${opts.templateName.toUpperCase()}`];
+    // SID resolution order:
+    //   1. Env-var override (TWILIO_TEMPLATE_<NAME>) — lets ops pin to a
+    //      specific SID without a code deploy if Meta force-resubmits one.
+    //   2. The template-registry — the 16 approved templates' canonical SIDs
+    //      live there. Without this fallback every new caller needed an env
+    //      var, which silently broke production sends.
+    const envOverride = process.env[`TWILIO_TEMPLATE_${opts.templateName.toUpperCase()}`];
+    const registry = (TEMPLATES as Record<string, { sid: string }>)[opts.templateName as TemplateName];
+    const contentSid = envOverride || registry?.sid;
     const from = requireEnv('TWILIO_WHATSAPP_FROM');
 
     if (contentSid) {

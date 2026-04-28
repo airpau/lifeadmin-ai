@@ -465,12 +465,17 @@ export async function syncLinkedThread(
         },
       });
 
-      // Telegram alert — MUST be awaited. In Vercel serverless the function
-      // instance can terminate the moment the handler returns, which means a
-      // fire-and-forget Telegram call gets killed mid-HTTPS and the user never
-      // receives the alert (confirmed by empty telegram_message_log rows for
-      // dispute replies that did produce in-app notifications). Import lazily
-      // so the module graph stays light.
+      // Telegram + WhatsApp alerts — both MUST be awaited. In Vercel
+      // serverless the function instance can terminate the moment the
+      // handler returns, which means a fire-and-forget call gets
+      // killed mid-HTTPS and the user never receives the alert.
+      //
+      // Channel routing: each helper independently checks whether its
+      // channel is active for this user (telegram_sessions.is_active
+      // / whatsapp_sessions.is_active). The Pocket Agent mutex
+      // guarantees at most one will fire, so we don't double-send.
+      // Both run unconditionally — if a user enables WhatsApp later
+      // it picks up automatically, no code change.
       try {
         await sendTelegramSafely({
           userId: link.user_id,
@@ -501,6 +506,32 @@ export async function syncLinkedThread(
           );
         }
         // Swallow — a failed Telegram alert must never abort the sync loop.
+      }
+
+      try {
+        await sendWhatsAppSafely({
+          userId: link.user_id,
+          disputeId: link.dispute_id,
+          correspondenceId: inserted.id,
+          providerName,
+          subject: m.subject,
+          snippet: m.snippet,
+          linkUrl,
+          classification,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn('[watchdog] whatsapp send failed:', msg);
+        try {
+          await db.from('business_log').insert({
+            category: 'whatsapp_error',
+            title: 'Watchdog dispute-reply WhatsApp alert failed',
+            content:
+              `Could not send WhatsApp alert for dispute ${link.dispute_id} (correspondence ${inserted.id}). ` +
+              `Provider: ${providerName}. Error: ${msg}`,
+            created_by: 'watchdog-sync-runner',
+          });
+        } catch { /* swallow secondary log failure */ }
       }
     }
   }
@@ -619,5 +650,70 @@ async function sendTelegramSafely(args: {
       issue_type: c?.respondNeeded ? 'dispute_reply_action' : 'dispute_reply',
     },
     showFollowUpButtons: false,
+  });
+}
+
+/**
+ * Fire a WhatsApp alert if the user has an active WhatsApp session AND
+ * is on a Pro tier (paybacker_dispute_reply is a Pro-only template per
+ * registry). Mirrors sendTelegramSafely's contract — kept isolated so
+ * a Twilio outage never breaks the dispute-sync loop.
+ *
+ * Template SID HXff77c9745533c248df3b9e0ee5c7fa95 (paybacker_dispute_reply)
+ * takes three positional vars: merchant, summary, thread_url. The summary
+ * is the classifier's rationale where available, falling back to the raw
+ * snippet truncated to keep within Twilio's 1024-char per-variable limit.
+ */
+async function sendWhatsAppSafely(args: {
+  userId: string;
+  providerName: string;
+  subject: string;
+  snippet: string;
+  linkUrl: string;
+  disputeId: string;
+  correspondenceId: string;
+  classification: ReplyClassification | null;
+}): Promise<void> {
+  const db = admin();
+
+  // Active session lookup. Channel mutex guarantees at most one of
+  // telegram_sessions / whatsapp_sessions is_active=true at a time, so
+  // we don't have to coordinate with sendTelegramSafely above.
+  const { data: session } = await db
+    .from('whatsapp_sessions')
+    .select('whatsapp_phone, is_active, opted_out_at')
+    .eq('user_id', args.userId)
+    .eq('is_active', true)
+    .is('opted_out_at', null)
+    .maybeSingle();
+  if (!session?.whatsapp_phone) return;
+
+  // Tier gate — paybacker_dispute_reply is proOnly. Trial Pro users are
+  // included via getEffectiveTier (returns 'pro' during onboarding trial).
+  const { canUseWhatsApp } = await import('@/lib/plan-limits');
+  const allowed = await canUseWhatsApp(args.userId);
+  if (!allowed) return;
+
+  const c = args.classification;
+  // Build the summary that fills {{2}}. Prefer the classifier's
+  // one-sentence rationale because it's already action-oriented; fall
+  // back to the raw snippet. Twilio rejects empty content variables, so
+  // never let this be a blank string.
+  const rawSummary = c?.rationale?.trim() || args.snippet?.trim() || args.subject || 'New reply received';
+  const summary = rawSummary.length > 240 ? rawSummary.slice(0, 237) + '…' : rawSummary;
+
+  // {{3}} is the thread_url — the dispute deep-link inside the app.
+  // Templates approved by Meta on 2026-04-27 require an absolute URL,
+  // so prepend the canonical site origin if the caller passed a path.
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+  const threadUrl = args.linkUrl.startsWith('http')
+    ? args.linkUrl
+    : `${origin}${args.linkUrl}`;
+
+  const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
+  await sendWhatsAppTemplate({
+    to: session.whatsapp_phone,
+    templateName: 'paybacker_dispute_reply',
+    parameters: [args.providerName, summary, threadUrl],
   });
 }
