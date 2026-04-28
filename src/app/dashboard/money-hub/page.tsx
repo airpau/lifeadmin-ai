@@ -859,6 +859,12 @@ export default function MoneyHubPage() {
  <Wallet className="h-9 w-9 text-emerald-600" /> Money Hub
  </h1>
  <p className="text-slate-600 mt-1 text-sm">{syncTierText}</p>
+ <a
+ href="/dashboard/insights/annual"
+ className="inline-flex items-center gap-1.5 mt-2 text-sm font-medium text-emerald-700 hover:text-emerald-800"
+ >
+ View annual insights →
+ </a>
  </div>
 
  <div className="flex items-center gap-2 flex-wrap">
