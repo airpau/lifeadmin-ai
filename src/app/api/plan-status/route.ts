@@ -63,6 +63,15 @@ export async function GET() {
     .limit(1)
     .maybeSingle();
 
+  // Payment grace window (separate from the plan_downgrade_events
+  // overage window above). This one fires when invoice.payment_failed
+  // sets a 7-day deadline before the user's tier auto-demotes to free.
+  const { data: paymentProfile } = await supabase
+    .from('profiles')
+    .select('subscription_tier, subscription_status, past_due_grace_ends_at')
+    .eq('id', user.id)
+    .maybeSingle();
+
   const status = {
     tier,
     limits: {
@@ -97,6 +106,12 @@ export async function GET() {
           daysRemaining: Math.max(0, Math.ceil((new Date(grace.grace_ends_at).getTime() - Date.now()) / 86400_000)),
         }
       : null,
+    // Read straight from profiles so the banner doesn't need to wait
+    // for the plan_downgrade_events row that's only inserted at
+    // demotion time.
+    past_due_grace_ends_at: paymentProfile?.past_due_grace_ends_at ?? null,
+    subscription_tier: paymentProfile?.subscription_tier ?? null,
+    subscription_status: paymentProfile?.subscription_status ?? null,
   };
 
   return NextResponse.json(status);

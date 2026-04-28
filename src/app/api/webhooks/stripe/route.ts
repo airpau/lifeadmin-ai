@@ -284,6 +284,11 @@ export async function POST(request: NextRequest) {
             subscription_tier: 'free',
             subscription_status: 'canceled',
             stripe_subscription_id: null,
+            // Wipe any in-flight grace state — the subscription is gone
+            // for good now, the cron has nothing to act on.
+            past_due_grace_ends_at: null,
+            past_due_warning_sent_at: null,
+            past_due_final_warning_sent_at: null,
             updated_at: new Date().toISOString(),
           })
           .eq('stripe_customer_id', customerId)
@@ -308,10 +313,54 @@ export async function POST(request: NextRequest) {
         const customerId = invoice.customer as string;
         console.log(`Webhook invoice.payment_failed: customer=${customerId}`);
 
-        await supabase
+        // Stripe fires payment_failed on every retry attempt. We only want
+        // to start the grace timer on the first failure — subsequent fires
+        // shouldn't reset the deadline or spam warnings.
+        const { data: existing } = await supabase
           .from('profiles')
-          .update({ subscription_status: 'past_due', updated_at: new Date().toISOString() })
+          .select('id, past_due_grace_ends_at, past_due_warning_sent_at')
+          .eq('stripe_customer_id', customerId)
+          .maybeSingle();
+
+        if (!existing) {
+          console.warn('Webhook payment_failed: profile not found for customer', customerId);
+          break;
+        }
+
+        const update: Record<string, unknown> = {
+          subscription_status: 'past_due',
+          updated_at: new Date().toISOString(),
+        };
+        let isFirstFailure = false;
+        if (!existing.past_due_grace_ends_at) {
+          // 7-day grace per CLAUDE.md plan. Smart Retries (Stripe Dashboard)
+          // will keep retrying the card during this window so most accounts
+          // recover before grace expiry.
+          const graceEnds = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          update.past_due_grace_ends_at = graceEnds.toISOString();
+          update.past_due_warning_sent_at = new Date().toISOString();
+          isFirstFailure = true;
+        }
+
+        const { error: updateErr } = await supabase
+          .from('profiles')
+          .update(update)
           .eq('stripe_customer_id', customerId);
+        if (updateErr) {
+          console.error('Webhook payment_failed: profile update failed:', updateErr.message);
+          break;
+        }
+
+        if (isFirstFailure) {
+          // Fire-and-forget warning notification. The cron handles T-3
+          // final warning + the actual demotion at T+0.
+          try {
+            const { sendPaymentFailedWarning } = await import('@/lib/notifications/payment-grace');
+            await sendPaymentFailedWarning(supabase, existing.id);
+          } catch (e) {
+            console.error('Webhook payment_failed: warning send failed:', e);
+          }
+        }
         break;
       }
 
@@ -321,9 +370,20 @@ export async function POST(request: NextRequest) {
         console.log(`Webhook invoice.payment_succeeded: customer=${customerId} reason=${invoice.billing_reason}`);
 
         if (invoice.billing_reason && invoice.billing_reason.startsWith('subscription')) {
+          // Recovery path — clear the grace columns so the cron skips
+          // this user, and restore status. Even if grace had already
+          // expired and the cron had demoted, this resets cleanly: the
+          // existing customer.subscription.updated webhook will have
+          // already promoted them back.
           await supabase
             .from('profiles')
-            .update({ subscription_status: 'active', updated_at: new Date().toISOString() })
+            .update({
+              subscription_status: 'active',
+              past_due_grace_ends_at: null,
+              past_due_warning_sent_at: null,
+              past_due_final_warning_sent_at: null,
+              updated_at: new Date().toISOString(),
+            })
             .eq('stripe_customer_id', customerId);
         }
         break;

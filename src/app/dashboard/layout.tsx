@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import TrialBanner from '@/components/TrialBanner';
 import ConnectionHealthBanner from '@/components/ConnectionHealthBanner';
+import PaymentGraceBanner from '@/components/PaymentGraceBanner';
 import DashboardShell, { type UserSummary } from '@/components/dashboard/DashboardShell';
 import './shell-v2.css';
 import './dashboard.css';
@@ -228,6 +229,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {(isTrial || trialExpired) && (
         <TrialBanner daysLeft={trialDaysLeft} trialExpired={trialExpired} />
       )}
+      <PaymentGraceBanner />
       <ConnectionHealthBanner />
     </>
   );
