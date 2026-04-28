@@ -204,14 +204,37 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
   const successLabel: 'low' | 'medium' | 'high' =
     score >= 70 ? 'high' : score < 55 ? 'low' : 'medium';
 
+  // Pick a rationale from the verified refs that ACTUALLY matches what
+  // the engine cited. The previous version took verifiedRefs[0] which
+  // was the highest token-overlap score regardless of category — that
+  // produced cross-domain leaks (e.g. an HMRC tax summary on an energy
+  // back-billing case). Instead, prefer the first verified ref whose
+  // law_name appears in the engine's citations.
+  const cited = legalRefs.map((s) => s.toLowerCase());
+  const matchingRef = verifiedRefs.find((r: any) => {
+    const name = (r.law_name || '').toLowerCase();
+    return name && cited.some((c) => c.includes(name) || name.includes(c.split(',')[0].trim()));
+  });
+  const rationale = matchingRef?.summary
+    ?? verifiedRefs.find((r: any) => r.category && cited.length > 0)?.summary
+    ?? `Reasoning grounded in ${legalRefs[0] ?? 'the cited UK statute'}.`;
+
+  // Additional rights: only include verified refs that share a category
+  // with the matching ref, so we don't dump unrelated statutes.
+  const matchCategory = matchingRef?.category;
+  const additionalRights = (matchCategory
+    ? verifiedRefs.filter((r: any) => r.category === matchCategory)
+    : verifiedRefs
+  ).slice(0, 3).map((r: any) => r.law_name);
+
   return {
     statute: inferStatute(legalRefs),
     entitlement: {
       summary: nextStepsArr.length > 0
         ? nextStepsArr.join(' ')
         : 'See draft letter for the entitlement narrative.',
-      rationale: verifiedRefs[0]?.summary ?? 'Reasoning grounded in the cited UK statute.',
-      additional_rights: verifiedRefs.slice(0, 3).map((r: any) => r.law_name),
+      rationale,
+      additional_rights: additionalRights,
       estimated_success: successLabel,
     },
     draft_letter_excerpt: letter.slice(0, 1200),

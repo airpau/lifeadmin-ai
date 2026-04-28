@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
   if (process.env.RESEND_API_KEY) {
     try {
       await resend.emails.send({
-        from: process.env.B2B_FROM_EMAIL || 'Paybacker for Business <business@paybacker.co.uk>',
+        from: process.env.B2B_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'Paybacker for Business <noreply@paybacker.co.uk>',
         to: lower,
         replyTo: 'business@paybacker.co.uk',
         subject: 'Your Paybacker API key (Starter — 1,000 calls/month)',

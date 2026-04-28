@@ -132,7 +132,7 @@ export default function ForBusinessPage() {
           <div className="m-business-cta-row">
             <a href="#buy" className="m-business-cta">Get a key</a>
             <a href="/for-business/docs" className="m-business-cta-ghost">Read the docs</a>
-            <a href="#example" className="m-business-cta-ghost">See an example</a>
+            <a href="/for-business/coverage" className="m-business-cta-ghost">Statute coverage</a>
           </div>
         </div>
       </section>

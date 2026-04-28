@@ -54,7 +54,7 @@ export async function handleB2bCheckoutExpired(
   if (process.env.RESEND_API_KEY) {
     try {
       await resend.emails.send({
-        from: process.env.B2B_FROM_EMAIL || 'Paybacker for Business <business@paybacker.co.uk>',
+        from: process.env.B2B_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'Paybacker for Business <noreply@paybacker.co.uk>',
         to: process.env.FOUNDER_EMAIL || 'business@paybacker.co.uk',
         replyTo: lower,
         subject: `🛒💀 B2B abandoned — ${lower} (${tier})`,
@@ -119,7 +119,7 @@ export async function handleB2bCheckoutCompleted(
   if (process.env.RESEND_API_KEY) {
     try {
       await resend.emails.send({
-        from: process.env.B2B_FROM_EMAIL || 'Paybacker for Business <business@paybacker.co.uk>',
+        from: process.env.B2B_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'Paybacker for Business <noreply@paybacker.co.uk>',
         to: customerEmail,
         replyTo: 'business@paybacker.co.uk',
         subject: `Your Paybacker API key (${tier} — ${monthlyLimit.toLocaleString()} calls/month)`,
