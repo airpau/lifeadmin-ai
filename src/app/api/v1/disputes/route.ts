@@ -60,15 +60,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.message, code: result.code }, { status });
   }
 
+  // case_reference / customer_id are echoed in the response body for
+  // the caller's CRM persistence. We do NOT currently log them on the
+  // server side — the b2b_api_usage table doesn't have columns for
+  // those identifiers and adding them needs a migration that hasn't
+  // landed yet. Documented as a future enhancement; the response echo
+  // already gives the customer end-to-end traceability against their
+  // own ticket ID without us holding their identifier values.
   await logUsage(key.id, '/v1/disputes', 200, Date.now() - t0, {
     scenario_kind: result.legal_references[0] ?? null,
-    // case_reference / customer_id are echoed for downstream auditing.
-    // Logged here too so a portal-side support query ("which call
-    // touched ticket TKT-12345?") can resolve without the customer
-    // having to share request bodies. Plaintext ID values only — we
-    // never log the scenario text or PII.
-    case_reference: result.case_reference,
-    customer_id: result.customer_id,
   });
   return NextResponse.json(result, {
     status: 200,
