@@ -251,6 +251,253 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
       },
     ],
   },
+
+  // ─── Rail delay (Delay Repay 15 / NRCoT) ───────────────────────────────────
+  {
+    id: 'rail_delay',
+    matches: (ctx) =>
+      /\b(train|rail|tfl\b|delay\s*repay|nrcot|national\s*rail|avanti|lner|gwr|northern|transpennine|scotrail|southeastern|south\s*western|thameslink|gtr|greater\s*anglia|crosscountry)\b/.test(ctx.text)
+      &&
+      /\b(delay(?:ed)?|cancel(?:l?ed)?|late|missed\s*connection|strike|disruption|refund)\b/.test(ctx.text),
+    required: [
+      {
+        label: 'National Rail Conditions of Travel (NRCoT)',
+        matchTokens: ['national rail conditions', 'nrcot', 'conditions of travel'],
+        rationale:
+          'Governing contract for rail journeys — rights to alternative travel, refunds, and accommodation when service fails.',
+      },
+      {
+        label: 'UK Rail Passengers\' Rights and Obligations Regulation 2021/782, Article 17',
+        matchTokens: ['rail passengers', '2021/782', 'article 17', 'passenger rights regulation'],
+        rationale:
+          '25% refund for 60+ minute delay, 50% for 120+ minute delay (where Delay Repay 15 isn\'t in operation).',
+      },
+      {
+        label: 'Delay Repay scheme (operator-specific)',
+        matchTokens: ['delay repay', 'dr15', 'delay-repay'],
+        rationale:
+          'Most TOCs run Delay Repay 15 — compensation from 15 minutes of delay onwards. Use the operator\'s published rate.',
+      },
+    ],
+  },
+
+  // ─── Insurance claim decline / FCA fair-value ──────────────────────────────
+  {
+    id: 'insurance_claim_decline',
+    matches: (ctx) =>
+      /\b(insurance|insurer|policy|underwriter|claim|policyholder)\b/.test(ctx.text)
+      &&
+      /\b(declin(?:e|ed)|reject(?:ed)?|refused|wrongful|denied|under-?paid|low-?balled|partial\s*settlement|assessor)\b/.test(ctx.text),
+    required: [
+      {
+        label: 'Consumer Insurance (Disclosure and Representations) Act 2012',
+        matchTokens: ['cidra 2012', 'consumer insurance', 'disclosure and representations'],
+        rationale:
+          'Limits insurers\' rights to refuse claims for non-disclosure to deliberate / reckless misrepresentation.',
+      },
+      {
+        label: 'FCA Handbook ICOBS / Consumer Duty (PRIN 2A)',
+        matchTokens: ['fca handbook', 'icobs', 'consumer duty', 'prin 2a'],
+        rationale:
+          'Insurer must treat customers fairly, deliver good outcomes, and provide fair value (FCA pricing rules).',
+      },
+      {
+        label: 'Financial Ombudsman Service — 8-week final response right',
+        matchTokens: ['financial ombudsman', 'fos', '8-week', 'final response'],
+        rationale:
+          'Customer can refer to FOS after 8 weeks or final-response letter; FOS uphold rate is the relevant benchmark.',
+      },
+    ],
+  },
+
+  // ─── Parking PCN appeal ────────────────────────────────────────────────────
+  {
+    id: 'parking_pcn_appeal',
+    matches: (ctx) =>
+      /\b(parking|pcn|penalty\s*charge|civil\s*enforcement|popla|parkingeye|euro\s*car\s*parks|bpa|ipc)\b/.test(ctx.text),
+    required: [
+      {
+        label: 'Protection of Freedoms Act 2012, Schedule 4 (private parking)',
+        matchTokens: ['protection of freedoms act', 'pofa 2012', 'schedule 4'],
+        rationale:
+          'Statutory framework for private parking charges, keeper liability, signage and notice requirements.',
+      },
+      {
+        label: 'BPA / IPC Code of Practice + POPLA appeal rights',
+        matchTokens: ['bpa code', 'ipc code', 'popla', 'code of practice'],
+        rationale:
+          'Industry codes governing signage adequacy, grace periods, and the independent appeal route.',
+      },
+    ],
+  },
+
+  // ─── Council tax band challenge ────────────────────────────────────────────
+  {
+    id: 'council_tax_band',
+    matches: (ctx) =>
+      /\b(council\s*tax|valuation\s*office|voa|band\s*[a-h]\b|liability)\b/.test(ctx.text),
+    required: [
+      {
+        label: 'Local Government Finance Act 1992',
+        matchTokens: ['local government finance act 1992', 'lgfa 1992'],
+        rationale: 'Primary statute governing council tax bandings, exemptions and discounts.',
+      },
+      {
+        label: 'Council Tax (Exempt Dwellings) Order 1992 / Discounts',
+        matchTokens: ['council tax', 'exempt dwellings', 'discount'],
+        rationale:
+          'Specific exemption / discount entitlements (single-person discount, severe mental impairment, student exemption etc.).',
+      },
+    ],
+  },
+
+  // ─── Gym membership cancellation / DMCCA ───────────────────────────────────
+  {
+    id: 'gym_cancellation',
+    matches: (ctx) =>
+      /\b(gym|fitness|puregym|the\s*gym\s*group|anytime\s*fitness|david\s*lloyd|virgin\s*active)\b/.test(ctx.text)
+      &&
+      /\b(cancel|cancellation|membership|lock-?in|exit|injur|unable\s*to\s*use|moved|relocat)\b/.test(ctx.text),
+    required: [
+      {
+        label: 'Consumer Rights Act 2015, Part 2 s.62 (unfair contract terms)',
+        matchTokens: ['consumer rights act 2015', 's.62', 'section 62', 'cra 2015'],
+        rationale:
+          'Lock-in clauses and cancellation penalties may be unfair under the CMA\'s 2014 gym-contracts undertaking.',
+      },
+      {
+        label: 'Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013',
+        matchTokens: ['consumer contracts', 'ccr 2013', 'cancellation and additional charges'],
+        rationale:
+          '14-day cooling-off for online sign-ups; auto-renewal disclosure rules.',
+      },
+      {
+        label: 'CMA undertakings on gym contracts (2014) + DMCCA 2024 subscription regime',
+        matchTokens: ['cma', 'gym contract', 'dmcca 2024', 'digital markets, competition'],
+        rationale:
+          'CMA 2014 undertakings established what fair gym contracts look like; DMCCA 2024 strengthens auto-renewal disclosure.',
+      },
+    ],
+  },
+
+  // ─── HMRC tax rebate / dispute ─────────────────────────────────────────────
+  {
+    id: 'hmrc_dispute',
+    matches: (ctx) =>
+      /\b(hmrc|tax\s*(rebate|refund|return)|paye|self[\s-]?assessment|coding\s*notice|tax\s*credits?)\b/.test(ctx.text),
+    required: [
+      {
+        label: 'Taxes Management Act 1970, section 33 (overpayment relief)',
+        matchTokens: ['taxes management act', 'tma 1970', 'section 33', 's.33'],
+        rationale:
+          '4-year window for overpayment relief claims against HMRC.',
+      },
+      {
+        label: 'HMRC Charter (statutory — Finance Act 2009 s.92)',
+        matchTokens: ['hmrc charter', 'finance act 2009', 'taxpayer charter'],
+        rationale:
+          'Statutory standards HMRC must meet — fair treatment, accurate information, prompt response.',
+      },
+    ],
+  },
+
+  // ─── DVLA dispute (vehicle keeper / late licensing) ────────────────────────
+  {
+    id: 'dvla_dispute',
+    matches: (ctx) =>
+      /\b(dvla|vehicle\s*excise|car\s*tax|driving\s*licence|sorn|v5|keeper|enforcement\s*action)\b/.test(ctx.text),
+    required: [
+      {
+        label: 'Vehicle Excise and Registration Act 1994',
+        matchTokens: ['vehicle excise', 'vera 1994', 'registration act 1994'],
+        rationale: 'Primary statute for vehicle licensing, SORN, and DVLA enforcement.',
+      },
+      {
+        label: 'DVLA appeals process / mitigation',
+        matchTokens: ['dvla', 'appeal', 'mitigation', 'representations'],
+        rationale:
+          'Right to make representations against late licensing penalties before they become court-enforceable.',
+      },
+    ],
+  },
+
+  // ─── NHS complaint ─────────────────────────────────────────────────────────
+  {
+    id: 'nhs_complaint',
+    matches: (ctx) =>
+      /\b(nhs|hospital|gp\b|doctor\s*surgery|clinical|patient)\b/.test(ctx.text)
+      &&
+      /\b(complain|complaint|negligen|malpractice|mistreat|delayed\s*(diagnos|treatment))\b/.test(ctx.text),
+    required: [
+      {
+        label: 'NHS Complaints Procedure (Local Authority Social Services and NHS Complaints Regulations 2009)',
+        matchTokens: ['nhs complaints', '2009 regulations', 'complaints procedure'],
+        rationale:
+          'Two-stage statutory NHS complaints process — local resolution then Parliamentary and Health Service Ombudsman.',
+      },
+      {
+        label: 'Parliamentary and Health Service Ombudsman (PHSO)',
+        matchTokens: ['parliamentary and health service ombudsman', 'phso', 'health ombudsman'],
+        rationale:
+          'Final escalation route for unresolved NHS complaints.',
+      },
+    ],
+  },
+
+  // ─── Energy: tariff / billing dispute generally (broader than back-billing)
+  {
+    id: 'energy_billing_general',
+    matches: (ctx) =>
+      /\b(energy|gas|electric(?:ity)?|ofgem|smart\s*meter|british\s*gas|octopus|edf|ovo|e\.?on|sse\b|scottish\s*power|utilita)\b/.test(ctx.text)
+      &&
+      /\b(bill|tariff|price\s*rise|estimat|reading|standing\s*charge|debt|disconnect|prepayment)\b/.test(ctx.text)
+      &&
+      // Don't double-fire with energy_back_billing — let the back-billing rule
+      // handle that specific scenario via its tighter trigger.
+      !/\b(back-?bill|year(?:s)?\s*ago|usage\s*from\s*\d{4})\b/.test(ctx.text),
+    required: [
+      {
+        label: 'Ofgem Standards of Conduct (SLC 0)',
+        matchTokens: ['ofgem standards of conduct', 'slc 0', 'standard licence condition 0'],
+        rationale:
+          'Suppliers must treat customers fairly, provide clear/accurate information and not engage in misleading practices.',
+      },
+      {
+        label: 'Ofgem Supply Licence Condition 23 (price rise notice)',
+        matchTokens: ['slc 23', 'licence condition 23', 'price rise notice'],
+        rationale:
+          '30-day written notice before price increases; otherwise customer can switch penalty-free.',
+      },
+      {
+        label: 'Energy Ombudsman — 8-week escalation right',
+        matchTokens: ['energy ombudsman', '8-week', 'deadlock'],
+        rationale:
+          'Customer can refer to Energy Ombudsman after 8 weeks or deadlock letter.',
+      },
+    ],
+  },
+
+  // ─── Faulty goods / not as described ───────────────────────────────────────
+  {
+    id: 'faulty_goods',
+    matches: (ctx) =>
+      /\b(faulty|broken|damag(?:ed|e)|not\s*as\s*described|defect|wrong\s*item|missing\s*part|sub[- ]?standard|unfit\s*for\s*purpose|don't\s*work|stopped\s*working)\b/.test(ctx.text)
+      &&
+      /\b(bought|purchased|ordered|delivery|delivered|item|product|goods|warranty)\b/.test(ctx.text),
+    required: [
+      {
+        label: 'Consumer Rights Act 2015, s.9 (satisfactory quality)',
+        matchTokens: ['consumer rights act 2015', 's.9', 'section 9', 'satisfactory quality'],
+        rationale: 'Goods must be of satisfactory quality.',
+      },
+      {
+        label: 'Consumer Rights Act 2015, s.19 (right to reject / repair / replace)',
+        matchTokens: ['s.19', 'section 19', 'right to reject', '30-day'],
+        rationale:
+          '30-day right to reject for full refund; right to repair/replace within 6 months.',
+      },
+    ],
+  },
 ];
 
 // -----------------------------------------------------------------------------

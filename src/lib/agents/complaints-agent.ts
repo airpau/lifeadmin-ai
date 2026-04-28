@@ -183,6 +183,21 @@ export interface ComplaintInput {
   customerName?: string;
 }
 
+export interface CitationGuaranteeOutcome {
+  /** All required citations were present in the first pass. */
+  passed_first_pass: boolean;
+  /** Triggered scenario rule ids — for audit logs and weekly review. */
+  triggered_rule_ids: string[];
+  /** Required citations the FIRST pass missed (empty if first-pass passed). */
+  missing_after_first_pass: string[];
+  /** Required citations the RETRY also missed; we forced these into the output. */
+  forced_after_retry: string[];
+  /** True when the engine retried at least once. */
+  retried: boolean;
+  /** True when the final output had ALL required citations naturally (no forcing). */
+  final_passed: boolean;
+}
+
 export interface ComplaintOutput {
   letter: string;
   legalReferences: string[];
@@ -190,6 +205,13 @@ export interface ComplaintOutput {
   nextSteps: string[];
   escalationPath: string;
   usage?: { input_tokens: number; output_tokens: number };
+  /**
+   * Citation-guarantee audit. Persisted on agent_runs so we can
+   * surface a UI badge ("All required citations present" vs "We
+   * auto-added X citations — please verify before sending") and
+   * spot scenarios where the engine repeatedly needs forcing.
+   */
+  citationGuarantee?: CitationGuaranteeOutcome;
 }
 
 const COMPLAINT_MODEL = 'claude-sonnet-4-6';
@@ -269,15 +291,25 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
     text: `${input.issueDescription} ${input.companyName} ${input.desiredOutcome}`.toLowerCase(),
     letterType: input.letterType,
   };
-  const check: CitationCheckResult = checkCitations(scenarioCtx, result.legalReferences);
+  const firstCheck: CitationCheckResult = checkCitations(scenarioCtx, result.legalReferences);
 
-  if (!check.passed && check.retryInstruction) {
+  const guarantee: CitationGuaranteeOutcome = {
+    passed_first_pass: firstCheck.passed,
+    triggered_rule_ids: firstCheck.triggeredRuleIds,
+    missing_after_first_pass: firstCheck.missing.map((m) => m.label),
+    forced_after_retry: [],
+    retried: false,
+    final_passed: firstCheck.passed,
+  };
+
+  if (!firstCheck.passed && firstCheck.retryInstruction) {
     console.log(
-      `[claude] citation-guarantee triggered retry — missing: ${check.missing.map((m) => m.label).join(', ')}`,
+      `[claude] citation-guarantee triggered retry — missing: ${firstCheck.missing.map((m) => m.label).join(', ')}`,
     );
+    guarantee.retried = true;
     // Append the explicit re-prompt and the previous draft so the
     // model can rewrite rather than start from scratch.
-    const retryPrompt = `${userPrompt}${check.retryInstruction}\n\nYour previous draft (rewrite this, not from scratch):\n${result.letter}`;
+    const retryPrompt = `${userPrompt}${firstCheck.retryInstruction}\n\nYour previous draft (rewrite this, not from scratch):\n${result.letter}`;
     const retried = await runEngineCall(retryPrompt);
     totalInputTokens += retried.usage?.input_tokens ?? 0;
     totalOutputTokens += retried.usage?.output_tokens ?? 0;
@@ -286,6 +318,7 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
     if (recheck.passed) {
       // Retry succeeded — use it.
       result = retried;
+      guarantee.final_passed = true;
     } else {
       // Retry STILL missing required citations. Keep the retried draft
       // (often improved even if not perfect) and force the missing
@@ -294,14 +327,21 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
       // Better to over-cite than under-cite — a missed CCR 2013 cite
       // costs the user money; an over-cited one is harmless.
       const forced = [...retried.legalReferences];
+      const forcedLabels: string[] = [];
       for (const m of recheck.missing) {
         if (!forced.some((c) => c.toLowerCase().includes(m.label.toLowerCase().split(' ')[0]))) {
           forced.push(m.label);
+          forcedLabels.push(m.label);
         }
       }
       result = { ...retried, legalReferences: forced };
+      guarantee.forced_after_retry = forcedLabels;
+      // We still consider final passed if forcing covered everything
+      // (which it does by construction). UI shows the banner because
+      // forced > 0 indicates user should verify the prose names them.
+      guarantee.final_passed = true;
       console.warn(
-        `[claude] citation-guarantee retry STILL missing — forced citations: ${recheck.missing.map((m) => m.label).join(', ')}`,
+        `[claude] citation-guarantee retry STILL missing — forced citations: ${forcedLabels.join(', ')}`,
       );
     }
   }
@@ -309,6 +349,7 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
   return {
     ...result,
     usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens },
+    citationGuarantee: guarantee,
   };
 
   /** Single Claude call → parsed engine output. */

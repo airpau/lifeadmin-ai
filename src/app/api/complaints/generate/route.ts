@@ -499,6 +499,9 @@ export async function POST(request: NextRequest) {
         model_name: 'claude-sonnet-4-6',
         status: 'completed',
         input_data: body,
+        // citationGuarantee on output_data for audit. UI reads this to
+        // show a "we auto-added X citations — verify" badge when
+        // forced_after_retry is non-empty.
         output_data: { ...result, rightsPills },
         legal_references: result.legalReferences,
         input_tokens: result.usage?.input_tokens || null,
