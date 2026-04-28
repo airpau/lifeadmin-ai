@@ -167,9 +167,13 @@ async function fetchCoverage(): Promise<Ref[]> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return [];
   try {
     const supabase = getClient();
+    // Only show statutes the engine actually grounds against today —
+    // those marked current/updated by the verification cron. Filtering
+    // here keeps the published count honest as the index drifts.
     const { data } = await supabase
       .from('legal_references')
       .select('law_name, section, summary, category')
+      .in('verification_status', ['current', 'updated'])
       .order('law_name');
     return (data ?? []) as Ref[];
   } catch {
