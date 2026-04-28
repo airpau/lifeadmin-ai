@@ -996,6 +996,97 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
+      {/* ========== Real win — OneStream broadband ========== */}
+      {/* Real Paybacker case used here as social-proof + ROI proof
+          point. Sits after the trust band so credentials → real proof
+          → product features in the homepage flow. Don't claim the
+          dispute is settled — frame as "what was offered vs what UK
+          law entitles you to" and let the gap speak for itself. */}
+      <section className="real-win section-mint" id="real-win" aria-label="Real Paybacker case — broadband outage compensation">
+        <div className="wrap">
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow">A real Paybacker win — this week</span>
+            <h2>
+              Their offer: £106.96.
+              <br />
+              <span style={{ color: 'var(--accent-orange-deep)' }}>What the law actually said: £505.46.</span>
+            </h2>
+            <p>
+              Two flats. 35 days and 17 days without broadband. The provider offered
+              roughly 1.5 months&rsquo; rental as &ldquo;goodwill&rdquo;. Paybacker
+              cited the Ofcom Voluntary Automatic Compensation Scheme — £10.07 per
+              calendar day from day three of an outage — plus £31.19 per missed
+              engineer appointment. The gap is £398.50.
+            </p>
+          </Reveal>
+
+          <div className="real-win__grid">
+            <Reveal className="real-win__card real-win__card--lose">
+              <div className="real-win__label">What the supplier offered</div>
+              <div className="real-win__amount">£106.96</div>
+              <ul className="real-win__list">
+                <li>1 month rental on Flat 2 — £38.65</li>
+                <li>1.5 months rental on Flat 1 — £68.31</li>
+                <li>Framed as &ldquo;goodwill&rdquo;, not entitlement</li>
+                <li>No mention of Ofcom Auto-Comp Scheme</li>
+                <li>No allowance for missed engineer visits</li>
+              </ul>
+              <div className="real-win__caption">What most people would just accept.</div>
+            </Reveal>
+
+            <div className="real-win__arrow" aria-hidden="true">
+              <svg viewBox="0 0 64 24" fill="none">
+                <path d="M2 12 H56 M48 4 L60 12 L48 20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+
+            <Reveal className="real-win__card real-win__card--win">
+              <div className="real-win__label">What UK law actually says</div>
+              <div className="real-win__amount">£505.46</div>
+              <ul className="real-win__list">
+                <li>£312.17 — Auto-Comp on Flat 1 (31 days × £10.07)</li>
+                <li>£130.91 — Auto-Comp on Flat 2 (13 days × £10.07)</li>
+                <li>£62.38 — 2 missed engineer appointments × £31.19</li>
+                <li>Plus journey costs &amp; tenant losses on top</li>
+                <li>Cited from Ofcom GC C3.13, CRA 2015 s.49 + s.62</li>
+              </ul>
+              <div className="real-win__caption">What Paybacker&rsquo;s letter demanded — in 30 seconds.</div>
+            </Reveal>
+          </div>
+
+          <Reveal className="real-win__roi">
+            <div className="real-win__roi-headline">
+              <span className="real-win__roi-multiple">~4&times;</span>
+              <span>your annual Pro subscription, recovered on a single dispute.</span>
+            </div>
+            <p className="real-win__roi-detail">
+              Pro is £99.99/year. The gap on this one case alone (£398.50) is almost
+              4× the cost of a year&rsquo;s Pro membership — recovered from one outage,
+              one letter, one click.
+            </p>
+            <div className="real-win__equivalents">
+              <div className="real-win__equivalents-label">£398 is about:</div>
+              <ul>
+                <li>🏖️ A long weekend in Lisbon</li>
+                <li>☕ 250 flat whites at your local</li>
+                <li>📡 A whole year of average UK broadband</li>
+                <li>🎬 80 cinema tickets</li>
+                <li>🏋️ A year of Pure Gym</li>
+                <li>🛒 6 weeks of family food shopping</li>
+              </ul>
+            </div>
+          </Reveal>
+
+          <Reveal className="real-win__footnote">
+            Real Paybacker case. Provider name and figures from the actual provider
+            email, dated 28 April 2026. Compensation rates published by Ofcom and
+            effective from 1 April 2026. Final settlement may differ — Paybacker
+            cites the law and tracks the case through the provider&rsquo;s formal
+            complaint process and Ombudsman Services if needed.
+          </Reveal>
+        </div>
+      </section>
+
       {/* ========== Features intro ========== */}
       <section className="features-intro section-light" id="features">
         <div className="wrap">
