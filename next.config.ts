@@ -22,6 +22,16 @@ const nextConfig: NextConfig = {
         destination: '/auth/login',
         permanent: true,
       },
+      // Engineers guessing paybacker.co.uk/api should land on the B2B
+      // landing page. Exact match only — /api/foo continues to resolve
+      // against route handlers in src/app/api/*. Temporary (307) so we
+      // can swap in a real developer portal later without a permanent
+      // redirect cache hangover.
+      {
+        source: '/api',
+        destination: '/for-business',
+        permanent: false,
+      },
     ];
   },
   async rewrites() {
