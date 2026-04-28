@@ -61,8 +61,10 @@ export function generateKey(): { plaintext: string; prefix: string; hash: string
  * Validate an Authorization header. Returns the authed key on success
  * or { ok: false, error, status } on failure. Status mirrors what the
  * caller should send back to the client.
+ *
+ * Pass `clientIp` to enforce per-key IP allow-listing (paid tiers).
  */
-export async function authenticate(authHeader: string | null): Promise<AuthResult> {
+export async function authenticate(authHeader: string | null, clientIp?: string | null): Promise<AuthResult> {
   if (!authHeader) {
     return { ok: false, error: 'Missing Authorization header. Expected `Authorization: Bearer pbk_...`.', status: 401 };
   }
@@ -77,7 +79,7 @@ export async function authenticate(authHeader: string | null): Promise<AuthResul
   const supabase = getAdmin();
   const { data: keyRow, error } = await supabase
     .from('b2b_api_keys')
-    .select('id, name, tier, monthly_limit, owner_email, waitlist_id, key_hash, revoked_at')
+    .select('id, name, tier, monthly_limit, owner_email, waitlist_id, key_hash, revoked_at, allowed_ips')
     .eq('key_prefix', prefix)
     .maybeSingle();
 
@@ -93,6 +95,17 @@ export async function authenticate(authHeader: string | null): Promise<AuthResul
   const presented = Buffer.from(hash, 'hex');
   if (stored.length !== presented.length || !crypto.timingSafeEqual(stored, presented)) {
     return { ok: false, error: 'Invalid API key.', status: 401 };
+  }
+
+  // IP allow-list enforcement (paid tiers). When `allowed_ips` is set
+  // and non-empty, the caller's IP must match at least one entry. Exact
+  // match for now — CIDR support is a follow-up.
+  const allowedIps = (keyRow.allowed_ips ?? []) as string[];
+  if (allowedIps.length > 0) {
+    const ip = (clientIp ?? '').trim();
+    if (!ip || !allowedIps.map((s) => s.trim()).includes(ip)) {
+      return { ok: false, error: 'Source IP not in allow-list for this key.', status: 403 };
+    }
   }
 
   // Live count of usage this calendar month.

@@ -258,6 +258,26 @@ export default function ForBusinessPage() {
               Download usage and audit logs as CSV (5,000 rows per export). Plug into your own SIEM,
               compliance dashboard, or quarterly board pack without us in the way.
             </ProblemCard>
+            <ProblemCard title="Team / multi-seat access">
+              Invite teammates with admin or viewer roles. They sign in with their own work email,
+              everyone sees the same account. Procurement, security, eng, and CX all in one place.
+            </ProblemCard>
+            <ProblemCard title="In-browser API explorer">
+              Try POST /v1/disputes live with your own key. Inspect the full response, latency, and
+              status code without leaving the portal. No Postman, no curl gymnastics.
+            </ProblemCard>
+            <ProblemCard title="Live status block + public /status">
+              p50 / p95 latency and 24h uptime on the portal home, plus a public
+              <a href="/status" className="m-business-link"> /status</a> page you can link to from procurement docs.
+            </ProblemCard>
+            <ProblemCard title="IP allow-listing (paid)">
+              Restrict each Growth or Enterprise key to a list of source IPs. Calls from anywhere
+              else return 403. Defence-in-depth for the keys your CX agents use.
+            </ProblemCard>
+            <ProblemCard title="Weekly email digest">
+              Per-customer Monday digest with last 7 days of usage, errors, p95 latency, and
+              per-key breakdown. Toggle off in the portal if you'd rather not receive.
+            </ProblemCard>
           </div>
           <p className="m-business-footnote m-business-footnote--center">
             Sign in via passwordless 30-min one-time link — no Paybacker user account to create.

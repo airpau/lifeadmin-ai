@@ -29,7 +29,9 @@ function rateLimitHeaders(monthlyUsed: number, monthlyLimit: number) {
 
 export async function POST(request: NextRequest) {
   const t0 = Date.now();
-  const auth = await authenticate(request.headers.get('authorization'));
+  const fwd = request.headers.get('x-forwarded-for');
+  const clientIp = fwd ? fwd.split(',')[0].trim() : (request.headers.get('x-real-ip') || null);
+  const auth = await authenticate(request.headers.get('authorization'), clientIp);
   if (!auth.ok || !auth.key) {
     return NextResponse.json({ error: auth.error }, { status: auth.status ?? 401 });
   }

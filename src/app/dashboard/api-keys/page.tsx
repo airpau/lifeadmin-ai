@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-interface Key { id: string; name: string; key_prefix: string; tier: string; monthly_limit: number; monthly_used: number; last_used_at: string | null; revoked_at: string | null; created_at: string; }
+interface Key { id: string; name: string; key_prefix: string; tier: string; monthly_limit: number; monthly_used: number; last_used_at: string | null; revoked_at: string | null; created_at: string; allowed_ips?: string[] | null; weekly_digest_opt_in?: boolean; }
 interface UsageRow { key_id: string; endpoint: string; status_code: number; latency_ms: number | null; scenario_kind: string | null; error_code: string | null; created_at: string; }
 interface AuditRow { id: number; action: string; actor: string; key_id: string | null; ip_address: string | null; user_agent: string | null; metadata: Record<string, any>; created_at: string; }
 interface DailyUsage { day: string; ok: number; err: number; }
@@ -21,7 +21,11 @@ interface Webhook { id: string; url: string; description: string | null; events:
 interface Delivery { id: number; webhook_id: string; event: string; status_code: number | null; latency_ms: number | null; attempt: number; error: string | null; created_at: string; }
 interface WebhookData { webhooks: Webhook[]; recent_deliveries: Delivery[]; supported_events: string[]; }
 
-type Tab = 'keys' | 'usage' | 'activity' | 'webhooks' | 'audit' | 'account';
+interface Member { id: string; member_email: string; role: 'admin' | 'viewer'; invited_at: string; accepted_at: string | null; invited_by: string | null; }
+interface MembersData { owner: string; your_role: 'admin' | 'viewer'; members: Member[]; }
+interface StatusPayload { status: string; last_24h: { uptime_pct: number; p50_latency_ms: number; p95_latency_ms: number; total_calls: number; error_rate_pct: number }; }
+
+type Tab = 'keys' | 'usage' | 'activity' | 'webhooks' | 'members' | 'explorer' | 'audit' | 'account';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +41,8 @@ export default function ApiKeysPortalPage() {
 
   const [data, setData] = useState<PortalData | null>(null);
   const [webhookData, setWebhookData] = useState<WebhookData | null>(null);
+  const [membersData, setMembersData] = useState<MembersData | null>(null);
+  const [status, setStatus] = useState<StatusPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reissued, setReissued] = useState<{ id: string; plaintext: string } | null>(null);
@@ -47,15 +53,21 @@ export default function ApiKeysPortalPage() {
     setLoading(true);
     setError(null);
     try {
-      const [r1, r2] = await Promise.all([
+      const [r1, r2, r3, r4] = await Promise.all([
         fetch(`/api/v1/portal-keys?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`),
         fetch(`/api/v1/portal-webhooks?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`),
+        fetch(`/api/v1/portal-members?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`),
+        fetch(`/api/status`),
       ]);
       const j1 = await r1.json();
       const j2 = await r2.json();
+      const j3 = await r3.json();
+      const j4 = await r4.json();
       if (!r1.ok) throw new Error(j1.error || 'Could not load portal');
       setData(j1);
       if (r2.ok) setWebhookData(j2);
+      if (r3.ok) setMembersData(j3);
+      if (r4.ok) setStatus(j4);
     } catch (e: any) {
       setError(e?.message || 'Failed');
     } finally { setLoading(false); }
@@ -150,16 +162,18 @@ export default function ApiKeysPortalPage() {
             </div>
 
             <div style={{ display: 'flex', gap: 4, marginTop: 24, borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
-              {(['keys', 'usage', 'activity', 'webhooks', 'audit', 'account'] as const).map((t) => (
+              {(['keys', 'usage', 'activity', 'webhooks', 'members', 'explorer', 'audit', 'account'] as const).map((t) => (
                 <button key={t} onClick={() => setTab(t)} style={tab === t ? tabActive : tabBtn}>{labelFor(t)}</button>
               ))}
             </div>
 
             <div style={{ paddingTop: 20 }}>
-              {tab === 'keys' && <KeysTab keys={data.keys} onReissue={reissue} onRevoke={revoke} />}
+              {tab === 'keys' && <KeysTab keys={data.keys} status={status} token={token} email={email} onReissue={reissue} onRevoke={revoke} onChange={load} />}
               {tab === 'usage' && <UsageTab daily={data.usage_daily} onExport={() => exportCsv('usage')} />}
               {tab === 'activity' && <ActivityTab usage={data.recent_usage} keys={data.all_keys} onOpen={(r) => setDrawer({ kind: 'usage', row: r })} />}
               {tab === 'webhooks' && webhookData && <WebhooksTab data={webhookData} token={token} email={email} onChange={load} onOpen={(r) => setDrawer({ kind: 'delivery', row: r })} />}
+              {tab === 'members' && <MembersTab data={membersData} token={token} email={email} onChange={load} />}
+              {tab === 'explorer' && <ExplorerTab keys={data.keys} />}
               {tab === 'audit' && <AuditTab audit={data.audit_log} keys={data.all_keys} onOpen={(r) => setDrawer({ kind: 'audit', row: r })} onExport={() => exportCsv('audit')} />}
               {tab === 'account' && <AccountTab email={email} keys={data.all_keys} />}
             </div>
@@ -174,36 +188,237 @@ export default function ApiKeysPortalPage() {
 
 // ─── Tabs ──────────────────────────────────────────────────────────────────
 
-function KeysTab({ keys, onReissue, onRevoke }: { keys: Key[]; onReissue: (id: string) => void; onRevoke: (id: string) => void }) {
-  if (keys.length === 0) return <p style={{ color: '#64748b' }}>No active keys. <Link href="/for-business" style={{ color: '#0f172a' }}>Get one →</Link></p>;
+function KeysTab({ keys, status, token, email, onReissue, onRevoke, onChange }: { keys: Key[]; status: StatusPayload | null; token: string; email: string; onReissue: (id: string) => void; onRevoke: (id: string) => void; onChange: () => void }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      {keys.map((k) => {
-        const pct = k.monthly_limit > 0 ? Math.min(100, Math.round((k.monthly_used / k.monthly_limit) * 100)) : 0;
-        return (
-          <div key={k.id} style={card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 15 }}>{k.name}</div>
-                <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
-                  Prefix <code style={inlineCode}>{k.key_prefix}</code> · Tier <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{k.tier}</strong> · Issued {new Date(k.created_at).toLocaleDateString('en-GB')}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => onReissue(k.id)} style={btn}>Re-issue</button>
-                <button onClick={() => onRevoke(k.id)} style={{ ...btn, background: '#b91c1c' }}>Revoke</button>
-              </div>
-            </div>
-            <div style={{ marginTop: 14, fontSize: 13, color: '#64748b' }}>
-              Usage this month: <strong style={{ color: '#0f172a' }}>{k.monthly_used.toLocaleString()}</strong> / {k.monthly_limit.toLocaleString()} ({pct}%)
-            </div>
-            <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, marginTop: 6, overflow: 'hidden' }}>
-              <div style={{ width: `${pct}%`, height: '100%', background: pct >= 90 ? '#dc2626' : pct >= 60 ? '#d97706' : '#059669' }} />
-            </div>
-            {k.last_used_at && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Last used {new Date(k.last_used_at).toLocaleString('en-GB')}</div>}
+      {/* Live status block */}
+      {status && (
+        <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ width: 12, height: 12, borderRadius: 6, background: status.status === 'operational' ? '#059669' : status.status === 'degraded' ? '#d97706' : '#b91c1c' }} />
+          <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>{status.status}</div>
+          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <span>Uptime 24h: <strong style={{ color: '#0f172a' }}>{status.last_24h.uptime_pct.toFixed(2)}%</strong></span>
+            <span>p50: <strong style={{ color: '#0f172a' }}>{status.last_24h.p50_latency_ms}ms</strong></span>
+            <span>p95: <strong style={{ color: '#0f172a' }}>{status.last_24h.p95_latency_ms}ms</strong></span>
+            <Link href="/status" style={{ color: '#475569' }}>Public status →</Link>
           </div>
-        );
-      })}
+        </div>
+      )}
+      {keys.length === 0 ? <p style={{ color: '#64748b' }}>No active keys. <Link href="/for-business" style={{ color: '#0f172a' }}>Get one →</Link></p> : keys.map((k) => (
+        <KeyCard key={k.id} k={k} token={token} email={email} onReissue={onReissue} onRevoke={onRevoke} onChange={onChange} />
+      ))}
+    </div>
+  );
+}
+
+function KeyCard({ k, token, email, onReissue, onRevoke, onChange }: { k: Key; token: string; email: string; onReissue: (id: string) => void; onRevoke: (id: string) => void; onChange: () => void }) {
+  const pct = k.monthly_limit > 0 ? Math.min(100, Math.round((k.monthly_used / k.monthly_limit) * 100)) : 0;
+  const [editingIps, setEditingIps] = useState(false);
+  const [ipInput, setIpInput] = useState((k.allowed_ips ?? []).join(', '));
+  const isStarter = k.tier === 'starter';
+
+  async function saveIps() {
+    const ips = ipInput.split(',').map((s) => s.trim()).filter(Boolean);
+    const r = await fetch('/api/v1/portal-key-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, email, id: k.id, allowed_ips: ips.length === 0 ? null : ips }) });
+    const j = await r.json();
+    if (!r.ok) { alert(j.error || 'Failed'); return; }
+    setEditingIps(false);
+    onChange();
+  }
+  async function toggleDigest() {
+    await fetch('/api/v1/portal-key-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, email, id: k.id, weekly_digest_opt_in: !(k.weekly_digest_opt_in ?? true) }) });
+    onChange();
+  }
+
+  return (
+    <div style={card}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 15 }}>{k.name}</div>
+          <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+            Prefix <code style={inlineCode}>{k.key_prefix}</code> · Tier <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{k.tier}</strong> · Issued {new Date(k.created_at).toLocaleDateString('en-GB')}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => onReissue(k.id)} style={btn}>Re-issue</button>
+          <button onClick={() => onRevoke(k.id)} style={{ ...btn, background: '#b91c1c' }}>Revoke</button>
+        </div>
+      </div>
+      <div style={{ marginTop: 14, fontSize: 13, color: '#64748b' }}>
+        Usage this month: <strong style={{ color: '#0f172a' }}>{k.monthly_used.toLocaleString()}</strong> / {k.monthly_limit.toLocaleString()} ({pct}%)
+      </div>
+      <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, marginTop: 6, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: pct >= 90 ? '#dc2626' : pct >= 60 ? '#d97706' : '#059669' }} />
+      </div>
+      {pct >= 90 && (
+        <div style={{ marginTop: 12, padding: 12, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#991b1b' }}>
+          <strong>{pct >= 100 ? 'Monthly limit reached.' : 'Approaching monthly limit.'}</strong> Calls beyond your cap will return 429 until the 1st (UTC).
+          {isStarter && <span> Upgrade to <strong>Growth (£499/mo, 10k calls)</strong> to keep going.</span>}
+          <div style={{ marginTop: 10 }}>
+            <Link href="/for-business#buy" style={btn}>Upgrade tier →</Link>
+          </div>
+        </div>
+      )}
+      {k.last_used_at && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Last used {new Date(k.last_used_at).toLocaleString('en-GB')}</div>}
+
+      {/* Per-key settings */}
+      <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f1f5f9', display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ fontSize: 13 }}>
+            <strong>IP allow-list</strong> {isStarter ? <span style={{ color: '#94a3b8', fontSize: 12 }}> (Growth + Enterprise only)</span> : (k.allowed_ips && k.allowed_ips.length > 0 ? <span style={{ color: '#0f172a' }}> · {k.allowed_ips.length} address{k.allowed_ips.length > 1 ? 'es' : ''}</span> : <span style={{ color: '#94a3b8' }}> · not set (all IPs allowed)</span>)}
+          </div>
+          {!isStarter && <button onClick={() => setEditingIps((v) => !v)} style={btnGhost}>{editingIps ? 'Cancel' : 'Edit'}</button>}
+        </div>
+        {editingIps && !isStarter && (
+          <div style={{ display: 'grid', gap: 8 }}>
+            <input value={ipInput} onChange={(e) => setIpInput(e.target.value)} placeholder="203.0.113.42, 198.51.100.1" style={inputStyle} />
+            <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>Comma-separated. Calls from any other IP will be rejected with 403. Leave empty to disable.</p>
+            <div><button onClick={saveIps} style={btn}>Save</button></div>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 13 }}><strong>Weekly email digest</strong> · Mondays 09:00 UTC summary of usage + errors</div>
+          <button onClick={toggleDigest} style={btnGhost}>{k.weekly_digest_opt_in === false ? 'Off · click to turn on' : 'On · click to turn off'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MembersTab({ data, token, email, onChange }: { data: MembersData | null; token: string; email: string; onChange: () => void }) {
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'admin' | 'viewer'>('viewer');
+  if (!data) return <p style={{ color: '#64748b' }}>Loading…</p>;
+  const isAdmin = data.your_role === 'admin';
+  async function invite(e: React.FormEvent) {
+    e.preventDefault();
+    const r = await fetch('/api/v1/portal-members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, email, action: 'invite', member_email: inviteEmail, role: inviteRole }) });
+    const j = await r.json();
+    if (!r.ok) { alert(j.error || 'Failed'); return; }
+    setInviteEmail('');
+    onChange();
+  }
+  async function changeRole(memberEmail: string, role: 'admin' | 'viewer') {
+    await fetch('/api/v1/portal-members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, email, action: 'role', member_email: memberEmail, role }) });
+    onChange();
+  }
+  async function remove(memberEmail: string) {
+    if (!confirm(`Remove ${memberEmail} from this account?`)) return;
+    await fetch('/api/v1/portal-members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, email, action: 'remove', member_email: memberEmail }) });
+    onChange();
+  }
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <div style={card}>
+        <h3 style={sectionTitle}>Account owner</h3>
+        <p style={{ color: '#475569', fontSize: 14, margin: '8px 0' }}>Owner: <strong>{data.owner}</strong></p>
+        <p style={{ color: '#475569', fontSize: 14, margin: '8px 0' }}>Your role: <span style={{ ...badge, background: isAdmin ? '#d1fae5' : '#dbeafe', color: isAdmin ? '#065f46' : '#1e40af' }}>{data.your_role}</span></p>
+      </div>
+      {isAdmin && (
+        <form onSubmit={invite} style={{ ...card, display: 'grid', gap: 10 }}>
+          <h3 style={sectionTitle}>Invite a teammate</h3>
+          <p style={{ color: '#475569', fontSize: 13, margin: 0 }}>They&rsquo;ll receive an email and can sign in to this portal with their work email. Viewers can read; admins can manage keys, webhooks, members.</p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input type="email" required value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="teammate@company.com" style={{ ...inputStyle, flex: 1, minWidth: 220 }} />
+            <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as any)} style={selectStyle}>
+              <option value="viewer">Viewer</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button type="submit" style={btn}>Invite</button>
+          </div>
+        </form>
+      )}
+      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+        <h3 style={{ ...sectionTitle, padding: '14px 20px 0' }}>Members ({data.members.length + 1})</h3>
+        <table style={{ ...tableStyle, marginTop: 10 }}>
+          <thead><tr style={trHead}><th style={th}>Email</th><th style={th}>Role</th><th style={th}>Status</th><th style={th}>Invited by</th><th style={th}></th></tr></thead>
+          <tbody>
+            <tr style={{ borderTop: '1px solid #f1f5f9' }}>
+              <td style={td}><strong>{data.owner}</strong></td>
+              <td style={td}><span style={{ ...badge, background: '#d1fae5', color: '#065f46' }}>owner</span></td>
+              <td style={td}>—</td><td style={td}>—</td><td style={td}></td>
+            </tr>
+            {data.members.map((m) => (
+              <tr key={m.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                <td style={td}>{m.member_email}</td>
+                <td style={td}><span style={{ ...badge, background: m.role === 'admin' ? '#d1fae5' : '#dbeafe', color: m.role === 'admin' ? '#065f46' : '#1e40af' }}>{m.role}</span></td>
+                <td style={td}>{m.accepted_at ? 'Accepted' : 'Pending'}</td>
+                <td style={td}>{m.invited_by ?? '—'}</td>
+                <td style={{ ...td, textAlign: 'right' }}>
+                  {isAdmin && (
+                    <>
+                      <button onClick={() => changeRole(m.member_email, m.role === 'admin' ? 'viewer' : 'admin')} style={btnGhost}>Make {m.role === 'admin' ? 'viewer' : 'admin'}</button>
+                      {' '}
+                      <button onClick={() => remove(m.member_email)} style={{ ...btn, background: '#b91c1c' }}>Remove</button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ExplorerTab({ keys }: { keys: Key[] }) {
+  const [apiKey, setApiKey] = useState('');
+  const [scenario, setScenario] = useState('Ryanair cancelled my flight LGW-DUB six hours before departure with no replacement, refusing compensation. The flight was 1500km.');
+  const [amount, setAmount] = useState('350');
+  const [running, setRunning] = useState(false);
+  const [response, setResponse] = useState<any | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [latency, setLatency] = useState<number | null>(null);
+  const [statusCode, setStatusCode] = useState<number | null>(null);
+
+  async function send() {
+    setRunning(true); setResponse(null); setErrorMsg(null); setStatusCode(null); setLatency(null);
+    const t0 = Date.now();
+    try {
+      const r = await fetch('https://paybacker.co.uk/api/v1/disputes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey.trim()}` },
+        body: JSON.stringify({ scenario, amount: amount ? Number(amount) : undefined }),
+      });
+      setStatusCode(r.status);
+      setLatency(Date.now() - t0);
+      const j = await r.json();
+      setResponse(j);
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Network error');
+    } finally { setRunning(false); }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <div style={card}>
+        <h3 style={sectionTitle}>API explorer</h3>
+        <p style={{ color: '#475569', fontSize: 13, margin: '6px 0 12px' }}>
+          Try <code style={inlineCode}>POST /v1/disputes</code> live with one of your own keys. Plaintext is held in your browser only — we never store it.
+        </p>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="pbk_xxxx_xxxx — paste your plaintext key here" style={inputStyle} />
+          {keys.length > 0 && (
+            <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>
+              Active key prefixes: {keys.map((k) => <code key={k.id} style={{ ...inlineCode, marginRight: 4 }}>{k.key_prefix}</code>)}
+            </p>
+          )}
+          <textarea value={scenario} onChange={(e) => setScenario(e.target.value)} rows={3} style={{ ...inputStyle, fontFamily: 'inherit' }} placeholder="Describe the dispute scenario in plain English (≥10 chars)" />
+          <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount in GBP (optional)" style={inputStyle} />
+          <div><button onClick={send} disabled={running || !apiKey || scenario.length < 10} style={btn}>{running ? 'Sending…' : 'Send POST /v1/disputes →'}</button></div>
+        </div>
+      </div>
+      {errorMsg && <p style={{ color: '#b91c1c' }}>{errorMsg}</p>}
+      {response && (
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+            <h3 style={sectionTitle}>Response</h3>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{statusCode != null && <span style={statusBadge(statusCode)}>HTTP {statusCode}</span>}{' · '}{latency != null && `${latency}ms`}</div>
+          </div>
+          <pre style={{ background: '#0f172a', color: '#e2e8f0', padding: 16, borderRadius: 8, overflow: 'auto', fontSize: 12, lineHeight: 1.55, fontFamily: 'ui-monospace, Menlo, monospace' }}>{JSON.stringify(response, null, 2)}</pre>
+        </div>
+      )}
     </div>
   );
 }
@@ -460,6 +675,25 @@ function AuditTab({ audit, keys, onOpen, onExport }: { audit: AuditRow[]; keys: 
 }
 
 function AccountTab({ email, keys }: { email: string; keys: Key[] }) {
+  const [opening, setOpening] = useState(false);
+  async function openBilling() {
+    setOpening(true);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const r = await fetch('/api/v1/portal-billing', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: params.get('token'), email }) });
+      const j = await r.json();
+      if (!r.ok) {
+        if (j.upgrade_url) {
+          alert(j.error);
+          window.location.href = j.upgrade_url;
+        } else {
+          alert(j.error || 'Could not open billing');
+        }
+        return;
+      }
+      window.location.href = j.url;
+    } finally { setOpening(false); }
+  }
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div style={card}>
@@ -493,7 +727,7 @@ function AccountTab({ email, keys }: { email: string; keys: Key[] }) {
       <div style={card}>
         <h3 style={sectionTitle}>Billing</h3>
         <p style={{ margin: '8px 0 12px', color: '#475569' }}>Manage your Stripe subscription, update card, view invoices.</p>
-        <a href="https://billing.stripe.com/p/login/9AUaH4dWj9Hf6Wk000" target="_blank" rel="noreferrer" style={btn}>Open Stripe customer portal ↗</a>
+        <button onClick={openBilling} disabled={opening} style={btn}>{opening ? 'Opening…' : 'Open Stripe customer portal ↗'}</button>
         <p style={{ margin: '12px 0 0', color: '#64748b', fontSize: 13 }}>Free Starter pilot? No subscription to manage. Upgrade at <Link href="/for-business" style={{ color: '#0f172a' }}>/for-business</Link>.</p>
       </div>
       <div style={card}>
@@ -577,7 +811,7 @@ function Field({ rows }: { rows: Array<[string, any]> }) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-function labelFor(t: Tab) { return ({ keys: 'Keys', usage: 'Usage', activity: 'Recent calls', webhooks: 'Webhooks', audit: 'Audit log', account: 'Account' } as const)[t]; }
+function labelFor(t: Tab) { return ({ keys: 'Keys', usage: 'Usage', activity: 'Recent calls', webhooks: 'Webhooks', members: 'Team', explorer: 'Explorer', audit: 'Audit log', account: 'Account' } as const)[t]; }
 function shortenUA(ua: string | null) { if (!ua) return '—'; const m = ua.match(/(Chrome|Safari|Firefox|Edg|curl|node|Postman|Insomnia)\/?[\d.]*/i); return m ? m[0] : ua.slice(0, 30); }
 function statusBadge(code: number): React.CSSProperties { const isOk = code >= 200 && code < 300; const isClient = code >= 400 && code < 500; return { background: isOk ? '#d1fae5' : isClient ? '#fef3c7' : '#fee2e2', color: isOk ? '#065f46' : isClient ? '#92400e' : '#991b1b', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 }; }
 function actionBadge(action: string): React.CSSProperties { const palette: Record<string, [string, string]> = { key_created: ['#d1fae5', '#065f46'], key_revoked: ['#fee2e2', '#991b1b'], key_reissued: ['#fef3c7', '#92400e'], reveal_link_used: ['#dbeafe', '#1e40af'], portal_signin: ['#e0e7ff', '#3730a3'], login_link_requested: ['#f1f5f9', '#475569'], plan_changed: ['#cffafe', '#155e75'] }; const [bg, fg] = palette[action] ?? ['#f1f5f9', '#475569']; return { background: bg, color: fg, padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }; }
