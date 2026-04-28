@@ -55,6 +55,23 @@ type ExpectedBill = {
  billing_day?: number; bill_key?: string; occurrence_count?: number;
 };
 
+function detectBillCategory(name: string): string {
+ const n = (name || '').toLowerCase();
+ if (/\b(paratus|lendinvest|mortgage|nationwide|halifax|santander|barclays|natwest|hsbc|virgin.*money|coventry|skipton)\b/.test(n)) return 'mortgage';
+ if (/\b(council|borough|district|city.*of)\b/.test(n)) return 'council_tax';
+ if (/\b(british gas|edf|eon|octopus|bulb|sse|scottish.*power|ovo|shell.*energy|utilita|so.*energy)\b/.test(n)) return 'energy';
+ if (/\b(thames.*water|severn|anglian|united.*utilities|wessex|welsh.*water|yorkshire.*water|northumbrian)\b/.test(n)) return 'water';
+ if (/\b(bt|virgin.*media|sky|talktalk|plusnet|hyperoptic|community.*fibre|zen.*internet|starlink)\b/.test(n)) return 'broadband';
+ if (/\b(three|o2|ee|vodafone|giffgaff|tesco.*mobile|id.*mobile|smarty|lebara)\b/.test(n)) return 'mobile';
+ if (/\b(aviva|direct.*line|admiral|lv=?|axa|zurich|legal.*general|prudential|vitality|bupa|simply.*health)\b/.test(n)) return 'insurance';
+ if (/\b(netflix|spotify|disney|apple.*tv|amazon.*prime|now.*tv|dazn|youtube.*premium)\b/.test(n)) return 'streaming';
+ if (/\b(puregym|the.*gym|david.*lloyd|nuffield|fitness.*first|anytime.*fitness|jd.*gym)\b/.test(n)) return 'fitness';
+ if (/\b(adobe|microsoft|google|dropbox|icloud|1password|notion|slack|zoom|canva|chatgpt|openai)\b/.test(n)) return 'software';
+ if (/\b(dvla|vehicle.*tax|road.*tax)\b/.test(n)) return 'motoring';
+ if (/\b(charity|oxfam|red.*cross|cancer.*research|nspcc|rspca|unicef|wwf|amnesty)\b/.test(n)) return 'charity';
+ return 'other';
+}
+
 type FacBankStatus = 'bank_matched' | 'not_in_bank' | 'due_soon' | 'overdue';
 
 type FacItem = {
@@ -255,15 +272,65 @@ export default function MoneyHubPage() {
  }, [activeSpaceId]);
 
  const fetchExpectedBills = async (month?: string) => {
+ if (!userId) return;
  try {
  const targetMonth = month ?? selectedMonth;
- const url = targetMonth ? `/api/money-hub/expected-bills?month=${targetMonth}` : '/api/money-hub/expected-bills';
- const res = await fetch(url);
- const d = await res.json();
- if (!d.error && d.bills) {
- setExpectedBills(d.bills);
- setExpectedBillsTotal(d.totalExpected || 0);
+ let year = new Date().getFullYear();
+ let monthNum = new Date().getMonth() + 1;
+ if (targetMonth) {
+ const [y, m] = targetMonth.split('-').map(Number);
+ year = y; monthNum = m;
  }
+
+ const { data: rawBills, error } = await supabase.rpc('get_expected_bills', {
+ p_user_id: userId,
+ p_year: year,
+ p_month: monthNum,
+ });
+ if (error || !rawBills) return;
+
+ const billMonth = `${year}-${String(monthNum).padStart(2, '0')}`;
+ const { data: overrides } = await supabase
+ .from('bill_paid_overrides')
+ .select('bill_key')
+ .eq('user_id', userId)
+ .eq('bill_month', billMonth);
+ const paidKeys = new Set((overrides || []).map((o: any) => o.bill_key));
+
+ const now = new Date();
+ const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+ const bills: ExpectedBill[] = (rawBills as any[])
+ .filter((b) => b.occurrence_count >= 2 && b.occurrence_count <= 30)
+ .map((bill) => {
+ const billAmount = parseFloat(bill.expected_amount) || 0;
+ const billingDay: number = bill.billing_day || 0;
+ const paid = paidKeys.has(bill.bill_key);
+ let past_due = false;
+ if (billingDay > 0 && !paid) {
+ if (billMonth < currentYM) {
+ past_due = true;
+ } else if (billMonth === currentYM) {
+ past_due = billingDay < now.getDate();
+ }
+ }
+ return {
+ name: bill.provider_name,
+ expected_amount: billAmount,
+ category: detectBillCategory(bill.provider_name),
+ paid,
+ past_due,
+ source: bill.is_subscription ? 'subscription' : 'recurring',
+ expected_date: bill.expected_date,
+ billing_day: bill.billing_day,
+ occurrence_count: bill.occurrence_count,
+ bill_key: bill.bill_key,
+ };
+ });
+
+ bills.sort((a, b) => (a.billing_day || 0) - (b.billing_day || 0));
+ setExpectedBills(bills);
+ setExpectedBillsTotal(parseFloat(bills.reduce((s, b) => s + b.expected_amount, 0).toFixed(2)));
  } catch { /* silent */ }
  };
 
