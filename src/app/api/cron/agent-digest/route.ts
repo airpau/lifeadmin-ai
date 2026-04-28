@@ -128,6 +128,13 @@ async function gatherDigest(slot: Slot): Promise<DigestPayload> {
   };
 }
 
+/**
+ * Build the digest message. Restructured 2026-04-27: leads with
+ * decisions instead of raw stats, then surfaces what changed since
+ * the previous digest (grouped by agent) so the founder can scan
+ * the most actionable signal first instead of having to read past
+ * pulse metrics to find it.
+ */
 function buildMessage(payload: DigestPayload): string {
   const slotLabels: Record<Slot, string> = {
     morning: '🌅 Morning',
@@ -135,54 +142,94 @@ function buildMessage(payload: DigestPayload): string {
     evening: '🌙 Evening',
   };
 
-  const totalRuns = payload.executiveReportRows.length;
   const findings = payload.businessLogRows.filter(
     (r) => r.category && ESCALATED_CATEGORIES.has(r.category),
   );
+  // Decisions = anything you'd want to act on. Critical / escalation
+  // / recommendation are obvious; warn rows often carry an "Ask:" line
+  // that means the agent wants a call.
   const decisions = findings.filter(
-    (r) => r.category === 'recommendation' || r.category === 'critical' || r.category === 'escalation',
+    (r) => ['recommendation', 'critical', 'escalation', 'warn'].includes(r.category ?? ''),
+  );
+  // What's new = everything else worth showing — mostly findings,
+  // alerts, agent_governance changes. Sorted newest-first by the query.
+  const news = findings.filter((r) => !decisions.includes(r));
+
+  // Group news by agent so the founder can see the shape of activity
+  // ("bug-triager found 3 things, finance-analyst found 1") rather than
+  // a flat list.
+  const byAgent = new Map<string, typeof news>();
+  for (const r of news) {
+    const k = r.created_by || 'system';
+    const arr = byAgent.get(k) ?? [];
+    arr.push(r);
+    byAgent.set(k, arr);
+  }
+
+  const recentAgents = Array.from(
+    new Set(
+      [
+        ...payload.executiveReportRows.map((r) => r.agent_name),
+        ...payload.businessLogRows.map((r) => r.created_by),
+      ].filter(Boolean) as string[],
+    ),
   );
 
   const lines: string[] = [];
-  lines.push(`*${slotLabels[payload.slot]} digest — ${new Date().toUTCString().slice(0, 22)}*`);
-  lines.push(`Window: ${payload.windowStart.slice(11, 16)} → now`);
-  lines.push(`Agent runs: ${totalRuns} · Findings: ${findings.length}`);
+
+  // Header — one line, scannable.
+  const headerEmoji = decisions.length > 0 ? '🔴' : findings.length > 0 ? '🟡' : '🟢';
+  lines.push(`${headerEmoji} *${slotLabels[payload.slot]} digest · ${new Date().toUTCString().slice(0, 22)}*`);
+  lines.push(`${decisions.length} need decisions · ${news.length} other findings · ${recentAgents.length} agents active`);
   lines.push('');
 
-  if (findings.length === 0) {
-    lines.push('🟢 All clean. No findings or recommendations since the last digest.');
-  } else {
-    lines.push('*Findings*');
-    for (const r of findings.slice(0, 10)) {
-      const e = categoryEmoji(r.category);
-      const who = r.created_by ? `[${r.created_by}] ` : '';
-      const headline = (r.title ?? '(no title)').slice(0, 100);
-      const detail = (r.content ?? '').slice(0, 160);
-      lines.push(`${e} ${who}*${headline}*${detail ? ` — ${detail}` : ''}`);
-    }
-  }
-
+  // Decisions FIRST — the most actionable signal goes at the top so
+  // the founder doesn't need to scroll past pulse stats to find it.
   if (decisions.length > 0) {
-    lines.push('');
     lines.push('*Needs your decision*');
     for (const r of decisions.slice(0, 6)) {
-      const headline = (r.title ?? '').slice(0, 100);
-      const detail = (r.content ?? '').slice(0, 140);
-      lines.push(`• *${headline}*${detail ? ` — ${detail}` : ''}`);
+      const e = categoryEmoji(r.category);
+      const who = r.created_by ? `_${r.created_by}_ ` : '';
+      const headline = (r.title ?? '(no title)').slice(0, 110);
+      const detail = (r.content ?? '').replace(/\s+/g, ' ').slice(0, 180);
+      lines.push(`${e} ${who}*${headline}*`);
+      if (detail) lines.push(`  ${detail}`);
     }
+    if (decisions.length > 6) {
+      lines.push(`_+${decisions.length - 6} more — see business_log_`);
+    }
+    lines.push('');
+  } else {
+    lines.push('🟢 No open decisions since last digest.');
+    lines.push('');
   }
 
-  if (payload.slot === 'morning' && totalRuns > 0) {
-    const recentAgents = Array.from(
-      new Set(payload.executiveReportRows.map((r) => r.agent_name).filter(Boolean) as string[]),
-    );
-    if (recentAgents.length > 0) {
-      lines.push('');
-      lines.push(`*Active overnight:* ${recentAgents.join(', ')}`);
+  // What's new — grouped by agent so the founder can see the shape
+  // of activity, capped to keep the message readable.
+  if (byAgent.size > 0) {
+    lines.push('*What\'s new since last digest*');
+    let shown = 0;
+    for (const [agent, rows] of byAgent.entries()) {
+      if (shown >= 8) break;
+      const top = rows[0];
+      const headline = (top?.title ?? '').slice(0, 110);
+      const more = rows.length > 1 ? ` _(+${rows.length - 1})_` : '';
+      lines.push(`• _${agent}_ — ${headline}${more}`);
+      shown += 1;
     }
+    lines.push('');
   }
 
-  lines.push('');
+  // Agents that ran — ALWAYS list (was previously morning-slot only).
+  // Helps the founder verify the cron schedule is actually firing the
+  // agents they expect even when nothing was found.
+  if (recentAgents.length > 0) {
+    const label = payload.slot === 'morning' ? 'Active overnight' : 'Active this window';
+    const truncated = recentAgents.length > 12 ? recentAgents.slice(0, 12).concat(`+${recentAgents.length - 12}`) : recentAgents;
+    lines.push(`*${label}:* ${truncated.join(', ')}`);
+    lines.push('');
+  }
+
   lines.push('_paybacker.co.uk · digest cron_');
 
   return lines.join('\n');
