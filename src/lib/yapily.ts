@@ -12,12 +12,18 @@ const YAPILY_BASE_URL = 'https://api.yapily.com';
 // ── Auth Helper ──
 
 function getAuthHeader(): string {
-  const uuid = process.env.YAPILY_APPLICATION_UUID;
-  const secret = process.env.YAPILY_APPLICATION_SECRET;
+  // Trim defensively. Vercel's env-store can preserve trailing
+  // whitespace / newlines that the dashboard's "paste value" UI
+  // sometimes adds, and we hit a "Basic <base64-of-uuid:>" 401 on
+  // 2026-04-28 because an env-add via piped echo wrote an empty
+  // string. Trimming makes both classes of bug fail loudly here
+  // rather than silently producing a malformed Authorization header.
+  const uuid = process.env.YAPILY_APPLICATION_UUID?.trim();
+  const secret = process.env.YAPILY_APPLICATION_SECRET?.trim();
 
   if (!uuid || !secret) {
     throw new Error(
-      'YAPILY_APPLICATION_UUID and YAPILY_APPLICATION_SECRET must be set'
+      'YAPILY_APPLICATION_UUID and YAPILY_APPLICATION_SECRET must be set (and non-empty after trim)'
     );
   }
 
