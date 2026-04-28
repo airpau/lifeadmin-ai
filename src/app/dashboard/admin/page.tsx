@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   ShieldAlert, Users, CreditCard, TrendingUp, BarChart3,
   Building2, FileText, Bot, Loader2, ChevronRight, ArrowLeft,
-  Banknote, Clock, Mail, Database, Ticket, Brain, Shield, Tag, RefreshCw,
+  Banknote, Clock, Mail, Database, Ticket, Brain, Shield, Tag, RefreshCw, Briefcase,
 } from 'lucide-react';
 import TicketList from '@/components/admin/TicketList';
 import AITeamPanel from '@/components/admin/AITeamPanel';
@@ -281,6 +281,13 @@ export default function AdminPage() {
           className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
         >
           <Tag className="h-4 w-4" /> Cancel Info
+        </Link>
+        <Link
+          href="/dashboard/admin/b2b"
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
+          title="B2B waitlist + API keys"
+        >
+          <Briefcase className="h-4 w-4" /> B2B
         </Link>
         <Link
           href="/dashboard/admin/restore-bank-data"

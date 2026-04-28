@@ -83,6 +83,33 @@ async function sendConfirmation(submitter: { name: string; email: string; compan
   }
 }
 
+async function emailFounder(s: { name: string; work_email: string; company: string; role: string | null; expected_volume: string; use_case: string }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const founder = process.env.FOUNDER_EMAIL || 'aireypaul@googlemail.com';
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: auto; color: #0f172a;">
+      <h2 style="margin:0 0 16px 0;">New B2B waitlist signup</h2>
+      <p style="margin:0 0 6px;"><strong>${escapeHtml(s.name)}</strong> @ <strong>${escapeHtml(s.company)}</strong>${s.role ? ` (${escapeHtml(s.role)})` : ''}</p>
+      <p style="margin:0 0 6px;"><a href="mailto:${escapeHtml(s.work_email)}">${escapeHtml(s.work_email)}</a></p>
+      <p style="margin:0 0 16px;">Expected volume: <strong>${escapeHtml(s.expected_volume)}</strong></p>
+      <p style="margin:0 0 4px; color:#64748b; font-size:13px;">Use case</p>
+      <blockquote style="margin:0 0 16px; padding:12px 16px; background:#f8fafc; border-left:3px solid #0f172a;">${escapeHtml(s.use_case)}</blockquote>
+      <p><a href="https://paybacker.co.uk/dashboard/admin/b2b" style="background:#0f172a;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Review in admin</a></p>
+    </div>
+  `;
+  try {
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: founder,
+      subject: `🛠 B2B signup — ${s.company} (${s.expected_volume})`,
+      html,
+      replyTo: s.work_email,
+    });
+  } catch (e: any) {
+    console.error('[for-business-waitlist] founder email failed', e?.message);
+  }
+}
+
 async function notifyFounder(s: { name: string; work_email: string; company: string; role: string | null; expected_volume: string; use_case: string }) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
@@ -171,6 +198,14 @@ export async function POST(request: NextRequest) {
   // notification fails — the row is the source of truth.
   await Promise.all([
     sendConfirmation({ name: body.name!.trim(), email: work_email, company: body.company!.trim() }),
+    emailFounder({
+      name: body.name!.trim(),
+      work_email,
+      company: body.company!.trim(),
+      role: body.role?.trim() || null,
+      expected_volume: body.expected_volume!,
+      use_case: body.use_case!.trim(),
+    }),
     notifyFounder({
       name: body.name!.trim(),
       work_email,
