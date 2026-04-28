@@ -45,14 +45,13 @@ export async function GET() {
   const p50 = pctile(latencies, 0.5);
   const p95 = pctile(latencies, 0.95);
 
-  // Latency thresholds reflect real /v1/disputes behaviour — the call
-  // includes a Claude completion that legitimately takes 8–20s on the
-  // p95 for complex statute scenarios. Error-rate thresholds dominate
-  // the status decision; latency only flags when we're clearly degraded
-  // beyond the engine's normal envelope.
+  // Status is error-rate driven. Latency is reported as a separate
+  // metric — /v1/disputes is LLM-bound and 15–25s on p95 is the engine's
+  // normal envelope, not a degradation signal. We only flag degraded /
+  // outage when we're seeing actual server failures.
   const status: 'operational' | 'degraded' | 'outage' =
-    errorRate >= 5 || p95 > 30000 ? 'outage'
-    : errorRate >= 1 || p95 > 15000 ? 'degraded'
+    errorRate >= 5 ? 'outage'
+    : errorRate >= 1 ? 'degraded'
     : 'operational';
 
   // Uptime over last 24h, sampled by hour. Hour is "up" if it has any

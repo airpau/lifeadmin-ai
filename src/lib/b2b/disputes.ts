@@ -97,28 +97,66 @@ export function validateRequest(body: unknown): DisputeRequest | DisputeError {
 }
 
 /**
+ * Sector-detection regex over the scenario text. Independent of the
+ * verified-refs lookup so a clear keyword in the scenario (e.g. "flight",
+ * "Section 75") nails the category before we even hit the DB. This is
+ * the same regex set used downstream by classifyDisputeType so a single
+ * source of truth drives both retrieval and the response shape.
+ */
+function detectScenarioCategory(scenario: string): string | null {
+  const s = scenario.toLowerCase();
+  if (/flight|airline|cancell?ed|delay|baggage|boarding|ryanair|easyjet|jet2|tui|britishairways|wizz/.test(s)) return 'travel';
+  if (/train|rail|delay\s*repay|tfl|avanti|lner|gwr|northern|trainpennine|scotrail/.test(s)) return 'rail';
+  if (/broadband|mobile|isp|ofcom|sky\b|virgin|bt\b|talktalk|hyperoptic|three\s*uk|vodafone|ee\b/.test(s)) return 'broadband';
+  if (/energy|gas|electric|ofgem|british\s*gas|octopus|edf|ovo|eon|sse|scottish\s*power/.test(s)) return 'energy';
+  if (/section\s*75|credit\s*card|chargeback|payment\s*dispute|s\.?75|cca\s*1974/.test(s)) return 'finance';
+  if (/insurance|claim\s*declined|underwriter|loss\s*adjuster|insurer/.test(s)) return 'insurance';
+  if (/council\s*tax|valuation\s*office|band\s*[a-h]\b/.test(s)) return 'council_tax';
+  if (/parking|pcn|penalty\s*charge|popla/.test(s)) return 'parking';
+  if (/hmrc|tax\s*rebate|paye/.test(s)) return 'hmrc';
+  if (/dvla|driving\s*licence/.test(s)) return 'dvla';
+  if (/nhs|hospital/.test(s)) return 'nhs';
+  if (/gym|membership|puregym|the\s*gym\s*group/.test(s)) return 'gym';
+  if (/debt|bailiff|enforcement|statute\s*barred|lowell|cabot|intrum/.test(s)) return 'debt';
+  return null;
+}
+
+/**
  * Pull verified UK statute references that match the scenario keywords.
- * The complaint engine consumes this to keep its citations grounded.
+ * Strategy:
+ *   1. Detect the scenario sector via regex.
+ *   2. Pull every verified ref in that sector.
+ *   3. Pull a wider candidate set in 'general' too (CRA 2015 etc).
+ *   4. Score by token overlap, with a strong category-match boost so
+ *      a sector-specific ref always outranks a generic one when the
+ *      scenario is clearly in that sector.
  */
 async function fetchVerifiedRefs(scenario: string): Promise<any[]> {
   const supabase = getAdmin();
-  // Coarse keyword match — the engine will narrow further. We want
-  // enough candidate statutes that Claude has the right one available
-  // without flooding the prompt.
-  const tokens = scenario.toLowerCase().split(/\s+/).filter((t) => t.length >= 4).slice(0, 8);
-  if (tokens.length === 0) return [];
+  const tokens = scenario.toLowerCase().split(/\s+/).filter((t) => t.length >= 4).slice(0, 12);
+  const detectedCategory = detectScenarioCategory(scenario);
 
+  // Pull the whole index of verified refs (≈100s of rows is fine).
+  // Filtering by verification_status keeps us aligned with the public
+  // /coverage page and the consumer engine's ground truth.
   const { data } = await supabase
     .from('legal_references')
     .select('law_name, section, summary, full_text, source_url, category')
-    .limit(20);
-  if (!data) return [];
+    .in('verification_status', ['current', 'updated'])
+    .limit(500);
+  if (!data || data.length === 0) return [];
 
-  // Score by token overlap — simple but works for v1.
   return data
     .map((ref) => {
       const haystack = `${ref.law_name} ${ref.section ?? ''} ${ref.summary ?? ''} ${ref.category ?? ''}`.toLowerCase();
-      const score = tokens.reduce((s, tok) => s + (haystack.includes(tok) ? 1 : 0), 0);
+      const tokenScore = tokens.reduce((s, tok) => s + (haystack.includes(tok) ? 1 : 0), 0);
+      // Strong boost when the ref's category matches the detected sector
+      // — this is what keeps UK261 above CRA 2015 on a Ryanair scenario.
+      const categoryBoost = detectedCategory && ref.category === detectedCategory ? 10 : 0;
+      // Tiny boost for cross-sector statutes so they're available as
+      // fallback support but never beat a sector-specific match.
+      const generalBoost = ref.category === 'general' ? 1 : 0;
+      const score = tokenScore + categoryBoost + generalBoost;
       return { ref, score };
     })
     .filter((x) => x.score > 0)
@@ -288,23 +326,14 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
 }
 
 function classifyDisputeType(scenario: string, refCategory?: string): DisputeType {
+  // Scenario regex wins when it confidently identifies a sector — the
+  // ref category is a tiebreaker only for ambiguous scenarios. Avoids
+  // the "Ryanair flight cancelled → general (CRA 2015)" misfire.
+  const detected = detectScenarioCategory(scenario);
+  if (detected) return detected as DisputeType;
   if (refCategory && ['energy','broadband','finance','travel','rail','insurance','council_tax','parking','hmrc','dvla','nhs','gym','debt','general'].includes(refCategory)) {
     return refCategory as DisputeType;
   }
-  const s = scenario.toLowerCase();
-  if (/flight|airline|cancell?ed|delay|baggage|boarding/.test(s)) return 'travel';
-  if (/train|rail|delay\s*repay|tfl/.test(s)) return 'rail';
-  if (/broadband|mobile|isp|ofcom|sky|virgin|bt\b/.test(s)) return 'broadband';
-  if (/energy|gas|electric|ofgem|british\s*gas|octopus|edf|ovo|eon|sse/.test(s)) return 'energy';
-  if (/section\s*75|credit\s*card|chargeback|payment\s*dispute|bank/.test(s)) return 'finance';
-  if (/insurance|claim\s*declined|underwriter|loss\s*adjuster/.test(s)) return 'insurance';
-  if (/council\s*tax|band\b/.test(s)) return 'council_tax';
-  if (/parking|pcn|penalty\s*charge/.test(s)) return 'parking';
-  if (/hmrc|tax\s*rebate|paye/.test(s)) return 'hmrc';
-  if (/dvla|driving\s*licence/.test(s)) return 'dvla';
-  if (/nhs|hospital/.test(s)) return 'nhs';
-  if (/gym|membership/.test(s)) return 'gym';
-  if (/debt|bailiff|enforcement|statute\s*barred/.test(s)) return 'debt';
   return 'general';
 }
 
