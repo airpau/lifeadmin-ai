@@ -28,8 +28,15 @@ const KEY_STATUTES = [
   { name: 'Gas Act 1986', path: 'ukpga/1986/44' },
 ];
 
-// Regulator news/guidance pages to scan for recent changes
+// Regulator news/guidance pages to scan for recent changes.
+//
+// The full list of UK consumer-facing regulators that affect statutes
+// the engine cites. Coverage expansion landed 2026-04-28 to add FOS,
+// ICO, CMA, CAA, ORR, MaPS — previously only 4 of the 10 were monitored
+// and the docs/marketing claim "every UK statute, regulation, and
+// regulator code" wasn't structurally backed.
 const REGULATOR_SOURCES = [
+  // Existing four — kept verbatim.
   {
     name: 'Ofgem',
     category: 'energy',
@@ -53,6 +60,64 @@ const REGULATOR_SOURCES = [
     category: 'general',
     newsUrl: 'https://www.citizensadvice.org.uk/consumer/somethings-gone-wrong-with-a-purchase/making-a-complaint/',
     guidanceUrl: 'https://www.citizensadvice.org.uk/debt-and-money/',
+  },
+  // Added 2026-04-28 — coverage expansion.
+  {
+    // Financial Ombudsman Service: every FOS final decision creates a
+    // precedent that affects how regulated firms (insurers, banks,
+    // BNPL, motor finance) should treat similar disputes. The decision
+    // database is the upstream source of truth for sectors the FCA
+    // doesn't separately rule on.
+    name: 'Financial Ombudsman Service',
+    category: 'finance',
+    newsUrl: 'https://www.financial-ombudsman.org.uk/news-events/news',
+    guidanceUrl: 'https://www.financial-ombudsman.org.uk/decisions-database',
+  },
+  {
+    // ICO: UK GDPR / DPA 2018 enforcement. Subject Access Requests,
+    // data-breach claims, ICO fines on data controllers — all cited
+    // by the engine for general / data-handling disputes.
+    name: 'ICO',
+    category: 'general',
+    newsUrl: 'https://ico.org.uk/about-the-ico/media-centre/news-and-blogs/',
+    guidanceUrl: 'https://ico.org.uk/your-data-matters/',
+  },
+  {
+    // CMA: Competition and Markets Authority. DMCCA 2024 subscription-
+    // traps regime, drip pricing, fake reviews, mergers affecting
+    // consumer choice. Direct hits on the subscription / e-commerce
+    // sectors named in the strategy doc.
+    name: 'CMA',
+    category: 'general',
+    newsUrl: 'https://www.gov.uk/government/news?departments%5B%5D=competition-and-markets-authority',
+    guidanceUrl: 'https://www.gov.uk/government/collections/digital-markets-competition-and-consumers-act-2024',
+  },
+  {
+    // CAA: UK261 enforcement, package travel, ATOL. Travel sector
+    // grounding for the worked-example flight-delay use cases (Bott,
+    // AirHelp, Flightright).
+    name: 'CAA',
+    category: 'travel',
+    newsUrl: 'https://www.caa.co.uk/news/',
+    guidanceUrl: 'https://www.caa.co.uk/passengers/',
+  },
+  {
+    // ORR: Office of Rail and Road. Delay Repay (DR15), NRCoT,
+    // Conditions of Travel. Rail sector grounding (LNER, Avanti,
+    // GWR, Trainline).
+    name: 'ORR',
+    category: 'rail',
+    newsUrl: 'https://www.orr.gov.uk/about/news',
+    guidanceUrl: 'https://www.orr.gov.uk/rail/consumers',
+  },
+  {
+    // MaPS / Money & Pensions Service: government-backed money guidance,
+    // National Debtline. Debt sector grounding for StepChange / PayPlan
+    // / Tully use cases.
+    name: 'MaPS',
+    category: 'debt',
+    newsUrl: 'https://maps.org.uk/en/about-us/news',
+    guidanceUrl: 'https://www.moneyhelper.org.uk/en/money-troubles',
   },
 ];
 

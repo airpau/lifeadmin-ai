@@ -164,6 +164,13 @@ export default function DocsPage() {
                                  //   block listing missing citations and verdict
                                  //   (pass / weak / fail). Use to block-and-suggest
                                  //   in your CRM before the agent sends.
+  "voice"?: "business_to_customer" | "consumer_to_merchant",
+                                 // Default for B2B is 'business_to_customer' —
+                                 //   response goes from the business TO the customer.
+                                 //   Pass 'consumer_to_merchant' when you're acting
+                                 //   ON BEHALF of a consumer (CMCs, debt-advice
+                                 //   charities, consumer-rights aggregators —
+                                 //   see §6.4).
   "jurisdiction"?: "UK"          // optional, only "UK" is supported in v1.
 }`}</Code>
           <p>

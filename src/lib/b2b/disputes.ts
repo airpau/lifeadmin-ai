@@ -90,6 +90,21 @@ export interface DisputeRequest {
    * happen; this is the upstream equivalent.
    */
   proposed_reply?: string;
+  /**
+   * Voice direction for the generated draft / customer-facing response.
+   *
+   * Default for the B2B route is `business_to_customer` — the response
+   * a regulated UK business sends to a customer who has raised a
+   * dispute (use cases 6.1-6.3, 6.5).
+   *
+   * Pass `consumer_to_merchant` when the API caller is acting ON BEHALF
+   * of a consumer — e.g. claims-management businesses (Bott & Co,
+   * AirHelp, Money Redress) drafting demand letters to airlines or
+   * lenders, debt-advice charities (StepChange, Tully) writing to
+   * creditors, or consumer-rights aggregators (Resolver) routing
+   * complaints. Use case 6.4 in the docs.
+   */
+  voice?: 'consumer_to_merchant' | 'business_to_customer';
 }
 
 export type DisputeType =
@@ -219,6 +234,10 @@ export function validateRequest(body: unknown): DisputeRequest | DisputeError {
     proposed_reply:
       typeof b.proposed_reply === 'string' && b.proposed_reply.trim().length > 0
         ? b.proposed_reply
+        : undefined,
+    voice:
+      b.voice === 'consumer_to_merchant' || b.voice === 'business_to_customer'
+        ? b.voice
         : undefined,
   };
 }
@@ -477,12 +496,14 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
       amount: req.amount != null ? String(req.amount) : undefined,
       letterType: 'complaint',
       verifiedLegalRefs: verifiedRefsText || undefined,
-      // Default to business_to_customer voice for the B2B route — this
-      // is the engine path B2B customers actually want (response from
-      // the business TO their customer, not a complaint letter from the
-      // customer to a merchant). Consumer route is unaffected because
-      // it doesn't pass the voice param at all.
-      voice: 'business_to_customer',
+      // Voice direction: B2B route defaults to business_to_customer
+      // (banks / insurers / energy retailers responding TO their
+      // customer). CMCs and consumer-rights aggregators drafting ON
+      // BEHALF of a consumer pass voice='consumer_to_merchant' to
+      // override (use case 6.4). The engine respects whatever voice
+      // we pass; consumer route is unaffected because it doesn't pass
+      // a voice param at all.
+      voice: req.voice ?? 'business_to_customer',
       customerName: req.customer_name,
     });
   } catch (e: any) {

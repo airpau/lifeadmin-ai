@@ -28,8 +28,11 @@
     { "path": "/api/cron/deal-alerts",               "schedule": "0 9 * * 1" },
     { "path": "/api/cron/publish-blog",              "schedule": "0 7 * * 1,3,5" },
     { "path": "/api/cron/compare-subscriptions",     "schedule": "0 7 * * *" },
+    { "path": "/api/cron/verify-legal-refs",         "schedule": "0 5 * * *" },
     { "path": "/api/cron/legal-updates",             "schedule": "0 6 * * *" },
-    { "path": "/api/cron/consumer-law-news",         "schedule": "0 6 * * 1" },
+    { "path": "/api/cron/consumer-law-news",         "schedule": "0 6 * * *" },
+    { "path": "/api/cron/legal-coverage-alert",      "schedule": "0 7 * * *" },
+    { "path": "/api/cron/case-law-monitor",          "schedule": "0 6 * * 2" },
     { "path": "/api/cron/apply-learned-rules",       "schedule": "0 2 * * *" },
     { "path": "/api/cron/check-deal-prices",         "schedule": "0 6 * * *" }
   ]
