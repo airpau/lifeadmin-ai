@@ -457,6 +457,21 @@ If you cannot determine whether something changed (e.g. page content is unclear)
           })
           .eq('id', ref.id);
 
+        // Fan out statute.updated to B2B webhook subscribers. Best-effort.
+        try {
+          const { publishStatuteUpdated } = await import('@/lib/b2b/webhook-publisher');
+          await publishStatuteUpdated({
+            category: ref.category ?? 'general',
+            law_name: ref.law_name,
+            change_summary: result.changes.join('; '),
+            effective_date: null,
+            source_url: ref.source_url ?? null,
+            ref_id: ref.id,
+          });
+        } catch (whErr) {
+          console.warn('[verify-legal-refs] statute.updated webhook publish failed', whErr instanceof Error ? whErr.message : whErr);
+        }
+
         await supabase.from('legal_update_queue').insert({
           legal_reference_id: ref.id,
           change_type: 'regulator_change',

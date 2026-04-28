@@ -66,6 +66,54 @@ IMPORTANT: Only cite legislation that is DIRECTLY relevant to the specific indus
 - Only use [YOUR NAME], [YOUR ADDRESS], [YOUR PHONE NUMBER], [YOUR EMAIL], [YOUR ACCOUNT NUMBER] as placeholders if the user has NOT provided those details
 - IMPORTANT: When the user provides feedback or revisions, replace ALL matching placeholder text with the real details. Never leave a [PLACEHOLDER] if the user has given you that information.
 
+## VOICE DIRECTION (overrides the writing rules above when set)
+
+The user prompt may include a "VOICE" instruction. There are two:
+
+### voice = consumer_to_merchant (default)
+Write a formal complaint LETTER FROM THE CONSUMER TO THE MERCHANT.
+Use first-person from the consumer's perspective: "I am writing to dispute…",
+"Under the Consumer Rights Act 2015 I am entitled to…". Address it to the
+merchant. Set a deadline. Name the regulator as the consumer's next step.
+This is the existing Paybacker consumer-app behaviour. All consumer
+call-sites get this voice; do NOT switch unless the user prompt says
+otherwise.
+
+### voice = business_to_customer
+Write the RESPONSE A REGULATED UK BUSINESS SENDS TO A CUSTOMER who
+has raised a dispute with them. Critical rules:
+- ADDRESSED TO THE CUSTOMER. Open "Dear <customerName>" or "Hi
+  <customerName>" depending on tone.
+- SECOND PERSON. Refer to the customer as "you" and "your". Refer to the
+  business as "we" and "our team". NEVER first-person from the customer
+  ("I am writing to dispute…").
+- ACKNOWLEDGE the dispute the customer has raised. Thank them for getting
+  in touch. Take it seriously.
+- EXPLAIN the UK consumer-law position calmly, citing the statute that
+  applies. Do not lecture; just lay out how the law sees the situation.
+- STATE WHAT THE BUSINESS WILL DO. If the customer is entitled to a
+  remedy under UK law, say the business will provide it (refund, repair,
+  rebooking, escalation to a senior handler, investigation timeline).
+  If the position is more nuanced, say what the business will investigate
+  and by when.
+- NAME THE REGULATOR AS THE CUSTOMER'S ESCALATION OPTION ("If you remain
+  unhappy after our final response, you can refer this to the Financial
+  Ombudsman Service / Ofgem's Energy Ombudsman / Ofcom / CISAS / etc.").
+  NOT as a threat — as a Consumer-Duty-compliant disclosure.
+- TIMELINES. FCA-regulated firms have an 8-week final-response window;
+  state that explicitly. Energy: SLC requires a deadlock letter or 8-week
+  position before Ombudsman referral. Mention the relevant clock.
+- NO COMPLAINT-LETTER OPENERS. Do not write "I am writing to dispute…"
+  — that's the wrong voice direction.
+- NO "[YOUR NAME]" / "[YOUR ADDRESS]" placeholders. The customer doesn't
+  fill those in; the business signs off as the team handling the case.
+- SIGN-OFF: "Kind regards, <Team Name>" or similar business sign-off,
+  NOT a personal name. The caller's CRM substitutes the actual team
+  name and contact details before sending.
+- The "letter" output field still contains the prose. The
+  agent_talking_points and customer_facing_response fields the B2B
+  layer extracts will reflect this voice automatically.
+
 ## JSON output format:
 Return ONLY a JSON object with these exact keys:
 - letter: the complete formal complaint letter as a string
@@ -73,6 +121,25 @@ Return ONLY a JSON object with these exact keys:
 - estimatedSuccess: integer 0-100 based on strength of legal case (be honest — weak cases score 40-55, strong cases 70-85)
 - nextSteps: array of 3-4 concrete action strings if no response
 - escalationPath: string naming the specific ombudsman/regulator for this case`;
+
+/**
+ * Letter voice direction.
+ *
+ * - `consumer_to_merchant` (default): the consumer engine. Output is a
+ *   formal complaint letter written from the consumer to the merchant
+ *   they're disputing — the shape the Paybacker consumer app has used
+ *   in production for over a year. All existing call-sites get this
+ *   voice unchanged.
+ *
+ * - `business_to_customer`: the B2B engine path. Output is the response
+ *   a regulated UK business sends back to a customer who has raised a
+ *   dispute. Addressed to the customer (second person), names the
+ *   relevant statute and remedy, names the regulator only as the
+ *   customer's escalation option, signs off in business voice ("we /
+ *   our team") not personal voice. The B2B /v1/disputes route passes
+ *   this voice; nothing else should.
+ */
+export type LetterVoice = 'consumer_to_merchant' | 'business_to_customer';
 
 export interface ComplaintInput {
   companyName: string;
@@ -88,6 +155,19 @@ export interface ComplaintInput {
   billContext?: string;
   threadContext?: string; // full correspondence thread for ongoing disputes
   verifiedLegalRefs?: string; // injected from legal_references table
+  /**
+   * Voice direction. Defaults to 'consumer_to_merchant' — the consumer
+   * engine. B2B callers (src/lib/b2b/disputes.ts) pass
+   * 'business_to_customer' to get a response addressed to the customer.
+   */
+  voice?: LetterVoice;
+  /**
+   * Customer's display name when voice='business_to_customer'.
+   * Used in the salutation ("Dear <customerName>"). Ignored for
+   * 'consumer_to_merchant' voice (the consumer flow uses companyName
+   * as the addressee).
+   */
+  customerName?: string;
 }
 
 export interface ComplaintOutput {
@@ -128,12 +208,22 @@ export async function generateComplaintLetter(
 
   const letterTypeContext = input.letterType ? LETTER_TYPE_CONTEXT[input.letterType] || '' : '';
 
-  const userPrompt = `Generate a formal ${input.letterType === 'hmrc_tax_rebate' ? 'letter' : input.letterType === 'council_tax_band' ? 'challenge letter' : 'complaint letter'} for the following situation:
+  const voice: LetterVoice = input.voice ?? 'consumer_to_merchant';
+
+  const voiceBlock = voice === 'business_to_customer'
+    ? `VOICE: business_to_customer
+You are writing as a regulated UK business RESPONDING TO a customer who has raised a dispute with us. Address the response TO ${input.customerName ?? 'the customer'} (second person — "you", "your"). Refer to the business as "we" / "our team". The dispute concerns a transaction or interaction with ${input.companyName}. Do NOT write a complaint letter from the customer to ${input.companyName}; write the business's response back to the customer. Apply the business_to_customer voice rules from the system prompt.`
+    : `VOICE: consumer_to_merchant
+Write a formal complaint letter from the consumer to ${input.companyName}. Apply the standard consumer letter rules.`;
+
+  const userPrompt = `Generate a formal ${input.letterType === 'hmrc_tax_rebate' ? 'letter' : input.letterType === 'council_tax_band' ? 'challenge letter' : voice === 'business_to_customer' ? 'business response to a customer' : 'complaint letter'} for the following situation:
+
+${voiceBlock}
 
 ${letterTypeContext ? `LETTER TYPE CONTEXT: ${letterTypeContext}\n` : ''}
 Today's date (use this as the letter date): ${today}
-${input.letterType === 'hmrc_tax_rebate' ? 'Addressed to' : 'Company'}: ${input.companyName}
-Issue: ${issueDescription}
+${voice === 'business_to_customer' ? 'Customer raising the dispute' : input.letterType === 'hmrc_tax_rebate' ? 'Addressed to' : 'Company'}: ${voice === 'business_to_customer' ? (input.customerName ?? 'the customer') : input.companyName}
+${voice === 'business_to_customer' ? `Subject of the dispute (third party — not the addressee): ${input.companyName}\n` : ''}Issue: ${issueDescription}
 Desired Outcome: ${input.desiredOutcome}
 ${input.amount ? `Amount Involved: £${input.amount}` : ''}
 ${input.accountNumber ? `Account Number: ${input.accountNumber}` : ''}

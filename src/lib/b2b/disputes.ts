@@ -78,6 +78,18 @@ export interface DisputeRequest {
    * agent talking points only with no paste-ready paragraph.
    */
   channel?: 'letter' | 'email' | 'webchat' | 'phone';
+  /**
+   * FCA Consumer Duty pre-flight (use case 6.6).
+   *
+   * Pass the agent's drafted reply BEFORE it sends. The response will
+   * include a `missing_citations` field listing UK statutes the engine
+   * grounds in but the agent's draft fails to mention, plus a
+   * `preflight` block with verdict and recommended additions. Use to
+   * block-and-suggest in the agent's CRM so non-compliant replies
+   * never reach the customer. Aveni / Voyc grade calls AFTER they
+   * happen; this is the upstream equivalent.
+   */
+  proposed_reply?: string;
 }
 
 export type DisputeType =
@@ -118,6 +130,49 @@ export interface DisputeResponse {
    */
   case_reference: string | null;
   customer_id: string | null;
+  /**
+   * Populated when the request supplied `proposed_reply`. Compares
+   * the agent's drafted reply against the engine's grounding and
+   * surfaces what's missing, weak, or off-message. Null when the
+   * request didn't ask for a pre-flight check.
+   *
+   * Use to block-and-suggest in the agent's CRM:
+   *   if (preflight && preflight.verdict !== 'pass') {
+   *     showAgentFix(preflight.recommended_additions);
+   *     blockSend();
+   *   }
+   */
+  preflight: PreflightResult | null;
+}
+
+export interface PreflightResult {
+  /**
+   * `pass`   — agent's draft cites every statute the engine grounds in
+   *            and the position is consistent. Safe to send.
+   * `weak`   — agent's draft is on-message but misses a citation that
+   *            would strengthen the response under Consumer Duty.
+   *            Suggest, don't block.
+   * `fail`   — agent's draft contradicts the engine's grounded
+   *            position OR omits a critical statute. Block-and-suggest.
+   */
+  verdict: 'pass' | 'weak' | 'fail';
+  /**
+   * Statutes the engine cited that DO NOT appear in the agent's draft.
+   * Empty array when nothing is missing.
+   */
+  missing_citations: string[];
+  /**
+   * Specific text the agent should add to bring their draft up to
+   * the engine's grounded position. May reference a particular
+   * paragraph the engine produced.
+   */
+  recommended_additions: string[];
+  /**
+   * One-line plain-English explanation of the verdict for the agent
+   * UI ("You missed citing Section 75 — the customer is entitled
+   * under CCA 1974 and your reply doesn't mention it.").
+   */
+  rationale: string;
 }
 
 export interface DisputeError {
@@ -161,6 +216,104 @@ export function validateRequest(body: unknown): DisputeRequest | DisputeError {
     case_reference: typeof b.case_reference === 'string' ? b.case_reference : undefined,
     idempotency_key: typeof b.idempotency_key === 'string' ? b.idempotency_key : undefined,
     channel,
+    proposed_reply:
+      typeof b.proposed_reply === 'string' && b.proposed_reply.trim().length > 0
+        ? b.proposed_reply
+        : undefined,
+  };
+}
+
+/**
+ * Pre-flight check for FCA Consumer Duty: does the agent's drafted
+ * reply cite the same UK statutes the engine grounds the response in?
+ *
+ * Cheap heuristic — runs in-process, no extra LLM call. Looks for
+ * each cited authority's primary identifier (act name + section, or
+ * a regulator's standard licence-condition shorthand) in the proposed
+ * reply text. Misses are surfaced as `missing_citations` and the
+ * verdict bucketed by severity.
+ *
+ * Why heuristic and not another LLM call: pre-flight is the latency-
+ * critical path — agents are mid-typing in their CRM. A 2-second
+ * round-trip kills the UX. The heuristic catches the most common
+ * failure mode (forgot to cite the statute) deterministically and
+ * without burning Claude tokens. A future LLM-graded variant can
+ * land as `preflight: 'thorough'` once we have the latency budget.
+ */
+function computePreflight(
+  proposedReply: string,
+  groundedStatute: string,
+  groundedRefs: string[],
+  rationale: string,
+): PreflightResult {
+  const haystack = proposedReply.toLowerCase();
+
+  // Normalise each citation into 1-2 stable tokens we can grep for.
+  // E.g. "Consumer Credit Act 1974, s.75" → ["consumer credit act 1974", "s.75", "section 75"].
+  function citationTokens(citation: string): string[] {
+    const lower = citation.toLowerCase();
+    const tokens: string[] = [lower];
+    const sectionMatch = lower.match(/s\.?\s*(\d+[a-z]?)/);
+    if (sectionMatch) {
+      tokens.push(`s.${sectionMatch[1]}`);
+      tokens.push(`section ${sectionMatch[1]}`);
+    }
+    // Strip the year for shorter matching ("Consumer Credit Act").
+    const noYear = lower.replace(/,?\s*\d{4}.*$/, '').trim();
+    if (noYear && noYear !== lower) tokens.push(noYear);
+    return tokens;
+  }
+
+  function citationPresent(citation: string): boolean {
+    const tokens = citationTokens(citation);
+    return tokens.some((t) => t.length >= 4 && haystack.includes(t));
+  }
+
+  const allCitations = [groundedStatute, ...groundedRefs].filter((s) => s && s.length >= 4);
+  // Dedupe (case-insensitive).
+  const seen = new Set<string>();
+  const dedup: string[] = [];
+  for (const c of allCitations) {
+    const k = c.toLowerCase();
+    if (!seen.has(k)) { seen.add(k); dedup.push(c); }
+  }
+
+  const missing = dedup.filter((c) => !citationPresent(c));
+  const total = dedup.length;
+  const missingShare = total === 0 ? 0 : missing.length / total;
+
+  const recommended_additions: string[] = [];
+  if (missing.includes(groundedStatute) && groundedStatute) {
+    recommended_additions.push(
+      `Cite the primary authority: "${groundedStatute}". The engine grounds the customer's entitlement here; your draft doesn't mention it.`,
+    );
+  }
+  for (const m of missing) {
+    if (m === groundedStatute) continue;
+    recommended_additions.push(`Add a reference to "${m}" — relevant to this dispute and absent from your draft.`);
+  }
+
+  let verdict: PreflightResult['verdict'];
+  if (missing.length === 0) verdict = 'pass';
+  else if (missing.includes(groundedStatute) || missingShare >= 0.5) verdict = 'fail';
+  else verdict = 'weak';
+
+  const rationaleLine =
+    verdict === 'pass'
+      ? `Draft cites the ${total === 1 ? 'authority' : `${total} authorities`} the engine grounds in. Safe to send.`
+      : verdict === 'fail'
+        ? `Draft is missing ${missing.length} of ${total} cited authorities, including the primary statute. Block and suggest before sending.`
+        : `Draft cites the primary authority but is missing ${missing.length} supporting reference${missing.length === 1 ? '' : 's'}. Strengthen before sending.`;
+
+  // Tack the engine's own rationale onto the explanation when the
+  // draft fails — gives the agent the WHY in addition to the WHAT.
+  const fullRationale = verdict === 'pass' ? rationaleLine : `${rationaleLine} ${rationale}`;
+
+  return {
+    verdict,
+    missing_citations: missing,
+    recommended_additions,
+    rationale: fullRationale.trim(),
   };
 }
 
@@ -313,12 +466,24 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
   let result: any;
   try {
     result = await generateComplaintLetter({
+      // The "company" passed to the engine is the third-party merchant
+      // being disputed (e.g. Acme Furniture in a neobank Section 75).
+      // The actual API caller (the bank) is implicit — the engine writes
+      // as "we / our team" without naming a specific brand, leaving the
+      // caller's CRM to substitute their own brand on send.
       companyName: (req.context?.merchant as string) || 'the merchant',
       issueDescription: req.scenario,
       desiredOutcome: req.desired_outcome ?? '',
       amount: req.amount != null ? String(req.amount) : undefined,
       letterType: 'complaint',
       verifiedLegalRefs: verifiedRefsText || undefined,
+      // Default to business_to_customer voice for the B2B route — this
+      // is the engine path B2B customers actually want (response from
+      // the business TO their customer, not a complaint letter from the
+      // customer to a merchant). Consumer route is unaffected because
+      // it doesn't pass the voice param at all.
+      voice: 'business_to_customer',
+      customerName: req.customer_name,
     });
   } catch (e: any) {
     return {
@@ -400,6 +565,14 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
     confidence: typeof result?.confidence === 'number' ? result.confidence : 0.8,
     case_reference: req.case_reference ?? null,
     customer_id: req.customer_id ?? null,
+    preflight: req.proposed_reply
+      ? computePreflight(
+          req.proposed_reply,
+          inferStatute(legalRefs),
+          legalRefs,
+          rationale,
+        )
+      : null,
   };
 }
 
@@ -463,13 +636,29 @@ function scoreTimeSensitivity(type: DisputeType, scenario: string): 'high' | 'me
 }
 
 function extractCustomerResponse(letter: string, rationale: string, statute?: string): string {
-  // Prefer a paragraph from the engine's draft. Strip headers / addresses
-  // by skipping until we hit "Dear" or a paragraph that mentions the
-  // statute by name.
-  const body = letter.replace(/^\s*[\s\S]*?Dear[\s\S]*?\n\n/, '').trim();
-  const firstPara = body.split(/\n\n+/)[0] ?? '';
-  if (firstPara.length > 80) return firstPara.slice(0, 600);
-  return statute
-    ? `Under ${statute}, the customer has rights here. ${rationale}`
-    : rationale;
+  // The engine now writes in business_to_customer voice for the B2B
+  // route, so the LETTER ITSELF is the response from the business to
+  // the customer. Strip the salutation ("Dear …" / "Hi …") and the
+  // sign-off block, then concatenate the first 2-3 substantive
+  // paragraphs into a paste-ready customer-facing reply that fits in
+  // an agent UI without the visible date / address / signature lines.
+  const stripHeader = letter.replace(/^[\s\S]*?(?:Dear|Hi|Hello)[^\n]*\n+/i, '').trim();
+  // Strip a trailing sign-off block (everything from "Kind regards" /
+  // "Yours sincerely" / "Best regards" onwards).
+  const stripSignoff = stripHeader.replace(/\n+(?:Kind regards|Yours sincerely|Yours faithfully|Best regards|Best wishes|Regards|Sincerely|Many thanks)[\s\S]*$/i, '').trim();
+
+  const paragraphs = stripSignoff.split(/\n\n+/).filter((p) => p.trim().length > 40);
+
+  if (paragraphs.length === 0) {
+    return statute
+      ? `Thanks for raising this. Under ${statute}, you have rights here that we need to honour. ${rationale}`
+      : `Thanks for raising this. ${rationale}`;
+  }
+
+  // Take the first 2 substantive paragraphs (typically the
+  // acknowledgement + the legal-position explanation) and cap at 1200
+  // chars so the field fits comfortably in a Zendesk / Intercom agent
+  // sidebar without being truncated mid-sentence by downstream UIs.
+  const joined = paragraphs.slice(0, 2).join('\n\n');
+  return joined.length > 1200 ? joined.slice(0, 1197) + '…' : joined;
 }

@@ -366,6 +366,24 @@ Return ONLY valid JSON:
           })
           .eq('id', ref.id);
 
+        // Fan out the statute.updated B2B webhook event. Best-effort
+        // (delivery outcome lands in b2b_webhook_deliveries; failures
+        // never block the cron). The /for-business/docs §7 webhook
+        // contract documents this firing.
+        try {
+          const { publishStatuteUpdated } = await import('@/lib/b2b/webhook-publisher');
+          await publishStatuteUpdated({
+            category: ref.category ?? 'general',
+            law_name: ref.law_name,
+            change_summary: result.change_explanation,
+            effective_date: null,
+            source_url: change.sourceUrl,
+            ref_id: ref.id,
+          });
+        } catch (whErr) {
+          console.warn('[legal-updates] statute.updated webhook publish failed', whErr instanceof Error ? whErr.message : whErr);
+        }
+
         await supabase.from('legal_update_queue').insert({
           legal_reference_id: ref.id,
           change_type: 'content_update',
@@ -530,6 +548,21 @@ If you cannot identify specific material changes to any stored reference, set fo
             updated_at: new Date().toISOString(),
           })
           .eq('id', ref.id);
+
+        // Fan out statute.updated to B2B webhook subscribers.
+        try {
+          const { publishStatuteUpdated } = await import('@/lib/b2b/webhook-publisher');
+          await publishStatuteUpdated({
+            category: ref.category ?? 'general',
+            law_name: ref.law_name,
+            change_summary: result.change_summary,
+            effective_date: null,
+            source_url: sourceUrl,
+            ref_id: ref.id,
+          });
+        } catch (whErr) {
+          console.warn('[legal-updates] statute.updated webhook publish failed', whErr instanceof Error ? whErr.message : whErr);
+        }
 
         summary.autoApplied++;
         detectedChanges.push({
