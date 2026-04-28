@@ -61,6 +61,19 @@ export interface GuaranteeRule {
   matches(ctx: ScenarioContext): boolean;
   /** Citations the engine MUST include when the predicate matches. */
   required: RequiredCitation[];
+  /**
+   * Canonical test scenario kept for the proactive citation-canary
+   * cron — paired with LLM-generated scenarios so we test both the
+   * known-difficult cases (this list) AND the long tail of real-world
+   * shapes the LLM will cook up from the live legal_references table.
+   */
+  testScenario: {
+    companyName: string;
+    issueDescription: string;
+    desiredOutcome: string;
+    amount?: string;
+    letterType?: string;
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -79,6 +92,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // and the CPR 2008 misleading-omissions reg.
   {
     id: 'unauthorised_payment_subscription',
+    testScenario: {
+      companyName: 'Nuki Home Solutions',
+      issueDescription:
+        'Just been charged £69 via PayPal for an automatic subscription renewal for a service I had cancelled almost a year ago. I never agreed to this charge and was given no advance notice.',
+      desiredOutcome: 'Full refund and cancellation of any future automatic charges.',
+      amount: '69',
+      letterType: 'complaint',
+    },
     matches: (ctx) =>
       // payment instrument signal
       /\b(paypal|klarna|clearpay|credit\s*card|debit\s*card|direct\s*debit|standing\s*order|bnpl)\b/.test(ctx.text)
@@ -123,6 +144,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Section 75 chargeback (credit card) ───────────────────────────────────
   {
     id: 's75_chargeback',
+    testScenario: {
+      companyName: 'Acme Furniture',
+      issueDescription:
+        'Paid £640 on my credit card for a sofa. It arrived damaged. The merchant has refused repair or refund and stopped replying. I want my money back via Section 75.',
+      desiredOutcome: 'Full refund via Section 75 claim against the card issuer.',
+      amount: '640',
+      letterType: 'complaint',
+    },
     matches: (ctx) =>
       /\b(section\s*75|s\.?\s*75|cca\s*1974)\b/.test(ctx.text)
       ||
@@ -145,6 +174,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Energy back-billing ────────────────────────────────────────────────────
   {
     id: 'energy_back_billing',
+    testScenario: {
+      companyName: 'British Gas',
+      issueDescription:
+        "Just received a back-bill for £840 covering gas usage from 2022-2023 — that's three years ago. I was on direct debit the whole time. This can't be right under the 12-month back-billing rules.",
+      desiredOutcome: 'Bill cancelled per Ofgem back-billing rules.',
+      amount: '840',
+      letterType: 'energy_dispute',
+    },
     matches: (ctx) =>
       /\b(energy|gas|electric(?:ity)?|ofgem|smart\s*meter|back-?bill|back-?billing|12-?month|three\s*years\s*ago)\b/.test(ctx.text)
       &&
@@ -167,6 +204,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Flight delay / cancellation (UK261) ───────────────────────────────────
   {
     id: 'flight_delay_uk261',
+    testScenario: {
+      companyName: 'Ryanair',
+      issueDescription:
+        "Ryanair cancelled my flight LGW-DUB six hours before departure with no replacement and is refusing compensation. The flight was 460km. They said it was crew shortage.",
+      desiredOutcome: 'UK261 compensation plus full refund.',
+      amount: '350',
+      letterType: 'flight_compensation',
+    },
     matches: (ctx) =>
       /\b(flight|airline|cancel(?:l?ed)?\s*(my\s+)?flight|delay(?:ed)?\s*(my\s+)?flight|ryanair|easyjet|jet2|tui|british\s*airways|wizz|uk261|eu261|cancelled\s*(2|two)\s*hours)\b/.test(ctx.text),
     required: [
@@ -183,6 +228,13 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Broadband / mobile mid-contract price rise ────────────────────────────
   {
     id: 'broadband_price_rise',
+    testScenario: {
+      companyName: 'Sky',
+      issueDescription:
+        "Sky just put my broadband bill up by £4 a month mid-contract. I want to leave penalty-free under Ofcom's mid-contract price rise rules.",
+      desiredOutcome: 'Penalty-free exit from contract under GC C1.',
+      letterType: 'broadband_complaint',
+    },
     matches: (ctx) =>
       /\b(broadband|mobile|sky|virgin\s*media|bt\b|ee\b|vodafone|three\s*uk|talktalk|isp)\b/.test(ctx.text)
       &&
@@ -206,6 +258,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // was £500+ in compensation.
   {
     id: 'broadband_total_loss',
+    testScenario: {
+      companyName: 'OneStream',
+      issueDescription:
+        "OneStream broadband at my flat was completely down for 35 days from 23 March to 27 April 2026. They missed two engineer appointments. They have offered £68 as 'goodwill'. I want full Auto-Compensation under the Ofcom scheme.",
+      desiredOutcome: 'Full Ofcom Auto-Compensation Scheme entitlement plus refund.',
+      amount: '350',
+      letterType: 'broadband_complaint',
+    },
     matches: (ctx) =>
       /\b(broadband|landline|internet|fibre|phone\s*line|onestream|bt\b|ee\b|sky|virgin\s*media|vodafone|talktalk|plusnet|hyperoptic|community\s*fibre|three\s*uk)\b/.test(ctx.text)
       &&
@@ -235,6 +295,13 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Statute-barred debt ───────────────────────────────────────────────────
   {
     id: 'statute_barred_debt',
+    testScenario: {
+      companyName: 'Lowell',
+      issueDescription:
+        "Lowell are chasing me for a credit card debt from 2017 — over 6 years ago. I want them to prove the debt under CCA s.77/78 and confirm it is statute-barred.",
+      desiredOutcome: 'Debt withdrawn or stop further contact.',
+      letterType: 'debt_dispute',
+    },
     matches: (ctx) =>
       /\b(statute\s*barred|6\s*years?|debt\s*(claim|collection)|lowell|cabot|intrum|bailiff)\b/.test(ctx.text),
     required: [
@@ -255,6 +322,13 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Rail delay (Delay Repay 15 / NRCoT) ───────────────────────────────────
   {
     id: 'rail_delay',
+    testScenario: {
+      companyName: 'Avanti West Coast',
+      issueDescription:
+        "My Avanti train from Manchester to London was delayed by 90 minutes last week. I want to claim Delay Repay compensation under the scheme.",
+      desiredOutcome: 'Delay Repay compensation paid.',
+      letterType: 'complaint',
+    },
     matches: (ctx) =>
       /\b(train|rail|tfl\b|delay\s*repay|nrcot|national\s*rail|avanti|lner|gwr|northern|transpennine|scotrail|southeastern|south\s*western|thameslink|gtr|greater\s*anglia|crosscountry)\b/.test(ctx.text)
       &&
@@ -284,6 +358,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Insurance claim decline / FCA fair-value ──────────────────────────────
   {
     id: 'insurance_claim_decline',
+    testScenario: {
+      companyName: 'Direct Line',
+      issueDescription:
+        "Direct Line declined my home insurance claim for water damage citing pre-existing wear and tear. The leak was sudden and reported within 48 hours. They are refusing to pay £4,200.",
+      desiredOutcome: 'Reverse the decline and pay the claim in full.',
+      amount: '4200',
+      letterType: 'insurance_dispute',
+    },
     matches: (ctx) =>
       /\b(insurance|insurer|policy|underwriter|claim|policyholder)\b/.test(ctx.text)
       &&
@@ -313,6 +395,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Parking PCN appeal ────────────────────────────────────────────────────
   {
     id: 'parking_pcn_appeal',
+    testScenario: {
+      companyName: 'ParkingEye',
+      issueDescription:
+        "ParkingEye issued me a £100 PCN for overstaying in a private car park. The signs were small and I want to appeal under POFA 2012.",
+      desiredOutcome: 'PCN cancelled.',
+      amount: '100',
+      letterType: 'parking_appeal',
+    },
     matches: (ctx) =>
       /\b(parking|pcn|penalty\s*charge|civil\s*enforcement|popla|parkingeye|euro\s*car\s*parks|bpa|ipc)\b/.test(ctx.text),
     required: [
@@ -334,6 +424,13 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Council tax band challenge ────────────────────────────────────────────
   {
     id: 'council_tax_band',
+    testScenario: {
+      companyName: 'Valuation Office Agency',
+      issueDescription:
+        "I want to challenge my council tax band — my house is in Band E but every comparable property nearby is in Band D. The VOA needs to review.",
+      desiredOutcome: 'Council tax band reduced from E to D.',
+      letterType: 'council_tax_band',
+    },
     matches: (ctx) =>
       /\b(council\s*tax|valuation\s*office|voa|band\s*[a-h]\b|liability)\b/.test(ctx.text),
     required: [
@@ -354,6 +451,13 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Gym membership cancellation / DMCCA ───────────────────────────────────
   {
     id: 'gym_cancellation',
+    testScenario: {
+      companyName: 'PureGym',
+      issueDescription:
+        "PureGym refusing to let me cancel my membership early because of a 12-month lock-in clause. I have a back injury and can't use the gym. Want to cancel without paying remaining months.",
+      desiredOutcome: 'Cancel membership without remaining-month penalty.',
+      letterType: 'gym_membership',
+    },
     matches: (ctx) =>
       /\b(gym|fitness|puregym|the\s*gym\s*group|anytime\s*fitness|david\s*lloyd|virgin\s*active)\b/.test(ctx.text)
       &&
@@ -383,6 +487,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── HMRC tax rebate / dispute ─────────────────────────────────────────────
   {
     id: 'hmrc_dispute',
+    testScenario: {
+      companyName: 'HMRC',
+      issueDescription:
+        "HMRC owes me a tax rebate for the 2023-24 year that they have not refunded despite my self-assessment showing an overpayment of £1,200. I want a refund under TMA 1970 s.33.",
+      desiredOutcome: 'Refund of overpaid tax.',
+      amount: '1200',
+      letterType: 'hmrc_tax_rebate',
+    },
     matches: (ctx) =>
       /\b(hmrc|tax\s*(rebate|refund|return)|paye|self[\s-]?assessment|coding\s*notice|tax\s*credits?)\b/.test(ctx.text),
     required: [
@@ -404,6 +516,13 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── DVLA dispute (vehicle keeper / late licensing) ────────────────────────
   {
     id: 'dvla_dispute',
+    testScenario: {
+      companyName: 'DVLA',
+      issueDescription:
+        "DVLA issued a late-licensing penalty for my car, but I had a SORN in place at the time. I want to appeal under VERA 1994.",
+      desiredOutcome: 'Penalty cancelled.',
+      letterType: 'dvla_vehicle',
+    },
     matches: (ctx) =>
       /\b(dvla|vehicle\s*excise|car\s*tax|driving\s*licence|sorn|v5|keeper|enforcement\s*action)\b/.test(ctx.text),
     required: [
@@ -424,6 +543,13 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── NHS complaint ─────────────────────────────────────────────────────────
   {
     id: 'nhs_complaint',
+    testScenario: {
+      companyName: 'NHS Trust',
+      issueDescription:
+        "Want to make a formal NHS complaint about a delayed cancer diagnosis at my local hospital. Symptoms reported in January, diagnosis not made until June.",
+      desiredOutcome: 'Formal investigation under NHS complaints procedure.',
+      letterType: 'nhs_complaint',
+    },
     matches: (ctx) =>
       /\b(nhs|hospital|gp\b|doctor\s*surgery|clinical|patient)\b/.test(ctx.text)
       &&
@@ -447,6 +573,13 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Energy: tariff / billing dispute generally (broader than back-billing)
   {
     id: 'energy_billing_general',
+    testScenario: {
+      companyName: 'Octopus Energy',
+      issueDescription:
+        "Octopus put my variable tariff up by £30 a month with only 14 days written notice. I want to challenge this under SLC 23 and switch penalty-free.",
+      desiredOutcome: 'Notice withdrawn or penalty-free switch.',
+      letterType: 'energy_dispute',
+    },
     matches: (ctx) =>
       /\b(energy|gas|electric(?:ity)?|ofgem|smart\s*meter|british\s*gas|octopus|edf|ovo|e\.?on|sse\b|scottish\s*power|utilita)\b/.test(ctx.text)
       &&
@@ -480,6 +613,14 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
   // ─── Faulty goods / not as described ───────────────────────────────────────
   {
     id: 'faulty_goods',
+    testScenario: {
+      companyName: 'Currys',
+      issueDescription:
+        "Bought a £600 washing machine from Currys 3 weeks ago. It stopped working after the second use. Currys are refusing a refund and only offering a repair. I want my money back.",
+      desiredOutcome: 'Full refund under 30-day right to reject.',
+      amount: '600',
+      letterType: 'refund_request',
+    },
     matches: (ctx) =>
       /\b(faulty|broken|damag(?:ed|e)|not\s*as\s*described|defect|wrong\s*item|missing\s*part|sub[- ]?standard|unfit\s*for\s*purpose|don't\s*work|stopped\s*working)\b/.test(ctx.text)
       &&
