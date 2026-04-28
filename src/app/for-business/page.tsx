@@ -132,6 +132,7 @@ export default function ForBusinessPage() {
           <div className="m-business-cta-row">
             <a href="#waitlist" className="m-business-cta">Join the waitlist</a>
             <a href="#example" className="m-business-cta-ghost">See an example</a>
+            <a href="/for-business/docs" className="m-business-cta-ghost">Read the docs</a>
           </div>
         </div>
       </section>

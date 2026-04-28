@@ -96,7 +96,7 @@ async function notifyFounder(s: { name: string; work_email: string; company: str
     '',
     `_${s.use_case.slice(0, 600)}_`,
     '',
-    'Review at paybacker.co.uk/dashboard/admin/b2b-waitlist',
+    'Review at paybacker.co.uk/dashboard/admin/b2b',
   ].join('\n');
   try {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
