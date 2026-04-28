@@ -102,6 +102,19 @@ export async function POST(request: NextRequest) {
 
   try {
     switch (event.type) {
+      case 'checkout.session.expired': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.metadata?.product === 'b2b_api') {
+          try {
+            const { handleB2bCheckoutExpired } = await import('@/lib/b2b/stripe-webhook');
+            await handleB2bCheckoutExpired(supabase as any, session);
+          } catch (e: any) {
+            console.error('[stripe webhook] b2b checkout.expired failed:', e?.message);
+          }
+        }
+        break;
+      }
+
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
 
