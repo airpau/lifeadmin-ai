@@ -230,6 +230,7 @@ function Nav() {
     ['Deals', '#deals'],
     ['Pricing', '#pricing'],
     ['Blog', '/blog'],
+    ['For Business', '/for-business'],
   ];
 
   return (
