@@ -37,7 +37,10 @@ export const revalidate = 0;
  *      so the UI can still decide how to label it.
  */
 
-export const revalidate = 300; // 5 min ISR cache — anonymous visitors won't hammer Supabase
+// Was: export const revalidate = 300 (ISR). Replaced 2026-04-28 with
+// the force-dynamic + revalidate=0 declaration at the top of the file
+// so a saturated Supabase can't block builds. The route is still cheap
+// per-request and Vercel's edge cache absorbs traffic spikes.
 
 // Trust floor for the "Founding members" card. See header note.
 const FOUNDING_TRUST_FLOOR = 250;
