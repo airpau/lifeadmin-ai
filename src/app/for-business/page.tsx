@@ -41,43 +41,68 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-// Live example payload — keep this real. UK261 entitles £220 for a
-// short-haul flight cancelled <14 days before departure when the
-// airline is at fault. Don't fabricate amounts or statutes.
-const REQUEST_EXAMPLE = `POST /v1/disputes
+// Live example — a Section 75 chargeback ticket arriving at a UK
+// neobank's CX queue. Shows the real shape: customer-supplied scenario
+// text, the bank's own case_reference / customer_id echoed for CRM
+// persistence, and a structured response their agents render straight
+// into the disputes tool. Real CCA 1974 entitlement; don't fabricate.
+const REQUEST_EXAMPLE = `POST /api/v1/disputes
+Authorization: Bearer pbk_live_xxx
 Content-Type: application/json
+Idempotency-Key: tk_8f2c41b9-2026-04-28
 
 {
-  "scenario": "Flight cancelled 2 hours before departure",
+  "scenario": "Customer raised a Section 75 dispute via in-app chat:
+    'Paid £640 on my credit card to Acme Furniture for a sofa. It arrived
+    damaged. The merchant has refused repair or refund and stopped
+    replying. I want my money back.'",
+  "case_reference": "ZD-89742",
+  "customer_id": "cus_18b3a92f",
   "context": {
-    "departure_airport": "LHR",
-    "arrival_airport": "BCN",
-    "carrier_country": "ES",
-    "ticket_class": "economy",
-    "distance_km": 1138,
-    "cancellation_reason": "operational",
-    "rebooked_arrival_delay_hours": 6
+    "merchant": "Acme Furniture",
+    "transaction_amount": 640.00,
+    "payment_method": "credit_card",
+    "purchase_date": "2026-03-12",
+    "channel": "in_app_chat"
   },
-  "jurisdiction": "UK"
+  "channel": "webchat",
+  "amount": 640
 }`;
 
 const RESPONSE_EXAMPLE = `200 OK
 Content-Type: application/json
+X-RateLimit-Limit: 10000
+X-RateLimit-Remaining: 9847
 
 {
-  "statute": "UK261 (retained EU 261/2004 as amended)",
+  "statute": "Consumer Credit Act 1974, s.75",
+  "dispute_type": "finance",
+  "regulator": "FCA / Financial Ombudsman Service",
   "entitlement": {
-    "compensation_gbp": 220,
-    "rationale": "Short-haul (<1500km), cancelled <14 days, EU carrier, UK departure. Operational cancellation does not meet the 'extraordinary circumstances' threshold.",
-    "additional_rights": ["meals_and_refreshments", "rebooking_or_refund"]
+    "summary": "Equal claim against the card issuer for breach of contract by the supplier under s.75 CCA 1974.",
+    "rationale": "Single transaction £100-£30,000 paid by credit card; debtor-creditor-supplier chain established; supplier in breach of s.9 CRA 2015 (satisfactory quality) and refusing remedy. Liability under s.75 is joint and several with the merchant.",
+    "additional_rights": ["Consumer Rights Act 2015 s.20-24", "Consumer Credit Act 1974 s.75A"],
+    "estimated_success": "high"
   },
-  "draft_letter_excerpt": "Under UK Regulation 261/2004 as retained, I am entitled to compensation of £220 for the cancellation of flight [number] on [date]. The 14-day notification window was not met and the operational reason cited does not meet the extraordinary-circumstances exemption…",
-  "escalation_path": [
-    { "step": 1, "to": "carrier_claims_team", "wait_days": 14 },
-    { "step": 2, "to": "CAA — Consumer Protection Group", "url": "https://www.caa.co.uk/passengers" },
-    { "step": 3, "to": "Alternative Dispute Resolution scheme", "wait_days": 56 }
+  "customer_facing_response": "Thanks for raising this — under Section 75 of the Consumer Credit Act 1974 you have an equal claim against us as you do against Acme Furniture, because the purchase was £100-£30,000 on credit card. We're escalating this as a Section 75 claim and will refund £640 to your card if our investigation confirms the breach…",
+  "agent_talking_points": [
+    "Cited authority: Consumer Credit Act 1974, s.75",
+    "Single transaction within £100-£30k threshold — s.75 applies",
+    "Joint and several liability with merchant; we don't need to wait for them",
+    "8-week final-response window before FOS escalation",
+    "Statutory deadline applies — flag urgency."
   ],
-  "confidence": 0.94
+  "claim_value_estimate": { "min": 384, "max": 640, "currency": "GBP" },
+  "time_sensitivity": "high",
+  "draft_letter_excerpt": "Re: Section 75 claim against Acme Furniture, transaction dated 12 March 2026, amount £640. Under section 75 of the Consumer Credit Act 1974 we as your card issuer have a like claim against the supplier, who has been afforded reasonable opportunity to remedy the breach…",
+  "escalation_path": [
+    { "step": 1, "to": "card_issuer_disputes", "wait_days": 14 },
+    { "step": 2, "to": "Financial Ombudsman Service", "url": "https://www.financial-ombudsman.org.uk", "wait_days": 56 }
+  ],
+  "legal_references": ["Consumer Credit Act 1974, s.75", "Consumer Rights Act 2015, s.9"],
+  "confidence": 0.92,
+  "case_reference": "ZD-89742",
+  "customer_id": "cus_18b3a92f"
 }`;
 
 const COVERED_LEGISLATION = [
@@ -136,10 +161,12 @@ export default function ForBusinessPage() {
       <section className="m-business-hero">
         <div className="m-business-wrap">
           <span className="m-business-eyebrow">Paybacker for Business · API</span>
-          <h1>UK Consumer Rights, as an API.</h1>
+          <h1>UK consumer-rights compliance, as an API.</h1>
           <p className="m-business-lead">
-            Cite the right statute. Draft the right response. Escalate the right way.
-            Built on UK consumer legislation, kept current, available as REST or MCP.
+            Every consumer complaint that hits your CRM, helpdesk, claims pipeline,
+            or AI agent — comes back grounded in current UK statute. Cited regulation,
+            entitlement analysis, paste-ready customer reply, agent talking points,
+            escalation path. One POST. Every sector. Audit-logged.
           </p>
           <div className="m-business-cta-row">
             <a href="#buy" className="m-business-cta">Get a key</a>
@@ -153,19 +180,43 @@ export default function ForBusinessPage() {
       <section className="m-business-section">
         <div className="m-business-wrap">
           <span className="m-business-eyebrow">The problem</span>
-          <h2>Consumer law inside a product is a hard build.</h2>
+          <h2>UK consumer-law compliance is the bottleneck nobody owns.</h2>
           <div className="m-business-card-grid">
-            <ProblemCard title="Your support team isn't a law firm">
-              Front-line agents handle thousands of consumer queries weekly. Without statutory grounding,
-              answers are conservative-by-default and customers escalate.
+            <ProblemCard title="Your CX team is searching CCA 1974 in another tab">
+              Every Section 75 ticket, every back-billing dispute, every UK261 claim starts with an agent
+              Googling the statute. Lean digital-CX teams (15–25 agents handling what 200-agent legacies
+              handle) are the bottleneck and the audit risk. Conservative-by-default answers escalate
+              to FOS, the Energy Ombudsman, CISAS, or POPLA — at 10× the cost.
             </ProblemCard>
-            <ProblemCard title="Generic LLMs hallucinate statutes">
-              Out-of-the-box models cite repealed acts, invent thresholds, and confuse English law with
-              Scots law. Production-grade UK reasoning needs ground truth.
+            <ProblemCard title="Generic LLMs hallucinate UK statutes">
+              GPT, Claude and Gemini cite repealed acts, invent thresholds, confuse England with
+              Scotland, and quote the wrong CCA section to your customers. DoNotPay paid the FTC
+              $193,000 in 2024 for over-claiming AI legal capability it couldn&rsquo;t deliver. The
+              regulator-facing risk is real; the answer is structural anti-hallucination, not a
+              better prompt.
             </ProblemCard>
-            <ProblemCard title="Hiring legal eng is slow and expensive">
-              A senior consumer-law engineer plus the data work to maintain a statute index can run
-              twelve months and a quarter-million pounds before first deploy.
+            <ProblemCard title="Aveni and Voyc grade calls. They don't ground them.">
+              UK call-monitoring AI (Aveni, Voyc) flags Consumer Duty breaches <em>after</em> an agent
+              has already replied. Useful — but it requires a ground-truth reference layer to score
+              against. We are that layer. Pair us with their QA and your agents are correct
+              <em> at the moment of the reply</em>, not corrected next week in a coaching session.
+            </ProblemCard>
+            <ProblemCard title="Regulatory waves break monthly">
+              FCA PS26/3 motor-finance redress. April-2026 BT/EE/Sky/Vodafone mid-contract rises
+              under Ofcom&rsquo;s Jan-2025 inflation-link ban. Octopus&rsquo;s £1.5m back-billing
+              settlement under SLC 21BA. DMCCA subscription regime due autumn 2026. Each wave puts a
+              new statute under the microscope. We refresh the index daily; you don&rsquo;t maintain it.
+            </ProblemCard>
+            <ProblemCard title="Hiring legal-eng is slow and expensive">
+              A senior consumer-law engineer plus the data work to maintain a statute index runs twelve
+              months and a quarter of a million pounds before first deploy — and even then, you&rsquo;re
+              one hire away from the index going stale. A licence here is &lt;5% of that, with the
+              statute coverage maintained as a service.
+            </ProblemCard>
+            <ProblemCard title="QA harness comes free with the licence">
+              Our consumer Paybacker app runs the same engine in production every day, against
+              thousands of paying UK households writing real complaint letters. Every B2B call benefits
+              from that QA harness — your prompt-wrapped LLM doesn&rsquo;t have one.
             </ProblemCard>
           </div>
         </div>
@@ -174,15 +225,19 @@ export default function ForBusinessPage() {
       {/* ── Live Example ───────────────────────────────────── */}
       <section className="m-business-section m-business-section--alt" id="example">
         <div className="m-business-wrap">
-          <span className="m-business-eyebrow">Live example</span>
-          <h2>One scenario in. Statute, entitlement, draft, escalation out.</h2>
+          <span className="m-business-eyebrow">Live example · neobank Section 75 dispute</span>
+          <h2>Inbound complaint from your CRM. Compliance-grounded response back in 2&ndash;4 seconds.</h2>
           <p className="m-business-sub">
-            Real UK261 entitlement returned with primary citation. The draft excerpt and escalation path are
-            the same artefacts the consumer Paybacker app uses every day.
+            A Section 75 chargeback ticket hits your disputes queue. You POST the customer&rsquo;s message
+            with your own <code>case_reference</code> and <code>customer_id</code>. The response comes
+            back with the cited authority (CCA 1974 s.75), the entitlement analysis, a paste-ready
+            customer reply, agent talking points your conduct team can sign off on, the FOS escalation
+            path, and a structured claim-value estimate &mdash; all keyed to your ticket so your CRM
+            persists the response without an out-of-band correlation step.
           </p>
           <div className="m-business-code-grid">
-            <CodeBlock label="Request" body={REQUEST_EXAMPLE} />
-            <CodeBlock label="Response" body={RESPONSE_EXAMPLE} variant="response" />
+            <CodeBlock label="Request · from your Zendesk / Intercom / HubSpot integration" body={REQUEST_EXAMPLE} />
+            <CodeBlock label="Response · render in your agent UI; persist to your audit log" body={RESPONSE_EXAMPLE} variant="response" />
           </div>
         </div>
       </section>
