@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// force-dynamic prevents build-time prerender that hangs the build
+// when Supabase is saturated (incident 2026-04-28). Live data; OK to
+// compute per-request.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 /**
  * GET /api/preview/homepage-stats
  *
