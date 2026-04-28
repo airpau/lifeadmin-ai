@@ -21,6 +21,54 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+export async function handleB2bCheckoutExpired(
+  supabase: SupabaseClient,
+  session: Stripe.Checkout.Session,
+): Promise<void> {
+  const email = session.customer_email || session.customer_details?.email || '';
+  if (!email) return;
+  const lower = email.toLowerCase();
+  // Only mark abandoned if still in checkout_started — don't clobber a converted row.
+  await supabase
+    .from('b2b_waitlist')
+    .update({ status: 'checkout_abandoned', reviewed_at: new Date().toISOString() })
+    .eq('work_email', lower)
+    .eq('status', 'checkout_started');
+
+  const tier = (session.metadata?.tier as string) || 'unknown';
+  const tgToken = process.env.TELEGRAM_BOT_TOKEN;
+  const tgChat = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+  if (tgToken && tgChat) {
+    try {
+      await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: Number(tgChat),
+          text: `🛒💀 *Checkout abandoned*\n\n${lower}\nTier: ${tier}\n\n_Chase candidate. Personal email + offer the Starter free pilot to keep them warm._`,
+          parse_mode: 'Markdown',
+        }),
+      });
+    } catch {}
+  }
+  if (process.env.RESEND_API_KEY) {
+    try {
+      await resend.emails.send({
+        from: process.env.B2B_FROM_EMAIL || 'Paybacker for Business <business@paybacker.co.uk>',
+        to: process.env.FOUNDER_EMAIL || 'business@paybacker.co.uk',
+        replyTo: lower,
+        subject: `🛒💀 B2B abandoned — ${lower} (${tier})`,
+        html: `<div style="font-family:-apple-system,sans-serif;max-width:560px;margin:auto;color:#0f172a;">
+          <h2 style="margin:0 0 6px;">B2B checkout abandoned</h2>
+          <p>${escapeHtml(lower)} started a <strong>${escapeHtml(tier)}</strong> checkout but did not complete.</p>
+          <p style="background:#fef2f2;border-left:3px solid #b91c1c;padding:10px 14px;color:#991b1b;border-radius:6px;">Personal email recommended. Offer the free Starter pilot as a softer entry point.</p>
+          <p><a href="https://paybacker.co.uk/dashboard/admin/b2b" style="background:#0f172a;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Open admin</a></p>
+        </div>`,
+      });
+    } catch {}
+  }
+}
+
 export async function handleB2bCheckoutCompleted(
   supabase: SupabaseClient,
   stripe: Stripe,
@@ -41,6 +89,12 @@ export async function handleB2bCheckoutCompleted(
     console.error('[b2b stripe] no email on session, cannot mint key');
     return;
   }
+
+  // Mark waitlist row converted (if any).
+  await supabase
+    .from('b2b_waitlist')
+    .update({ status: 'converted', reviewed_at: new Date().toISOString() })
+    .eq('work_email', customerEmail.toLowerCase());
 
   // Mint key
   const minted = generateKey();
