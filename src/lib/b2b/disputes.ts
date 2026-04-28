@@ -27,12 +27,57 @@ function getAdmin() {
 }
 
 export interface DisputeRequest {
+  /**
+   * The dispute as it arrived at your front line. Plain English. The
+   * richer the description (merchant, dates, prior contact, amount),
+   * the more confidently the engine grounds in the right statute.
+   */
   scenario: string;
+  /**
+   * Optional structured context — pass anything that helps the engine
+   * (merchant, account_number, tariff, contract_dates, etc.). Not
+   * persisted; used only to enrich grounding inside this single call.
+   */
   context?: Record<string, unknown>;
   jurisdiction?: 'UK';
+  /** What the customer is asking for — refund, repair, exit, compensation. */
   desired_outcome?: string;
+  /** Disputed amount in GBP. Drives `claim_value_estimate` when supplied. */
   amount?: number;
+  /**
+   * Customer's name as it should appear on the draft letter. Pass the
+   * customer's display name from your CRM. `consumer_name` is the
+   * legacy alias kept for v1 backwards compatibility.
+   */
+  customer_name?: string;
   consumer_name?: string;
+  /**
+   * Your internal customer identifier (CRM record ID, Auth0 sub, etc.).
+   * Echoed back in the response so the response can be persisted
+   * directly against the customer record without a join. Never used by
+   * the engine for grounding; never logged in plaintext.
+   */
+  customer_id?: string;
+  /**
+   * Your internal case / ticket / claim reference. Echoed back in the
+   * response. Surface this in your CRM and audit trail so every API
+   * response is traceable to the originating ticket.
+   */
+  case_reference?: string;
+  /**
+   * Replay-safety key. Resending the same key within 24h returns the
+   * previous response unchanged. Use a UUID per inbound ticket so a
+   * retry on transient network failure can't bill twice or mutate
+   * state in your downstream pipeline.
+   */
+  idempotency_key?: string;
+  /**
+   * Hint for tone of `customer_facing_response`. `letter` is the
+   * default and produces formal, written-correspondence prose;
+   * `webchat` returns a conversational paragraph; `phone` returns
+   * agent talking points only with no paste-ready paragraph.
+   */
+  channel?: 'letter' | 'email' | 'webchat' | 'phone';
 }
 
 export type DisputeType =
@@ -65,6 +110,14 @@ export interface DisputeResponse {
   escalation_path: Array<{ step: number; to: string; wait_days?: number; url?: string }>;
   legal_references: string[];
   confidence: number;
+  /**
+   * Echoed from the request so a B2B caller can persist the response
+   * straight against the originating ticket / customer record without
+   * an out-of-band correlation step. Both fields are null when the
+   * caller didn't supply them.
+   */
+  case_reference: string | null;
+  customer_id: string | null;
 }
 
 export interface DisputeError {
@@ -86,13 +139,28 @@ export function validateRequest(body: unknown): DisputeRequest | DisputeError {
   if (b.jurisdiction && b.jurisdiction !== 'UK') {
     return { code: 'VALIDATION', message: 'Only `jurisdiction: "UK"` is supported in v1.' };
   }
+  // Resolve customer_name preferring the new B2B field over the legacy
+  // consumer_name. Both are accepted; either populates the draft.
+  const customerName = typeof b.customer_name === 'string'
+    ? b.customer_name
+    : typeof b.consumer_name === 'string'
+      ? b.consumer_name
+      : undefined;
+  const channel = typeof b.channel === 'string' && ['letter', 'email', 'webchat', 'phone'].includes(b.channel)
+    ? (b.channel as DisputeRequest['channel'])
+    : undefined;
   return {
     scenario: b.scenario.trim(),
     context: (b.context as Record<string, unknown>) ?? {},
     jurisdiction: 'UK',
     desired_outcome: typeof b.desired_outcome === 'string' ? b.desired_outcome : undefined,
     amount: typeof b.amount === 'number' ? b.amount : undefined,
-    consumer_name: typeof b.consumer_name === 'string' ? b.consumer_name : undefined,
+    customer_name: customerName,
+    consumer_name: customerName,
+    customer_id: typeof b.customer_id === 'string' ? b.customer_id : undefined,
+    case_reference: typeof b.case_reference === 'string' ? b.case_reference : undefined,
+    idempotency_key: typeof b.idempotency_key === 'string' ? b.idempotency_key : undefined,
+    channel,
   };
 }
 
@@ -330,6 +398,8 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
       : deriveEscalationPath(req.scenario),
     legal_references: legalRefs,
     confidence: typeof result?.confidence === 'number' ? result.confidence : 0.8,
+    case_reference: req.case_reference ?? null,
+    customer_id: req.customer_id ?? null,
   };
 }
 

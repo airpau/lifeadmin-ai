@@ -62,6 +62,13 @@ export async function POST(request: NextRequest) {
 
   await logUsage(key.id, '/v1/disputes', 200, Date.now() - t0, {
     scenario_kind: result.legal_references[0] ?? null,
+    // case_reference / customer_id are echoed for downstream auditing.
+    // Logged here too so a portal-side support query ("which call
+    // touched ticket TKT-12345?") can resolve without the customer
+    // having to share request bodies. Plaintext ID values only — we
+    // never log the scenario text or PII.
+    case_reference: result.case_reference,
+    customer_id: result.customer_id,
   });
   return NextResponse.json(result, {
     status: 200,

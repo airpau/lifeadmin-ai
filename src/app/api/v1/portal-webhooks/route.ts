@@ -22,13 +22,28 @@ import { authPortal, burnMagicLinkToken } from "@/lib/b2b/session";
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// Customer-subscribable webhook events. Anything not in this list is
+// silently dropped at create/update time. Add new events here AND
+// document them in /for-business/docs §Webhooks.
 const SUPPORTED_EVENTS = [
+  // Key-lifecycle events — fire from the customer portal mutations.
   'key.created',
   'key.revoked',
   'key.reissued',
+  // Usage thresholds — fire when a key crosses 60% or 90% of its
+  // monthly cap. Lets ops alert before the 429 wall.
   'key.usage_threshold_60',
   'key.usage_threshold_90',
+  // Daily ops summary — push the previous day's call/error/p95
+  // numbers to a Slack relay or compliance dashboard.
   'usage.daily_summary',
+  // Material-change webhook for the legal_references index. Fires
+  // when the daily legal-monitoring cron flips a row's
+  // verification_status to 'updated' (i.e. a statute, regulator
+  // code, or guidance note has changed in a way that materially
+  // affects how the engine grounds responses). Compliance teams
+  // subscribe to drive their own internal review workflow.
+  'statute.updated',
 ];
 
 function getAdmin() {

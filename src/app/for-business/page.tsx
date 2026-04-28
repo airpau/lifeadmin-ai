@@ -95,23 +95,35 @@ const COVERED_LEGISLATION = [
 const FAQ: { q: string; a: string }[] = [
   {
     q: 'Is this the same engine that powers the Paybacker consumer app?',
-    a: 'Yes. The same statute index, entitlement reasoner, and letter generator. The B2B surface is a thin REST and MCP layer on top with rate limits, audit logging, and a per-tenant context.',
-  },
-  {
-    q: 'Do you offer MCP?',
-    a: 'Yes, on the Growth tier and above. The same engine is exposed as MCP tool calls so an LLM agent can ask for statute, entitlement, draft, and escalation in one round trip.',
+    a: 'Yes — the same statute index, retrieval pipeline, entitlement reasoner, and letter generator. The B2B surface is a stable REST contract on top with bearer-token auth, monthly rate limits, audit logging, idempotency keys, and a customer portal. MCP is on the roadmap for Growth tier customers.',
   },
   {
     q: 'How do you keep the statute index current?',
-    a: 'We watch the legislation.gov.uk feed plus regulator publications (Ofcom, Ofgem, FCA, CAA). Material changes flow into the engine within 7 days, with an Enterprise SLA that tightens this to 24 hours.',
+    a: 'A daily legal-monitoring cron watches legislation.gov.uk, FCA / Ofcom / Ofgem / CAA / ORR publications, and the Financial Ombudsman Service decision feed. Every reference is reviewed and the engine’s verification_status field flips to current / updated / superseded. The published /coverage page reflects what the engine actually grounds against today — it cannot drift from production.',
+  },
+  {
+    q: 'How do I get notified when a statute the engine cites changes?',
+    a: 'Subscribe to the statute.updated webhook event from your customer portal. The legal-monitoring cron fires it within 24 hours of a material change being verified, with the affected category + a diff of what changed. Compliance teams use it to drive their own internal review workflow.',
   },
   {
     q: 'What about case law?',
-    a: 'The engine cites primary statute and regulator guidance. Persuasive case authorities are surfaced where they materially change the entitlement (e.g. Wakefield v Logan-Air on UK261 extraordinary circumstances). We do not generate untested legal positions.',
+    a: 'The engine cites primary statute and regulator guidance as the grounding authority. Persuasive case authorities are surfaced in the rationale only where they materially change the entitlement (e.g. Wakefield v Loganair on UK261 extraordinary circumstances). We do not generate untested legal positions — if a scenario doesn’t map to a verified reference, the API returns 422 NO_STATUTE_MATCH instead of guessing.',
   },
   {
-    q: 'When does it launch?',
-    a: 'Public launch depends on signup demand. Waitlist members receive a private design partner offer if their use case is a strong fit, ahead of general availability.',
+    q: 'How is this different from wrapping GPT / Claude / Gemini in a prompt?',
+    a: 'A generic LLM hallucinates UK statute citations — cites repealed acts, invents thresholds, confuses England with Scotland. Anti-hallucination here is structural: every citation is pulled from a curated table BEFORE the model is prompted, the prompt instructs the model to ground only in those citations, and the response shape is parsed into typed fields. You get UK consumer-law reasoning that won’t embarrass your conduct team in front of the FCA, the FOS, or your own users.',
+  },
+  {
+    q: 'Where does Paybacker store our data?',
+    a: 'Request bodies are not stored. We log endpoint, status, latency, your case_reference and customer_id (if you supplied them), and the primary cited statute — never the scenario text or PII. Logs land in EU-region Supabase. Idempotency keys are stored hashed for 24h.',
+  },
+  {
+    q: 'What about throughput and latency at scale?',
+    a: 'p50 latency is 2-3s end-to-end, p95 is 4-5s, dominated by the LLM call. The engine is parallelisable up to your tier’s monthly cap; we don’t enforce per-second burst limits below 50 rps. Enterprise customers get dedicated tenant infrastructure to insulate against noisy-neighbour effects.',
+  },
+  {
+    q: 'Can we self-host or run on-prem?',
+    a: 'Email business@paybacker.co.uk — on-prem and dedicated VPC are supported under Enterprise contracts. Includes the statute index updated via signed delta releases.',
   },
 ];
 
@@ -189,8 +201,11 @@ export default function ForBusinessPage() {
             ))}
           </ul>
           <p className="m-business-footnote">
-            Coverage is reviewed quarterly. Enterprise customers receive material-change webhooks within
-            24 hours of a regulatory update going live.
+            Refreshed daily by an automated legal-monitoring cron — the published index is
+            always the index the engine grounds against.{' '}
+            Subscribe to the <code style={{ background: '#f1f5f9', borderRadius: 4, padding: '1px 6px' }}>statute.updated</code> webhook
+            and your compliance team is notified within 24 hours of any material change to a
+            statute, regulator code, or guidance note that the API can cite.
           </p>
         </div>
       </section>
@@ -199,23 +214,31 @@ export default function ForBusinessPage() {
       <section className="m-business-section m-business-section--alt">
         <div className="m-business-wrap">
           <span className="m-business-eyebrow">Who it's for</span>
-          <h2>Built for product teams that ship UK consumer surfaces.</h2>
+          <h2>Built for product, claims, CX and compliance teams shipping UK consumer surfaces.</h2>
           <div className="m-business-segment-grid">
             <Segment
-              title="Neobanks and challenger banks"
-              line="Section 75 chargeback triage, FCA dispute readiness, refund eligibility scoring."
+              title="Neobanks, BNPL & lenders"
+              line="Section 75 chargeback triage at the agent UI. CCA 1974 disputed-credit handling. FOS-readiness scoring on every escalation. Statute-grounded responses your conduct team can sign off on."
             />
             <Segment
-              title="Insurance and warranty platforms"
-              line="Claims with statutory backing, repair-or-replace decisioning, FOS escalation paths."
+              title="Insurers, MGAs & warranty platforms"
+              line="Wrongful-decline detection at first notification. FCA general insurance pricing-rule checks at renewal. FOS escalation pathing baked into the claims pipeline. Treating-Customers-Fairly evidence on every reply."
             />
             <Segment
-              title="Cashback and comparison sites"
-              line="Consumer query handling, mid-contract price-hike rights, switching entitlement."
+              title="Energy, broadband, mobile retailers"
+              line="Ofgem licence-condition compliance on billing disputes. 12-month back-billing detection. Ofcom GC C1 service credit calculations. Mid-contract CPI rise eligibility checks. Penalty-free-exit triage on cancellation flows."
             />
             <Segment
-              title="AI agent builders"
-              line="UK-aware tool calls. The engine ships as MCP so agents can reason about statute, not paraphrase."
+              title="Travel, OTAs & flight-delay claims"
+              line="UK261 entitlement returned with the cited regulation, not a paraphrase. Distance-banded compensation, extraordinary-circumstances test, EU261 grandfathering, denied-boarding pathways. Same engine that drives the consumer self-serve claim."
+            />
+            <Segment
+              title="CX automation, ticketing & helpdesk vendors"
+              line="Embed in Zendesk, Intercom, HubSpot, Front, Gladly — every inbound consumer dispute returns the cited statute, agent talking points, and a paste-ready customer reply. Cuts AHT by 40-60% in early deployments."
+            />
+            <Segment
+              title="AI agent builders & vertical copilots"
+              line="UK-aware tool calls. The engine is exposed as MCP so a Claude / Gemini / GPT-class agent can ask for statute, entitlement, draft, and escalation in one round-trip — without paraphrasing law it doesn&rsquo;t know."
             />
           </div>
         </div>
