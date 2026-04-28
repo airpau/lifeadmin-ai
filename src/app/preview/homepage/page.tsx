@@ -1060,19 +1060,19 @@ export default function HomepageV3PreviewPage() {
               <span>your annual Pro subscription, recovered on a single dispute.</span>
             </div>
             <p className="real-win__roi-detail">
-              Pro is £99.99/year. The gap on this one case alone (£398.50) is almost
-              4× the cost of a year&rsquo;s Pro membership — recovered from one outage,
-              one letter, one click.
+              Pro is £94.99/year. The gap on this one case alone (£398.50) is more
+              than 4× the cost of a year&rsquo;s Pro membership — recovered from one
+              outage, one letter, one click.
             </p>
             <div className="real-win__equivalents">
               <div className="real-win__equivalents-label">£398 is about:</div>
               <ul>
                 <li>🏖️ A long weekend in Lisbon</li>
-                <li>☕ 250 flat whites at your local</li>
-                <li>📡 A whole year of average UK broadband</li>
-                <li>🎬 80 cinema tickets</li>
+                <li>☕ 130 flat whites at your local</li>
+                <li>📡 A whole year of broadband</li>
+                <li>🎬 40 cinema tickets</li>
                 <li>🏋️ A year of Pure Gym</li>
-                <li>🛒 6 weeks of family food shopping</li>
+                <li>🛒 4 weeks of family food shopping</li>
               </ul>
             </div>
           </Reveal>

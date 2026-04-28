@@ -70,13 +70,16 @@ export async function GET(req: NextRequest) {
   const eligible = tierResults.filter((r) => r.allowed).map((r) => r.session);
   const skippedNonPro = sessions.length - eligible.length;
 
-  // PHASE 1: skip actual sending until detection is wired in. Just count.
-  // This avoids accidentally messaging users with empty alerts during scaffold.
+  // 2026-04-28 — detection is now unified into /api/cron/telegram-alerts
+  // which dispatches to whichever channel is active per user. This route
+  // is kept as a no-op so the existing vercel.json cron entry doesn't
+  // 404, but it no longer drives any sends. The combined cron picks up
+  // whatsapp_sessions directly via listActivePocketAgentSessions().
   return NextResponse.json({
     ok: true,
     sent: 0,
     pending: eligible.length,
     skippedNonPro,
-    note: 'phase 1 stub — detection integration coming in next sprint',
+    note: 'no-op — detection unified into /api/cron/telegram-alerts (channel-agnostic since 2026-04-28)',
   });
 }
