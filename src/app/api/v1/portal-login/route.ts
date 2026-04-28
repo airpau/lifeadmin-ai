@@ -46,17 +46,28 @@ export async function POST(request: NextRequest) {
   const { ip_address, user_agent } = extractClientMeta(request);
   audit({ email, action: 'login_link_requested', ip_address, user_agent });
 
-  // We always return ok=true even if no key exists for this email, so
-  // the response can't be used as an enumeration oracle.
-  const { data: hasKey } = await supabase
+  // We always return ok=true even if the email has no access, so the
+  // response can't be used as an enumeration oracle.
+  // Eligible: emails that directly own a key OR are listed as members
+  // of an owner who has at least one key.
+  const { data: ownerKey } = await supabase
     .from('b2b_api_keys')
     .select('id')
     .eq('owner_email', email)
     .is('revoked_at', null)
     .limit(1)
     .maybeSingle();
+  const { data: memberRow } = ownerKey
+    ? { data: null as any }
+    : await supabase
+        .from('b2b_members')
+        .select('owner_email')
+        .eq('member_email', email)
+        .limit(1)
+        .maybeSingle();
+  const hasAccess = !!(ownerKey || memberRow);
 
-  if (hasKey) {
+  if (hasAccess) {
     const token = crypto.randomBytes(32).toString('base64url');
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
