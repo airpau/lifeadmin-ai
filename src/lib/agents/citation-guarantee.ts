@@ -197,6 +197,41 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
     ],
   },
 
+  // ─── Broadband / landline total loss of service ────────────────────────────
+  // Triggered by Paul's OneStream case: "internet down for 35 days /
+  // 17 days / no broadband". MUST cite the Voluntary Automatic
+  // Compensation Scheme — the per-day money-bearing rule that providers
+  // are bound to. Without this, the engine accepted OneStream's
+  // £106.96 partial offer as reasonable when the actual entitlement
+  // was £500+ in compensation.
+  {
+    id: 'broadband_total_loss',
+    matches: (ctx) =>
+      /\b(broadband|landline|internet|fibre|phone\s*line|onestream|bt\b|ee\b|sky|virgin\s*media|vodafone|talktalk|plusnet|hyperoptic|community\s*fibre|three\s*uk)\b/.test(ctx.text)
+      &&
+      /\b(no\s*(broadband|internet|service|connection)|service\s*(down|outage|loss|interrupt|fault)|total\s*loss|complete\s*(outage|loss)|without\s*(internet|broadband|service)|(\d+)\s*days?\s*(without|down|no\s*service)|outage|missed\s*appointment|engineer\s*(no.?show|missed|didn't\s*turn\s*up)|delayed\s*(start|installation|activation))\b/.test(ctx.text),
+    required: [
+      {
+        label: 'Ofcom Voluntary Automatic Compensation Scheme (GC C3.13)',
+        matchTokens: ['automatic compensation scheme', 'auto-compensation', 'gc c3', 'voluntary automatic'],
+        rationale:
+          'Per-day compensation for total loss / delayed start / missed appointments at the rates currently published by Ofcom (£10.07/day total loss as at April 2026). Most major UK ISPs are in the scheme. Any provider offer below the per-day rate is non-compliant. THIS IS THE PRIMARY MONEY-BEARING RULE FOR LOSS-OF-SERVICE DISPUTES.',
+      },
+      {
+        label: 'Consumer Rights Act 2015, s.49 (services — reasonable care and skill)',
+        matchTokens: ['consumer rights act 2015', 'cra 2015', 's.49', 'section 49'],
+        rationale:
+          'Substantial / repeated service failure entitles the customer to a price reduction (s.55) on top of the Auto-Compensation per-day rate.',
+      },
+      {
+        label: 'Ofcom General Conditions, GC C1 (refund of unused service)',
+        matchTokens: ['general conditions', 'gc c1', 'ofcom'],
+        rationale:
+          'Customer is entitled to a refund of the monthly charges for the period of total loss — separate from and IN ADDITION TO the per-day Auto-Compensation. Providers often offer one OR the other; the rules require both.',
+      },
+    ],
+  },
+
   // ─── Statute-barred debt ───────────────────────────────────────────────────
   {
     id: 'statute_barred_debt',
