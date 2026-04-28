@@ -44,7 +44,7 @@ export async function GET() {
   const supabase = getAdmin();
   const { data, error } = await supabase
     .from('b2b_waitlist')
-    .select('id, name, work_email, company, role, expected_volume, use_case, status, notes, utm_source, utm_medium, utm_campaign, referrer, created_at, reviewed_at')
+    .select('id, name, work_email, company, role, expected_volume, use_case, status, notes, utm_source, utm_medium, utm_campaign, referrer, created_at, reviewed_at, intended_tier, stripe_session_id')
     .order('created_at', { ascending: false });
 
   if (error) {

@@ -25,7 +25,8 @@ interface Signup {
   role: string | null;
   expected_volume: string;
   use_case: string;
-  status: 'new' | 'qualified' | 'contacted' | 'rejected' | 'converted';
+  status: 'new' | 'qualified' | 'contacted' | 'rejected' | 'converted' | 'checkout_started' | 'checkout_abandoned';
+  intended_tier: string | null;
   notes: string | null;
   utm_source: string | null;
   created_at: string;
@@ -46,7 +47,17 @@ interface ApiKey {
   created_at: string;
 }
 
-const STATUSES: Signup['status'][] = ['new', 'qualified', 'contacted', 'rejected', 'converted'];
+const STATUSES: Signup['status'][] = ['new', 'qualified', 'contacted', 'rejected', 'converted', 'checkout_started', 'checkout_abandoned'];
+
+const STATUS_BADGE: Record<Signup['status'], { label: string; bg: string; fg: string }> = {
+  new: { label: 'New', bg: '#e0e7ff', fg: '#3730a3' },
+  qualified: { label: 'Qualified', bg: '#dbeafe', fg: '#1e40af' },
+  contacted: { label: 'Contacted', bg: '#fef3c7', fg: '#92400e' },
+  rejected: { label: 'Rejected', bg: '#fee2e2', fg: '#991b1b' },
+  converted: { label: '🎉 Converted', bg: '#d1fae5', fg: '#065f46' },
+  checkout_started: { label: '🛒 Checkout started', bg: '#fef3c7', fg: '#92400e' },
+  checkout_abandoned: { label: '🛒💀 Abandoned', bg: '#fee2e2', fg: '#991b1b' },
+};
 
 export default function AdminB2BPage() {
   const [signups, setSignups] = useState<Signup[]>([]);
@@ -181,13 +192,23 @@ export default function AdminB2BPage() {
                       <span className="text-slate-500">@</span>
                       <span className="font-medium text-slate-900">{s.company}</span>
                       {s.role && <span className="text-xs text-slate-500">({s.role})</span>}
+                      <span
+                        className="px-2 py-0.5 rounded-full text-xs font-medium"
+                        style={{ background: STATUS_BADGE[s.status]?.bg, color: STATUS_BADGE[s.status]?.fg }}
+                      >
+                        {STATUS_BADGE[s.status]?.label ?? s.status}
+                      </span>
+                      {s.intended_tier && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 capitalize">
+                          {s.intended_tier}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
                       <a href={`mailto:${s.work_email}`} className="text-emerald-600 hover:underline">
                         {s.work_email}
                       </a>
-                      {' · '}
-                      Volume: <span className="font-medium text-slate-700">{s.expected_volume}</span>
+                      {s.expected_volume && <>{' · '}Volume: <span className="font-medium text-slate-700">{s.expected_volume}</span></>}
                       {' · '}
                       {new Date(s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                       {s.utm_source && ` · src:${s.utm_source}`}
