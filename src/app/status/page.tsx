@@ -69,10 +69,10 @@ export default async function StatusPage() {
         <div style={{ ...card, marginTop: 24 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>What this measures</h2>
           <ul style={{ paddingLeft: 18, color: '#475569', lineHeight: 1.7, marginTop: 8 }}>
-            <li><strong>Operational</strong>: error rate &lt; 1% AND p95 ≤ 6s.</li>
-            <li><strong>Degraded</strong>: error rate ≥ 1% OR p95 &gt; 6s.</li>
-            <li><strong>Outage</strong>: error rate ≥ 5% OR p95 &gt; 10s.</li>
-            <li>Latency includes the LLM call (Claude). Network variance to Anthropic is the dominant component.</li>
+            <li><strong>Operational</strong>: error rate &lt; 1% AND p95 ≤ 15s.</li>
+            <li><strong>Degraded</strong>: error rate ≥ 1% OR p95 &gt; 15s.</li>
+            <li><strong>Outage</strong>: error rate ≥ 5% OR p95 &gt; 30s.</li>
+            <li>Latency includes the LLM call (Claude). A complex /v1/disputes scenario with full statute citation and draft letter is normally 8–20s end-to-end.</li>
             <li>Aggregated across all customers and tiers. We do not display per-customer status here.</li>
           </ul>
         </div>
