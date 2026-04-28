@@ -164,7 +164,14 @@ export async function POST(request: NextRequest) {
     }
 
     const issueTypeToCategory: Record<string, string[]> = {
-      complaint: ['general'],
+      // 'complaint' is the catch-all letterType for "I'm being charged
+      // something I don't think I owe / didn't agree to". Most of those
+      // involve a payment (card, PayPal, direct debit, BNPL), so we
+      // include 'finance' by default — the dynamic detector below can
+      // still narrow further. Without 'finance' here the engine misses
+      // Payment Services Regs 2017 reg 76 (unauthorised payment refund)
+      // which is often the STRONGEST ground.
+      complaint: ['general', 'finance'],
       energy_dispute: ['general', 'energy'],
       broadband_complaint: ['general', 'broadband'],
       flight_compensation: ['general', 'travel'],
@@ -198,11 +205,55 @@ export async function POST(request: NextRequest) {
 
     // Two-step resolution: issue_type is more specific, so try it first.
     // This prevents a 'government' provider_type from pulling in HMRC refs on a council tax dispute.
-    const categories =
+    let categories =
       issueTypeToCategory[disputeIssueType || ''] ||
       issueTypeToCategory[body.letterType || ''] ||
       (disputeProviderType ? providerTypeToCategory[disputeProviderType] : null) ||
       ['general'];
+
+    // Dynamic augmentation — scan the scenario text for sector signals
+    // and add the matching category if not already present. This is
+    // the same trick the B2B engine uses (src/lib/b2b/disputes.ts
+    // detectScenarioCategory) and it catches cases the static
+    // letterType→category map misses.
+    //
+    // Most-impactful signal: PAYMENT keywords. An unauthorised PayPal /
+    // card / direct-debit charge is fundamentally a finance dispute
+    // even when the user clicked 'complaint' as the letter type, and
+    // the engine MUST cite Payment Services Regulations 2017 reg 76
+    // (unauthorised payment refund) — pulling 'finance' makes that
+    // ref available to Claude.
+    const scenarioForDetect = (
+      `${body.issueDescription ?? ''} ${body.companyName ?? ''} ${body.desiredOutcome ?? ''}`
+    ).toLowerCase();
+
+    function augment(category: string, regex: RegExp) {
+      if (regex.test(scenarioForDetect) && !categories.includes(category)) {
+        categories = [...categories, category];
+      }
+    }
+
+    // Finance signals — payment instruments, chargeback, unauthorised
+    // charges, BNPL, debit/credit cards. We deliberately include
+    // 'paypal' / 'klarna' / 'clearpay' as merchant-specific signals
+    // because users say "PayPal charged me" not "I had an unauthorised
+    // payment under PSR 2017".
+    augment('finance', /\b(paypal|klarna|clearpay|chargeback|section\s*75|s\.?\s*75|cca\s*1974|credit\s*card|debit\s*card|direct\s*debit|standing\s*order|unauthori[sz]ed\s*(payment|charge|transaction|debit)|(took|charged|deducted|debited)\s*(£|gbp|money)|payment\s*(taken|removed|deducted)|automatic\s*(charge|renewal|payment)|recurring\s*(charge|payment)|subscription)\b/);
+
+    // Travel signals (flight cancellation / delay).
+    augment('travel', /\b(flight|airline|cancel(?:l?ed)?\s*(my\s+)?flight|delay(?:ed)?\s*(my\s+)?flight|baggage|boarding|ryanair|easyjet|jet2|tui|british\s*airways|wizz\s*air|caa\b|uk261|eu261)\b/);
+
+    // Energy signals.
+    augment('energy', /\b(energy|gas|electric(ity)?|ofgem|british\s*gas|octopus(\s*energy)?|edf|ovo|e\.?on|sse\b|scottish\s*power|smart\s*meter|back-?bill)\b/);
+
+    // Broadband / telecoms.
+    augment('broadband', /\b(broadband|mobile\s*(?:contract|provider|tariff|bill)?|isp|ofcom|talktalk|mid-?contract\s*(price\s*rise|increase))\b/);
+
+    // Debt / collection.
+    augment('debt', /\b(debt\s*(claim|collection)|bailiff|enforcement\s*officer|statute\s*barred|lowell|cabot|intrum)\b/);
+
+    // Insurance.
+    augment('insurance', /\b(insurance|insurer|claim\s*declined|underwriter|loss\s*adjuster|policy\s*(claim|wording|exclusion))\b/);
 
     // NOTE: legal_references has no confidence_score column — filter by verification_status only
     const { data: legalRefs } = await supabase
