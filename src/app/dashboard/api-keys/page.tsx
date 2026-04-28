@@ -22,7 +22,7 @@ interface Delivery { id: number; webhook_id: string; event: string; status_code:
 interface WebhookData { webhooks: Webhook[]; recent_deliveries: Delivery[]; supported_events: string[]; }
 
 interface Member { id: string; member_email: string; role: 'admin' | 'viewer'; invited_at: string; accepted_at: string | null; invited_by: string | null; }
-interface MembersData { owner: string; your_role: 'admin' | 'viewer'; members: Member[]; }
+interface MembersData { owner: string; your_email: string; your_role: 'admin' | 'viewer'; members: Member[]; }
 interface StatusPayload { status: string; last_24h: { uptime_pct: number; p50_latency_ms: number; p95_latency_ms: number; total_calls: number; error_rate_pct: number }; }
 
 type Tab = 'keys' | 'usage' | 'activity' | 'webhooks' | 'members' | 'explorer' | 'audit' | 'account';
@@ -31,8 +31,9 @@ export const dynamic = 'force-dynamic';
 
 export default function ApiKeysPortalPage() {
   const params = useSearchParams();
-  const token = params.get('token');
-  const email = params.get('email');
+  const [token, setTokenState] = useState<string | null>(params.get('token'));
+  const [email, setEmailState] = useState<string | null>(params.get('email'));
+  const [hasSession, setHasSession] = useState(false);
   const [tab, setTab] = useState<Tab>('keys');
 
   const [requestEmail, setRequestEmail] = useState('');
@@ -49,21 +50,22 @@ export default function ApiKeysPortalPage() {
   const [drawer, setDrawer] = useState<{ kind: 'usage' | 'audit' | 'delivery'; row: any } | null>(null);
 
   async function load() {
-    if (!token || !email) return;
     setLoading(true);
     setError(null);
     try {
       const [r1, r2, r3, r4] = await Promise.all([
-        fetch(`/api/v1/portal-keys?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`),
-        fetch(`/api/v1/portal-webhooks?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`),
-        fetch(`/api/v1/portal-members?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`),
-        fetch(`/api/status`),
+        fetch('/api/v1/portal-keys', { credentials: 'include' }),
+        fetch('/api/v1/portal-webhooks', { credentials: 'include' }),
+        fetch('/api/v1/portal-members', { credentials: 'include' }),
+        fetch('/api/status'),
       ]);
       const j1 = await r1.json();
       const j2 = await r2.json();
       const j3 = await r3.json();
       const j4 = await r4.json();
+      if (r1.status === 401) { setHasSession(false); setLoading(false); return; }
       if (!r1.ok) throw new Error(j1.error || 'Could not load portal');
+      setHasSession(true);
       setData(j1);
       if (r2.ok) setWebhookData(j2);
       if (r3.ok) setMembersData(j3);
@@ -72,7 +74,36 @@ export default function ApiKeysPortalPage() {
       setError(e?.message || 'Failed');
     } finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, [token, email]);
+  // First mount: if we have a magic-link token, exchange it for a
+  // 30-day session cookie, then strip the query params from the URL
+  // and reload data without them. Otherwise just attempt to load —
+  // if the cookie is valid, we're already signed in; if not, the
+  // sign-in form renders.
+  useEffect(() => {
+    (async () => {
+      if (token && email) {
+        try {
+          const r = await fetch('/api/v1/portal-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, email }) });
+          if (r.ok) {
+            history.replaceState({}, '', '/dashboard/api-keys');
+            setHasSession(true);
+          }
+        } catch {}
+      } else {
+        // Probe — try loading; load() will set error if not signed in.
+        setHasSession(true);
+      }
+      load();
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function signOut() {
+    await fetch('/api/v1/portal-session', { method: 'DELETE' });
+    setTokenState(null); setEmailState(null); setHasSession(false);
+    setData(null); setWebhookData(null); setMembersData(null);
+    history.replaceState({}, '', '/dashboard/api-keys');
+  }
 
   async function requestLink(e: React.FormEvent) {
     e.preventDefault();
@@ -102,16 +133,16 @@ export default function ApiKeysPortalPage() {
     window.open(`/api/v1/portal-export?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}&type=${type}`, '_blank');
   }
 
-  // No token → request link
-  if (!token || !email) {
+  // Not signed in → request link
+  if (!hasSession && !loading) {
     return (
       <main style={signinPage}>
         <div style={signinCard}>
           <h1 style={{ margin: 0, fontSize: 28, letterSpacing: '-0.01em' }}>API portal sign-in</h1>
-          <p style={{ color: '#475569' }}>Enter the work email your Paybacker API key is registered to. We&rsquo;ll send a one-time link.</p>
+          <p style={{ color: '#475569' }}>Enter the work email your Paybacker API key is registered to. We&rsquo;ll send a one-time link. After that, you&rsquo;ll stay signed in for 30 days.</p>
           {requestSent ? (
             <div style={{ background: '#ecfdf5', border: '1px solid #6ee7b7', padding: 12, borderRadius: 8, color: '#065f46' }}>
-              If a key exists for that email, a link has been sent. Expires in 30 minutes.
+              If you have access, a link has been sent. Expires in 30 minutes.
             </div>
           ) : (
             <form onSubmit={requestLink} style={{ display: 'grid', gap: 10 }}>
@@ -132,12 +163,13 @@ export default function ApiKeysPortalPage() {
           <div>
             <Link href="/for-business" style={{ color: '#64748b', fontSize: 13, textDecoration: 'none' }}>← paybacker.co.uk/for-business</Link>
             <h1 style={{ margin: '8px 0 4px', fontSize: 28, letterSpacing: '-0.01em' }}>API portal</h1>
-            <p style={{ color: '#475569', margin: 0 }}>Signed in as <strong>{email}</strong></p>
+            <p style={{ color: '#475569', margin: 0 }}>Signed in as <strong>{membersData?.your_email ?? '—'}</strong>{membersData?.your_role === 'viewer' && ' (viewer)'}</p>
           </div>
-          <div style={{ display: 'flex', gap: 12, fontSize: 13, color: '#64748b', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 12, fontSize: 13, color: '#64748b', flexWrap: 'wrap', alignItems: 'center' }}>
             <Link href="/for-business/docs" style={navLink}>Docs</Link>
             <Link href="/for-business/coverage" style={navLink}>Coverage</Link>
             <a href="mailto:business@paybacker.co.uk" style={navLink}>Support</a>
+            <button onClick={signOut} style={{ ...btnGhost, fontSize: 12 }}>Sign out</button>
           </div>
         </header>
 
@@ -168,14 +200,14 @@ export default function ApiKeysPortalPage() {
             </div>
 
             <div style={{ paddingTop: 20 }}>
-              {tab === 'keys' && <KeysTab keys={data.keys} status={status} token={token} email={email} revokedUsageThisMonth={data.revoked_key_usage_this_month ?? 0} onReissue={reissue} onRevoke={revoke} onChange={load} />}
+              {tab === 'keys' && <KeysTab keys={data.keys} status={status} token={token ?? ''} email={email ?? ''} revokedUsageThisMonth={data.revoked_key_usage_this_month ?? 0} onReissue={reissue} onRevoke={revoke} onChange={load} />}
               {tab === 'usage' && <UsageTab daily={data.usage_daily} onExport={() => exportCsv('usage')} />}
               {tab === 'activity' && <ActivityTab usage={data.recent_usage} keys={data.all_keys} onOpen={(r) => setDrawer({ kind: 'usage', row: r })} />}
-              {tab === 'webhooks' && webhookData && <WebhooksTab data={webhookData} token={token} email={email} onChange={load} onOpen={(r) => setDrawer({ kind: 'delivery', row: r })} />}
-              {tab === 'members' && <MembersTab data={membersData} token={token} email={email} onChange={load} />}
+              {tab === 'webhooks' && webhookData && <WebhooksTab data={webhookData} token={token ?? ''} email={email ?? ''} onChange={load} onOpen={(r) => setDrawer({ kind: 'delivery', row: r })} />}
+              {tab === 'members' && <MembersTab data={membersData} token={token ?? ''} email={email ?? ''} onChange={load} />}
               {tab === 'explorer' && <ExplorerTab keys={data.keys} />}
               {tab === 'audit' && <AuditTab audit={data.audit_log} keys={data.all_keys} onOpen={(r) => setDrawer({ kind: 'audit', row: r })} onExport={() => exportCsv('audit')} />}
-              {tab === 'account' && <AccountTab email={email} keys={data.all_keys} />}
+              {tab === 'account' && <AccountTab email={membersData?.your_email ?? email ?? ''} keys={data.all_keys} />}
             </div>
           </>
         )}
@@ -260,9 +292,21 @@ function KeyCard({ k, token, email, onReissue, onRevoke, onChange }: { k: Key; t
       {pct >= 90 && (
         <div style={{ marginTop: 12, padding: 12, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#991b1b' }}>
           <strong>{pct >= 100 ? 'Monthly limit reached.' : 'Approaching monthly limit.'}</strong> Calls beyond your cap will return 429 until the 1st (UTC).
-          {isStarter && <span> Upgrade to <strong>Growth (£499/mo, 10k calls)</strong> to keep going.</span>}
-          <div style={{ marginTop: 10 }}>
-            <Link href="/for-business#buy" style={btn}>Upgrade tier →</Link>
+          {isStarter && <span> Upgrade to <strong>Growth (£499/mo, 10k calls)</strong> to keep going. We&rsquo;ll auto-revoke this free key once your paid key is active — your audit log and history stay attached to your email.</span>}
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {isStarter && <button onClick={async () => {
+              const r = await fetch('/api/v1/portal-upgrade', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier: 'growth' }) });
+              const j = await r.json();
+              if (!r.ok) { alert(j.error || 'Could not start upgrade'); return; }
+              window.location.href = j.url;
+            }} style={btn}>Upgrade to Growth — £499/mo →</button>}
+            {isStarter && <button onClick={async () => {
+              const r = await fetch('/api/v1/portal-upgrade', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier: 'enterprise' }) });
+              const j = await r.json();
+              if (!r.ok) { alert(j.error || 'Could not start upgrade'); return; }
+              window.location.href = j.url;
+            }} style={btnGhost}>Or Enterprise — £1,999/mo</button>}
+            {!isStarter && <Link href="/for-business#buy" style={btn}>Upgrade tier →</Link>}
           </div>
         </div>
       )}

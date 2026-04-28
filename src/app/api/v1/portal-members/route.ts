@@ -13,6 +13,7 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
 import { resend } from '@/lib/resend';
 import { audit, extractClientMeta } from '@/lib/b2b/audit';
+import { authPortal } from '@/lib/b2b/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,12 +60,10 @@ export async function resolveOwner(supabase: any, email: string): Promise<{ owne
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const token = url.searchParams.get('token') ?? '';
-  const email = (url.searchParams.get('email') ?? '').toLowerCase();
-  if (!token || !email) return NextResponse.json({ error: 'token + email required' }, { status: 400 });
-
+  const auth = await authPortal(request, null, { token: url.searchParams.get('token'), email: url.searchParams.get('email') });
+  if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  const email = auth.email;
   const supabase = getAdmin();
-  if (!(await verifyToken(supabase, token, email, false))) return NextResponse.json({ error: 'Link expired.' }, { status: 401 });
 
   const { owner, role } = await resolveOwner(supabase, email);
   const { data: members } = await supabase
@@ -73,7 +72,7 @@ export async function GET(request: NextRequest) {
     .eq('owner_email', owner)
     .order('invited_at', { ascending: false });
 
-  return NextResponse.json({ owner, your_role: role, members: members ?? [] });
+  return NextResponse.json({ owner, your_email: email, your_role: role, members: members ?? [] });
 }
 
 export async function POST(request: NextRequest) {
@@ -81,15 +80,13 @@ export async function POST(request: NextRequest) {
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  const token = String(body?.token || '');
-  const email = String(body?.email || '').toLowerCase();
   const action = String(body?.action || '');
   const memberEmail = String(body?.member_email || '').toLowerCase();
   const role: 'admin' | 'viewer' = body?.role === 'admin' ? 'admin' : 'viewer';
-  if (!token || !email) return NextResponse.json({ error: 'token + email required' }, { status: 400 });
-
+  const auth = await authPortal(request, body, null);
+  if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  const email = auth.email;
   const supabase = getAdmin();
-  if (!(await verifyToken(supabase, token, email, true))) return NextResponse.json({ error: 'Link expired.' }, { status: 401 });
 
   const { owner, role: yourRole } = await resolveOwner(supabase, email);
   if (yourRole !== 'admin') return NextResponse.json({ error: 'Only admins can manage team members.' }, { status: 403 });

@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
 import { audit, extractClientMeta } from '@/lib/b2b/audit';
+import { authPortal } from '@/lib/b2b/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,14 +65,10 @@ function generateSecret(): { plaintext: string; hash: string } {
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const token = url.searchParams.get('token') ?? '';
-  const email = (url.searchParams.get('email') ?? '').toLowerCase();
-  if (!token || !email) return NextResponse.json({ error: 'token + email required' }, { status: 400 });
-
+  const auth = await authPortal(request, null, { token: url.searchParams.get('token'), email: url.searchParams.get('email') });
+  if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  const email = auth.email;
   const supabase = getAdmin();
-  if (!(await verifyToken(supabase, token, email, false))) {
-    return NextResponse.json({ error: 'Link expired or invalid.' }, { status: 401 });
-  }
 
   const { data: hooks } = await supabase
     .from('b2b_webhooks')
@@ -104,15 +101,11 @@ export async function POST(request: NextRequest) {
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  const token = String(body?.token || '');
-  const email = String(body?.email || '').toLowerCase();
   const action = (body?.action as string) || 'create';
-  if (!token || !email) return NextResponse.json({ error: 'token + email required' }, { status: 400 });
-
+  const auth = await authPortal(request, body, null);
+  if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  const email = auth.email;
   const supabase = getAdmin();
-  if (!(await verifyToken(supabase, token, email, true))) {
-    return NextResponse.json({ error: 'Link expired or invalid.' }, { status: 401 });
-  }
   const meta = extractClientMeta(request);
 
   if (action === 'create') {

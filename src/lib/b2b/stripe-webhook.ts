@@ -141,6 +141,27 @@ export async function handleB2bCheckoutCompleted(
     metadata: { tier, source: 'stripe_checkout', subscription_id: subscriptionId, prefix: minted.prefix },
   });
 
+  // Free→paid upgrade flow: portal-upgrade tags the session with
+  // upgrading_from_free=1 and a CSV of starter key IDs to revoke
+  // once the paid key is provisioned. Audit log + recent calls
+  // remain attached to the email, so the customer's history is
+  // preserved across the upgrade.
+  if (session.metadata?.upgrading_from_free === '1') {
+    const starterIds = String(session.metadata?.revoke_starter_ids || '').split(',').filter(Boolean);
+    if (starterIds.length > 0) {
+      const { error: revErr } = await supabase
+        .from('b2b_api_keys')
+        .update({ revoked_at: new Date().toISOString(), notes: `Auto-revoked at upgrade to ${tier}` })
+        .in('id', starterIds);
+      if (revErr) console.error('[b2b stripe] starter auto-revoke failed:', revErr.message);
+      else {
+        for (const sid of starterIds) {
+          audit({ email: customerEmail.toLowerCase(), action: 'key_revoked', actor: 'stripe', key_id: sid, metadata: { reason: 'free_to_paid_upgrade', new_tier: tier } });
+        }
+      }
+    }
+  }
+
   // Email a single-use reveal link rather than plaintext. Better
   // security posture (forwarded emails can't be replayed) and the
   // answer to any prospect who asks "do you email plaintext keys?".

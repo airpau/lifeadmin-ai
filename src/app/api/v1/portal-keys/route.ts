@@ -16,6 +16,7 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
 import { generateKey } from '@/lib/b2b/auth';
 import { audit, extractClientMeta } from '@/lib/b2b/audit';
+import { authPortal } from '@/lib/b2b/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -118,13 +119,10 @@ async function loadUsageDaily(supabase: any, keyIds: string[]) {
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const token = url.searchParams.get('token') ?? '';
-  const email = (url.searchParams.get('email') ?? '').toLowerCase();
-  if (!token || !email) return NextResponse.json({ error: 'Missing token or email' }, { status: 400 });
-
+  const auth = await authPortal(request, null, { token: url.searchParams.get('token'), email: url.searchParams.get('email') });
+  if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  const email = auth.email;
   const supabase = getAdmin();
-  const ok = await verifyToken(supabase, token, email, false);
-  if (!ok) return NextResponse.json({ error: 'Invalid or expired link. Request a new one.' }, { status: 401 });
 
   // Log a portal_signin event the first time a token is read in a session.
   // We don't dedupe across reads — each load is one event. The portal UI
@@ -184,17 +182,15 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  const token = String(body?.token || '');
-  const email = String(body?.email || '').toLowerCase();
   const action = body?.action;
   const id = body?.id;
-  if (!token || !email || !action || !id) {
-    return NextResponse.json({ error: 'token, email, action, id required' }, { status: 400 });
+  if (!action || !id) {
+    return NextResponse.json({ error: 'action + id required' }, { status: 400 });
   }
-
+  const auth = await authPortal(request, body, null);
+  if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  const email = auth.email;
   const supabase = getAdmin();
-  const ok = await verifyToken(supabase, token, email, true);
-  if (!ok) return NextResponse.json({ error: 'Invalid or expired link. Request a new one.' }, { status: 401 });
 
   // Mutations must respect the member→owner mapping so admins on a
   // teammate-invited account can revoke / reissue keys they can see.
