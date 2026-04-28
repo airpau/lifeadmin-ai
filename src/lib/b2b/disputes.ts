@@ -105,19 +105,27 @@ export function validateRequest(body: unknown): DisputeRequest | DisputeError {
  */
 function detectScenarioCategory(scenario: string): string | null {
   const s = scenario.toLowerCase();
-  if (/flight|airline|cancell?ed|delay|baggage|boarding|ryanair|easyjet|jet2|tui|britishairways|wizz/.test(s)) return 'travel';
-  if (/train|rail|delay\s*repay|tfl|avanti|lner|gwr|northern|trainpennine|scotrail/.test(s)) return 'rail';
-  if (/broadband|mobile|isp|ofcom|sky\b|virgin|bt\b|talktalk|hyperoptic|three\s*uk|vodafone|ee\b/.test(s)) return 'broadband';
-  if (/energy|gas|electric|ofgem|british\s*gas|octopus|edf|ovo|eon|sse|scottish\s*power/.test(s)) return 'energy';
-  if (/section\s*75|credit\s*card|chargeback|payment\s*dispute|s\.?75|cca\s*1974/.test(s)) return 'finance';
-  if (/insurance|claim\s*declined|underwriter|loss\s*adjuster|insurer/.test(s)) return 'insurance';
-  if (/council\s*tax|valuation\s*office|band\s*[a-h]\b/.test(s)) return 'council_tax';
-  if (/parking|pcn|penalty\s*charge|popla/.test(s)) return 'parking';
-  if (/hmrc|tax\s*rebate|paye/.test(s)) return 'hmrc';
-  if (/dvla|driving\s*licence/.test(s)) return 'dvla';
-  if (/nhs|hospital/.test(s)) return 'nhs';
-  if (/gym|membership|puregym|the\s*gym\s*group/.test(s)) return 'gym';
-  if (/debt|bailiff|enforcement|statute\s*barred|lowell|cabot|intrum/.test(s)) return 'debt';
+  // Rail-specific signals beat travel — 'delay' alone is rail's bread and
+  // butter (Delay Repay), so check rail before travel to avoid mis-routing
+  // a clear "Avanti delay" to travel.
+  if (/\b(train|rail|delay\s*repay|tfl\b|avanti|lner|gwr|northern\s*trains?|transpennine|scotrail|train\s*operator|nrcot)\b/.test(s)) return 'rail';
+  // Travel needs an aviation-specific signal — 'cancelled' alone is too
+  // generic (a sub cancellation is consumer general).
+  if (/\b(flight|airline|baggage|boarding|ryanair|easyjet|jet2|tui|british\s*airways|wizz\s*air|loveholidays|on\s*the\s*beach|caa\b|uk261|eu261)\b|\bcancelled\s+(my\s+)?flight\b/.test(s)) return 'travel';
+  // 'ee\b' alone matches words like 'fee' and 'coffee'. Bound 'ee' with
+  // mobile context. Same for 'bt' / 'sky' / 'virgin' which collide with
+  // common English words.
+  if (/\b(broadband|mobile\s*(?:contract|provider|tariff|bill)?|isp|ofcom|talktalk|hyperoptic|three\s*uk)\b|\bsky\s+(broadband|mobile|tv|fibre)\b|\bvirgin\s+(broadband|mobile|media|fibre|o2)\b|\bbt\s+(broadband|mobile|fibre)\b|\bvodafone\b|\bee\s+(broadband|mobile|fibre)\b/.test(s)) return 'broadband';
+  if (/\b(energy|gas|electric(ity)?|ofgem|british\s*gas|octopus(\s*energy)?|edf|ovo|e\.?on|sse\b|scottish\s*power|smart\s*meter|back-?bill)\b/.test(s)) return 'energy';
+  if (/\b(section\s*75|chargeback|payment\s*dispute|s\.?\s*75|cca\s*1974|credit\s*card\s*(claim|dispute|chargeback))\b/.test(s)) return 'finance';
+  if (/\b(insurance|insurer|claim\s*declined|underwriter|loss\s*adjuster|policy\s*(claim|wording|exclusion))\b/.test(s)) return 'insurance';
+  if (/\bcouncil\s*tax\b|\bvaluation\s*office\b|\bband\s*[a-h]\b\s*challenge/.test(s)) return 'council_tax';
+  if (/\b(parking|pcn|penalty\s*charge|popla|civil\s*enforcement)\b/.test(s)) return 'parking';
+  if (/\b(hmrc|tax\s*rebate|paye|self\s*assessment)\b/.test(s)) return 'hmrc';
+  if (/\bdvla\b|\bdriving\s*licence\b/.test(s)) return 'dvla';
+  if (/\b(nhs|hospital\s*complaint|continuing\s*healthcare)\b/.test(s)) return 'nhs';
+  if (/\b(gym\s*(membership|cancellation|fee)|puregym|the\s*gym\s*group|anytime\s*fitness)\b/.test(s)) return 'gym';
+  if (/\b(debt\s*(claim|collection)|bailiff|enforcement\s*officer|statute\s*barred|lowell|cabot|intrum)\b/.test(s)) return 'debt';
   return null;
 }
 
@@ -326,14 +334,17 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
 }
 
 function classifyDisputeType(scenario: string, refCategory?: string): DisputeType {
-  // Scenario regex wins when it confidently identifies a sector — the
-  // ref category is a tiebreaker only for ambiguous scenarios. Avoids
-  // the "Ryanair flight cancelled → general (CRA 2015)" misfire.
-  const detected = detectScenarioCategory(scenario);
-  if (detected) return detected as DisputeType;
-  if (refCategory && ['energy','broadband','finance','travel','rail','insurance','council_tax','parking','hmrc','dvla','nhs','gym','debt','general'].includes(refCategory)) {
+  // Specific verified ref category wins over a fuzzy scenario regex —
+  // a confident retrieval match (rail-specific reference) shouldn't be
+  // overridden by a broad word match (e.g. "delay" alone). Scenario
+  // regex still drives when no specific ref hit (refCategory is null
+  // or 'general').
+  const validCats = ['energy','broadband','finance','travel','rail','insurance','council_tax','parking','hmrc','dvla','nhs','gym','debt'];
+  if (refCategory && validCats.includes(refCategory)) {
     return refCategory as DisputeType;
   }
+  const detected = detectScenarioCategory(scenario);
+  if (detected) return detected as DisputeType;
   return 'general';
 }
 

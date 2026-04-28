@@ -105,9 +105,12 @@ export async function authPortal(
   const sessionEmail = await verifySession(cookie);
   if (sessionEmail) return { email: sessionEmail, via: 'session' };
 
-  // 2) Magic-link token (body or query)
-  const token = body?.token ?? searchParams?.token ?? null;
-  const email = (body?.email ?? searchParams?.email ?? '').toLowerCase();
+  // 2) Magic-link token (body or query). Coerce to string defensively
+  // so a malformed `token: 1` body doesn't crash the runtime.
+  const tokenRaw = body?.token ?? searchParams?.token ?? null;
+  const emailRaw = body?.email ?? searchParams?.email ?? '';
+  const token = typeof tokenRaw === 'string' ? tokenRaw : null;
+  const email = (typeof emailRaw === 'string' ? emailRaw : '').toLowerCase();
   if (token && email) {
     const supabase = getAdmin();
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -119,9 +122,32 @@ export async function authPortal(
       .maybeSingle();
     if (data && !data.used_at && new Date(data.expires_at) >= new Date()) {
       // Don't burn the token here — let the calling endpoint decide
-      // (mutating endpoints burn, GETs don't).
+      // (mutating endpoints burn via burnMagicLinkToken, GETs don't).
       return { email, via: 'magic' };
     }
   }
   return null;
+}
+
+/**
+ * Burn a magic-link token after a mutating action. Cookie sessions are
+ * unaffected. Call this from POST handlers after authPortal succeeded
+ * via the magic-link path.
+ */
+export async function burnMagicLinkToken(
+  body?: { token?: unknown; email?: unknown } | null,
+): Promise<void> {
+  const tokenRaw = body?.token;
+  const emailRaw = body?.email;
+  const token = typeof tokenRaw === 'string' ? tokenRaw : null;
+  const email = (typeof emailRaw === 'string' ? emailRaw : '').toLowerCase();
+  if (!token || !email) return;
+  const supabase = getAdmin();
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  await supabase
+    .from('b2b_portal_tokens')
+    .update({ used_at: new Date().toISOString() })
+    .eq('token_hash', tokenHash)
+    .eq('email', email)
+    .is('used_at', null);
 }

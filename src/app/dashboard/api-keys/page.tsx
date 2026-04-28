@@ -71,14 +71,15 @@ export default function ApiKeysPortalPage() {
       if (r2.ok) setWebhookData(j2);
       if (r3.ok) setMembersData(j3);
       if (r4.ok) setStatus(j4);
-      // Probe whether this email has a password set; if not, show banner.
-      if (j3?.your_email) {
-        try {
-          const pwR = await fetch(`/api/v1/portal-password?email=${encodeURIComponent(j3.your_email)}`);
+      // Probe whether the signed-in user has a password set; the
+      // endpoint reads the email from the session, no parameter needed.
+      try {
+        const pwR = await fetch('/api/v1/portal-password');
+        if (pwR.ok) {
           const pwJ = await pwR.json();
           setNeedsPassword(!pwJ.has_password);
-        } catch {}
-      }
+        }
+      } catch {}
     } catch (e: any) {
       setError(e?.message || 'Failed');
     } finally { setLoading(false); }
@@ -138,8 +139,11 @@ export default function ApiKeysPortalPage() {
   }
 
   function exportCsv(type: 'usage' | 'audit') {
-    if (!token || !email) return;
-    window.open(`/api/v1/portal-export?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}&type=${type}`, '_blank');
+    // Cookie-authed sessions have no token/email in the URL — the
+    // server reads the session cookie. Magic-link visits keep the
+    // params in the URL so they still work in either mode.
+    const qs = token && email ? `&token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}` : '';
+    window.open(`/api/v1/portal-export?type=${type}${qs}`, '_blank');
   }
 
   // Not signed in → multi-mode sign-in form
