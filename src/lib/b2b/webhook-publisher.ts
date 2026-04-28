@@ -39,7 +39,7 @@ interface ActiveWebhook {
   consecutive_failures: number | null;
 }
 
-async function fanOut(event: string, payload: Record<string, unknown>): Promise<{ delivered: number; failed: number }> {
+export async function fanOut(event: string, payload: Record<string, unknown>): Promise<{ delivered: number; failed: number }> {
   const sb = admin();
 
   const { data: hooks, error } = await sb
@@ -170,5 +170,131 @@ export async function publishStatuteUpdated(input: {
     effective_date: input.effective_date ?? null,
     source_url: input.source_url ?? null,
     ref_id: input.ref_id ?? null,
+  });
+}
+
+/**
+ * Fire `key.created` to every customer subscribed.
+ * Called from /api/v1/free-pilot and the Stripe webhook (paid-tier mint).
+ */
+export async function publishKeyCreated(input: {
+  key_prefix: string;
+  tier: 'starter' | 'growth' | 'enterprise';
+  owner_email: string;
+  source: 'free_pilot' | 'stripe_checkout' | 'stripe_subscription_renewed';
+  actor_ip?: string | null;
+  user_agent?: string | null;
+}): Promise<{ delivered: number; failed: number }> {
+  return fanOut('key.created', {
+    key_prefix: input.key_prefix,
+    tier: input.tier,
+    owner_email: input.owner_email,
+    source: input.source,
+    actor_ip: input.actor_ip ?? null,
+    user_agent: input.user_agent ?? null,
+    created_at: new Date().toISOString(),
+  });
+}
+
+/**
+ * Fire `key.revoked` to every customer subscribed. Called from the
+ * customer portal revoke / re-issue actions and from the Stripe
+ * subscription-deleted webhook.
+ */
+export async function publishKeyRevoked(input: {
+  key_prefix: string;
+  owner_email: string;
+  reason: 'customer_revoked' | 'reissue_revoke' | 'subscription_cancelled' | 'free_to_paid_upgrade';
+  actor_email?: string | null;
+  actor_ip?: string | null;
+  user_agent?: string | null;
+}): Promise<{ delivered: number; failed: number }> {
+  return fanOut('key.revoked', {
+    key_prefix: input.key_prefix,
+    owner_email: input.owner_email,
+    reason: input.reason,
+    actor_email: input.actor_email ?? null,
+    actor_ip: input.actor_ip ?? null,
+    user_agent: input.user_agent ?? null,
+    revoked_at: new Date().toISOString(),
+  });
+}
+
+/**
+ * Fire `key.reissued` to every customer subscribed. Called from the
+ * customer portal re-issue action.
+ */
+export async function publishKeyReissued(input: {
+  key_prefix_new: string;
+  key_prefix_old: string;
+  owner_email: string;
+  tier: 'starter' | 'growth' | 'enterprise';
+  actor_email?: string | null;
+  actor_ip?: string | null;
+  user_agent?: string | null;
+}): Promise<{ delivered: number; failed: number }> {
+  return fanOut('key.reissued', {
+    key_prefix_new: input.key_prefix_new,
+    key_prefix_old: input.key_prefix_old,
+    owner_email: input.owner_email,
+    tier: input.tier,
+    actor_email: input.actor_email ?? null,
+    actor_ip: input.actor_ip ?? null,
+    user_agent: input.user_agent ?? null,
+    reissued_at: new Date().toISOString(),
+  });
+}
+
+/**
+ * Fire `key.usage_threshold_60` or `key.usage_threshold_90` when a key
+ * crosses the threshold. Called from the request-counting path on
+ * authenticate/logUsage at the moment the count tips over. Idempotent
+ * via b2b_api_keys.notified_thresholds — a key only fires each
+ * threshold once per calendar month.
+ */
+export async function publishUsageThreshold(input: {
+  threshold: 60 | 90;
+  key_prefix: string;
+  owner_email: string;
+  tier: 'starter' | 'growth' | 'enterprise';
+  calls_used: number;
+  monthly_limit: number;
+  period_resets_at: string;
+}): Promise<{ delivered: number; failed: number }> {
+  const event = input.threshold === 60 ? 'key.usage_threshold_60' : 'key.usage_threshold_90';
+  return fanOut(event, {
+    key_prefix: input.key_prefix,
+    owner_email: input.owner_email,
+    tier: input.tier,
+    calls_used: input.calls_used,
+    monthly_limit: input.monthly_limit,
+    percent_used: Math.round((input.calls_used / input.monthly_limit) * 100),
+    period_resets_at: input.period_resets_at,
+  });
+}
+
+/**
+ * Fire `usage.daily_summary` to every customer subscribed. One row
+ * per active api key, summarising the previous calendar day. Called
+ * from the daily b2b-usage-summary cron.
+ */
+export async function publishUsageDailySummary(input: {
+  date: string;
+  per_key: Array<{
+    key_prefix: string;
+    owner_email: string;
+    total_calls: number;
+    error_count: number;
+    p50_ms: number;
+    p95_ms: number;
+  }>;
+  total_calls: number;
+  total_errors: number;
+}): Promise<{ delivered: number; failed: number }> {
+  return fanOut('usage.daily_summary', {
+    date: input.date,
+    total_calls: input.total_calls,
+    error_count: input.total_errors,
+    per_key: input.per_key,
   });
 }

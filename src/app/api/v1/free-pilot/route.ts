@@ -83,6 +83,23 @@ export async function POST(request: NextRequest) {
   const meta = extractClientMeta(request);
   audit({ email: lower, action: 'key_created', key_id: inserted?.id ?? null, ...meta, metadata: { tier: 'starter', source: 'free_pilot', company, prefix: minted.prefix } });
 
+  // Fire key.created webhook (best-effort — failures don't block the
+  // mint flow). Customers subscribed via the portal get the lifecycle
+  // event for their SIEM / compliance dashboard.
+  try {
+    const { publishKeyCreated } = await import('@/lib/b2b/webhook-publisher');
+    await publishKeyCreated({
+      key_prefix: minted.prefix,
+      tier: 'starter',
+      owner_email: lower,
+      source: 'free_pilot',
+      actor_ip: meta.ip_address ?? null,
+      user_agent: meta.user_agent ?? null,
+    });
+  } catch (whErr) {
+    console.warn('[v1/free-pilot] key.created webhook failed', whErr instanceof Error ? whErr.message : whErr);
+  }
+
   // Email a SINGLE-USE reveal link instead of plaintext. Forwarded
   // and archived emails can't be replayed once the link is consumed.
   if (process.env.RESEND_API_KEY) {

@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
   }
   const { data: row } = await supabase
     .from('b2b_api_keys')
-    .select('id, tier, monthly_limit, name, owner_email')
+    .select('id, tier, monthly_limit, name, owner_email, key_prefix')
     .eq('id', id)
     .eq('owner_email', owner)
     .maybeSingle();
@@ -220,6 +220,22 @@ export async function POST(request: NextRequest) {
       .update({ revoked_at: new Date().toISOString() })
       .eq('id', id);
     audit({ email, action: 'key_revoked', key_id: id, ...meta, metadata: { name: row.name } });
+
+    // Fire key.revoked webhook to subscribers. Best-effort.
+    try {
+      const { publishKeyRevoked } = await import('@/lib/b2b/webhook-publisher');
+      await publishKeyRevoked({
+        key_prefix: row.key_prefix,
+        owner_email: owner,
+        reason: 'customer_revoked',
+        actor_email: email,
+        actor_ip: meta.ip_address ?? null,
+        user_agent: meta.user_agent ?? null,
+      });
+    } catch (whErr) {
+      console.warn('[portal-keys] key.revoked webhook failed', whErr instanceof Error ? whErr.message : whErr);
+    }
+
     return NextResponse.json({ ok: true });
   }
 
@@ -243,6 +259,33 @@ export async function POST(request: NextRequest) {
     }).select('id').single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     audit({ email, action: 'key_reissued', key_id: inserted?.id ?? null, ...meta, metadata: { tier: row.tier, prefix: minted.prefix } });
+
+    // Fire BOTH key.revoked (old) and key.reissued (new) webhooks.
+    // Subscribers can choose which to alert on; key.reissued carries
+    // both prefixes so they can correlate without a separate lookup.
+    try {
+      const { publishKeyRevoked, publishKeyReissued } = await import('@/lib/b2b/webhook-publisher');
+      await publishKeyRevoked({
+        key_prefix: row.key_prefix,
+        owner_email: owner,
+        reason: 'reissue_revoke',
+        actor_email: email,
+        actor_ip: meta.ip_address ?? null,
+        user_agent: meta.user_agent ?? null,
+      });
+      await publishKeyReissued({
+        key_prefix_new: minted.prefix,
+        key_prefix_old: row.key_prefix,
+        owner_email: owner,
+        tier: row.tier,
+        actor_email: email,
+        actor_ip: meta.ip_address ?? null,
+        user_agent: meta.user_agent ?? null,
+      });
+    } catch (whErr) {
+      console.warn('[portal-keys] reissue webhooks failed', whErr instanceof Error ? whErr.message : whErr);
+    }
+
     return NextResponse.json({ ok: true, plaintext: minted.plaintext });
   }
 

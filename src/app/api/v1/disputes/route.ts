@@ -20,10 +20,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { authenticate, logUsage } from '@/lib/b2b/auth';
 import { validateRequest, resolveDispute } from '@/lib/b2b/disputes';
+import { publishUsageThreshold } from '@/lib/b2b/webhook-publisher';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -44,6 +45,69 @@ function rateLimitHeaders(monthlyUsed: number, monthlyLimit: number) {
     'X-RateLimit-Limit': String(monthlyLimit),
     'X-RateLimit-Remaining': String(remaining),
   };
+}
+
+/**
+ * Check whether this call crosses 60% or 90% of the monthly cap and
+ * fire the corresponding webhook if so. Idempotent per calendar month
+ * via b2b_api_keys.notified_thresholds — each threshold fires at most
+ * once per month per key.
+ *
+ * Best-effort: a Supabase blip here must not break the request.
+ */
+async function maybeFireThresholdWebhook(args: {
+  keyId: string;
+  keyPrefix: string;
+  ownerEmail: string;
+  tier: 'starter' | 'growth' | 'enterprise';
+  monthlyUsed: number;
+  monthlyLimit: number;
+}): Promise<void> {
+  // monthlyUsed is the count BEFORE this call landed — the call we're
+  // currently serving makes the new total monthlyUsed+1.
+  const newCount = args.monthlyUsed + 1;
+  const percent = (newCount / args.monthlyLimit) * 100;
+  const threshold: 60 | 90 | null = percent >= 90 ? 90 : percent >= 60 ? 60 : null;
+  if (!threshold) return;
+
+  // Was this previous call already past the threshold? If so we've
+  // already fired (or are dedupe-protected by the per-month bookkeeping
+  // below). Cheap pre-check.
+  const previousPercent = (args.monthlyUsed / args.monthlyLimit) * 100;
+  if (previousPercent >= threshold) return;
+
+  try {
+    const sb = admin();
+    const monthKey = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+    const { data: keyRow } = await sb
+      .from('b2b_api_keys')
+      .select('notified_thresholds')
+      .eq('id', args.keyId)
+      .maybeSingle();
+    const notified = (keyRow?.notified_thresholds ?? {}) as Record<string, number[]>;
+    const fired = notified[monthKey] ?? [];
+    if (fired.includes(threshold)) return; // already fired this month
+
+    // Compute the next 1st-of-month at 00:00 UTC for period_resets_at.
+    const now = new Date();
+    const reset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
+
+    await publishUsageThreshold({
+      threshold,
+      key_prefix: args.keyPrefix,
+      owner_email: args.ownerEmail,
+      tier: args.tier,
+      calls_used: newCount,
+      monthly_limit: args.monthlyLimit,
+      period_resets_at: reset.toISOString(),
+    });
+
+    // Mark fired so we don't re-fire this threshold this month.
+    const next = { ...notified, [monthKey]: [...fired, threshold] };
+    await sb.from('b2b_api_keys').update({ notified_thresholds: next }).eq('id', args.keyId);
+  } catch (e) {
+    console.warn('[v1/disputes] threshold webhook failed', e instanceof Error ? e.message : e);
+  }
 }
 
 function hashKey(plaintext: string): string {
@@ -116,11 +180,19 @@ async function writeIdempotencyCache(
 
 export async function POST(request: NextRequest) {
   const t0 = Date.now();
+  // Every response carries X-Request-Id so the customer can quote it
+  // back to support and we can pinpoint the call in b2b_api_usage.
+  // We generate it BEFORE auth so that auth-failure responses also
+  // carry it (useful when a customer reports "all my calls are 401-ing").
+  const requestId = randomUUID();
   const fwd = request.headers.get('x-forwarded-for');
   const clientIp = fwd ? fwd.split(',')[0].trim() : (request.headers.get('x-real-ip') || null);
   const auth = await authenticate(request.headers.get('authorization'), clientIp);
   if (!auth.ok || !auth.key) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status ?? 401 });
+    return NextResponse.json({ error: auth.error }, {
+      status: auth.status ?? 401,
+      headers: { 'X-Request-Id': requestId },
+    });
   }
   const { key } = auth;
 
@@ -129,7 +201,10 @@ export async function POST(request: NextRequest) {
     body = await request.json();
   } catch {
     await logUsage(key.id, '/v1/disputes', 400, Date.now() - t0, { error_code: 'INVALID_JSON' });
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid JSON body' }, {
+      status: 400,
+      headers: { 'X-Request-Id': requestId },
+    });
   }
 
   // Resolve idempotency key from header (preferred — Stripe-style) or
@@ -151,7 +226,10 @@ export async function POST(request: NextRequest) {
     if (cached) {
       return NextResponse.json(cached.response, {
         status: cached.status_code,
-        headers: { 'X-Paybacker-Idempotent-Replay': 'true' },
+        headers: {
+          'X-Paybacker-Idempotent-Replay': 'true',
+          'X-Request-Id': requestId,
+        },
       });
     }
   }
@@ -161,7 +239,10 @@ export async function POST(request: NextRequest) {
     await logUsage(key.id, '/v1/disputes', 400, Date.now() - t0, { error_code: 'VALIDATION' });
     const errBody = { error: validated.message };
     if (idemKey) await writeIdempotencyCache(key.id, idemKey, 400, errBody);
-    return NextResponse.json(errBody, { status: 400 });
+    return NextResponse.json(errBody, {
+      status: 400,
+      headers: { 'X-Request-Id': requestId },
+    });
   }
 
   const result = await resolveDispute(validated as any);
@@ -176,7 +257,10 @@ export async function POST(request: NextRequest) {
     // failure; we DON'T cache those, so the caller's retry actually
     // retries the engine.
     if (idemKey && status === 422) await writeIdempotencyCache(key.id, idemKey, status, errBody);
-    return NextResponse.json(errBody, { status });
+    return NextResponse.json(errBody, {
+      status,
+      headers: { 'X-Request-Id': requestId },
+    });
   }
 
   await logUsage(key.id, '/v1/disputes', 200, Date.now() - t0, {
@@ -188,9 +272,25 @@ export async function POST(request: NextRequest) {
   // set, no monthly counter increment, no Anthropic spend.
   if (idemKey) await writeIdempotencyCache(key.id, idemKey, 200, result);
 
+  // Threshold webhooks (key.usage_threshold_60 / 90). Best-effort,
+  // idempotent per calendar month per key.
+  if (key.ownerEmail) {
+    void maybeFireThresholdWebhook({
+      keyId: key.id,
+      keyPrefix: key.keyPrefix,
+      ownerEmail: key.ownerEmail,
+      tier: key.tier,
+      monthlyUsed: key.monthlyUsed,
+      monthlyLimit: key.monthlyLimit,
+    });
+  }
+
   return NextResponse.json(result, {
     status: 200,
-    headers: rateLimitHeaders(key.monthlyUsed, key.monthlyLimit),
+    headers: {
+      ...rateLimitHeaders(key.monthlyUsed, key.monthlyLimit),
+      'X-Request-Id': requestId,
+    },
   });
 }
 

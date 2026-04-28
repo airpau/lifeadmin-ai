@@ -25,6 +25,8 @@ export interface AuthedKey {
   monthlyUsed: number;
   ownerEmail: string | null;
   waitlistId: string | null;
+  /** 8-char hex prefix — same value as the chars after `pbk_` in the plaintext. */
+  keyPrefix: string;
 }
 
 export interface AuthResult {
@@ -151,6 +153,7 @@ export async function authenticate(authHeader: string | null, clientIp?: string 
       monthlyUsed,
       ownerEmail: keyRow.owner_email,
       waitlistId: keyRow.waitlist_id,
+      keyPrefix: prefix,
     },
   };
 }
