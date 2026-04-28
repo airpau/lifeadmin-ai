@@ -10,6 +10,7 @@ import type Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { generateKey } from './auth';
 import { createKeyRevealLink } from './key-reveal';
+import { audit } from './audit';
 import { resend } from '@/lib/resend';
 
 const TIER_LIMITS: Record<string, number> = {
@@ -114,7 +115,7 @@ export async function handleB2bCheckoutCompleted(
 
   // Mint key
   const minted = generateKey();
-  const { error } = await supabase.from('b2b_api_keys').insert({
+  const { data: inserted, error } = await supabase.from('b2b_api_keys').insert({
     name: company ? `${company} (${tier})` : `${customerEmail} (${tier})`,
     key_hash: minted.hash,
     key_prefix: minted.prefix,
@@ -124,13 +125,21 @@ export async function handleB2bCheckoutCompleted(
     stripe_subscription_id: subscriptionId,
     stripe_customer_id: customerId,
     notes: `Stripe checkout · contact: ${contactName} · session: ${session.id}`,
-  });
+  }).select('id').single();
   if (error) {
     // Throw so the webhook returns 500 and Stripe retries delivery —
     // a transient Supabase failure must not leave a paid customer
     // without a provisioned key.
     throw new Error(`[b2b stripe] key insert failed: ${error.message}`);
   }
+
+  audit({
+    email: customerEmail.toLowerCase(),
+    action: 'key_created',
+    actor: 'stripe',
+    key_id: inserted?.id ?? null,
+    metadata: { tier, source: 'stripe_checkout', subscription_id: subscriptionId, prefix: minted.prefix },
+  });
 
   // Email a single-use reveal link rather than plaintext. Better
   // security posture (forwarded emails can't be replayed) and the

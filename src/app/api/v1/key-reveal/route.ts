@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
+import { audit, extractClientMeta } from '@/lib/b2b/audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -56,6 +57,9 @@ export async function GET(request: NextRequest) {
     .from('b2b_portal_tokens')
     .update({ used_at: new Date().toISOString(), payload: null })
     .eq('id', data.id);
+
+  const meta = extractClientMeta(request);
+  audit({ email, action: 'reveal_link_used', ...meta });
 
   return NextResponse.json({ ok: true, plaintext: data.payload });
 }

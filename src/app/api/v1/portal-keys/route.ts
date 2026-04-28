@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
 import { generateKey } from '@/lib/b2b/auth';
+import { audit, extractClientMeta } from '@/lib/b2b/audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -74,6 +75,47 @@ async function loadKeys(supabase: any, email: string) {
   return (keys ?? []).map((k: any) => ({ ...k, monthly_used: usageByKey.get(k.id) ?? 0 }));
 }
 
+async function loadAudit(supabase: any, email: string, limit = 25) {
+  const { data } = await supabase
+    .from('b2b_audit_log')
+    .select('id, action, actor, key_id, ip_address, user_agent, metadata, created_at')
+    .eq('email', email)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return data ?? [];
+}
+
+async function loadRecentUsage(supabase: any, keyIds: string[], limit = 50) {
+  if (keyIds.length === 0) return [];
+  const { data } = await supabase
+    .from('b2b_api_usage')
+    .select('key_id, endpoint, status_code, latency_ms, scenario_kind, error_code, created_at')
+    .in('key_id', keyIds)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return data ?? [];
+}
+
+async function loadUsageDaily(supabase: any, keyIds: string[]) {
+  if (keyIds.length === 0) return [];
+  const since = new Date(Date.now() - 30 * 86400_000).toISOString();
+  const { data } = await supabase
+    .from('b2b_api_usage')
+    .select('created_at, status_code')
+    .in('key_id', keyIds)
+    .gte('created_at', since);
+  // Group by day in JS — simpler than custom RPC, fine at 100k/mo cap.
+  const byDay = new Map<string, { ok: number; err: number }>();
+  for (const r of (data ?? []) as Array<{ created_at: string; status_code: number }>) {
+    const day = r.created_at.slice(0, 10);
+    const cur = byDay.get(day) ?? { ok: 0, err: 0 };
+    if (r.status_code >= 400) cur.err++;
+    else cur.ok++;
+    byDay.set(day, cur);
+  }
+  return Array.from(byDay.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([day, v]) => ({ day, ...v }));
+}
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const token = url.searchParams.get('token') ?? '';
@@ -84,8 +126,35 @@ export async function GET(request: NextRequest) {
   const ok = await verifyToken(supabase, token, email, false);
   if (!ok) return NextResponse.json({ error: 'Invalid or expired link. Request a new one.' }, { status: 401 });
 
+  // Log a portal_signin event the first time a token is read in a session.
+  // We don't dedupe across reads — each load is one event. The portal UI
+  // pulls audit on every page render, so over-counting is bounded by user
+  // interaction, not refresh-spamming.
+  const meta = extractClientMeta(request);
+  audit({ email, action: 'portal_signin', ...meta });
+
   const keys = await loadKeys(supabase, email);
-  return NextResponse.json({ keys });
+  const allKeys = await loadAllKeys(supabase, email);
+  const recentUsage = await loadRecentUsage(supabase, allKeys.map((k: any) => k.id));
+  const usageDaily = await loadUsageDaily(supabase, allKeys.map((k: any) => k.id));
+  const auditLog = await loadAudit(supabase, email);
+
+  return NextResponse.json({
+    keys,            // active keys with monthly usage
+    all_keys: allKeys, // including revoked, for history
+    recent_usage: recentUsage,
+    usage_daily: usageDaily,
+    audit_log: auditLog,
+  });
+}
+
+async function loadAllKeys(supabase: any, email: string) {
+  const { data } = await supabase
+    .from('b2b_api_keys')
+    .select('id, name, key_prefix, tier, monthly_limit, last_used_at, revoked_at, created_at')
+    .eq('owner_email', email)
+    .order('created_at', { ascending: false });
+  return data ?? [];
 }
 
 export async function POST(request: NextRequest) {
@@ -116,11 +185,14 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   if (!row) return NextResponse.json({ error: 'Key not found' }, { status: 404 });
 
+  const meta = extractClientMeta(request);
+
   if (action === 'revoke') {
     await supabase
       .from('b2b_api_keys')
       .update({ revoked_at: new Date().toISOString() })
       .eq('id', id);
+    audit({ email, action: 'key_revoked', key_id: id, ...meta, metadata: { name: row.name } });
     return NextResponse.json({ ok: true });
   }
 
@@ -130,9 +202,10 @@ export async function POST(request: NextRequest) {
       .from('b2b_api_keys')
       .update({ revoked_at: new Date().toISOString() })
       .eq('id', id);
+    audit({ email, action: 'key_revoked', key_id: id, ...meta, metadata: { name: row.name, reason: 'reissue_revoke' } });
 
     const minted = generateKey();
-    const { error } = await supabase.from('b2b_api_keys').insert({
+    const { data: inserted, error } = await supabase.from('b2b_api_keys').insert({
       name: `${row.name} (re-issued)`,
       key_hash: minted.hash,
       key_prefix: minted.prefix,
@@ -140,8 +213,9 @@ export async function POST(request: NextRequest) {
       monthly_limit: row.monthly_limit,
       owner_email: email,
       notes: `Self-serve re-issue at ${new Date().toISOString()}`,
-    });
+    }).select('id').single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    audit({ email, action: 'key_reissued', key_id: inserted?.id ?? null, ...meta, metadata: { tier: row.tier, prefix: minted.prefix } });
     return NextResponse.json({ ok: true, plaintext: minted.plaintext });
   }
 
