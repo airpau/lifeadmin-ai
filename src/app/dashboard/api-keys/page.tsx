@@ -44,6 +44,7 @@ export default function ApiKeysPortalPage() {
   const [webhookData, setWebhookData] = useState<WebhookData | null>(null);
   const [membersData, setMembersData] = useState<MembersData | null>(null);
   const [status, setStatus] = useState<StatusPayload | null>(null);
+  const [needsPassword, setNeedsPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reissued, setReissued] = useState<{ id: string; plaintext: string } | null>(null);
@@ -70,6 +71,14 @@ export default function ApiKeysPortalPage() {
       if (r2.ok) setWebhookData(j2);
       if (r3.ok) setMembersData(j3);
       if (r4.ok) setStatus(j4);
+      // Probe whether this email has a password set; if not, show banner.
+      if (j3?.your_email) {
+        try {
+          const pwR = await fetch(`/api/v1/portal-password?email=${encodeURIComponent(j3.your_email)}`);
+          const pwJ = await pwR.json();
+          setNeedsPassword(!pwJ.has_password);
+        } catch {}
+      }
     } catch (e: any) {
       setError(e?.message || 'Failed');
     } finally { setLoading(false); }
@@ -133,27 +142,9 @@ export default function ApiKeysPortalPage() {
     window.open(`/api/v1/portal-export?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}&type=${type}`, '_blank');
   }
 
-  // Not signed in → request link
+  // Not signed in → multi-mode sign-in form
   if (!hasSession && !loading) {
-    return (
-      <main style={signinPage}>
-        <div style={signinCard}>
-          <h1 style={{ margin: 0, fontSize: 28, letterSpacing: '-0.01em' }}>API portal sign-in</h1>
-          <p style={{ color: '#475569' }}>Enter the work email your Paybacker API key is registered to. We&rsquo;ll send a one-time link. After that, you&rsquo;ll stay signed in for 30 days.</p>
-          {requestSent ? (
-            <div style={{ background: '#ecfdf5', border: '1px solid #6ee7b7', padding: 12, borderRadius: 8, color: '#065f46' }}>
-              If you have access, a link has been sent. Expires in 30 minutes.
-            </div>
-          ) : (
-            <form onSubmit={requestLink} style={{ display: 'grid', gap: 10 }}>
-              <input type="email" required value={requestEmail} onChange={(e) => setRequestEmail(e.target.value)} placeholder="you@company.com" style={inputStyle} />
-              <button type="submit" disabled={requesting} style={btn}>{requesting ? 'Sending…' : 'Send sign-in link'}</button>
-            </form>
-          )}
-          <p style={{ color: '#64748b', fontSize: 13, marginTop: 24 }}>No key yet? <Link href="/for-business" style={{ color: '#0f172a' }}>Get one →</Link></p>
-        </div>
-      </main>
-    );
+    return <SignIn />;
   }
 
   return (
@@ -173,6 +164,10 @@ export default function ApiKeysPortalPage() {
           </div>
         </header>
 
+        {needsPassword && membersData?.your_email && (
+          <SetPasswordBanner email={membersData.your_email} onDone={() => setNeedsPassword(false)} />
+        )}
+
         {reissued && (
           <div style={{ background: '#fefce8', border: '1px solid #fde68a', padding: 16, borderRadius: 10, marginBottom: 16 }}>
             <strong style={{ color: '#854d0e' }}>New key — copy now, it is shown ONCE:</strong>
@@ -187,10 +182,14 @@ export default function ApiKeysPortalPage() {
           <>
             <div style={statRow}>
               <Stat label="Active keys" value={data.keys.length} />
+              <Stat
+                label="Calls this month"
+                value={data.keys.reduce((a, k) => a + k.monthly_used, 0) + (data.revoked_key_usage_this_month ?? 0)}
+                hint={data.revoked_key_usage_this_month ? `incl. ${data.revoked_key_usage_this_month} on revoked keys` : undefined}
+              />
               <Stat label="Calls (30d)" value={data.usage_daily.reduce((a, d) => a + d.ok + d.err, 0)} />
               <Stat label="Errors (30d)" value={data.usage_daily.reduce((a, d) => a + d.err, 0)} accent={data.usage_daily.reduce((a, d) => a + d.err, 0) > 0 ? 'amber' : undefined} />
               <Stat label="Webhooks" value={webhookData?.webhooks?.length ?? 0} />
-              <Stat label="Audit events" value={data.audit_log.length} />
             </div>
 
             <div style={{ display: 'flex', gap: 4, marginTop: 24, borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
@@ -863,6 +862,125 @@ function Field({ rows }: { rows: Array<[string, any]> }) {
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 function labelFor(t: Tab) { return ({ keys: 'Keys', usage: 'Usage', activity: 'Recent calls', webhooks: 'Webhooks', members: 'Team', explorer: 'Explorer', audit: 'Audit log', account: 'Account' } as const)[t]; }
+
+function SignIn() {
+  const [mode, setMode] = useState<'password' | 'link'>('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [linkSent, setLinkSent] = useState(false);
+
+  async function signInPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true); setError(null);
+    try {
+      const r = await fetch('/api/v1/portal-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sign_in', email, password }) });
+      const j = await r.json();
+      if (!r.ok) { setError(j.error || 'Sign-in failed'); return; }
+      window.location.href = '/dashboard/api-keys';
+    } finally { setSubmitting(false); }
+  }
+  async function sendMagicLink(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true); setError(null);
+    try {
+      await fetch('/api/v1/portal-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+      setLinkSent(true);
+    } finally { setSubmitting(false); }
+  }
+  function startOAuth(provider: 'google' | 'microsoft') {
+    window.location.href = `/api/v1/portal-oauth/${provider}`;
+  }
+
+  return (
+    <main style={signinPage}>
+      <div style={signinCard}>
+        <h1 style={{ margin: 0, fontSize: 28, letterSpacing: '-0.01em' }}>Sign in to the API portal</h1>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button onClick={() => startOAuth('google')} style={{ ...btnGhost, flex: 1 }}>Continue with Google</button>
+          <button onClick={() => startOAuth('microsoft')} style={{ ...btnGhost, flex: 1 }}>Continue with Microsoft</button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#94a3b8', fontSize: 12, margin: '16px 0' }}>
+          <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} /> or <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e2e8f0', marginBottom: 16 }}>
+          <button onClick={() => { setMode('password'); setError(null); setLinkSent(false); }} style={mode === 'password' ? tabActive : tabBtn}>Password</button>
+          <button onClick={() => { setMode('link'); setError(null); setLinkSent(false); }} style={mode === 'link' ? tabActive : tabBtn}>Email link</button>
+        </div>
+
+        {mode === 'password' ? (
+          <form onSubmit={signInPassword} style={{ display: 'grid', gap: 10 }}>
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Work email" style={inputStyle} />
+            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" style={inputStyle} />
+            <button type="submit" disabled={submitting} style={btn}>{submitting ? 'Signing in…' : 'Sign in'}</button>
+            <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>
+              No password yet? <button type="button" onClick={() => setMode('link')} style={{ background: 'none', border: 0, padding: 0, color: '#0f172a', cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>Sign in with an email link</button> first — we&rsquo;ll let you set a password after.
+            </p>
+          </form>
+        ) : (
+          linkSent ? (
+            <div style={{ background: '#ecfdf5', border: '1px solid #6ee7b7', padding: 12, borderRadius: 8, color: '#065f46' }}>
+              If you have access, a one-time link has been sent. Expires in 30 minutes.
+            </div>
+          ) : (
+            <form onSubmit={sendMagicLink} style={{ display: 'grid', gap: 10 }}>
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Work email" style={inputStyle} />
+              <button type="submit" disabled={submitting} style={btn}>{submitting ? 'Sending…' : 'Send sign-in link'}</button>
+            </form>
+          )
+        )}
+
+        {error && <p style={{ color: '#b91c1c', fontSize: 13, margin: '12px 0 0' }}>{error}</p>}
+
+        <p style={{ color: '#64748b', fontSize: 13, marginTop: 24 }}>No key yet? <Link href="/for-business" style={{ color: '#0f172a' }}>Get one →</Link></p>
+      </div>
+    </main>
+  );
+}
+
+function SetPasswordBanner({ email, onDone }: { email: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    setSaving(true); setError(null);
+    try {
+      if (password !== confirm) { setError('Passwords do not match'); return; }
+      const r = await fetch('/api/v1/portal-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set', password }) });
+      const j = await r.json();
+      if (!r.ok) { setError(j.error || 'Failed'); return; }
+      setOpen(false); setPassword(''); setConfirm('');
+      onDone();
+    } finally { setSaving(false); }
+  }
+  return (
+    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ flex: 1, minWidth: 220 }}>
+        <strong style={{ color: '#92400e' }}>Set a password</strong>
+        <div style={{ color: '#854d0e', fontSize: 13, marginTop: 2 }}>Skip the email-link round-trip on future visits. {email} will sign in with password or Google/Microsoft.</div>
+      </div>
+      {!open ? (
+        <button onClick={() => setOpen(true)} style={btn}>Set password</button>
+      ) : (
+        <div style={{ display: 'grid', gap: 8, width: '100%', marginTop: 8 }}>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="New password (12+ chars, upper, lower, number)" style={inputStyle} />
+          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Confirm password" style={inputStyle} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={save} disabled={saving} style={btn}>{saving ? 'Saving…' : 'Save password'}</button>
+            <button onClick={() => { setOpen(false); setPassword(''); setConfirm(''); setError(null); }} style={btnGhost}>Cancel</button>
+          </div>
+          {error && <p style={{ color: '#b91c1c', margin: 0, fontSize: 13 }}>{error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
 function shortenUA(ua: string | null) { if (!ua) return '—'; const m = ua.match(/(Chrome|Safari|Firefox|Edg|curl|node|Postman|Insomnia)\/?[\d.]*/i); return m ? m[0] : ua.slice(0, 30); }
 function statusBadge(code: number): React.CSSProperties { const isOk = code >= 200 && code < 300; const isClient = code >= 400 && code < 500; return { background: isOk ? '#d1fae5' : isClient ? '#fef3c7' : '#fee2e2', color: isOk ? '#065f46' : isClient ? '#92400e' : '#991b1b', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 }; }
 function actionBadge(action: string): React.CSSProperties { const palette: Record<string, [string, string]> = { key_created: ['#d1fae5', '#065f46'], key_revoked: ['#fee2e2', '#991b1b'], key_reissued: ['#fef3c7', '#92400e'], reveal_link_used: ['#dbeafe', '#1e40af'], portal_signin: ['#e0e7ff', '#3730a3'], login_link_requested: ['#f1f5f9', '#475569'], plan_changed: ['#cffafe', '#155e75'] }; const [bg, fg] = palette[action] ?? ['#f1f5f9', '#475569']; return { background: bg, color: fg, padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }; }
@@ -892,11 +1010,12 @@ const drawerOverlay: React.CSSProperties = { position: 'fixed', inset: 0, backgr
 const drawerSide: React.CSSProperties = { width: 'min(520px, 90vw)', height: '100%', background: '#fff', boxShadow: '-12px 0 40px rgba(0,0,0,0.1)', padding: 24, overflow: 'auto' };
 const drawerCode: React.CSSProperties = { background: '#0f172a', color: '#e2e8f0', padding: 12, borderRadius: 6, overflow: 'auto', fontSize: 12, fontFamily: 'ui-monospace, Menlo, monospace', marginTop: 6 };
 
-function Stat({ label, value, accent }: { label: string; value: number | string; accent?: 'amber' | 'red' }) {
+function Stat({ label, value, accent, hint }: { label: string; value: number | string; accent?: 'amber' | 'red'; hint?: string }) {
   return (
     <div style={{ ...card, padding: 14 }}>
       <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>{label}</div>
       <div style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: accent === 'amber' ? '#d97706' : accent === 'red' ? '#b91c1c' : '#0f172a' }}>{value}</div>
+      {hint && <div style={{ marginTop: 2, fontSize: 11, color: '#94a3b8' }}>{hint}</div>}
     </div>
   );
 }
