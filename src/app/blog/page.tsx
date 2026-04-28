@@ -96,6 +96,15 @@ async function fetchDynamicPosts(): Promise<Post[]> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return [];
   }
+  // Build-time hard timeout: if Supabase doesn't respond in 5s the
+  // build returns an empty post list and continues. Without this, a
+  // saturated DB (as on 2026-04-28 when IO budget was exhausted on the
+  // Free tier) blocks Next.js's static export and fails ALL deploys —
+  // including the deploy that would fix the underlying problem. The
+  // page is ISR'd so the empty-during-build state recovers on the
+  // first runtime revalidation a few minutes after the deploy lands.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -106,7 +115,9 @@ async function fetchDynamicPosts(): Promise<Post[]> {
       .select('slug, title, excerpt, published_at, category, image_url, image_alt')
       .eq('status', 'published')
       .order('published_at', { ascending: false })
-      .limit(20);
+      .limit(20)
+      .abortSignal(controller.signal);
+    clearTimeout(timeout);
     if (!data) return [];
     return data.map((p, i): Post => {
       const g = GRADIENTS[i % GRADIENTS.length];
@@ -127,6 +138,7 @@ async function fetchDynamicPosts(): Promise<Post[]> {
       };
     });
   } catch {
+    clearTimeout(timeout);
     return [];
   }
 }

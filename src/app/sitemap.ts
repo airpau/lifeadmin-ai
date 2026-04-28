@@ -21,6 +21,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Fetch all published blog posts from database (skip gracefully if env vars absent at build time)
   let blogPosts: { slug: string; published_at: string }[] | null = null;
   if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    // 5s build-time hard cap (same defence as blog/page.tsx) so a
+    // saturated Supabase can't block sitemap generation and fail the
+    // entire production build.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -30,10 +35,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .from('blog_posts')
         .select('slug, published_at')
         .eq('status', 'published')
-        .order('published_at', { ascending: false });
+        .order('published_at', { ascending: false })
+        .abortSignal(controller.signal);
       blogPosts = data;
     } catch {
       // fall through — only static blog entries will appear in sitemap
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
