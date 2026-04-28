@@ -674,6 +674,36 @@ export default function MoneyHubPage() {
  }
  }, [data?.tier]);
 
+ // ─── Tier-aware Space locking — MUST run before any early return ───
+ // PLAN_LIMITS gives Free + Essential maxSpaces=1 (just the default
+ // "Everything") and Pro unlimited. Default Space is always unlocked
+ // since it's the catch-all required for the page to render.
+ //
+ // This useMemo lives ABOVE the loading/error/empty early returns so
+ // the hook count is stable across renders. Hoisting it below produced
+ // React #310 ("rendered more hooks than during the previous render")
+ // when a fresh Yapily connect landed at /dashboard/money-hub?connected=true
+ // — the empty-state branch returned before the hook ran on first
+ // render, then once data arrived the hook started running and React
+ // tripped (2026-04-28).
+ const lockedSpaceIds = useMemo(() => {
+   const tierMaxSpaces = data?.tier === 'pro' ? null : 1;
+   if (tierMaxSpaces === null) return new Set<string>();
+   const ordered = [...spaces].sort((a, b) => {
+     if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
+     const aT = a.created_at ? new Date(a.created_at).getTime() : 0;
+     const bT = b.created_at ? new Date(b.created_at).getTime() : 0;
+     return aT - bT;
+   });
+   const locked = new Set<string>();
+   let unlocked = 0;
+   for (const s of ordered) {
+     if (unlocked < tierMaxSpaces) { unlocked++; continue; }
+     locked.add(s.id);
+   }
+   return locked;
+ }, [spaces, data?.tier]);
+
  // ─── Loading / Error / Empty states ───────────────────────────────────
 
  if (loading && !data) {
@@ -755,30 +785,6 @@ export default function MoneyHubPage() {
  const isPaid = (data && data.tier === 'essential') || (data && data.tier === 'pro');
  const isPro = (data && data.tier === 'pro');
 
- // Tier-aware Space locking. PLAN_LIMITS gives Free + Essential
- // maxSpaces=1 (just the default "Everything") and Pro unlimited. We
- // mirror that here client-side so a user who created Spaces while on
- // Pro and then downgraded sees their extras as locked-with-padlock
- // rather than letting them switch and reverting (the spin-then-revert
- // bug Paul reported 2026-04-27). Default Space is always unlocked
- // since it's the catch-all required for the page to render.
- const maxSpaces = data.tier === 'pro' ? null : 1;
- const lockedSpaceIds = useMemo(() => {
-   if (maxSpaces === null) return new Set<string>();
-   const ordered = [...spaces].sort((a, b) => {
-     if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
-     const aT = a.created_at ? new Date(a.created_at).getTime() : 0;
-     const bT = b.created_at ? new Date(b.created_at).getTime() : 0;
-     return aT - bT;
-   });
-   const locked = new Set<string>();
-   let unlocked = 0;
-   for (const s of ordered) {
-     if (unlocked < maxSpaces) { unlocked++; continue; }
-     locked.add(s.id);
-   }
-   return locked;
- }, [spaces, maxSpaces]);
  const hasLockedSpaces = lockedSpaceIds.size > 0;
 
  const lastSyncedAt = data.accounts.reduce((latest: string | null, acc: any) => {
