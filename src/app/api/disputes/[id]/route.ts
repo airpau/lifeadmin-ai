@@ -34,11 +34,17 @@ export async function GET(
     return NextResponse.json({ error: 'Dispute not found' }, { status: 404 });
   }
 
-  // Sort correspondence by date ascending (oldest first = thread order)
+  // Sort correspondence by entry_date ascending (oldest first =
+  // thread order). Use created_at as a tiebreaker so entries with the
+  // same entry_date (common when a user pastes a manual entry on the
+  // same day other activity happened) appear in insert order — most
+  // recently saved goes last.
   if (dispute.correspondence) {
-    dispute.correspondence.sort(
-      (a: any, b: any) => new Date(a.entry_date).getTime() - new Date(b.entry_date).getTime()
-    );
+    dispute.correspondence.sort((a: any, b: any) => {
+      const da = new Date(a.entry_date).getTime() - new Date(b.entry_date).getTime();
+      if (da !== 0) return da;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
   }
 
   // Fetch linked agent_runs for AI letters to get legal refs + success rate

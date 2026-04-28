@@ -8,7 +8,12 @@ import { awardPoints } from '@/lib/loyalty';
 import { getProviderTerms } from '@/lib/provider-match';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
-export const maxDuration = 60;
+// 120s — the engine's worst-case path is two Claude calls (citation
+// guarantee retry) plus retrieval, plus thread-context loading. 60s
+// was too tight and surfaced as "Load failed" in Safari (a Vercel
+// 504 hitting fetch). 120s gives comfortable headroom while still
+// far below Vercel Pro's serverless ceiling.
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   try {

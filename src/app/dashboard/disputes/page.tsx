@@ -587,6 +587,16 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
         setUploading(false);
       }
 
+      // entry_date stamping: if the user kept the date as TODAY, use
+      // the current full timestamp (so it sorts to the bottom of the
+      // thread alongside other today-entries instead of stamping to
+      // 00:00 UTC and landing mid-thread). If they changed the date
+      // to a past day, keep it as start-of-that-day in UTC.
+      const todayIso = new Date().toISOString().split('T')[0];
+      const entryDateIso = entryDate === todayIso
+        ? new Date().toISOString()
+        : new Date(entryDate).toISOString();
+
       const res = await fetch(`/api/disputes/${disputeId}/correspondence`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -595,7 +605,7 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
           title: title || null,
           content,
           attachments,
-          entry_date: new Date(entryDate).toISOString(),
+          entry_date: entryDateIso,
         }),
       });
       if (!res.ok) {
@@ -1224,13 +1234,13 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to generate');
+        const data = await res.json().catch(() => ({} as { error?: string }));
+        throw new Error(data.error || `Letter engine returned HTTP ${res.status}. Try again in a moment.`);
       }
-      
+
       const data = await res.json();
       setShowGenerate(false);
-      
+
       // Immediately display the newly generated letter
       setLetterModal({
         content: data.letter,
@@ -1238,10 +1248,20 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         refs: data.legalReferences || [],
         pills: data.rightsPills || [],
       });
-      
+
       fetchDispute();
     } catch (error: any) {
-      alert(error.message || 'Failed to generate letter. Please try again.');
+      // Safari surfaces fetch network failures (Vercel 504, TLS, etc.)
+      // as the cryptic "Load failed". Translate to something useful.
+      const msg = error?.message ?? '';
+      if (msg.toLowerCase().includes('load failed') || msg.toLowerCase().includes('failed to fetch')) {
+        alert(
+          'The letter engine took too long to respond. This usually clears in 30 seconds — please try again. ' +
+          'If it keeps happening, the dispute thread may be very long; try generating from the most recent message only.',
+        );
+      } else {
+        alert(msg || 'Failed to generate letter. Please try again.');
+      }
     } finally {
       setGenerating(false);
     }
