@@ -149,23 +149,30 @@ async function verifyStatute(
       });
 
       if (pageRes.ok) {
-        // Page exists and loads — mark as current
+        // Page exists and loads — mark as current. Reset url-failure
+        // counter so a transient blip doesn't accumulate.
         await supabase
           .from('legal_references')
           .update({
             verification_status: 'current',
             last_verified: new Date().toISOString(),
+            consecutive_url_failures: 0,
             updated_at: new Date().toISOString(),
           })
           .eq('id', ref.id);
         results.current++;
       } else {
-        // Page doesn't load — queue for review
+        // Page doesn't load. Three-strike rule before promoting to
+        // 'url_dead' (a status excluded from retrieval) — avoids one
+        // transient 503 silently disabling a rule.
+        const nextFailures = ((ref.consecutive_url_failures as number | null) ?? 0) + 1;
+        const promoteToDead = nextFailures >= 3;
         await supabase
           .from('legal_references')
           .update({
-            verification_status: 'needs_review',
-            verification_notes: `Source URL returned ${pageRes.status} on ${new Date().toISOString()}`,
+            verification_status: promoteToDead ? 'url_dead' : 'needs_review',
+            verification_notes: `Source URL returned ${pageRes.status} on ${new Date().toISOString()} (${nextFailures}/3 failures)`,
+            consecutive_url_failures: nextFailures,
             updated_at: new Date().toISOString(),
           })
           .eq('id', ref.id);
@@ -174,13 +181,13 @@ async function verifyStatute(
           legal_reference_id: ref.id,
           change_type: 'content_update',
           source_url: ref.source_url,
-          detected_change_summary: `Source URL returned HTTP ${pageRes.status} — page may have moved or been removed`,
-          confidence: 'medium',
+          detected_change_summary: `Source URL returned HTTP ${pageRes.status} — page may have moved or been removed (${nextFailures}/3 failures)`,
+          confidence: promoteToDead ? 'high' : 'medium',
           status: 'pending',
         });
 
         results.needs_review++;
-        issues.push({ id: ref.id, law: ref.law_name, issue: `Source URL returned ${pageRes.status}` });
+        issues.push({ id: ref.id, law: ref.law_name, issue: `Source URL returned ${pageRes.status} (${nextFailures}/3)` });
       }
       return;
     }
@@ -241,6 +248,7 @@ async function verifyStatute(
           verification_notes: `Change detected on ${new Date().toISOString()}: ${changeNote}. Queued for weekly scan review.`,
           last_verified: new Date().toISOString(),
           content_hash: newHash,
+          consecutive_url_failures: 0,
           updated_at: new Date().toISOString(),
         })
         .eq('id', ref.id);
@@ -275,6 +283,7 @@ async function verifyStatute(
           verification_status: 'current',
           last_verified: new Date().toISOString(),
           content_hash: newHash,
+          consecutive_url_failures: 0,
           updated_at: new Date().toISOString(),
         })
         .eq('id', ref.id);
@@ -315,11 +324,16 @@ async function verifyRegulatorRule(
     });
 
     if (!res.ok) {
+      // Three-strike rule before promoting to 'url_dead' — same as
+      // verifyStatute. Transient 5xx shouldn't disable a rule.
+      const nextFailures = ((ref.consecutive_url_failures as number | null) ?? 0) + 1;
+      const promoteToDead = nextFailures >= 3;
       await supabase
         .from('legal_references')
         .update({
-          verification_status: 'needs_review',
-          verification_notes: `Source URL returned ${res.status} on ${new Date().toISOString()}`,
+          verification_status: promoteToDead ? 'url_dead' : 'needs_review',
+          verification_notes: `Source URL returned ${res.status} on ${new Date().toISOString()} (${nextFailures}/3 failures)`,
+          consecutive_url_failures: nextFailures,
           updated_at: new Date().toISOString(),
         })
         .eq('id', ref.id);
@@ -328,13 +342,13 @@ async function verifyRegulatorRule(
         legal_reference_id: ref.id,
         change_type: 'regulator_change',
         source_url: ref.source_url,
-        detected_change_summary: `Source URL returned HTTP ${res.status} — regulator page may have changed`,
-        confidence: 'medium',
+        detected_change_summary: `Source URL returned HTTP ${res.status} — regulator page may have changed (${nextFailures}/3 failures)`,
+        confidence: promoteToDead ? 'high' : 'medium',
         status: 'pending',
       });
 
       results.needs_review++;
-      issues.push({ id: ref.id, law: ref.law_name, issue: `Source returned ${res.status}` });
+      issues.push({ id: ref.id, law: ref.law_name, issue: `Source returned ${res.status} (${nextFailures}/3)` });
       return;
     }
 
@@ -374,6 +388,7 @@ async function verifyRegulatorRule(
       .update({
         verification_status: 'current',
         last_verified: new Date().toISOString(),
+        consecutive_url_failures: 0,
         updated_at: new Date().toISOString(),
       })
       .eq('id', ref.id);
@@ -542,6 +557,7 @@ If you cannot determine whether something changed (e.g. page content is unclear)
           verification_status: 'current',
           last_verified: new Date().toISOString(),
           content_hash: newHash,
+          consecutive_url_failures: 0,
           updated_at: new Date().toISOString(),
         })
         .eq('id', ref.id);

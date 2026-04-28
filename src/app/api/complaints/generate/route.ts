@@ -272,6 +272,13 @@ export async function POST(request: NextRequest) {
     // The rows are annotated below with [UNDER REVIEW — verify current
     // figure] so Claude knows to use directional language for any
     // numeric value (rate per day, threshold, etc.) when citing them.
+    //
+    // 'url_dead' is EXCLUDED — it means the source URL has 404'd
+    // (or 5xx'd) for 3+ consecutive verify-legal-refs runs and the
+    // rule may have moved or been repealed. Rules in this state need
+    // founder review (find a new source URL or mark superseded)
+    // BEFORE the engine cites them. See verify-legal-refs cron for
+    // promotion logic.
     const { data: legalRefs } = await supabase
       .from('legal_references')
       .select('id, category, law_name, section, summary, source_url, escalation_body, strength, applies_to, verification_status')
