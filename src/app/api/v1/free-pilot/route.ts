@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateKey } from '@/lib/b2b/auth';
 import { createKeyRevealLink } from '@/lib/b2b/key-reveal';
+import { audit, extractClientMeta } from '@/lib/b2b/audit';
 import { resend } from '@/lib/resend';
 
 export const runtime = 'nodejs';
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
   }
 
   const minted = generateKey();
-  const { error } = await supabase.from('b2b_api_keys').insert({
+  const { data: inserted, error } = await supabase.from('b2b_api_keys').insert({
     name: `${company} (free pilot)`,
     key_hash: minted.hash,
     key_prefix: minted.prefix,
@@ -74,11 +75,13 @@ export async function POST(request: NextRequest) {
     monthly_limit: 1000,
     owner_email: lower,
     notes: `Free pilot · contact: ${name} · use case: ${use_case.slice(0, 200)}`,
-  });
+  }).select('id').single();
   if (error) {
     console.error('[v1/free-pilot] insert failed', error.message);
     return NextResponse.json({ error: 'Could not mint key' }, { status: 500 });
   }
+  const meta = extractClientMeta(request);
+  audit({ email: lower, action: 'key_created', key_id: inserted?.id ?? null, ...meta, metadata: { tier: 'starter', source: 'free_pilot', company, prefix: minted.prefix } });
 
   // Email a SINGLE-USE reveal link instead of plaintext. Forwarded
   // and archived emails can't be replayed once the link is consumed.

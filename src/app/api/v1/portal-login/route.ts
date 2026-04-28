@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
 import { resend } from '@/lib/resend';
+import { audit, extractClientMeta } from '@/lib/b2b/audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,6 +41,10 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = getAdmin();
+
+  // Always log the request so we have an audit trail of who tried.
+  const { ip_address, user_agent } = extractClientMeta(request);
+  audit({ email, action: 'login_link_requested', ip_address, user_agent });
 
   // We always return ok=true even if no key exists for this email, so
   // the response can't be used as an enumeration oracle.
