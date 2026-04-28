@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
-import { authPortal } from '@/lib/b2b/session';
+import { authPortal, burnMagicLinkToken } from "@/lib/b2b/session";
 import { audit, extractClientMeta } from '@/lib/b2b/audit';
 
 export const runtime = 'nodejs';
@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
   if (!envKey) return NextResponse.json({ error: '`tier` must be growth or enterprise' }, { status: 400 });
 
   const auth = await authPortal(request, body, null);
+  if (auth?.via === "magic") await burnMagicLinkToken(body);
   if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
   const email = auth.email;
 

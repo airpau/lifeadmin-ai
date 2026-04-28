@@ -66,16 +66,22 @@ export async function GET() {
     else if (r.status_code < 400) cur.ok++;
     hourBuckets.set(hour, cur);
   }
+  // Iterate the full 24 hourly buckets aligned to the start of `since`
+  // (which is now-24h truncated to the hour). Without alignment we'd
+  // miss the oldest partial-hour bucket — a 5xx burst in the first
+  // 60 minutes could be invisible to uptime math.
   const totalHours = 24;
+  const sinceHourStart = new Date(Date.now() - totalHours * 3600_000);
+  sinceHourStart.setUTCMinutes(0, 0, 0);
   let upHours = 0;
-  for (let i = 0; i < totalHours; i++) {
-    const t = new Date(Date.now() - i * 3600_000).toISOString().slice(0, 13);
+  for (let i = 0; i <= totalHours; i++) {
+    const t = new Date(sinceHourStart.getTime() + i * 3600_000).toISOString().slice(0, 13);
     const b = hourBuckets.get(t);
-    // Up if either no traffic or at least one OK response and not 100% errors.
     if (!b) upHours++;
     else if (b.ok > 0 || b.err === 0) upHours++;
   }
-  const uptimePct = (upHours / totalHours) * 100;
+  // We sample 25 buckets (start + 24 forward) but only count 24 hours of uptime.
+  const uptimePct = Math.min(100, (upHours / (totalHours + 1)) * 100);
 
   return NextResponse.json({
     status,

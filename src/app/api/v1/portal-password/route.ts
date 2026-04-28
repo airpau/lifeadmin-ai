@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { hashPassword, verifyPassword, passwordPolicyError, emailHasPortalAccess } from '@/lib/b2b/password';
-import { createSession, setSessionCookie, authPortal } from '@/lib/b2b/session';
+import { createSession, setSessionCookie, authPortal, burnMagicLinkToken } from '@/lib/b2b/session';
 import { audit, extractClientMeta } from '@/lib/b2b/audit';
 
 export const runtime = 'nodejs';
@@ -26,12 +26,17 @@ function getAdmin() {
   );
 }
 
+/**
+ * Auth-required peek at the signed-in user's password state. Returns
+ * {has_password, must_set_password} for the authenticated email only —
+ * we never surface this for arbitrary emails to avoid an enumeration
+ * oracle.
+ */
 export async function GET(request: NextRequest) {
-  const url = new URL(request.url);
-  const email = (url.searchParams.get('email') ?? '').toLowerCase();
-  if (!email) return NextResponse.json({ error: 'email required' }, { status: 400 });
+  const auth = await authPortal(request, null, null);
+  if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
   const supabase = getAdmin();
-  const { data } = await supabase.from('b2b_credentials').select('password_hash, must_set_password').eq('email', email).maybeSingle();
+  const { data } = await supabase.from('b2b_credentials').select('password_hash, must_set_password').eq('email', auth.email).maybeSingle();
   return NextResponse.json({
     has_password: !!data?.password_hash,
     must_set_password: data ? data.must_set_password : true,
@@ -79,6 +84,7 @@ export async function POST(request: NextRequest) {
 
   if (action === 'set') {
     const auth = await authPortal(request, body, null);
+    if (auth?.via === 'magic') await burnMagicLinkToken(body);
     if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
     const email = auth.email;
     const password = String(body?.password || '');

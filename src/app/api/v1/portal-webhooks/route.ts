@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
 import { audit, extractClientMeta } from '@/lib/b2b/audit';
-import { authPortal } from '@/lib/b2b/session';
+import { authPortal, burnMagicLinkToken } from "@/lib/b2b/session";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
   }
   const action = (body?.action as string) || 'create';
   const auth = await authPortal(request, body, null);
+  if (auth?.via === "magic") await burnMagicLinkToken(body);
   if (!auth) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
   const email = auth.email;
   const supabase = getAdmin();

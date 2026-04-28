@@ -57,15 +57,28 @@ export async function POST(request: NextRequest) {
     .is('revoked_at', null)
     .limit(1)
     .maybeSingle();
-  const { data: memberRow } = ownerKey
-    ? { data: null as any }
-    : await supabase
-        .from('b2b_members')
-        .select('owner_email')
-        .eq('member_email', email)
+  // Member access only counts when the owner of that membership still
+  // has at least one (active or revoked) key. A stale member row alone
+  // shouldn't grant portal access.
+  let memberValid = false;
+  if (!ownerKey) {
+    const { data: memberRow } = await supabase
+      .from('b2b_members')
+      .select('owner_email')
+      .eq('member_email', email)
+      .limit(1)
+      .maybeSingle();
+    if (memberRow?.owner_email) {
+      const { data: ownerHasKey } = await supabase
+        .from('b2b_api_keys')
+        .select('id')
+        .eq('owner_email', memberRow.owner_email)
         .limit(1)
         .maybeSingle();
-  const hasAccess = !!(ownerKey || memberRow);
+      memberValid = !!ownerHasKey;
+    }
+  }
+  const hasAccess = !!(ownerKey || memberValid);
 
   if (hasAccess) {
     const token = crypto.randomBytes(32).toString('base64url');
