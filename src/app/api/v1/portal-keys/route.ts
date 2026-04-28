@@ -56,24 +56,28 @@ async function loadKeys(supabase: any, email: string) {
     .is('revoked_at', null)
     .order('created_at', { ascending: false });
 
-  // Compute monthly_used for each
+  // Owner-wide monthly usage — sum across every key (active + revoked)
+  // because the rate limit in /lib/b2b/auth.ts is enforced per-owner,
+  // not per-key. Each active key card shows the SAME owner total so
+  // there's no confusion about "I made 3 calls but it shows 1".
   const monthStart = new Date();
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
-  const ids = (keys ?? []).map((k: any) => k.id);
-  const usageByKey = new Map<string, number>();
-  if (ids.length > 0) {
-    const { data: usage } = await supabase
+  const { data: allOwnerKeys } = await supabase
+    .from('b2b_api_keys')
+    .select('id')
+    .eq('owner_email', email);
+  const allKeyIds = (allOwnerKeys ?? []).map((k: any) => k.id as string);
+  let ownerMonthlyUsed = 0;
+  if (allKeyIds.length > 0) {
+    const { count } = await supabase
       .from('b2b_api_usage')
-      .select('key_id')
-      .in('key_id', ids)
+      .select('id', { count: 'exact', head: true })
+      .in('key_id', allKeyIds)
       .gte('created_at', monthStart.toISOString());
-    for (const row of usage ?? []) {
-      const k = (row as any).key_id as string;
-      usageByKey.set(k, (usageByKey.get(k) ?? 0) + 1);
-    }
+    ownerMonthlyUsed = count ?? 0;
   }
-  return (keys ?? []).map((k: any) => ({ ...k, monthly_used: usageByKey.get(k.id) ?? 0 }));
+  return (keys ?? []).map((k: any) => ({ ...k, monthly_used: ownerMonthlyUsed }));
 }
 
 async function loadAudit(supabase: any, email: string, limit = 25) {
