@@ -194,12 +194,22 @@ export default function PocketAgentPage() {
 
       {/* Telegram panel */}
       {tab === 'telegram' && (
-        <TelegramPanel status={tg} onChange={loadAll} setError={setError} />
+        <TelegramPanel
+          status={tg}
+          onChange={loadAll}
+          setError={setError}
+          otherLinked={!!wa?.linked}
+        />
       )}
 
       {/* WhatsApp panel */}
       {tab === 'whatsapp' && (
-        <WhatsAppPanel status={wa} onChange={loadAll} setError={setError} />
+        <WhatsAppPanel
+          status={wa}
+          onChange={loadAll}
+          setError={setError}
+          otherLinked={!!tg?.linked}
+        />
       )}
 
       {/* Capability grid (channel-agnostic) */}
@@ -250,11 +260,12 @@ export default function PocketAgentPage() {
  * Telegram panel                                      *
  * -------------------------------------------------- */
 function TelegramPanel({
-  status, onChange, setError,
+  status, onChange, setError, otherLinked,
 }: {
   status: TelegramStatus | null;
   onChange: () => Promise<void>;
   setError: (e: string | null) => void;
+  otherLinked: boolean;
 }) {
   const [generating, setGenerating] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
@@ -355,6 +366,17 @@ function TelegramPanel({
         <h3 className="text-slate-900 font-semibold mb-1">Set up Telegram</h3>
         <p className="text-slate-600 text-sm">Free on every Paybacker plan. Three steps.</p>
       </div>
+      {otherLinked && (
+        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-900">
+            <p className="font-semibold">WhatsApp is your active channel.</p>
+            <p className="text-amber-800 mt-0.5">
+              Linking Telegram will automatically disconnect WhatsApp — only one Pocket Agent channel can be active at a time.
+            </p>
+          </div>
+        </div>
+      )}
       <ol className="space-y-4">
         <li className="flex items-start gap-3">
           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-orange-500/20 text-orange-600 text-xs font-bold flex items-center justify-center">1</span>
@@ -417,11 +439,12 @@ function TelegramPanel({
  * WhatsApp panel                                      *
  * -------------------------------------------------- */
 function WhatsAppPanel({
-  status, onChange, setError,
+  status, onChange, setError, otherLinked,
 }: {
   status: WhatsAppStatus | null;
   onChange: () => Promise<void>;
   setError: (e: string | null) => void;
+  otherLinked: boolean;
 }) {
   const [generating, setGenerating] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
@@ -567,6 +590,18 @@ function WhatsAppPanel({
           Included with Paybacker Pro. We learn your phone number from the message you send us — no form-filling, no typos.
         </p>
       </div>
+
+      {otherLinked && (
+        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-900">
+            <p className="font-semibold">Telegram is your active channel.</p>
+            <p className="text-amber-800 mt-0.5">
+              Linking WhatsApp will automatically disconnect Telegram — only one Pocket Agent channel can be active at a time.
+            </p>
+          </div>
+        </div>
+      )}
 
       <ol className="space-y-4">
         <li className="flex items-start gap-3">
