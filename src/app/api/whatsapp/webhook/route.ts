@@ -89,17 +89,53 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
     if (existing) continue;
 
-    // Look up the linked Paybacker user (may be null if number is unlinked).
+    // Look up the linked Paybacker user. We deliberately DO NOT filter by
+    // is_active=true here — a Pro user whose session got flipped to
+    // inactive (mutex switch, accidental disconnect, transient cron) was
+    // previously treated as a brand-new unlinked number and pitched the
+    // upgrade-to-Pro intro. That's the bug Paul hit on 2026-04-28: his
+    // session existed and is_active was true at lookup time afterwards,
+    // but at the moment of his "Hello" the row was inactive, so the
+    // webhook fell through to the unlinked branch.
+    //
+    // New behaviour: if a session exists for this phone, attribute the
+    // message to that user. If the session is inactive but the user
+    // didn't explicitly opt out (opted_out_at IS NULL), the message
+    // itself is consent to reactivate — flip is_active back on and
+    // continue. If they DID opt out (sent STOP), leave it dormant and
+    // tell them how to re-enable manually.
     const { data: session } = await sb
       .from('whatsapp_sessions')
-      .select('user_id')
+      .select('user_id, is_active, opted_out_at')
       .eq('whatsapp_phone', msg.from)
-      .eq('is_active', true)
       .maybeSingle();
 
-    const userId = session?.user_id ?? null;
+    let userId = session?.user_id ?? null;
 
-    // Log inbound
+    // Reactivation path: the row exists, the user didn't explicitly STOP,
+    // but is_active was flipped off. Treat the inbound as intent to use
+    // WhatsApp again. Mutex via set_pocket_agent_channel so any active
+    // Telegram session gets stood down before we flip WhatsApp back on.
+    if (session && !session.is_active && !session.opted_out_at) {
+      const { error: mutexErr } = await sb.rpc('set_pocket_agent_channel', {
+        p_user_id: session.user_id,
+        p_channel: 'whatsapp',
+      });
+      if (mutexErr) {
+        console.warn('[whatsapp/webhook] reactivate mutex failed', mutexErr);
+      }
+      const { error: reactErr } = await sb
+        .from('whatsapp_sessions')
+        .update({ is_active: true, opted_out_at: null })
+        .eq('whatsapp_phone', msg.from);
+      if (reactErr) {
+        console.warn('[whatsapp/webhook] reactivate flip failed', reactErr);
+      } else {
+        userId = session.user_id;
+      }
+    }
+
+    // Log inbound (attributed to user when we have one).
     await sb.from('whatsapp_message_log').insert({
       user_id: userId,
       whatsapp_phone: msg.from,
@@ -109,6 +145,20 @@ export async function POST(req: NextRequest) {
       provider: msg.provider,
       provider_message_id: msg.providerMessageId,
     });
+
+    // Honour an explicit prior STOP. If they opted out, only the link-flow
+    // on the website should bring them back — auto-reactivating would
+    // violate Meta's opt-out policy. Send a single one-line nudge to the
+    // dashboard and short-circuit so the unlinked-number / agent paths
+    // below don't fire.
+    if (session && !session.is_active && session.opted_out_at) {
+      await safeReply(
+        msg.from,
+        `You opted out of WhatsApp Pocket Agent on ${new Date(session.opted_out_at).toLocaleDateString('en-GB')}. To turn it back on, reconnect at https://paybacker.co.uk/dashboard/pocket-agent`,
+      );
+      processed += 1;
+      continue;
+    }
 
     if (!userId) {
       // Unlinked number — try to redeem a link code first.
