@@ -550,7 +550,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
 function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
   disputeId: string;
   onClose: () => void;
-  onAdded: () => void;
+  onAdded: () => void | Promise<void>;
 }) {
   const [entryType, setEntryType] = useState('company_email');
   const [title, setTitle] = useState('');
@@ -598,11 +598,22 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
           entry_date: new Date(entryDate).toISOString(),
         }),
       });
-      if (!res.ok) throw new Error('Failed to save');
-      onAdded();
+      if (!res.ok) {
+        // Surface the server's actual error message so silent failures
+        // become loud (Paul hit a "save looked OK but UI didn't refresh"
+        // bug on 2026-04-28 — the row was inserted but the cached GET
+        // hid it; better to log and alert clearly than 'Failed to save').
+        const errBody = await res.json().catch(() => ({} as { error?: string }));
+        throw new Error(errBody.error || `Failed to save (HTTP ${res.status})`);
+      }
+      // Await the parent's refresh BEFORE closing the modal — otherwise
+      // the modal closes, the fetch is still in flight, and the user
+      // sees the previous state for a beat.
+      await onAdded();
       onClose();
-    } catch {
-      alert('Failed to save. Please try again.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save. Please try again.';
+      alert(msg);
     } finally {
       setSaving(false);
     }
@@ -1119,7 +1130,13 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
   const fetchDispute = async () => {
     try {
-      const res = await fetch(`/api/disputes/${disputeId}`);
+      // cache: 'no-store' is essential when this function is used as
+      // the post-mutation refresh hook (Add Correspondence modal etc.).
+      // Without it the browser/HTTP cache can return a stale response
+      // that pre-dates the just-inserted row, making it look as
+      // though the save silently failed. Paul reported this on the
+      // OneStream manual paste 2026-04-28.
+      const res = await fetch(`/api/disputes/${disputeId}`, { cache: 'no-store' });
       if (res.ok) setDispute(await res.json());
     } catch (e) {
       console.error(e);
