@@ -39,11 +39,27 @@ This project has an existing production codebase with real users and live data. 
 **Company:** Paybacker LTD (UK registered)
 **Website:** paybacker.co.uk
 **Founded:** March 2026
-**Contact:** hello@paybacker.co.uk
+**Contact:** hello@paybacker.co.uk (consumer) · business@paybacker.co.uk (B2B)
 
-Paybacker is an AI-powered savings platform for UK consumers. It helps people dispute unfair bills, track every subscription and contract, scan their bank account and email inbox for hidden costs, and take control of their finances. The AI generates professional complaint letters citing exact UK consumer law in 30 seconds.
+Paybacker ships **two products from one codebase**:
 
-**Target audience:** UK consumers aged 25-50, tech-savvy professionals who are time-poor and overpaying on bills without realising it.
+### 1. Consumer app (B2C) — paybacker.co.uk
+AI-powered savings platform for UK consumers. Disputes unfair bills, tracks every subscription / contract, scans bank + email inbox for hidden costs. The AI generates professional complaint letters citing exact UK consumer law in 30 seconds. **Target audience:** UK consumers aged 25-50, time-poor professionals overpaying on bills.
+
+### 2. UK Consumer Rights API (B2B) — paybacker.co.uk/for-business
+The same engine exposed as a single REST endpoint for UK fintechs, insurers, energy retailers, and claims platforms. `POST /v1/disputes` returns the cited statute, sector classification, regulator, entitlement summary, customer-facing response, agent talking points, claim value estimate, time sensitivity, escalation path, and draft letter — in one call. Launched 2026-04-28.
+
+- **Tiers:** Starter (free, 1k calls/mo, self-serve mint), Growth (£499/mo, 10k calls), Enterprise (£1,999/mo, 100k calls + SLA).
+- **Decision rule:** 10 qualified UK fintech signups in 30 days post-launch (≈ 28 May 2026) → green-light deeper build. <10 → archive `/for-business`.
+- **Tables:** `b2b_waitlist`, `b2b_api_keys`, `b2b_api_usage`, `b2b_portal_tokens`.
+- **Key files:** `src/lib/b2b/{auth,disputes,stripe-webhook,key-reveal}.ts`, `src/app/api/v1/{disputes,checkout,free-pilot,portal-login,portal-keys,key-reveal}/route.ts`, `src/app/for-business/{page,docs,coverage,thanks}/`, `src/app/dashboard/api-keys/`, `src/app/dashboard/admin/b2b/`.
+- **Auth model:** bearer token `pbk_<8hex>_<32hex>`; SHA-256 hash + 8-char prefix in DB. Plaintext shown ONCE via single-use email link, never persisted, never logged.
+- **Stripe:** live products `prod_UPqX0DuQzRRqjI` (Growth) and `prod_UPqXc86ZeTqXFL` (Enterprise). Env vars `STRIPE_PRICE_API_GROWTH_MONTHLY`, `STRIPE_PRICE_API_ENTERPRISE_MONTHLY`. Webhook `we_1TDVvr7qw7mEWYpy2hLTs9S3` subscribes to `checkout.session.{completed,expired}` + sub lifecycle. **Always idempotent on `checkout.session.completed`** (Stripe replays).
+- **Crons:** `/api/cron/b2b-nurture` daily 10:00 UTC drips d1/d3/d7/d14 emails to non-converters; uses `notes` column tag like `[nurture:d3]` for dedup.
+- **Daily B2B alerts** (Telegram + founder email): free-pilot mint, Stripe checkout started, sale, abandonment.
+- **Customer portal:** `/dashboard/api-keys` (token-gated via passwordless email link, 30-min expiry, single-use on mutating actions). Reveal/Re-issue/Revoke.
+
+**B2B-product rule for future Claude sessions:** the engine + statute index is shared. Don't fork. Any change to `src/lib/agents/complaints-agent.ts` or to `legal_references` schema affects BOTH products — flag it. The B2B API response shape (`DisputeResponse` in `src/lib/b2b/disputes.ts`) is a public contract — don't break it without a `/v2` path. Keep CLAUDE.md updated when new B2B endpoints, env vars, or Stripe prices are added.
 
 ---
 
