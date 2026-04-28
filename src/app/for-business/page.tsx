@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { CSSProperties } from 'react';
-import WaitlistForm from './WaitlistForm';
 import BuyButtons from './BuyButtons';
 import './styles.css';
 
@@ -295,16 +294,16 @@ export default function ForBusinessPage() {
         </div>
       </section>
 
-      {/* ── Waitlist (talk to us) ─────────────────────────── */}
-      <section className="m-business-section m-business-section--alt" id="waitlist">
+      {/* ── Bespoke (email-only — no waitlist) ────────────── */}
+      <section className="m-business-section m-business-section--alt" id="bespoke">
         <div className="m-business-wrap m-business-wrap--narrow">
           <span className="m-business-eyebrow">Need something custom?</span>
-          <h2>Talk to us.</h2>
+          <h2>Talk to us directly.</h2>
           <p className="m-business-sub">
-            For bespoke deployments, on-prem, or volume above Enterprise — drop us a note and
-            Paul will reply within 24 hours.
+            For bespoke deployments, on-prem hosting, or volume above Enterprise — email{' '}
+            <a href="mailto:business@paybacker.co.uk" className="m-business-link">business@paybacker.co.uk</a>{' '}
+            and we will reply within 24 hours.
           </p>
-          <WaitlistForm />
         </div>
       </section>
 

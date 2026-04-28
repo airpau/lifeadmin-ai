@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateKey } from '@/lib/b2b/auth';
-import { resend, FROM_EMAIL } from '@/lib/resend';
+import { resend } from '@/lib/resend';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -83,8 +83,9 @@ export async function POST(request: NextRequest) {
   if (process.env.RESEND_API_KEY) {
     try {
       await resend.emails.send({
-        from: FROM_EMAIL,
+        from: process.env.B2B_FROM_EMAIL || 'Paybacker for Business <business@paybacker.co.uk>',
         to: lower,
+        replyTo: 'business@paybacker.co.uk',
         subject: 'Your Paybacker API key (Starter — 1,000 calls/month)',
         html: `
           <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:auto;color:#0f172a;">

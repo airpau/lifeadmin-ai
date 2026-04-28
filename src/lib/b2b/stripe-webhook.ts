@@ -9,7 +9,7 @@
 import type Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { generateKey } from './auth';
-import { resend, FROM_EMAIL } from '@/lib/resend';
+import { resend } from '@/lib/resend';
 
 const TIER_LIMITS: Record<string, number> = {
   starter: 1000,
@@ -60,12 +60,14 @@ export async function handleB2bCheckoutCompleted(
     return;
   }
 
-  // Email plaintext to customer ONCE
+  // Email plaintext to customer ONCE — sent from business@ so replies
+  // route to the B2B inbox the founder watches separately.
   if (process.env.RESEND_API_KEY) {
     try {
       await resend.emails.send({
-        from: FROM_EMAIL,
+        from: process.env.B2B_FROM_EMAIL || 'Paybacker for Business <business@paybacker.co.uk>',
         to: customerEmail,
+        replyTo: 'business@paybacker.co.uk',
         subject: `Your Paybacker API key (${tier} — ${monthlyLimit.toLocaleString()} calls/month)`,
         html: `
           <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:auto;color:#0f172a;">
