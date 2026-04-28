@@ -86,8 +86,23 @@ export async function handleB2bCheckoutCompleted(
   const customerId = session.customer as string | null;
 
   if (!customerEmail) {
-    console.error('[b2b stripe] no email on session, cannot mint key');
-    return;
+    throw new Error('[b2b stripe] no email on checkout session — cannot mint key');
+  }
+
+  // Idempotency: Stripe can replay checkout.session.completed. If a
+  // non-revoked key already exists for this subscription, no-op so we
+  // don't mint duplicates and email conflicting credentials.
+  if (subscriptionId) {
+    const { data: dupe } = await supabase
+      .from('b2b_api_keys')
+      .select('id')
+      .eq('stripe_subscription_id', subscriptionId)
+      .is('revoked_at', null)
+      .maybeSingle();
+    if (dupe) {
+      console.log(`[b2b stripe] idempotent skip — key already exists for sub ${subscriptionId}`);
+      return;
+    }
   }
 
   // Mark waitlist row converted (if any).
@@ -110,8 +125,10 @@ export async function handleB2bCheckoutCompleted(
     notes: `Stripe checkout · contact: ${contactName} · session: ${session.id}`,
   });
   if (error) {
-    console.error('[b2b stripe] insert key failed:', error.message);
-    return;
+    // Throw so the webhook returns 500 and Stripe retries delivery —
+    // a transient Supabase failure must not leave a paid customer
+    // without a provisioned key.
+    throw new Error(`[b2b stripe] key insert failed: ${error.message}`);
   }
 
   // Email plaintext to customer ONCE — sent from business@ so replies
