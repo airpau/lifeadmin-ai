@@ -50,7 +50,7 @@ async function verifyToken(supabase: any, token: string, email: string, burn: bo
 async function loadKeys(supabase: any, email: string) {
   const { data: keys } = await supabase
     .from('b2b_api_keys')
-    .select('id, name, key_prefix, tier, monthly_limit, last_used_at, revoked_at, created_at')
+    .select('id, name, key_prefix, tier, monthly_limit, last_used_at, revoked_at, created_at, allowed_ips, weekly_digest_opt_in')
     .eq('owner_email', email)
     .is('revoked_at', null)
     .order('created_at', { ascending: false });
@@ -133,8 +133,13 @@ export async function GET(request: NextRequest) {
   const meta = extractClientMeta(request);
   audit({ email, action: 'portal_signin', ...meta });
 
-  const keys = await loadKeys(supabase, email);
-  const allKeys = await loadAllKeys(supabase, email);
+  // Resolve which owner_email account this signed-in email should see.
+  // Members see their owner's account; owners see their own.
+  const { resolveOwner } = await import('../portal-members/route');
+  const { owner, role } = await resolveOwner(supabase as any, email);
+
+  const keys = await loadKeys(supabase, owner);
+  const allKeys = await loadAllKeys(supabase, owner);
   const recentUsage = await loadRecentUsage(supabase, allKeys.map((k: any) => k.id));
   const usageDaily = await loadUsageDaily(supabase, allKeys.map((k: any) => k.id));
   const auditLog = await loadAudit(supabase, email);
