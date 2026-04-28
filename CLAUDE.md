@@ -34,6 +34,31 @@ This project has an existing production codebase with real users and live data. 
 
 ---
 
+## SURFACE CHECK — DO THIS BEFORE EVERY EDIT
+
+Paybacker ships **two distinct products from one codebase**: a B2C consumer app and a B2B engineering-buyer API. They are separate businesses sharing a repo. **Mixing them is a deploy-blocking mistake** — wrong voice, wrong audience, wrong contract.
+
+Before editing any file, identify the surface and stay in lane:
+
+| Surface | Paths (exhaustive) | Voice | Audience |
+|---|---|---|---|
+| **B2B (engineering buyer)** | `src/app/for-business/**`, `src/app/api/v1/**`, `src/lib/b2b/**`, `src/app/dashboard/api-keys/**`, `src/app/dashboard/admin/b2b/**` | Precise, evidence-led, no consumer empathy. Talk request shape, latency, error contract, integration cost. | UK fintechs, insurers, energy retailers, claims platforms, MGAs, CX vendors, AI agent builders |
+| **B2C (consumer)** | Everything else under `src/app/**` and `src/lib/**` — including `src/app/page.tsx`, `src/app/dashboard/**` (except api-keys/admin-b2b), `src/app/blog/**`, `src/lib/agents/**`, `src/lib/telegram/**`, `src/lib/whatsapp/**`, `src/lib/dispute-sync/**`, all consumer crons | "Fight unfair bills", first-person empathy, household savings stories | UK consumers aged 25-50, time-poor professionals overpaying on bills |
+
+**Rules:**
+1. **Don't bundle B2C and B2B work in the same PR** unless the change genuinely touches both. Split by surface.
+2. **Don't apply consumer voice to B2B paths.** No "fight unfair bills" copy on `/for-business`. No founder savings stories on `/for-business/docs`.
+3. **Don't apply B2B engineering voice to B2C paths.** No "request shape" jargon on `/dashboard`.
+4. **Shared engine is `generateComplaintLetter` only** (`src/lib/agents/complaints-agent.ts`). Both products call it. Any change to its contract must keep both call-sites working.
+5. **`legal_references` is a shared table.** Schema changes affect both products.
+6. **`DisputeResponse` shape (`src/lib/b2b/disputes.ts`)** is a public contract. Don't break it without `/v2`. Additive optional fields are fine.
+
+When ambiguous (e.g. shared utility, marketing surface), ask before editing.
+
+For deeper guidance per directory, see the `SCOPE.md` file at the root of each major tree.
+
+---
+
 ## PRODUCT OVERVIEW
 
 **Company:** Paybacker LTD (UK registered)
