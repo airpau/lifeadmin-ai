@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { CSSProperties } from 'react';
 import WaitlistForm from './WaitlistForm';
+import BuyButtons from './BuyButtons';
 import './styles.css';
 
 /**
@@ -130,9 +131,9 @@ export default function ForBusinessPage() {
             Built on UK consumer legislation, kept current, available as REST or MCP.
           </p>
           <div className="m-business-cta-row">
-            <a href="#waitlist" className="m-business-cta">Join the waitlist</a>
-            <a href="#example" className="m-business-cta-ghost">See an example</a>
+            <a href="#buy" className="m-business-cta">Get a key</a>
             <a href="/for-business/docs" className="m-business-cta-ghost">Read the docs</a>
+            <a href="#example" className="m-business-cta-ghost">See an example</a>
           </div>
         </div>
       </section>
@@ -229,29 +230,35 @@ export default function ForBusinessPage() {
           <div className="m-business-pricing-grid">
             <PriceCard
               tier="Starter"
-              price="£299"
-              suffix="/month"
-              description="For small teams testing the engine in a single product."
+              price="Free"
+              suffix=""
+              description="A 1,000-call pilot. No card. Self-serve."
               features={['1,000 calls / month', 'REST endpoint', 'Statute index access', 'Email support']}
+              ctaLabel="Get free key"
+              ctaHref="#free-pilot"
             />
             <PriceCard
               tier="Growth"
-              price="£999"
+              price="£499"
               suffix="/month"
-              description="Production traffic plus the MCP surface for AI agents."
-              features={['10,000 calls / month', 'REST + MCP', 'Webhook for statute updates', 'Slack support']}
+              description="Production traffic. Subscribe and get a key in your inbox in seconds."
+              features={['10,000 calls / month', 'REST endpoint', 'Webhook for statute updates', 'Email support']}
               featured
+              ctaLabel="Subscribe — £499/mo"
+              ctaHref="#buy-growth"
             />
             <PriceCard
               tier="Enterprise"
-              price="Custom"
-              suffix=""
-              description="Dedicated tenant with statute SLAs and a named legal-engineering contact."
-              features={['Custom volume', 'SLA + 24h statute updates', 'Dedicated tenant', 'Legal-engineering review']}
+              price="£1,999"
+              suffix="/month"
+              description="100k calls + dedicated tenant + statute SLA + legal-engineering review."
+              features={['100,000 calls / month', 'SLA + 24h statute updates', 'Dedicated tenant', 'Slack support']}
+              ctaLabel="Subscribe — £1,999/mo"
+              ctaHref="#buy-enterprise"
             />
           </div>
           <p className="m-business-footnote m-business-footnote--center">
-            Indicative — finalising with launch partners. Waitlist members get the design-partner rate.
+            All tiers shown in GBP, monthly, exc. VAT. Cancel anytime via the customer portal.
           </p>
         </div>
       </section>
@@ -275,14 +282,27 @@ export default function ForBusinessPage() {
         </div>
       </section>
 
-      {/* ── Waitlist Form ─────────────────────────────────── */}
-      <section className="m-business-section" id="waitlist">
-        <div className="m-business-wrap m-business-wrap--narrow">
-          <span className="m-business-eyebrow">Join the waitlist</span>
-          <h2>Tell us your use case.</h2>
+      {/* ── Buy ───────────────────────────────────────────── */}
+      <section className="m-business-section" id="buy">
+        <div className="m-business-wrap">
+          <span className="m-business-eyebrow">Get a key</span>
+          <h2>Pick a tier. Key in your inbox.</h2>
           <p className="m-business-sub">
-            Real human review. We respond to qualified use cases within five working days with a
-            design-partner offer or a clear &quot;not yet.&quot;
+            Starter is free and self-serve. Paid tiers go via Stripe Checkout — your key
+            arrives by email within seconds of payment success.
+          </p>
+          <BuyButtons />
+        </div>
+      </section>
+
+      {/* ── Waitlist (talk to us) ─────────────────────────── */}
+      <section className="m-business-section m-business-section--alt" id="waitlist">
+        <div className="m-business-wrap m-business-wrap--narrow">
+          <span className="m-business-eyebrow">Need something custom?</span>
+          <h2>Talk to us.</h2>
+          <p className="m-business-sub">
+            For bespoke deployments, on-prem, or volume above Enterprise — drop us a note and
+            Paul will reply within 24 hours.
           </p>
           <WaitlistForm />
         </div>
@@ -378,7 +398,7 @@ function Segment({ title, line }: { title: string; line: string }) {
 }
 
 function PriceCard({
-  tier, price, suffix, description, features, featured,
+  tier, price, suffix, description, features, featured, ctaLabel, ctaHref,
 }: {
   tier: string;
   price: string;
@@ -386,6 +406,8 @@ function PriceCard({
   description: string;
   features: string[];
   featured?: boolean;
+  ctaLabel?: string;
+  ctaHref?: string;
 }) {
   return (
     <div className={`m-business-price-card${featured ? ' m-business-price-card--featured' : ''}`}>
@@ -397,7 +419,7 @@ function PriceCard({
       <ul>
         {features.map((f) => <li key={f}>{f}</li>)}
       </ul>
-      <a href="#waitlist" className="m-business-price-cta">Join waitlist</a>
+      <a href={ctaHref ?? '#waitlist'} className="m-business-price-cta">{ctaLabel ?? 'Join waitlist'}</a>
     </div>
   );
 }
