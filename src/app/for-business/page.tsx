@@ -221,8 +221,53 @@ export default function ForBusinessPage() {
         </div>
       </section>
 
+      {/* ── Customer portal ───────────────────────────────── */}
+      <section className="m-business-section" id="portal">
+        <div className="m-business-wrap">
+          <span className="m-business-eyebrow">Customer portal</span>
+          <h2>An admin dashboard your CX, eng and security teams can actually use.</h2>
+          <p className="m-business-prose" style={{ marginBottom: 28 }}>
+            Every customer gets passwordless self-serve access to a full operations
+            console — not a Notion page, not a support ticket, a real portal.
+          </p>
+          <div className="m-business-card-grid">
+            <ProblemCard title="Live usage charts">
+              30-day stacked-bar chart of OK vs error volume. Per-key usage bars colour-coded at 60% and 90%
+              of the monthly cap. Stat row shows active keys, calls, errors, audit events at a glance.
+            </ProblemCard>
+            <ProblemCard title="Recent calls drill-down">
+              Last 50 API calls with timestamp, key prefix, endpoint, HTTP status badge, latency, error
+              code. Click any row for the full detail drawer. Filter by status, key, or free-text search.
+            </ProblemCard>
+            <ProblemCard title="Immutable audit log">
+              Every key action (create, revoke, re-issue, reveal, sign-in) logged with actor (customer
+              / founder / Stripe / system), IP address, user agent, full metadata JSON. Append-only.
+              Forward-able to procurement.
+            </ProblemCard>
+            <ProblemCard title="Webhook configuration UI">
+              Register HTTPS endpoints, choose events, get a signing secret shown ONCE at creation. Send
+              test pings from the portal. Recent deliveries table with HTTP status + latency + error.
+              5 consecutive failures auto-disable.
+            </ProblemCard>
+            <ProblemCard title="Self-serve key lifecycle">
+              Re-issue (revokes old, mints new, plaintext shown once). Revoke (kills the key instantly).
+              Full key history including revoked entries, with timestamps. No ticket required, no
+              founder in the loop.
+            </ProblemCard>
+            <ProblemCard title="CSV export">
+              Download usage and audit logs as CSV (5,000 rows per export). Plug into your own SIEM,
+              compliance dashboard, or quarterly board pack without us in the way.
+            </ProblemCard>
+          </div>
+          <p className="m-business-footnote m-business-footnote--center">
+            Sign in via passwordless 30-min one-time link — no Paybacker user account to create.
+            Demo: <a href="/dashboard/api-keys" className="m-business-link">paybacker.co.uk/dashboard/api-keys</a>
+          </p>
+        </div>
+      </section>
+
       {/* ── Pricing ───────────────────────────────────────── */}
-      <section className="m-business-section">
+      <section className="m-business-section m-business-section--alt">
         <div className="m-business-wrap">
           <span className="m-business-eyebrow">Pricing · indicative</span>
           <h2>Three tiers. Finalising with launch partners.</h2>
