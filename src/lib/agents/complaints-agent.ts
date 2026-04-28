@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AI_LETTER_DISCLAIMER } from '@/lib/legal-disclaimer';
+import { checkCitations, type CitationCheckResult } from './citation-guarantee';
 
 // Lazy singleton — defer construction to first call so Next.js build-time
 // page-data collection doesn't throw when ANTHROPIC_API_KEY is absent in
@@ -120,7 +121,19 @@ Return ONLY a JSON object with these exact keys:
 - legalReferences: array of specific act/section strings cited
 - estimatedSuccess: integer 0-100 based on strength of legal case (be honest — weak cases score 40-55, strong cases 70-85)
 - nextSteps: array of 3-4 concrete action strings if no response
-- escalationPath: string naming the specific ombudsman/regulator for this case`;
+- escalationPath: string naming the specific ombudsman/regulator for this case
+
+## CITATION COMPLETENESS — non-negotiable
+For unauthorised payments / subscription auto-renewals: cite Payment Services Regulations 2017 reg 76 AND Consumer Contracts Regs 2013 AND CRA 2015 s.62 AND CPRs 2008 reg 6.
+For Section 75 / credit-card disputes: cite CCA 1974 s.75.
+For energy back-billing: cite Ofgem SLC 21BA.
+For flight delay/cancellation: cite UK261.
+For broadband mid-contract rises: cite Ofcom GC C1.
+For statute-barred debt: cite Limitation Act 1980 s.5 AND CCA 1974 s.77/78.
+A single-citation letter on a multi-ground scenario is incorrect output. Use every applicable citation from the verified-refs list — do not pick "the strongest" and drop the others.
+
+## NON-LEGAL-ADVICE DISCLAIMER
+Paybacker assists consumers in drafting their own correspondence; we are not solicitors and the letter is not legal advice. Do NOT add a disclaimer paragraph inside the letter (the UI shows it separately). But your tone must remain that of a layperson asserting their own rights, not of a lawyer giving formal advice.`;
 
 /**
  * Letter voice direction.
@@ -243,45 +256,86 @@ CRITICAL INSTRUCTION — You MUST ONLY cite the legal references provided above.
 
 Return a JSON object only — no prose, no markdown fences. Keys: letter, legalReferences, estimatedSuccess, nextSteps, escalationPath.`;
 
-  const message = await anthropic.messages.create({
-    model: COMPLAINT_MODEL,
-    max_tokens: 4096,
-    system: COMPLAINTS_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: userPrompt,
-      },
-    ],
-  });
+  // First-pass generation.
+  let result = await runEngineCall(userPrompt);
+  let totalInputTokens = result.usage?.input_tokens ?? 0;
+  let totalOutputTokens = result.usage?.output_tokens ?? 0;
 
-  const content = message.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response type from Claude');
+  // Citation guarantee — deterministic post-validation. If the model
+  // missed any required citation for this scenario type, re-prompt
+  // ONCE with explicit instructions to add the missing references.
+  // See src/lib/agents/citation-guarantee.ts for the rule library.
+  const scenarioCtx = {
+    text: `${input.issueDescription} ${input.companyName} ${input.desiredOutcome}`.toLowerCase(),
+    letterType: input.letterType,
+  };
+  const check: CitationCheckResult = checkCitations(scenarioCtx, result.legalReferences);
+
+  if (!check.passed && check.retryInstruction) {
+    console.log(
+      `[claude] citation-guarantee triggered retry — missing: ${check.missing.map((m) => m.label).join(', ')}`,
+    );
+    // Append the explicit re-prompt and the previous draft so the
+    // model can rewrite rather than start from scratch.
+    const retryPrompt = `${userPrompt}${check.retryInstruction}\n\nYour previous draft (rewrite this, not from scratch):\n${result.letter}`;
+    const retried = await runEngineCall(retryPrompt);
+    totalInputTokens += retried.usage?.input_tokens ?? 0;
+    totalOutputTokens += retried.usage?.output_tokens ?? 0;
+
+    const recheck = checkCitations(scenarioCtx, retried.legalReferences);
+    if (recheck.passed) {
+      // Retry succeeded — use it.
+      result = retried;
+    } else {
+      // Retry STILL missing required citations. Keep the retried draft
+      // (often improved even if not perfect) and force the missing
+      // citations into the legalReferences array so downstream consumers
+      // (audit logs, UI badges, B2B agent_talking_points) reflect them.
+      // Better to over-cite than under-cite — a missed CCR 2013 cite
+      // costs the user money; an over-cited one is harmless.
+      const forced = [...retried.legalReferences];
+      for (const m of recheck.missing) {
+        if (!forced.some((c) => c.toLowerCase().includes(m.label.toLowerCase().split(' ')[0]))) {
+          forced.push(m.label);
+        }
+      }
+      result = { ...retried, legalReferences: forced };
+      console.warn(
+        `[claude] citation-guarantee retry STILL missing — forced citations: ${recheck.missing.map((m) => m.label).join(', ')}`,
+      );
+    }
   }
-
-  // Parse JSON — strip markdown code fences if present
-  let raw = content.text.trim();
-  raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('Could not parse JSON from Claude response');
-  }
-
-  const result = JSON.parse(jsonMatch[0]);
-
-  // Disclaimer is shown on the web page UI only — not embedded in the letter text
-  // See complaints/page.tsx for the UI disclaimer display
 
   return {
-    letter: result.letter,
-    legalReferences: result.legalReferences || [],
-    estimatedSuccess: result.estimatedSuccess || 70,
-    nextSteps: result.nextSteps || [],
-    escalationPath: result.escalationPath || 'Contact relevant ombudsman',
-    usage: {
-      input_tokens: message.usage?.input_tokens || 0,
-      output_tokens: message.usage?.output_tokens || 0,
-    },
+    ...result,
+    usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens },
   };
+
+  /** Single Claude call → parsed engine output. */
+  async function runEngineCall(prompt: string): Promise<ComplaintOutput> {
+    const message = await anthropic.messages.create({
+      model: COMPLAINT_MODEL,
+      max_tokens: 4096,
+      system: COMPLAINTS_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = message.content[0];
+    if (content.type !== 'text') throw new Error('Unexpected response type from Claude');
+    let raw = content.text.trim();
+    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Could not parse JSON from Claude response');
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      letter: parsed.letter,
+      legalReferences: parsed.legalReferences || [],
+      estimatedSuccess: parsed.estimatedSuccess || 70,
+      nextSteps: parsed.nextSteps || [],
+      escalationPath: parsed.escalationPath || 'Contact relevant ombudsman',
+      usage: {
+        input_tokens: message.usage?.input_tokens || 0,
+        output_tokens: message.usage?.output_tokens || 0,
+      },
+    };
+  }
 }
