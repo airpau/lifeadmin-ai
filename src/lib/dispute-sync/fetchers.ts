@@ -405,7 +405,12 @@ export async function fetchDomainMessages(
   conn: EmailConnection,
   senderDomain: string,
   since: Date | null,
-  excludeThreadId: string,
+  // Pass null when there is no thread to exclude (cross-account scan
+  // — the supplier reply landed on a different inbox so there's no
+  // sibling thread to dedupe against). Same-account scans pass the
+  // link's thread_id so we don't double-fetch what the thread sync
+  // already pulled.
+  excludeThreadId: string | null,
 ): Promise<FetchedMessage[]> {
   if (!senderDomain) return [];
   const provider = providerFromConnection(conn);

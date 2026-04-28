@@ -248,6 +248,60 @@ export async function syncLinkedThread(
     }
   }
 
+  // Third pass — cross-account domain scan (added 2026-04-28).
+  //
+  // The watchdog link is bound to ONE email_connection. If the supplier
+  // replies to a different inbox the user has connected, the link's
+  // own connection can't see it. Paul hit this with OneStream: dispute
+  // linked to info@airproperty.co.uk, OneStream's reply landed at
+  // his personal aireypaul@googlemail.com — invisible. The fix: scan
+  // every OTHER active email_connection on this user for messages
+  // matching the dispute's sender_domain. Same relevance filter
+  // protects against domain collisions; same correspondence-unique
+  // index prevents double-imports.
+  if (link.sender_domain && link.user_id) {
+    try {
+      const { data: otherConns } = await db
+        .from('email_connections')
+        .select('*')
+        .eq('user_id', link.user_id)
+        .eq('status', 'active')
+        .neq('id', conn.id)
+        // Cap to keep latency bounded — most users have ≤3 connections.
+        .limit(5);
+
+      const domainSince = since ?? new Date(new Date(link.created_at ?? Date.now()).getTime() - 7 * 86400_000);
+      for (const otherConn of (otherConns ?? []) as EmailConnection[]) {
+        try {
+          const crossMessages = await fetchDomainMessages(
+            otherConn,
+            link.sender_domain,
+            domainSince,
+            // No thread_id on the cross-account scan — the supplier
+            // reply lands as a brand-new thread on the other inbox.
+            null,
+          );
+          if (crossMessages.length > 0) {
+            console.log(
+              `[watchdog] cross-account scan found ${crossMessages.length} ${link.sender_domain} message(s) on ${otherConn.email_address} for link ${linkId}`,
+            );
+            domainMessages.push(...crossMessages);
+          }
+        } catch (err) {
+          console.warn(
+            `[watchdog] cross-account fetch failed on ${otherConn.email_address}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[watchdog] cross-account discovery failed for link ${linkId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   // Resolve dispute context for the relevance filter — account_number
   // is the strongest signal we have.
   let disputeForRelevance: { issue_summary?: string | null; account_number?: string | null; thread_subject?: string | null; latest_activity_at?: Date | null } = {
