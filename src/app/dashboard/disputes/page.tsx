@@ -9,6 +9,7 @@ import {
   Plus, MessageSquare, Phone, Mail, Upload, ChevronLeft, Send,
   AlertCircle, MoreVertical, StickyNote, Shield, Paperclip, Eye,
   Trophy, PoundSterling, TrendingUp, Scale, Trash2, ArrowRight, Bell,
+  ExternalLink,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { capture } from '@/lib/posthog';
@@ -211,7 +212,7 @@ function timeAgo(d: string) {
 // ============================================================
 // Letter Modal (reused from before)
 // ============================================================
-function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeId, providerName, onSentMarked }: {
+function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeId, providerName, onSentMarked, threadReply }: {
   content: string;
   title: string;
   legalRefs: string[];
@@ -220,6 +221,11 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
   disputeId?: string;
   providerName?: string;
   onSentMarked?: () => void;
+  /** Reply-in-thread context: webLink opens the supplier's email
+   * thread directly; senderAddress is shown to the user as a hint.
+   * Provider tells us which mail app to label. Undefined = no
+   * Watchdog thread linked yet, button is hidden. */
+  threadReply?: { webLink: string; senderAddress?: string | null; provider: 'google' | 'outlook' | 'imap' | null };
 }) {
   const [copied, setCopied] = useState(false);
   const [providerEmail, setProviderEmail] = useState<string | null>(null);
@@ -260,6 +266,31 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
     navigator.clipboard.writeText(workingContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Copy the letter to the clipboard, then open the linked email
+  // thread in a new tab. The user lands directly on the supplier's
+  // most recent email — they click Reply in Gmail/Outlook and paste.
+  // True auto-population would need the gmail.compose OAuth scope
+  // (currently we only request gmail.readonly), so this is the
+  // best-we-can-do without a re-consent prompt for every existing
+  // user.
+  const [copyOpenStatus, setCopyOpenStatus] = useState<null | 'copying' | 'done'>(null);
+  const handleCopyAndOpenThread = async () => {
+    if (!threadReply?.webLink) return;
+    try {
+      setCopyOpenStatus('copying');
+      await navigator.clipboard.writeText(workingContent);
+      setCopyOpenStatus('done');
+      window.open(threadReply.webLink, '_blank', 'noopener,noreferrer');
+      setTimeout(() => setCopyOpenStatus(null), 3000);
+    } catch {
+      // Clipboard API can fail in older Safari / private mode.
+      // Open the thread anyway and tell the user to copy manually.
+      setCopyOpenStatus(null);
+      window.open(threadReply.webLink, '_blank', 'noopener,noreferrer');
+      alert('Could not auto-copy the letter. Use the "Copy Letter" button first, then click Reply in your inbox.');
+    }
   };
 
   const handleRefine = async () => {
@@ -507,6 +538,19 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
             </div>
           )}
           <div className="flex flex-wrap gap-3">
+            {threadReply?.webLink && (
+              <button
+                onClick={handleCopyAndOpenThread}
+                disabled={copyOpenStatus === 'copying'}
+                className="flex-1 min-w-[160px] flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg transition-all font-medium disabled:opacity-60"
+                title={threadReply.senderAddress ? `Reply to ${threadReply.senderAddress} in ${threadReply.provider === 'outlook' ? 'Outlook' : 'Gmail'}` : undefined}
+              >
+                {copyOpenStatus === 'done'
+                  ? <><CheckCircle className="h-4 w-4" /> Letter copied · opening…</>
+                  : <><ExternalLink className="h-4 w-4" /> Reply in {threadReply.provider === 'outlook' ? 'Outlook' : 'Gmail'}</>
+                }
+              </button>
+            )}
             <button onClick={handleCopy} className="flex-1 min-w-[120px] flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
               {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
               {copied ? 'Copied!' : 'Copy Letter'}
@@ -515,6 +559,11 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
               <Download className="h-4 w-4" /> Download PDF
             </button>
           </div>
+          {threadReply?.webLink && (
+            <p className="text-[11px] text-slate-500 text-center -mt-1">
+              We&apos;ll copy the letter and open the supplier&apos;s thread — click Reply and paste with Cmd/Ctrl-V.
+            </p>
+          )}
           {/* "Open in Email" was removed because mailto: routes through
               the OS default mail handler — which on macOS is Mail.app even
               when the user lives in Gmail. The web-compose alternative
@@ -1294,6 +1343,37 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
   const statusConf = STATUS_CONFIG[dispute.status] || { label: dispute.status, className: 'bg-slate-100 text-slate-600' };
 
+  // Build the "Reply in Gmail/Outlook" context from the most recent
+  // supplier email on this dispute. If the user hasn't linked a
+  // thread (or the supplier has only ever sent letters/calls), the
+  // button hides itself.
+  const latestSupplierEmail = (() => {
+    const emails = (dispute?.correspondence ?? []).filter(
+      (c) => c.entry_type === 'company_email' && c.supplier_web_link,
+    );
+    if (emails.length === 0) return null;
+    return [...emails].sort((a, b) => {
+      const ad = new Date((a.entry_date as any) || 0).getTime();
+      const bd = new Date((b.entry_date as any) || 0).getTime();
+      if (bd !== ad) return bd - ad;
+      const ac = new Date((a as any).created_at || 0).getTime();
+      const bc = new Date((b as any).created_at || 0).getTime();
+      return bc - ac;
+    })[0];
+  })();
+
+  const threadReplyContext = latestSupplierEmail?.supplier_web_link
+    ? {
+        webLink: latestSupplierEmail.supplier_web_link,
+        senderAddress: latestSupplierEmail.sender_address ?? null,
+        provider: ((dispute as any)?.user_has_outlook
+          ? 'outlook'
+          : (dispute as any)?.user_has_gmail
+          ? 'google'
+          : null) as 'google' | 'outlook' | null,
+      }
+    : undefined;
+
   return (
     <div className="max-w-4xl">
       {letterModal && (
@@ -1306,6 +1386,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           providerName={dispute?.provider_name}
           onSentMarked={fetchDispute}
           onClose={() => setLetterModal(null)}
+          threadReply={threadReplyContext}
         />
       )}
 
