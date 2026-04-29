@@ -550,7 +550,10 @@ async function getSubscriptions(
   // Match the website logic: separate finance payments (loans, mortgages, credit cards) from subscriptions
   const FINANCE_KEYWORDS = ['mortgage', 'loan', 'finance', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa', 'barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'virgin money', 'capital one', 'american express', 'amex', 'securepay', 'credit card'];
 
-  const isFinance = (name: string) => {
+  // Category takes precedence over name matching — if the user has explicitly
+  // recategorised a provider to 'mortgage'/'loan'/'credit_card', respect it.
+  const isFinance = (name: string, category?: string | null) => {
+    if (category && ['mortgage', 'loan', 'credit_card'].includes(category)) return true;
     const lower = name.toLowerCase();
     return FINANCE_KEYWORDS.some(kw => lower.includes(kw));
   };
@@ -568,8 +571,8 @@ async function getSubscriptions(
     return true;
   });
 
-  const subs = deduped.filter(s => !isFinance(s.provider_name) && s.billing_cycle !== 'one-time');
-  const finance = deduped.filter(s => isFinance(s.provider_name));
+  const subs = deduped.filter(s => !isFinance(s.provider_name, s.category) && s.billing_cycle !== 'one-time');
+  const finance = deduped.filter(s => isFinance(s.provider_name, s.category));
 
   const toMonthly = (s: { amount: string | number; billing_cycle: string | null }) => {
     const amt = Number(s.amount);

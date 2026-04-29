@@ -51,13 +51,18 @@ const CREDIT_KEYWORDS = [
 ];
 
 /**
- * True when the merchant name looks like a loan / mortgage / credit
- * card rather than a cancellable subscription. Reused by the admin
- * cancel-info uncovered-providers list and the Perplexity discovery
- * cron so we don't waste a call researching "how to cancel a Santander
- * loan" — that's a debt, not a subscription.
+ * True when the merchant name or stored category looks like a loan /
+ * mortgage / credit card rather than a cancellable subscription.
+ *
+ * Category takes precedence over name matching — if the user (or bot)
+ * has explicitly categorised a row as 'mortgage' or 'loan', that
+ * classification is respected regardless of the provider name.
  */
-export function isFinanceProvider(name: string | null | undefined): boolean {
+export function isFinanceProvider(
+  name: string | null | undefined,
+  category?: string | null,
+): boolean {
+  if (category && ['mortgage', 'loan', 'credit_card'].includes(category)) return true;
   if (!name) return false;
   const lower = name.toLowerCase();
   return DEBT_KEYWORDS.some((k) => lower.includes(k)) || CREDIT_KEYWORDS.some((k) => lower.includes(k));
@@ -76,7 +81,7 @@ function amountBand(raw: number | string | null | undefined): number {
  */
 export function filterActiveSubscriptions<T extends ActiveSubscriptionLike>(subs: T[]): T[] {
   const active = subs.filter(
-    (s) => (s.status || 'active') === 'active' && !s.dismissed_at && !isFinanceProvider(s.provider_name),
+    (s) => (s.status || 'active') === 'active' && !s.dismissed_at && !isFinanceProvider(s.provider_name, s.category),
   );
 
   const seen = new Map<string, boolean>();

@@ -377,7 +377,12 @@ export default function SubscriptionsPage() {
   const CREDIT_CARD_KEYWORDS = ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'virgin money', 'capital one', 'american express', 'amex', 'securepay', 'credit card'];
   const COUNCIL_TAX_KEYWORDS = ['council', 'testvalley', 'winchester city', 'hounslow', 'lbh', 'l.b.'];
 
-  const isFinancePayment = (name: string) => {
+  // Category takes precedence over name matching — if the bot (or user) has
+  // explicitly set category='mortgage'/'loan'/'credit_card', honour that even
+  // when the provider name doesn't match the keyword list. This ensures
+  // recategorisation via Pocket Agent immediately reflects on the website.
+  const isFinancePayment = (name: string, category?: string | null) => {
+    if (category && ['mortgage', 'loan', 'credit_card'].includes(category)) return true;
     const lower = name.toLowerCase();
     return DEBT_KEYWORDS.some(kw => lower.includes(kw)) ||
       CREDIT_CARD_KEYWORDS.some(kw => lower.includes(kw));
@@ -388,7 +393,7 @@ export default function SubscriptionsPage() {
   // collapse to one, but two separate council-tax DDs at different amounts stay
   // as distinct entries).
   const baseSubscriptions = (() => {
-    const filtered = subscriptions.filter(s => !isFinancePayment(s.provider_name));
+    const filtered = subscriptions.filter(s => !isFinancePayment(s.provider_name, s.category));
     const seen = new Map<string, boolean>();
     return filtered.filter(s => {
       const normName = cleanMerchantName(s.provider_name).toLowerCase();
@@ -399,7 +404,21 @@ export default function SubscriptionsPage() {
       return true;
     });
   })();
-  const hiddenFinanceCount = subscriptions.filter(s => s.status === 'active' && isFinancePayment(s.provider_name)).length;
+  // Finance items (mortgages, loans, credit cards) — shown in a separate section
+  // below the main list so users can see everything the system knows about.
+  const financeSubscriptions = (() => {
+    const seen = new Map<string, boolean>();
+    return subscriptions
+      .filter(s => s.status === 'active' && isFinancePayment(s.provider_name, s.category))
+      .filter(s => {
+        const normName = cleanMerchantName(s.provider_name).toLowerCase();
+        const band = Math.round(Math.log(Math.max(Math.abs(parseFloat(String(s.amount)) || 0), 0.01)) / Math.log(1.1));
+        const key = `${normName}|${band}`;
+        if (seen.has(key)) return false;
+        seen.set(key, true);
+        return true;
+      });
+  })();
 
   const displaySubscriptions = (() => {
     let result = [...baseSubscriptions];
@@ -1877,7 +1896,7 @@ export default function SubscriptionsPage() {
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
             <p className="text-slate-600 text-xs mb-1">Subscriptions & Bills</p>
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.subscriptions_monthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-            <p className="text-slate-500 text-xs mt-1">{countActiveSubscriptions(subscriptions)} active</p>
+            <p className="text-slate-500 text-xs mt-1">{rpcTotals.subscriptions_count} active</p>
           </div>
 
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
@@ -1895,7 +1914,7 @@ export default function SubscriptionsPage() {
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
             <p className="text-slate-600 text-xs mb-1">Total All Commitments</p>
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.monthly_total)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-            <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {countActiveSubscriptions(subscriptions) + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
+            <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {rpcTotals.subscriptions_count + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
           </div>
         </div>
       )}
@@ -2084,11 +2103,9 @@ export default function SubscriptionsPage() {
               )}
             </div>
           )}
-          {hiddenFinanceCount > 0 && (
-            <div className="bg-white/50 border border-slate-200/30 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
-              <p className="text-slate-500 text-xs">{hiddenFinanceCount} loan/mortgage/credit card payment{hiddenFinanceCount !== 1 ? 's' : ''} hidden. These are tracked in your <a href="/dashboard/money-hub" className="text-emerald-600 hover:text-emerald-500">Money Hub</a>.</p>
-            </div>
-          )}
+          {/* Finance items are shown BELOW the main list, not hidden.
+              This ensures every subscription/commitment the system knows
+              about is visible on this page, not silently squirrelled away. */}
 
           {displaySubscriptions.length === 0 ? (
             <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-12 text-center">
@@ -2360,6 +2377,61 @@ export default function SubscriptionsPage() {
                 )}
               </div>
             ))
+          )}
+
+          {/* ── Mortgages, Loans & Credit Cards ──────────────────────────
+              These are real financial commitments but not cancellable
+              subscriptions. Shown here so the full picture is visible.
+              Amounts count toward "Total All Commitments" above, not
+              toward the "Subscriptions & Bills" figure. */}
+          {financeSubscriptions.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-200/50">
+              <div className="flex items-center gap-2 mb-3">
+                <h2 className="font-semibold text-slate-700 text-sm">Mortgages, Loans &amp; Credit Cards</h2>
+                <span className="text-xs text-slate-500 bg-slate-100 rounded-full px-2 py-0.5 font-medium">{financeSubscriptions.length}</span>
+              </div>
+              <div className="space-y-2">
+                {financeSubscriptions.map(sub => {
+                  const monthlyAmt =
+                    sub.billing_cycle === 'yearly' ? sub.amount / 12
+                    : sub.billing_cycle === 'quarterly' ? sub.amount / 3
+                    : sub.amount;
+                  const catLabel = sub.category || sub.provider_type || 'finance';
+                  return (
+                    <div
+                      key={sub.id}
+                      className="bg-slate-50 border border-slate-200/60 rounded-xl px-4 py-3 flex items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center shrink-0 uppercase">
+                          {(sub.provider_name[0] || '?')}
+                        </div>
+                        <span className="font-medium text-slate-900 text-sm truncate">
+                          {normaliseProviderName(sub.provider_name)}
+                        </span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200/60 shrink-0 capitalize whitespace-nowrap">
+                          {catLabel.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-semibold text-slate-900">
+                          {formatGBP(monthlyAmt)}<span className="text-slate-400 font-normal text-xs">/mo</span>
+                        </div>
+                        {sub.billing_cycle !== 'monthly' && (
+                          <div className="text-xs text-slate-400">
+                            {formatGBP(sub.amount)}/{sub.billing_cycle}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-slate-400 mt-3">
+                Amounts here count toward &ldquo;Total All Commitments&rdquo; above, not the Subscriptions &amp; Bills total.
+                To recategorise an item, ask the Pocket Agent or use the chat assistant.
+              </p>
+            </div>
           )}
         </div>
 
