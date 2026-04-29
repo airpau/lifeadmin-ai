@@ -113,7 +113,14 @@ function extractTicketRef(payload: {
  *
  * Resend's email.received webhook payload only includes metadata —
  * to get the text/html body you have to call the API explicitly.
- * Same pattern used by the legacy /api/support/inbound-email handler.
+ *
+ * Inbound emails are exposed under /emails/receiving/{id}, NOT
+ * /emails/{id} (that path is outbound-only and 404s for inbound
+ * IDs). The SDK exposes this as resend.emails.receiving.get(id).
+ * The legacy /api/support/inbound-email handler had the same bug —
+ * its body fetch was always returning 404 silently, which is why
+ * Paul's first test on 2026-04-29 still showed an empty body.
+ *
  * Returns blanks on failure so the caller can render a placeholder
  * instead of crashing.
  */
@@ -122,28 +129,37 @@ async function fetchResendEmailBody(
 ): Promise<{ text: string; html: string }> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey || !emailId) return { text: '', html: '' };
-  try {
-    const res = await fetch(`https://api.resend.com/emails/${emailId}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    if (!res.ok) {
+  // Try inbound endpoint first; if that 404s (older Resend account
+  // without inbound parsing surfaced as an API resource) fall back
+  // to the outbound endpoint just in case the email came in via a
+  // different code path.
+  const endpoints = [
+    `https://api.resend.com/emails/receiving/${emailId}`,
+    `https://api.resend.com/emails/${emailId}`,
+  ];
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!res.ok) {
+        console.warn(
+          `[resend-inbound] ${url} returned ${res.status} for email ${emailId}`,
+        );
+        continue;
+      }
+      const data = await res.json();
+      const text = typeof data.text === 'string' ? data.text : '';
+      const html = typeof data.html === 'string' ? data.html : '';
+      if (text || html) return { text, html };
+    } catch (err) {
       console.warn(
-        `[resend-inbound] Resend API returned ${res.status} for email ${emailId}`,
+        `[resend-inbound] ${url} fetch failed for ${emailId}:`,
+        err instanceof Error ? err.message : err,
       );
-      return { text: '', html: '' };
     }
-    const data = await res.json();
-    return {
-      text: typeof data.text === 'string' ? data.text : '',
-      html: typeof data.html === 'string' ? data.html : '',
-    };
-  } catch (err) {
-    console.warn(
-      `[resend-inbound] Resend API fetch failed for ${emailId}:`,
-      err instanceof Error ? err.message : err,
-    );
-    return { text: '', html: '' };
   }
+  return { text: '', html: '' };
 }
 
 function trimReplyBody(text: string): string {
