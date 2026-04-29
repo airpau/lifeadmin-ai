@@ -278,6 +278,12 @@ When the user says "link an email", "connect a thread", "find the email about X"
 5. Confirm what got imported. If imported=0, the watchdog cron will sync within 30 min.
 NEVER auto-link the top result without user confirmation. NEVER guess a thread_id.
 
+When the user confirms a final letter draft with "I've sent it", "use this one", "save the firm version", "finalise this draft":
+1. Call record_letter_sent with provider=<dispute name> and letter_text=<the FULL text of the final draft you produced>. Read letter_text verbatim from your most recent draft message in the conversation — don't paraphrase or trim.
+2. The tool inserts an ai_letter row into the dispute timeline AND bumps status to 'awaiting_response' if currently 'open'. The watchdog auto-import will then alert when the supplier replies.
+3. Confirm what was saved.
+Without this call, iterations stay as drafts and never reach the dispute history.
+
 ## SUBSCRIPTION MANAGEMENT TOOLS
 You have tools to manage the user's subscriptions. When the user asks to add, edit, remove, or view their subscriptions, use the appropriate tool. After using a tool, describe what you did in natural language.
 

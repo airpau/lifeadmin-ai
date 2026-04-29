@@ -173,6 +173,12 @@ export async function executeToolCall(
         provider: toolInput.provider as string,
         query: toolInput.query as string | undefined,
       });
+    case 'record_letter_sent':
+      return recordLetterSent(supabase, userId, {
+        provider: toolInput.provider as string,
+        letterText: toolInput.letter_text as string,
+        title: toolInput.title as string | undefined,
+      });
     case 'link_email_thread_to_dispute':
       return linkEmailThreadToDispute(supabase, userId, {
         provider: toolInput.provider as string,
@@ -1176,14 +1182,19 @@ async function draftDisputeLetter(
     letter_text: letterText,
   };
 
-  // Return the full letter — the caller (user-bot.ts) splits it into
-  // Telegram-sized chunks via splitMessage(). Don't truncate here.
+  // text = HEADER ONLY. The letter body lives in pendingAction.letter_text
+  // and the bot caller (Telegram + WhatsApp user-bot.ts) sends it as a
+  // separate message after the header. Previously the letter body was
+  // duplicated into text, which on WhatsApp caused the same letter to
+  // arrive twice (Paul reported 2026-04-29). On Telegram the keyboard
+  // for "Approve and save" now attaches to the letter chunk, not the
+  // header chunk.
   const header = isReply
-    ? `*Draft reply to ${params.provider}* _(${tone} tone)_ — review below, then approve to save to the audit trail.`
-    : `*Draft letter for ${params.provider}* _(${tone} tone)_ — review below, then approve to save.`;
+    ? `*Draft reply to ${params.provider}* _(${tone} tone)_ — review below, then say "send the firm one" / "use this version" to save it to the dispute history.`
+    : `*Draft letter for ${params.provider}* _(${tone} tone)_ — review below, then say "save this letter" / "I've sent it" once you've emailed it so I can update the dispute history.`;
 
   return {
-    text: `${header}\n\n${letterText}`,
+    text: header,
     pendingAction,
   };
 }
@@ -2368,6 +2379,65 @@ async function linkEmailThreadToDispute(
     text += `Couldn't pull the messages immediately, but the watchdog will sync on its next cron run (within 30 min) and you'll see them in the dispute timeline.`;
   }
   return { text };
+}
+
+async function recordLetterSent(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider: string; letterText: string; title?: string },
+): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const dispute = resolved.dispute;
+
+  if (!params.letterText || params.letterText.trim().length < 80) {
+    return {
+      text: `That letter looks incomplete (under 80 chars). Re-paste the full letter you sent and I'll save it.`,
+    };
+  }
+
+  const today = new Date();
+  const titleStamp = today.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const title = params.title?.trim() || `AI letter sent ${titleStamp}`;
+
+  const { error: insertErr } = await supabase.from('correspondence').insert({
+    dispute_id: dispute.id,
+    user_id: userId,
+    entry_type: 'ai_letter',
+    title,
+    content: params.letterText,
+    summary: params.letterText.slice(0, 200),
+    entry_date: today.toISOString(),
+    detected_from_email: false,
+  });
+  if (insertErr) {
+    console.error('[recordLetterSent] insert failed', insertErr);
+    return { text: `Couldn't save the letter to the dispute history: ${insertErr.message}` };
+  }
+
+  // Bump status only if currently open — don't overwrite a real
+  // mid-flight state like 'escalated' or 'ombudsman'.
+  let statusNote = '';
+  if (dispute.id) {
+    const { data: current } = await supabase
+      .from('disputes')
+      .select('status')
+      .eq('id', dispute.id)
+      .single();
+    if (current?.status === 'open') {
+      await supabase
+        .from('disputes')
+        .update({ status: 'awaiting_response', updated_at: new Date().toISOString() })
+        .eq('id', dispute.id);
+      statusNote = ' Status flipped to awaiting_response — the watchdog will alert you here when they reply.';
+    }
+  }
+
+  return {
+    text:
+      `✅ Saved the letter to your *${dispute.provider_name}* dispute timeline (entry: "${title}").${statusNote} ` +
+      `If they don't reply within 14 days you can ask me to "escalate the ${dispute.provider_name} dispute" and I'll draft the regulator letter.`,
+  };
 }
 
 // ============================================================

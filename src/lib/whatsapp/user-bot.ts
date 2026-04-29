@@ -79,6 +79,12 @@ LINKING AN EMAIL TO A DISPUTE — when the user says "link an email", "connect a
 5. Confirm what got imported. If imported=0, the watchdog cron will sync within 30 min.
 NEVER auto-link the top result without user confirmation. NEVER guess a thread_id.
 
+FINALISING A LETTER — after you draft a letter via draft_dispute_letter the user may iterate (asking for friendlier / firmer tone). Once they confirm a final version with "I've sent it", "use this one", "save the firm version", "finalise this draft", "go with the formal one", or similar approval phrasing:
+1. Call record_letter_sent with provider=<the dispute name> and letter_text=<full text of the final draft you produced>. Read letter_text VERBATIM from the most recent draft in conversation history — don't paraphrase, trim, or re-render.
+2. The tool inserts an ai_letter row into the dispute timeline AND bumps status to 'awaiting_response' if currently 'open' — the watchdog auto-import then alerts the user when the supplier replies.
+3. Confirm what was saved and explain the 14-day clock for escalation.
+Without this call, iterations stay as drafts and never reach the dispute history.
+
 KEYWORD COMMANDS — short replies to a recent alert (look at the conversation history above; if the most recent assistant/system message starts with "[Pocket Agent alert]" it tells you the dispute):
 
 - ACCEPT / YES / OK / FINE / SOUNDS GOOD: the user is accepting the supplier's latest offer/proposal in that dispute. Call get_dispute_detail for that dispute, look at the latest company_email, then call update_dispute_status with new_status="resolved_partial" (if a partial offer) or "resolved_won" (if full refund / what they wanted) and a clear notes field summarising what they accepted. If a money figure was offered, set money_recovered. Confirm in plain English what you've recorded.

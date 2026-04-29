@@ -130,9 +130,37 @@ const linkEmailThreadToDisputeTool: ChatTool = {
   },
 };
 
+const recordLetterSentTool: ChatTool = {
+  name: 'record_letter_sent',
+  description:
+    "Save a finalised dispute letter to the dispute history AND mark the dispute as awaiting a response. Call when the user says 'I've sent it', 'use the firm one', 'save this letter', 'finalise this draft'. Pass the FULL letter_text from your most recent draft (read it back from prior conversation history) — don't paraphrase or trim.",
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      provider: { type: 'string', description: 'Dispute provider name (case-insensitive partial match).' },
+      letter_text: { type: 'string', description: 'Full text of the letter the user sent. Read verbatim from your prior draft.' },
+      title: { type: 'string', description: "Optional short title (e.g. 'Reply to Enterprise — firm tone')." },
+    },
+    required: ['provider', 'letter_text'],
+  },
+  handler: async (
+    args: { provider: string; letter_text: string; title?: string },
+    userId: string,
+  ) => {
+    const result = await executeToolCall(
+      'record_letter_sent',
+      { provider: args.provider, letter_text: args.letter_text, title: args.title },
+      userId,
+      'chatbot',
+    );
+    return { text: result.text };
+  },
+};
+
 export const disputeTools: ChatTool[] = [
   getDisputesTool,
   getDisputeDetailTool,
   findEmailThreadForDisputeTool,
   linkEmailThreadToDisputeTool,
+  recordLetterSentTool,
 ];

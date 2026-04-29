@@ -306,6 +306,30 @@ export const telegramTools: Tool[] = [
   },
 
   {
+    name: 'record_letter_sent',
+    description:
+      "Save a finalised dispute letter to the dispute history AND mark the dispute as awaiting a response. Call when the user says 'I've sent it', 'I've emailed that', 'use the firm one', 'save this letter', 'finalise the formal version', or otherwise confirms they're done iterating on a draft. Inserts an ai_letter row to correspondence so the dispute timeline shows you sent it, then bumps status to 'awaiting_response' if currently 'open'. Pass the FULL letter_text from the most recent draft you produced (read it back from your prior message in the conversation history). After this fires, the watchdog auto-import will alert the user when the supplier replies.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description: 'Dispute provider name (case-insensitive partial match — same shape as get_dispute_detail).',
+        },
+        letter_text: {
+          type: 'string',
+          description: "Full text of the letter the user sent. Read this back verbatim from your prior pendingAction.letter_text in conversation history — don't paraphrase or trim.",
+        },
+        title: {
+          type: 'string',
+          description: "Optional short title for the dispute timeline (e.g. 'Reply to Enterprise — firm tone'). Defaults to 'AI letter sent on <date>'.",
+        },
+      },
+      required: ['provider', 'letter_text'],
+    },
+  },
+
+  {
     name: 'link_email_thread_to_dispute',
     description:
       "Link a specific email thread to a dispute. Call this AFTER find_email_thread_for_dispute returned candidates AND the user picked one. Pass the connection_id + thread_id + provider_type from the chosen candidate verbatim. Triggers an immediate sync so the body imports into Paybacker right away — the user sees Hadil-style supplier replies in the dispute timeline within seconds. Replaces any previously-linked thread on this dispute (one active link at a time).",

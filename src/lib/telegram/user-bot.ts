@@ -209,6 +209,12 @@ LINKING AN EMAIL TO A DISPUTE — when the user says "link an email", "connect a
 5. Confirm what got imported. If imported=0, tell them the watchdog cron will sync within 30 min.
 NEVER auto-link the top result without user confirmation. NEVER guess a thread_id.
 
+FINALISING A LETTER — after you draft a letter via draft_dispute_letter the user may iterate (asking for friendlier / firmer tone). Once they confirm a final version with "I've sent it", "use this one", "save the firm version", "finalise this draft", "go with the formal one", or similar approval phrasing:
+1. Call record_letter_sent with provider=<the dispute name> and letter_text=<full text of the final draft you produced>. Read letter_text VERBATIM from the most recent pendingAction.letter_text in conversation history — don't paraphrase, trim, or re-render.
+2. The tool inserts an ai_letter row into the dispute timeline AND bumps status to 'awaiting_response' if currently 'open' — the watchdog auto-import then alerts the user when the supplier replies.
+3. Confirm what was saved and explain the 14-day clock for escalation.
+Without this call, iterations stay as drafts and never reach the dispute history. ALWAYS call record_letter_sent when the user signals approval — don't ask "would you like me to save this?" if they've already said go.
+
 FINANCIAL INTELLIGENCE — CRITICAL:
 - get_expected_bills cross-references bank transaction data to determine paid/unpaid status. Trust its ✅/❌/⏳ indicators. ❌ means a bill was due but no matching payment was found in the bank — flag this clearly to the user.
 - get_upcoming_payments merges data from BOTH the subscription tracker AND recurring bank transaction patterns (direct debits, standing orders). 🏦 items come from actual bank history.
@@ -2148,12 +2154,22 @@ Return JSON: { "subject": "...", "body": "..." }`;
           .text('Approve and save ✓', `approve_${pending?.id}`)
           .text('Cancel ✗', `cancel_${pending?.id}`);
 
-        const chunks = splitMessage(text);
-        for (let i = 0; i < chunks.length; i++) {
-          if (i === chunks.length - 1) {
-            await ctx.reply(chunks[i], { reply_markup: keyboard });
-          } else {
-            await ctx.reply(chunks[i]);
+        // Send the header first (no keyboard), then the letter body
+        // with the Approve/Cancel keyboard attached. Previously the
+        // header + letter were concatenated into `text` and split into
+        // chunks, which (on WhatsApp callers) led to a duplicated send.
+        // The handler now returns text = header only, pendingAction
+        // .letter_text = body — both surfaces send them as two messages.
+        await ctx.reply(text);
+        const letterBody = (pendingAction as { letter_text?: string }).letter_text;
+        if (letterBody) {
+          const letterChunks = splitMessage(letterBody);
+          for (let i = 0; i < letterChunks.length; i++) {
+            if (i === letterChunks.length - 1) {
+              await ctx.reply(letterChunks[i], { reply_markup: keyboard });
+            } else {
+              await ctx.reply(letterChunks[i]);
+            }
           }
         }
       } else {
