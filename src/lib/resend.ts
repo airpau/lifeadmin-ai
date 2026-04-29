@@ -18,7 +18,7 @@ export const resend = new Proxy({} as Resend, {
 // mail.paybacker.co.uk is the receiving-enabled domain — user replies MUST route there or
 // they vanish into the void (verified via Resend domains API 2026-04-26).
 // FROM stays on the apex so the visible sender looks clean (noreply@paybacker.co.uk).
-// REPLY-TO is on the receiving-enabled subdomain so /api/support/inbound-email fires
+// REPLY-TO is on the receiving-enabled subdomain so /api/webhooks/resend-inbound fires
 // when users reply, which re-opens the ticket so Riley can re-engage.
 // Override at deploy-time via RESEND_REPLY_TO env var if you ever flip the apex domain
 // to receiving=enabled in Resend.

@@ -28,7 +28,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 // Use the canonical REPLY_TO from src/lib/resend.ts (which routes to the
-// receiving-enabled mail.paybacker.co.uk subdomain so /api/support/inbound-email fires).
+// receiving-enabled mail.paybacker.co.uk subdomain so /api/webhooks/resend-inbound fires).
 const TICKET_REPLY_TO = REPLY_TO;
 const CHASE_AFTER_DAYS = 7;
 const CLOSE_AFTER_CHASE_HOURS = 24;

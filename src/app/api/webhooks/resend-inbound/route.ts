@@ -117,9 +117,9 @@ function extractTicketRef(payload: {
  * Inbound emails are exposed under /emails/receiving/{id}, NOT
  * /emails/{id} (that path is outbound-only and 404s for inbound
  * IDs). The SDK exposes this as resend.emails.receiving.get(id).
- * The legacy /api/support/inbound-email handler had the same bug —
- * its body fetch was always returning 404 silently, which is why
- * Paul's first test on 2026-04-29 still showed an empty body.
+ * Earlier deploy of this fetch hit /emails/{id} and silently 404'd,
+ * which is why Paul's first test on 2026-04-29 returned an empty
+ * body — fixed in commit 3ba95560.
  *
  * Returns blanks on failure so the caller can render a placeholder
  * instead of crashing.
