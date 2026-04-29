@@ -369,7 +369,7 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
     raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('Could not parse JSON from Claude response');
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = parseLenientJson(jsonMatch[0]);
     return {
       letter: parsed.letter,
       legalReferences: parsed.legalReferences || [],
@@ -382,4 +382,76 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
       },
     };
   }
+}
+
+/**
+ * Tolerant JSON.parse for Claude output.
+ *
+ * Claude routinely returns JSON where the `letter` string spans
+ * multiple lines with literal newlines (and the occasional unescaped
+ * tab or carriage return). Strict JSON.parse rejects those with
+ * "Expected ',' or '}' after property value..." — the exact error
+ * Paul hit clicking Draft reply on 2026-04-29.
+ *
+ * Fix: try strict parse first; on failure, walk the string and
+ * escape control characters that fall inside a string literal, then
+ * retry. Cheap, deterministic, no extra dependency.
+ */
+function parseLenientJson(raw: string): any {
+  try {
+    return JSON.parse(raw);
+  } catch (firstErr) {
+    try {
+      return JSON.parse(escapeControlCharsInStrings(raw));
+    } catch {
+      // Re-throw the original error — same message the caller has been
+      // logging in production, so existing alerts/logs still triage.
+      throw firstErr;
+    }
+  }
+}
+
+/**
+ * Escape \n, \r, \t and other ASCII control chars (<0x20) when they
+ * appear inside a string literal (i.e. between unescaped double
+ * quotes). Leaves whitespace OUTSIDE strings untouched so structural
+ * formatting stays valid.
+ */
+function escapeControlCharsInStrings(input: string): string {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (!inString) {
+      if (ch === '"') inString = true;
+      out += ch;
+      continue;
+    }
+    if (escaped) {
+      out += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      out += ch;
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = false;
+      out += ch;
+      continue;
+    }
+    const code = ch.charCodeAt(0);
+    if (ch === '\n') { out += '\\n'; continue; }
+    if (ch === '\r') { out += '\\r'; continue; }
+    if (ch === '\t') { out += '\\t'; continue; }
+    if (code < 0x20) {
+      out += '\\u' + code.toString(16).padStart(4, '0');
+      continue;
+    }
+    out += ch;
+  }
+  return out;
 }
