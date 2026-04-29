@@ -39,7 +39,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const [prefsRes, profileRes, tgRes, waRes] = await Promise.all([
+  const [prefsRes, profileRes, tgRes, waRes, alertPrefsRes] = await Promise.all([
     supabase
       .from('notification_preferences')
       .select('event_type, email, telegram, whatsapp, push')
@@ -60,6 +60,14 @@ export async function GET() {
       .select('is_active, whatsapp_phone')
       .eq('user_id', user.id)
       .eq('is_active', true)
+      .maybeSingle(),
+    // alerts_paused_until lives on telegram_alert_preferences. Bot's
+    // pause_alerts_until tool writes it; this page surfaces a banner
+    // + "Resume now" button when it's in the future.
+    supabase
+      .from('telegram_alert_preferences')
+      .select('alerts_paused_until')
+      .eq('user_id', user.id)
       .maybeSingle(),
   ]);
 
@@ -104,7 +112,43 @@ export async function GET() {
     quiet_hours_start: profileRes.data?.quiet_hours_start ?? null,
     quiet_hours_end: profileRes.data?.quiet_hours_end ?? null,
     timezone: profileRes.data?.notification_timezone ?? 'Europe/London',
+    alerts_paused_until: alertPrefsRes.data?.alerts_paused_until ?? null,
   });
+}
+
+/**
+ * PATCH — partial updates. Currently used by the Pocket Agent
+ * settings page's "Resume now" button (clears alerts_paused_until)
+ * and by any future granular settings the bot writes.
+ */
+export async function PATCH(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const body = (await request.json()) as { alerts_paused_until?: string | null };
+
+  if (body.alerts_paused_until !== undefined) {
+    const { error } = await supabase
+      .from('telegram_alert_preferences')
+      .upsert(
+        {
+          user_id: user.id,
+          alerts_paused_until: body.alerts_paused_until,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ ok: true });
 }
 
 interface PutBody {

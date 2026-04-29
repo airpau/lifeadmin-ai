@@ -40,6 +40,10 @@ export default function DashboardPage() {
   const [expiringContracts, setExpiringContracts] = useState(0);
   const [userTier, setUserTier] = useState('free');
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
+  // Number of tasks the user has snoozed (snooze_until > now via the
+  // bot's snooze_task tool). Surfaced as a small badge under the
+  // Action items header so users know how many are hidden.
+  const [snoozedTaskCount, setSnoozedTaskCount] = useState(0);
   const [taskFilter, setTaskFilter] = useState('all');
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
@@ -289,7 +293,7 @@ export default function DashboardPage() {
             .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),
           supabase.from('bank_connections').select('id, bank_name, account_display_names, status')
             .eq('user_id', user.id).neq('status', 'disconnected'),
-          supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority')
+          supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority, snooze_until')
             .eq('user_id', user.id).eq('status', 'pending_review')
             .order('created_at', { ascending: false }).limit(50),
         ]);
@@ -402,8 +406,20 @@ export default function DashboardPage() {
         // A single bank-sync run can fan out 20+ identical "review" tasks
         // for the same merchant (one per matching transaction) — these
         // were drowning the action-items card.
-        const cleanTasks = (userTasks.data || []).filter((t: any) =>
+        // Also drop tasks that are snoozed (snooze_until > now) — bot
+        // sets this via snooze_task; they reappear automatically once
+        // the date passes. Surface the count separately so the user
+        // knows how many are hidden.
+        const nowMs = Date.now();
+        const allRaw = (userTasks.data || []).filter((t: any) =>
           !((t.provider_name || '').toLowerCase().includes('paybacker'))
+        );
+        const snoozedCount = allRaw.filter((t: any) =>
+          t.snooze_until && new Date(t.snooze_until).getTime() > nowMs
+        ).length;
+        setSnoozedTaskCount(snoozedCount);
+        const cleanTasks = allRaw.filter((t: any) =>
+          !t.snooze_until || new Date(t.snooze_until).getTime() <= nowMs
         );
         const taskGroups = new Map<string, any>();
         for (const t of cleanTasks) {
@@ -1400,6 +1416,23 @@ export default function DashboardPage() {
               <h3 style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <Clock className="h-4 w-4" /> Action items <span className="count-tag">{pendingTasks.length}</span>
+                  {snoozedTaskCount > 0 && (
+                    <span
+                      title={`${snoozedTaskCount} task${snoozedTaskCount === 1 ? '' : 's'} snoozed — they'll reappear once their snooze date passes. Ask the Pocket Agent to unsnooze.`}
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 500,
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        background: '#f1f5f9',
+                        color: '#64748b',
+                        border: '1px solid var(--divider)',
+                        cursor: 'help',
+                      }}
+                    >
+                      💤 {snoozedTaskCount} snoozed
+                    </span>
+                  )}
                 </span>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {(['all', 'disputes', 'deals', 'subscriptions'] as const).map((f) => (

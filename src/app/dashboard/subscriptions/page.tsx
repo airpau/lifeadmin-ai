@@ -62,6 +62,7 @@ interface Subscription {
   current_tariff?: string | null;
   alerts_enabled?: boolean;
   alert_before_days?: number;
+  archived_at?: string | null;
   contract_end_source?: string | null;
   logo_url?: string | null;
   needs_review?: boolean;
@@ -121,6 +122,11 @@ export default function SubscriptionsPage() {
   const router = useRouter();
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  // Archive view toggle. Bot's archive_subscription tool sets
+  // archived_at; rows stay in the table but are hidden from the
+  // default view. Toggle is only rendered when there's at least
+  // one archived row, otherwise it's just clutter.
+  const [archivedFilter, setArchivedFilter] = useState<'active' | 'archived'>('active');
   const [userTier, setUserTier] = useState('free');
   const [tierLoaded, setTierLoaded] = useState(false);
   const [unrecognisedSub, setUnrecognisedSub] = useState<Subscription | null>(null);
@@ -395,7 +401,13 @@ export default function SubscriptionsPage() {
   // collapse to one, but two separate council-tax DDs at different amounts stay
   // as distinct entries).
   const baseSubscriptions = (() => {
-    const filtered = subscriptions.filter(s => !isFinancePayment(s.provider_name));
+    // Apply archived filter first — rows the bot sent to
+    // archive_subscription have archived_at set; default view
+    // hides them.
+    const archiveFiltered = subscriptions.filter((s) =>
+      archivedFilter === 'archived' ? !!s.archived_at : !s.archived_at,
+    );
+    const filtered = archiveFiltered.filter(s => !isFinancePayment(s.provider_name));
     const seen = new Map<string, boolean>();
     return filtered.filter(s => {
       const normName = cleanMerchantName(s.provider_name).toLowerCase();
@@ -406,6 +418,7 @@ export default function SubscriptionsPage() {
       return true;
     });
   })();
+  const archivedSubsCount = subscriptions.filter((s) => !!s.archived_at).length;
   const hiddenFinanceCount = subscriptions.filter(s => s.status === 'active' && isFinancePayment(s.provider_name)).length;
 
   const displaySubscriptions = (() => {
@@ -1904,6 +1917,34 @@ export default function SubscriptionsPage() {
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.monthly_total)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
             <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {countActiveSubscriptions(subscriptions) + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
           </div>
+        </div>
+      )}
+
+      {/* Active / Archived toggle — only shown when there's
+          something to flip to. Bot's archive_subscription tool sets
+          archived_at; default view hides those rows. */}
+      {archivedSubsCount > 0 && (
+        <div className="flex items-center gap-2 mb-3">
+          <button
+            onClick={() => setArchivedFilter('active')}
+            className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+              archivedFilter === 'active'
+                ? 'bg-emerald-500 text-slate-900'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Active ({subscriptions.length - archivedSubsCount})
+          </button>
+          <button
+            onClick={() => setArchivedFilter('archived')}
+            className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+              archivedFilter === 'archived'
+                ? 'bg-emerald-500 text-slate-900'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Archived ({archivedSubsCount})
+          </button>
         </div>
       )}
 

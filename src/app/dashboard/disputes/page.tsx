@@ -46,6 +46,7 @@ interface Dispute {
   latest_snippet?: string | null;
   unread_reply_count?: number;
   last_reply_received_at?: string | null;
+  archived_at?: string | null;
   user_has_gmail?: boolean;
   user_has_outlook?: boolean;
   correspondence?: Correspondence[];
@@ -2795,6 +2796,12 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
   const [loading, setLoading] = useState(true);
   const [showTour, setShowTour] = useState(false);
   const [summary, setSummary] = useState<DisputeSummary | null>(null);
+  // Filter: 'active' (everything not archived) or 'archived' (the
+  // bot-archived rows). Archived rows still exist in the table —
+  // the bot's archive_dispute tool sets archived_at — they're
+  // just hidden from the default view to keep the list focused
+  // on what the user is actively working on.
+  const [archivedFilter, setArchivedFilter] = useState<'active' | 'archived'>('active');
 
   useEffect(() => {
     fetch('/api/disputes')
@@ -2936,6 +2943,37 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
         </div>
       </div>
 
+      {/* Active / Archived filter — only render when we have any
+          archived disputes to show, else the toggle is noise. */}
+      {(() => {
+        const archivedCount = disputes.filter((d) => !!d.archived_at).length;
+        if (archivedCount === 0) return null;
+        return (
+          <div className="flex items-center gap-2 mb-4">
+            <button
+              onClick={() => setArchivedFilter('active')}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                archivedFilter === 'active'
+                  ? 'bg-emerald-500 text-slate-900'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Active ({disputes.length - archivedCount})
+            </button>
+            <button
+              onClick={() => setArchivedFilter('archived')}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                archivedFilter === 'archived'
+                  ? 'bg-emerald-500 text-slate-900'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Archived ({archivedCount})
+            </button>
+          </div>
+        );
+      })()}
+
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
@@ -2959,7 +2997,11 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
         </div>
       ) : (
         <div id="tour-list" className="space-y-3">
-          {disputes.map((d, idx) => {
+          {disputes
+            .filter((d) =>
+              archivedFilter === 'archived' ? !!d.archived_at : !d.archived_at,
+            )
+            .map((d, idx) => {
             const statusConf = STATUS_CONFIG[d.status] || { label: d.status, className: 'bg-slate-100 text-slate-600' };
             return (
               <button
