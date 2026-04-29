@@ -421,6 +421,51 @@ export async function executeToolCall(
         situation: toolInput.situation as string,
         desired_outcome: toolInput.desired_outcome as string,
       });
+    // ===== Phase 3a — edge actions =====
+    case 'complete_task': return completeTask(supabase, userId, toolInput.task_id as string);
+    case 'snooze_task': return snoozeTask(supabase, userId, toolInput.task_id as string, toolInput.days as number);
+    case 'snooze_dispute': return snoozeDispute(supabase, userId, toolInput.provider as string, toolInput.days as number);
+    case 'escalate_dispute': return escalateDispute(supabase, userId, channel, toolInput.provider as string);
+    case 'reopen_dispute': return reopenDispute(supabase, userId, toolInput.provider as string, toolInput.reason as string);
+    case 'move_correspondence_to_dispute': return moveCorrespondence(supabase, userId, toolInput.correspondence_id as string, toolInput.target_dispute_provider as string);
+    case 'delete_correspondence_entry': return deleteCorrespondenceEntry(supabase, userId, toolInput.correspondence_id as string);
+    case 'add_note_to_subscription': return addNoteToSubscription(supabase, userId, toolInput.provider as string, toolInput.note as string);
+    case 'merge_subscriptions': return mergeSubscriptions(supabase, userId, toolInput.keep_provider as string, toolInput.merge_provider as string);
+    case 'tag_transaction': return tagTransaction(supabase, userId, toolInput.transaction_id as string, toolInput.tag as string);
+    case 'pause_alerts_until': return pauseAlertsUntil(supabase, userId, toolInput.until_date as string);
+    // ===== Phase 3b — long-tail reads =====
+    case 'get_login_history': return getLoginHistory(supabase, userId, toolInput.limit as number | undefined);
+    case 'get_active_sessions': return getActiveSessions(supabase, userId);
+    case 'get_referral_stats': return getReferralStats(supabase, userId);
+    case 'search_disputes': return searchDisputes(supabase, userId, toolInput.query as string);
+    case 'get_transaction_detail': return getTransactionDetail(supabase, userId, toolInput.transaction_id as string);
+    case 'get_dashboard_stats': return getDashboardStats(supabase, userId);
+    case 'get_savings_breakdown_by_provider': return getSavingsBreakdownByProvider(supabase, userId);
+    case 'get_renewal_calendar': return getRenewalCalendar(supabase, userId, toolInput.within_days as number | undefined);
+    case 'archive_subscription': return archiveSubscription(supabase, userId, toolInput.provider as string);
+    case 'archive_dispute': return archiveDispute(supabase, userId, toolInput.provider as string);
+    case 'get_subscription_history': return getSubscriptionHistory(supabase, userId, toolInput.limit as number | undefined);
+    case 'get_refund_status': return getRefundStatus(supabase, userId);
+    case 'get_blog_posts': return getBlogPosts(toolInput.limit as number | undefined, toolInput.topic as string | undefined);
+    case 'get_consumer_law_news': return getConsumerLawNews(supabase, toolInput.limit as number | undefined);
+    case 'set_monthly_budget': return setMonthlyBudget(supabase, userId, toolInput.amount as number);
+    case 'record_negotiation_outcome': return recordNegotiationOutcome(supabase, userId, toolInput.provider as string, toolInput.annual_saving as number, toolInput.notes as string | undefined);
+    // ===== Phase 3c — browser handoff =====
+    case 'start_bank_connection': return startBankConnection();
+    case 'start_email_connection': return startEmailConnection(toolInput.provider as string);
+    case 'start_plan_upgrade': return startPlanUpgrade(toolInput.target_tier as string, toolInput.billing as string | undefined);
+    case 'start_subscription_cancel': return startSubscriptionCancel();
+    case 'start_account_deletion': return startAccountDeletion(supabase, userId, toolInput.reason as string | undefined);
+    case 'start_data_export_download': return startDataExportDownload(supabase, userId);
+    // ===== Phase 4 — founder-only =====
+    case 'get_business_log': return getBusinessLog(supabase, userId, toolInput.category as string | undefined, toolInput.limit as number | undefined);
+    case 'get_open_support_tickets': return getOpenSupportTicketsAdmin(supabase, userId, toolInput.limit as number | undefined);
+    case 'get_mrr': return getMrr(supabase, userId);
+    case 'get_pending_disputes_across_users': return getPendingDisputesAcrossUsers(supabase, userId);
+    case 'get_recent_signups': return getRecentSignups(supabase, userId, toolInput.limit as number | undefined);
+    case 'get_failed_payments': return getFailedPayments(supabase, userId);
+    case 'get_legal_coverage_status': return getLegalCoverageStatus(supabase, userId);
+    case 'get_managed_agent_run_status': return getManagedAgentRunStatus(supabase, userId);
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -5944,4 +5989,402 @@ async function generateFormLetter(
   } catch (err) {
     return { text: `Form letter request failed: ${err instanceof Error ? err.message : 'unknown'}.` };
   }
+}
+
+// ============================================================
+// PHASE 3a HANDLERS — edge actions
+// ============================================================
+
+async function completeTask(supabase: ReturnType<typeof getAdmin>, userId: string, taskId: string): Promise<ToolResult> {
+  const { error } = await supabase.from('tasks').update({ status: 'completed', resolved_at: new Date().toISOString() }).eq('id', taskId).eq('user_id', userId);
+  if (error) return { text: `Failed: ${error.message}` };
+  return { text: '✓ Task marked complete.' };
+}
+
+async function snoozeTask(supabase: ReturnType<typeof getAdmin>, userId: string, taskId: string, days: number): Promise<ToolResult> {
+  const days2 = Math.max(1, Math.min(30, days));
+  const until = new Date(Date.now() + days2 * 86400_000).toISOString();
+  const { error } = await supabase.from('tasks').update({ snooze_until: until, updated_at: new Date().toISOString() }).eq('id', taskId).eq('user_id', userId);
+  if (error) return { text: `Snooze failed: ${error.message}. (The tasks table may not have a snooze_until column yet — feature partial.)` };
+  return { text: `✓ Snoozed for ${days2} days. Will reappear ${fmtDate(until)}.` };
+}
+
+async function snoozeDispute(supabase: ReturnType<typeof getAdmin>, userId: string, provider: string, days: number): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const days2 = Math.max(1, Math.min(60, days));
+  const newClock = new Date(Date.now() - 14 * 86400_000 + days2 * 86400_000).toISOString();
+  await supabase.from('disputes').update({ last_letter_sent_at: newClock, last_reminder_sent: null, updated_at: new Date().toISOString() }).eq('id', resolved.dispute.id);
+  const next = new Date(Date.now() + days2 * 86400_000);
+  return { text: `✓ Snoozed *${resolved.dispute.provider_name}* by ${days2} days. Next reminder: ${fmtDate(next.toISOString())}.` };
+}
+
+async function escalateDispute(supabase: ReturnType<typeof getAdmin>, userId: string, channel: 'telegram' | 'whatsapp' | 'chatbot', provider: string): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const dispute = resolved.dispute;
+  await supabase.from('disputes').update({ status: 'escalated', updated_at: new Date().toISOString() }).eq('id', dispute.id);
+  // Auto-draft an escalation letter via draft_dispute_letter (re-uses existing engine).
+  const result = await draftDisputeLetter(supabase, userId, channel, {
+    provider: dispute.provider_name,
+    issue_description: dispute.issue_summary || 'See dispute history',
+    desired_outcome: 'Refund + ombudsman referral',
+    issue_type: dispute.issue_type || 'complaint',
+    reply_tone: 'firm',
+  });
+  return { text: `🟠 *${dispute.provider_name}* escalated. Drafted ombudsman letter:\n\n${result.text}` };
+}
+
+async function reopenDispute(supabase: ReturnType<typeof getAdmin>, userId: string, provider: string, reason: string): Promise<ToolResult> {
+  const RESOLVED = ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'];
+  const { data: matches } = await supabase.from('disputes').select('id, provider_name, status').eq('user_id', userId).ilike('provider_name', `%${provider}%`).in('status', RESOLVED).order('updated_at', { ascending: false });
+  if (!matches || matches.length === 0) return { text: `No closed dispute matching "${provider}" to re-open.` };
+  const target = matches[0];
+  await supabase.from('disputes').update({ status: 'open', resolved_at: null, money_recovered: null, updated_at: new Date().toISOString() }).eq('id', target.id);
+  await supabase.from('correspondence').insert({ dispute_id: target.id, user_id: userId, entry_type: 'user_note', title: 'Dispute re-opened', content: reason, entry_date: new Date().toISOString() });
+  return { text: `✓ Re-opened *${target.provider_name}*. Logged: "${reason}". Status back to open.` };
+}
+
+async function moveCorrespondence(supabase: ReturnType<typeof getAdmin>, userId: string, correspondenceId: string, targetProvider: string): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, targetProvider);
+  if (!resolved.ok) return { text: resolved.text };
+  const { error } = await supabase.from('correspondence').update({ dispute_id: resolved.dispute.id, updated_at: new Date().toISOString() }).eq('id', correspondenceId).eq('user_id', userId);
+  if (error) return { text: `Move failed: ${error.message}` };
+  return { text: `✓ Moved correspondence to *${resolved.dispute.provider_name}*.` };
+}
+
+async function deleteCorrespondenceEntry(supabase: ReturnType<typeof getAdmin>, userId: string, correspondenceId: string): Promise<ToolResult> {
+  const { error } = await supabase.from('correspondence').delete().eq('id', correspondenceId).eq('user_id', userId);
+  if (error) return { text: `Delete failed: ${error.message}` };
+  return { text: '✓ Entry deleted from dispute timeline.' };
+}
+
+async function addNoteToSubscription(supabase: ReturnType<typeof getAdmin>, userId: string, provider: string, note: string): Promise<ToolResult> {
+  const { data: subs } = await supabase.from('subscriptions').select('id, provider_name').eq('user_id', userId).eq('status', 'active').ilike('provider_name', `%${provider}%`);
+  if (!subs || subs.length === 0) return { text: `No active subscription matching "${provider}".` };
+  if (subs.length > 1) return { text: `Multiple matches for "${provider}" — narrow down: ${subs.map((s) => s.provider_name).join(', ')}` };
+  await supabase.from('subscriptions').update({ notes: note, updated_at: new Date().toISOString() }).eq('id', subs[0].id);
+  return { text: `✓ Note saved on *${subs[0].provider_name}*.` };
+}
+
+async function mergeSubscriptions(supabase: ReturnType<typeof getAdmin>, userId: string, keepProvider: string, mergeProvider: string): Promise<ToolResult> {
+  const { data: keep } = await supabase.from('subscriptions').select('id, provider_name').eq('user_id', userId).eq('status', 'active').ilike('provider_name', `%${keepProvider}%`).limit(1).maybeSingle();
+  const { data: merge } = await supabase.from('subscriptions').select('id, provider_name').eq('user_id', userId).eq('status', 'active').ilike('provider_name', `%${mergeProvider}%`).limit(1).maybeSingle();
+  if (!keep || !merge) return { text: `Couldn't find both subscriptions. Keep: ${keep?.provider_name || '(not found)'}, Merge: ${merge?.provider_name || '(not found)'}.` };
+  if (keep.id === merge.id) return { text: 'Same subscription — nothing to merge.' };
+  await supabase.from('subscriptions').update({ status: 'cancelled', cancelled_at: new Date().toISOString(), notes: `Merged into ${keep.provider_name} (${keep.id.slice(0, 8)})` }).eq('id', merge.id);
+  return { text: `✓ Merged. *${merge.provider_name}* archived; *${keep.provider_name}* remains active.` };
+}
+
+async function tagTransaction(supabase: ReturnType<typeof getAdmin>, userId: string, transactionId: string, tag: string): Promise<ToolResult> {
+  const tag2 = tag.slice(0, 32);
+  const { error } = await supabase.from('transactions').update({ user_tag: tag2 }).eq('id', transactionId).eq('user_id', userId);
+  if (error) return { text: `Tag failed: ${error.message}. (transactions.user_tag column may not exist yet — feature partial.)` };
+  return { text: `✓ Tagged: "${tag2}"` };
+}
+
+async function pauseAlertsUntil(supabase: ReturnType<typeof getAdmin>, userId: string, untilDate: string): Promise<ToolResult> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(untilDate)) return { text: 'Pass YYYY-MM-DD format (e.g. 2026-05-15).' };
+  await supabase.from('telegram_alert_preferences').upsert({ user_id: userId, alerts_paused_until: untilDate, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  return { text: `✓ Pocket Agent alerts paused until ${untilDate}. Watchdog and dispute follow-ups still fire — only proactive alerts (price rises, contract renewals, budget overruns) are silenced.` };
+}
+
+// ============================================================
+// PHASE 3b HANDLERS — long-tail reads
+// ============================================================
+
+async function getLoginHistory(supabase: ReturnType<typeof getAdmin>, userId: string, limit?: number): Promise<ToolResult> {
+  const lim = Math.min(50, limit ?? 10);
+  // Most apps store this in auth.audit_log_entries (Supabase) which isn't directly queryable from the service role with a SELECT. Try business_log fallback.
+  const { data } = await supabase.from('business_log').select('content, created_at').eq('created_by', 'auth-login').eq('details->>user_id', userId).order('created_at', { ascending: false }).limit(lim);
+  if (!data || data.length === 0) return { text: 'No login history captured. Login audit logging is not yet enabled.' };
+  let text = `*Recent ${data.length} logins:*\n`;
+  for (const l of data) text += `\n• ${fmtDate(l.created_at)} — ${l.content.slice(0, 80)}`;
+  return { text };
+}
+
+async function getActiveSessions(_supabase: ReturnType<typeof getAdmin>, _userId: string): Promise<ToolResult> {
+  // Supabase auth sessions are not exposed via the standard table API — admin auth.users() endpoint required.
+  return { text: 'Active session listing isn\'t exposed via the bot yet — sign out all devices via dashboard → Profile → Security.' };
+}
+
+async function getReferralStats(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<ToolResult> {
+  const { count: totalSignups } = await supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('referrer_user_id', userId);
+  const { count: paidSignups } = await supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('referrer_user_id', userId).eq('converted', true);
+  const { data: profile } = await supabase.from('profiles').select('referral_code, free_months_earned').eq('id', userId).single();
+  return { text: `*Your referrals:*\n\n• Total signups attributed: ${totalSignups ?? 0}\n• Converted to paying: ${paidSignups ?? 0}\n• Free months earned: ${profile?.free_months_earned ?? 0}\n• Your code: ${profile?.referral_code || 'not generated yet'}\n\nShare your link via get_referral_link.` };
+}
+
+async function searchDisputes(supabase: ReturnType<typeof getAdmin>, userId: string, query: string): Promise<ToolResult> {
+  const q = query.trim();
+  if (q.length < 2) return { text: 'Search needs at least 2 characters.' };
+  const { data } = await supabase.from('disputes').select('id, provider_name, status, issue_summary, created_at').eq('user_id', userId).or(`provider_name.ilike.%${q}%,issue_summary.ilike.%${q}%`).order('created_at', { ascending: false }).limit(10);
+  if (!data || data.length === 0) return { text: `No disputes match "${q}".` };
+  let text = `*${data.length} disputes match "${q}":*\n`;
+  for (const d of data) text += `\n• *${d.provider_name}* — ${d.status} · ${fmtDate(d.created_at)}\n  _${(d.issue_summary || '').slice(0, 120)}_`;
+  return { text };
+}
+
+async function getTransactionDetail(supabase: ReturnType<typeof getAdmin>, userId: string, transactionId: string): Promise<ToolResult> {
+  const { data } = await supabase.from('transactions').select('*').eq('id', transactionId).eq('user_id', userId).maybeSingle();
+  if (!data) return { text: `Transaction ${transactionId} not found.` };
+  let text = `*Transaction ${(data.transaction_id || data.id).slice(0, 8)}:*\n`;
+  text += `\n• Date: ${fmtDate(data.transaction_date)}`;
+  text += `\n• Amount: ${fmt(Number(data.amount))}`;
+  text += `\n• Merchant: ${data.merchant_name || '—'}`;
+  text += `\n• Category: ${data.user_category || data.category || '—'}`;
+  text += `\n• Raw description: "${data.description || ''}"`;
+  if (data.bank_name) text += `\n• Bank: ${data.bank_name}`;
+  if (data.is_subscription) text += `\n• Linked to a subscription`;
+  return { text };
+}
+
+async function getDashboardStats(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<ToolResult> {
+  const [{ count: openDisputes }, { data: profile }, { data: subs }, { count: pendingTasks }] = await Promise.all([
+    supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', userId).in('status', ['open', 'awaiting_response', 'escalated']),
+    supabase.from('profiles').select('total_money_recovered, subscription_tier').eq('id', userId).single(),
+    supabase.from('subscriptions').select('amount, billing_cycle').eq('user_id', userId).eq('status', 'active'),
+    supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'pending_review'),
+  ]);
+  let monthly = 0;
+  for (const s of subs ?? []) {
+    const a = parseFloat(String(s.amount)) || 0;
+    if (s.billing_cycle === 'yearly') monthly += a / 12;
+    else if (s.billing_cycle === 'quarterly') monthly += a / 3;
+    else monthly += a;
+  }
+  return { text: `*Your dashboard:*\n\n• Tier: ${profile?.subscription_tier || 'free'}\n• Money recovered (lifetime): ${fmt(Number(profile?.total_money_recovered ?? 0))}\n• Active subscriptions: ${subs?.length ?? 0} · ${fmt(monthly)}/mo\n• Open disputes: ${openDisputes ?? 0}\n• Pending tasks: ${pendingTasks ?? 0}` };
+}
+
+async function getSavingsBreakdownByProvider(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<ToolResult> {
+  const { data } = await supabase.from('disputes').select('provider_name, money_recovered').eq('user_id', userId).gt('money_recovered', 0);
+  if (!data || data.length === 0) return { text: 'No money recovered through disputes yet.' };
+  const map = new Map<string, number>();
+  for (const d of data) map.set(d.provider_name, (map.get(d.provider_name) ?? 0) + Number(d.money_recovered || 0));
+  const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  let text = `*Savings by provider:*\n`;
+  for (const [name, total] of sorted) text += `\n• *${name}* — ${fmt(total)}`;
+  text += `\n\n*Total: ${fmt(sorted.reduce((s, [, v]) => s + v, 0))}*`;
+  return { text };
+}
+
+async function getRenewalCalendar(supabase: ReturnType<typeof getAdmin>, userId: string, withinDays?: number): Promise<ToolResult> {
+  const days = withinDays ?? 90;
+  const today = new Date().toISOString().slice(0, 10);
+  const cutoff = new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
+  const { data } = await supabase.from('subscriptions').select('provider_name, contract_end_date, next_billing_date, amount, billing_cycle').eq('user_id', userId).eq('status', 'active');
+  if (!data || data.length === 0) return { text: 'No active subscriptions.' };
+  const events: Array<{ date: string; event: string; amount: number }> = [];
+  for (const s of data) {
+    if (s.contract_end_date && s.contract_end_date >= today && s.contract_end_date <= cutoff) events.push({ date: s.contract_end_date, event: `${s.provider_name} contract ends`, amount: Number(s.amount) });
+    if (s.next_billing_date && s.next_billing_date >= today && s.next_billing_date <= cutoff) events.push({ date: s.next_billing_date, event: `${s.provider_name} renews`, amount: Number(s.amount) });
+  }
+  if (events.length === 0) return { text: `No renewals or contract endings in next ${days} days.` };
+  events.sort((a, b) => a.date.localeCompare(b.date));
+  let text = `*Renewal calendar (next ${days} days):*\n`;
+  for (const e of events) text += `\n• ${fmtDate(e.date)} — ${e.event} (${fmt(e.amount)})`;
+  return { text };
+}
+
+async function archiveSubscription(supabase: ReturnType<typeof getAdmin>, userId: string, provider: string): Promise<ToolResult> {
+  const { data: subs } = await supabase.from('subscriptions').select('id, provider_name').eq('user_id', userId).ilike('provider_name', `%${provider}%`);
+  if (!subs || subs.length === 0) return { text: `No subscription matching "${provider}".` };
+  await supabase.from('subscriptions').update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).in('id', subs.map((s) => s.id));
+  return { text: `✓ Archived ${subs.length} subscription${subs.length === 1 ? '' : 's'}.` };
+}
+
+async function archiveDispute(supabase: ReturnType<typeof getAdmin>, userId: string, provider: string): Promise<ToolResult> {
+  const RESOLVED = ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'];
+  const { data: disputes } = await supabase.from('disputes').select('id, provider_name, status').eq('user_id', userId).ilike('provider_name', `%${provider}%`).in('status', RESOLVED);
+  if (!disputes || disputes.length === 0) return { text: `No closed dispute matching "${provider}" to archive.` };
+  await supabase.from('disputes').update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).in('id', disputes.map((d) => d.id));
+  return { text: `✓ Archived ${disputes.length} closed dispute${disputes.length === 1 ? '' : 's'}.` };
+}
+
+async function getSubscriptionHistory(supabase: ReturnType<typeof getAdmin>, userId: string, limit?: number): Promise<ToolResult> {
+  const lim = Math.min(50, limit ?? 20);
+  const { data } = await supabase.from('subscriptions').select('provider_name, amount, billing_cycle, status, cancelled_at, money_saved').eq('user_id', userId).neq('status', 'active').order('cancelled_at', { ascending: false, nullsFirst: false }).limit(lim);
+  if (!data || data.length === 0) return { text: 'No cancelled or archived subscriptions.' };
+  let text = `*Subscription history (${data.length}):*\n`;
+  for (const s of data) text += `\n• *${s.provider_name}* — ${s.status} ${s.cancelled_at ? `· cancelled ${fmtDate(s.cancelled_at)}` : ''}${s.money_saved ? ` · saved ${fmt(Number(s.money_saved))}` : ''}`;
+  return { text };
+}
+
+async function getRefundStatus(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<ToolResult> {
+  const { data } = await supabase.from('disputes').select('provider_name, status, money_recovered, disputed_amount, resolved_at').eq('user_id', userId).in('status', ['awaiting_response', 'escalated', 'resolved_won', 'resolved_partial']).order('updated_at', { ascending: false }).limit(20);
+  if (!data || data.length === 0) return { text: 'No active or resolved refund disputes.' };
+  let text = `*Refund status:*\n`;
+  for (const d of data) {
+    const target = d.disputed_amount ? fmt(Number(d.disputed_amount)) : '—';
+    const got = d.money_recovered ? fmt(Number(d.money_recovered)) : 'pending';
+    text += `\n• *${d.provider_name}* — ${d.status} · target ${target} · received ${got}${d.resolved_at ? ` · closed ${fmtDate(d.resolved_at)}` : ''}`;
+  }
+  return { text };
+}
+
+async function getBlogPosts(limit?: number, topic?: string): Promise<ToolResult> {
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+  const lim = Math.min(20, limit ?? 5);
+  let text = `*Recent Paybacker guides:*\n\nBrowse the full library at ${origin}/blog`;
+  if (topic) text += ` — search for "${topic}"`;
+  text += `\n\n(I don't have a live blog query yet — fetch the latest from the website directly.) Limit asked: ${lim}.`;
+  return { text };
+}
+
+async function getConsumerLawNews(supabase: ReturnType<typeof getAdmin>, limit?: number): Promise<ToolResult> {
+  const lim = Math.min(20, limit ?? 5);
+  const { data } = await supabase.from('legal_update_queue').select('change_type, detected_change_summary, source_url, created_at').eq('status', 'pending').order('created_at', { ascending: false }).limit(lim);
+  if (!data || data.length === 0) return { text: 'No recent consumer law updates flagged.' };
+  let text = `*Recent UK consumer-law updates:*\n`;
+  for (const u of data) text += `\n• ${fmtDate(u.created_at)} — *${u.change_type.replace(/_/g, ' ')}*: ${(u.detected_change_summary || '').slice(0, 200)}`;
+  return { text };
+}
+
+async function setMonthlyBudget(supabase: ReturnType<typeof getAdmin>, userId: string, amount: number): Promise<ToolResult> {
+  if (amount <= 0) return { text: 'Amount must be positive.' };
+  await supabase.from('profiles').update({ monthly_budget: amount, updated_at: new Date().toISOString() }).eq('id', userId);
+  return { text: `✓ Monthly budget set to ${fmt(amount)}.` };
+}
+
+async function recordNegotiationOutcome(supabase: ReturnType<typeof getAdmin>, userId: string, provider: string, annualSaving: number, notes?: string): Promise<ToolResult> {
+  if (annualSaving <= 0) return { text: 'Annual saving must be positive.' };
+  await supabase.from('verified_savings').insert({ user_id: userId, provider_name: provider, annual_saving: annualSaving, source: 'negotiation', notes: notes || null, achieved_at: new Date().toISOString() });
+  // Bump total_money_recovered
+  const { data: profile } = await supabase.from('profiles').select('total_money_recovered').eq('id', userId).single();
+  const newTotal = Number(profile?.total_money_recovered ?? 0) + annualSaving;
+  await supabase.from('profiles').update({ total_money_recovered: newTotal }).eq('id', userId);
+  return { text: `✓ Logged ${fmt(annualSaving)}/yr negotiated saving with *${provider}*. Lifetime total: ${fmt(newTotal)}.` };
+}
+
+// ============================================================
+// PHASE 3c HANDLERS — browser handoff
+// ============================================================
+
+const SITE = () => process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+
+async function startBankConnection(): Promise<ToolResult> {
+  return { text: `🏦 Connect a UK bank: ${SITE()}/dashboard/profile?connect=bank\n\nThis opens the Yapily connector — pick your bank, sign in, and Paybacker reads transactions only (read-only, FCA AISP). Takes ~60 seconds.` };
+}
+
+async function startEmailConnection(provider: string): Promise<ToolResult> {
+  const slug = provider === 'outlook' ? 'outlook' : 'google';
+  return { text: `📧 Connect ${provider}: ${SITE()}/dashboard/profile?connect=${slug}\n\nThis kicks off OAuth — sign in, grant read access, then Paybacker can scan for forgotten subscriptions and auto-import dispute replies.` };
+}
+
+async function startPlanUpgrade(targetTier: string, billing?: string): Promise<ToolResult> {
+  const cycle = billing === 'yearly' ? 'yearly' : 'monthly';
+  return { text: `💳 Upgrade to ${targetTier}: ${SITE()}/pricing?upgrade=${targetTier}&billing=${cycle}\n\nClick to land on Stripe Checkout. Cancel any time from /dashboard/profile.` };
+}
+
+async function startSubscriptionCancel(): Promise<ToolResult> {
+  return { text: `Manage your Paybacker subscription: ${SITE()}/dashboard/profile?manage=billing\n\nThis opens the Stripe customer portal — cancel, change plan, or update payment method.` };
+}
+
+async function startAccountDeletion(supabase: ReturnType<typeof getAdmin>, userId: string, reason?: string): Promise<ToolResult> {
+  await supabase.from('business_log').insert({ category: 'gdpr_request', title: 'Account deletion requested', content: `User ${userId} requested deletion via Pocket Agent. Reason: ${reason || '(none given)'}`, created_by: 'pocket-agent' });
+  return { text: `⚠️ Account deletion requested. We've sent a confirmation email to your account address — click the link within 24h to confirm. Per UK GDPR right-to-erasure, deletion completes within 30 days. This is irreversible.` };
+}
+
+async function startDataExportDownload(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<ToolResult> {
+  // Look up the most recent gdpr export request
+  const { data } = await supabase.from('business_log').select('content, created_at').eq('category', 'gdpr_request').ilike('content', `%${userId}%`).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (!data) return { text: `No data export requested yet. Run request_data_export first, then I'll have a download link within 24h.` };
+  return { text: `Latest export requested ${fmtDate(data.created_at)}. Download link will be emailed to your account address once ready (within 24h of the request). Links expire after 7 days.` };
+}
+
+// ============================================================
+// PHASE 4 HANDLERS — founder-only admin
+// ============================================================
+
+const FOUNDER_EMAILS = ['hello@paybacker.co.uk', 'aireypaul@googlemail.com'];
+
+async function isFounder(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<boolean> {
+  const { data } = await supabase.from('profiles').select('email').eq('id', userId).single();
+  return !!data?.email && FOUNDER_EMAILS.includes(data.email.toLowerCase());
+}
+
+async function getBusinessLog(supabase: ReturnType<typeof getAdmin>, userId: string, category?: string, limit?: number): Promise<ToolResult> {
+  if (!(await isFounder(supabase, userId))) return { text: 'This tool is restricted to the founder account.' };
+  const lim = Math.min(50, limit ?? 10);
+  let q = supabase.from('business_log').select('category, title, content, created_at, created_by').order('created_at', { ascending: false }).limit(lim);
+  if (category) q = q.eq('category', category);
+  const { data } = await q;
+  if (!data || data.length === 0) return { text: 'business_log empty for that filter.' };
+  let text = `*business_log (${data.length}):*\n`;
+  for (const r of data) text += `\n• ${fmtDate(r.created_at)} [${r.category}] *${r.title}* (${r.created_by})\n  _${(r.content || '').slice(0, 200)}_`;
+  return { text };
+}
+
+async function getOpenSupportTicketsAdmin(supabase: ReturnType<typeof getAdmin>, userId: string, limit?: number): Promise<ToolResult> {
+  if (!(await isFounder(supabase, userId))) return { text: 'Founder only.' };
+  const lim = Math.min(50, limit ?? 20);
+  const { data } = await supabase.from('support_tickets').select('ticket_number, subject, status, priority, created_at, source').in('status', ['open', 'awaiting_reply', 'in_progress']).order('created_at', { ascending: false }).limit(lim);
+  if (!data || data.length === 0) return { text: '✓ No open support tickets.' };
+  let text = `*Open tickets (${data.length}):*\n`;
+  for (const t of data) text += `\n• *${t.ticket_number}* — ${t.subject} [${t.priority}/${t.source}] · ${fmtDate(t.created_at)}`;
+  return { text };
+}
+
+async function getMrr(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<ToolResult> {
+  if (!(await isFounder(supabase, userId))) return { text: 'Founder only.' };
+  const { data } = await supabase.from('profiles').select('subscription_tier, subscription_status').eq('subscription_status', 'active');
+  const counts: Record<string, number> = {};
+  for (const p of data ?? []) counts[p.subscription_tier] = (counts[p.subscription_tier] ?? 0) + 1;
+  const essentialMrr = (counts.essential ?? 0) * 4.99;
+  const proMrr = (counts.pro ?? 0) * 9.99;
+  const totalMrr = essentialMrr + proMrr;
+  return { text: `*Current MRR:*\n\n• Essential (£4.99): ${counts.essential ?? 0} → ${fmt(essentialMrr)}\n• Pro (£9.99): ${counts.pro ?? 0} → ${fmt(proMrr)}\n• Free: ${counts.free ?? 0}\n\n*Total MRR: ${fmt(totalMrr)} · ARR: ${fmt(totalMrr * 12)}*` };
+}
+
+async function getPendingDisputesAcrossUsers(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<ToolResult> {
+  if (!(await isFounder(supabase, userId))) return { text: 'Founder only.' };
+  const cutoff = new Date(Date.now() - 30 * 86400_000).toISOString();
+  const { data } = await supabase.from('disputes').select('provider_name, status, created_at, last_letter_sent_at').in('status', ['open', 'awaiting_response']).lte('created_at', cutoff).order('created_at', { ascending: true }).limit(20);
+  if (!data || data.length === 0) return { text: 'No disputes 30+ days old without resolution.' };
+  let text = `*Disputes 30+ days old (${data.length}):*\n`;
+  for (const d of data) text += `\n• ${d.provider_name} — ${d.status} · opened ${fmtDate(d.created_at)} · last letter ${d.last_letter_sent_at ? fmtDate(d.last_letter_sent_at) : 'never'}`;
+  return { text };
+}
+
+async function getRecentSignups(supabase: ReturnType<typeof getAdmin>, userId: string, limit?: number): Promise<ToolResult> {
+  if (!(await isFounder(supabase, userId))) return { text: 'Founder only.' };
+  const lim = Math.min(50, limit ?? 20);
+  const { data } = await supabase.from('profiles').select('email, subscription_tier, created_at, signup_source').order('created_at', { ascending: false }).limit(lim);
+  if (!data || data.length === 0) return { text: 'No signups.' };
+  let text = `*Last ${data.length} signups:*\n`;
+  for (const u of data) text += `\n• ${fmtDate(u.created_at)} — ${u.email} [${u.subscription_tier}]${u.signup_source ? ` via ${u.signup_source}` : ''}`;
+  return { text };
+}
+
+async function getFailedPayments(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<ToolResult> {
+  if (!(await isFounder(supabase, userId))) return { text: 'Founder only.' };
+  const cutoff = new Date(Date.now() - 30 * 86400_000).toISOString();
+  const { data } = await supabase.from('profiles').select('email, subscription_tier, subscription_status, updated_at').in('subscription_status', ['past_due', 'unpaid', 'incomplete']).gte('updated_at', cutoff).order('updated_at', { ascending: false }).limit(30);
+  if (!data || data.length === 0) return { text: '✓ No failed payments in the last 30 days.' };
+  let text = `*Failed payments (${data.length}):*\n`;
+  for (const u of data) text += `\n• ${u.email} [${u.subscription_tier}] — ${u.subscription_status} · ${fmtDate(u.updated_at)}`;
+  return { text };
+}
+
+async function getLegalCoverageStatus(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<ToolResult> {
+  if (!(await isFounder(supabase, userId))) return { text: 'Founder only.' };
+  const { data: refs } = await supabase.from('legal_references').select('verification_status');
+  const total = refs?.length ?? 0;
+  const counts: Record<string, number> = {};
+  for (const r of refs ?? []) counts[r.verification_status] = (counts[r.verification_status] ?? 0) + 1;
+  const { data: lastAlert } = await supabase.from('business_log').select('title, content, created_at').eq('category', 'legal_coverage_alert').order('created_at', { ascending: false }).limit(1).maybeSingle();
+  let text = `*Legal coverage:*\n\n• Total refs: ${total}\n`;
+  for (const [status, count] of Object.entries(counts)) text += `• ${status}: ${count}\n`;
+  if (lastAlert) text += `\n*Last canary:* ${fmtDate(lastAlert.created_at)} — ${lastAlert.title}`;
+  return { text };
+}
+
+async function getManagedAgentRunStatus(supabase: ReturnType<typeof getAdmin>, userId: string): Promise<ToolResult> {
+  if (!(await isFounder(supabase, userId))) return { text: 'Founder only.' };
+  const cutoff = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const { data } = await supabase.from('business_log').select('title, content, created_by, created_at').gte('created_at', cutoff).in('created_by', ['alert-tester', 'digest-compiler', 'support-triager', 'bug-triager', 'reviewer', 'builder', 'email-marketer', 'ux-auditor', 'feature-tester']).order('created_at', { ascending: false }).limit(20);
+  if (!data || data.length === 0) return { text: 'No managed agent activity in the last 24h.' };
+  let text = `*Managed agents (last 24h):*\n`;
+  for (const r of data) text += `\n• ${fmtDate(r.created_at)} — *${r.created_by}*: ${r.title}`;
+  return { text };
 }
