@@ -565,6 +565,32 @@ export async function GET(request: NextRequest) {
           escalationUrgency,
           escalationSummary,
         );
+
+        // For code/database fixes, write a structured business_log entry so
+        // the bug-triager managed agent picks it up on its next 12h run and
+        // categorises with proposed-fix + risk-of-fix. This connects Riley's
+        // escalation to the existing observe-and-recommend pipeline that
+        // ends in the builder agent (on-demand, founder-approved) opening
+        // a PR. No autonomous code changes.
+        if (escalationFixType === 'code_fix' || escalationFixType === 'database_fix') {
+          try {
+            await supabase.from('business_log').insert({
+              category: escalationUrgency === 'critical' ? 'critical' : 'finding',
+              title: `Riley escalation needs ${escalationFixType.replace('_', ' ')} — ${ticketRef}: ${ticket.subject}`,
+              content:
+                `User: ${userEmail || 'unknown'}\n` +
+                `Urgency: ${escalationUrgency}\n` +
+                `Fix type: ${escalationFixType}\n\n` +
+                `What needs doing:\n${escalationSummary}\n\n` +
+                `Original report:\n${(messages?.[0]?.message || ticket.description || '').slice(0, 1500)}\n\n` +
+                `Riley's response to user:\n${reply.slice(0, 800)}\n\n` +
+                `Ticket admin link: https://paybacker.co.uk/dashboard/admin`,
+              created_by: AGENT_ID,
+            });
+          } catch (logErr) {
+            console.warn(`[${AGENT_ID}] business_log escalation insert failed:`, logErr);
+          }
+        }
       } else {
         ticketsResolved++;
       }

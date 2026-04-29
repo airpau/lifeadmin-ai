@@ -4264,6 +4264,10 @@ async function createSupportTicket(
         telegram_chat_id: telegramChatId,
         whatsapp_phone: whatsappPhone,
         session_lookup_at: new Date().toISOString(),
+        // Bot is about to send the confirmation email synchronously
+        // below — pre-mark this so the support-agent cron skips its
+        // own (older-format) confirmation and we don't double-email.
+        confirmation_sent: true,
       },
     })
     .select('id, ticket_number, created_at')
@@ -4285,46 +4289,36 @@ async function createSupportTicket(
   const userEmail = profile?.email;
   const userName = profile?.full_name || 'there';
 
-  // Send confirmation email to user
+  // Send confirmation email via the shared helper (single template,
+  // matches what the support-agent cron sends on its first pass).
+  // Pre-marking metadata.confirmation_sent above guarantees we don't
+  // double-email if the cron beats us to it.
   if (userEmail) {
-    try {
-      const { Resend } = await import('resend');
-      const resend = new Resend(process.env.RESEND_API_KEY!);
-      await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
-        replyTo: process.env.RESEND_REPLY_TO || 'support@mail.paybacker.co.uk',
-        to: userEmail,
-        subject: `Support ticket received: ${ref}`,
-        html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
-  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
-    <div style="background:#0f172a;padding:20px 32px;">
-      <table width="100%"><tr>
-        <td><span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span></td>
-        <td align="right"><span style="color:#94a3b8;font-size:12px;">${ref}</span></td>
-      </tr></table>
-    </div>
-    <div style="padding:32px;color:#334155;font-size:14px;line-height:1.7;">
-      <p style="margin:0 0 12px;">Hi ${userName},</p>
-      <p style="margin:0 0 12px;">We have received your support request and a member of our team will get back to you shortly.</p>
-      <div style="background:#f1f5f9;border-radius:8px;padding:16px;margin:16px 0;">
-        <p style="margin:0 0 8px;font-weight:600;">Ticket Reference: #${ref}</p>
-        <p style="margin:0 0 4px;"><strong>Subject:</strong> ${params.subject}</p>
-        <p style="margin:0 0 4px;"><strong>Priority:</strong> ${params.priority}</p>
-        <p style="margin:0;"><strong>Category:</strong> ${params.category}</p>
-      </div>
-      <p style="margin:0 0 12px;">You can reply to this email to add further details to your ticket.</p>
-      <p style="margin:0;color:#64748b;">Best,<br/>The Paybacker Support Team</p>
-    </div>
-    <div style="padding:16px 32px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;">
-      Simply reply to this email if you need to add more details &middot; <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;">paybacker.co.uk</a>
-    </div>
-  </div>
-</body></html>`,
-      });
-    } catch (emailErr) {
-      console.error('[createSupportTicket] Failed to send user email:', emailErr);
+    const { sendTicketConfirmationEmail } = await import('@/lib/support/confirmation-email');
+    const firstName = (profile?.full_name || '').split(' ')[0] || 'there';
+    const result = await sendTicketConfirmationEmail({
+      toEmail: userEmail,
+      userFirstName: firstName,
+      ticketRef: ref,
+      subject: params.subject,
+      priority: params.priority,
+    });
+    if (!result.ok) {
+      console.error('[createSupportTicket] Confirmation email failed:', result.error);
     }
+  }
+
+  // Trigger Riley immediately — fire-and-forget. Without this the user
+  // waits up to 15 min for the cron to pick up their ticket. Riley
+  // uses the same logic on this hot-path call as the cron does, so
+  // the response is identical either way.
+  if (process.env.CRON_SECRET) {
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+    fetch(`${origin}/api/cron/support-agent`, {
+      headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+    }).catch((err) => {
+      console.warn('[createSupportTicket] failed to trigger support-agent:', err);
+    });
   }
 
   // Send notification email to support team

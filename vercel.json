@@ -37,6 +37,7 @@
     { "path": "/api/cron/citation-canary",           "schedule": "0 3 * * *" },
     { "path": "/api/cron/citation-audit",            "schedule": "0 4 * * *" },
     { "path": "/api/cron/apply-learned-rules",       "schedule": "0 2 * * *" },
-    { "path": "/api/cron/check-deal-prices",         "schedule": "0 6 * * *" }
+    { "path": "/api/cron/check-deal-prices",         "schedule": "0 6 * * *" },
+    { "path": "/api/cron/managed-agents",            "schedule": "0 * * * *" }
   ]
 }
