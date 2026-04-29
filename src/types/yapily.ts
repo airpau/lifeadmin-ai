@@ -110,6 +110,35 @@ export interface YapilyAuthResponse {
   };
 }
 
+// ── Hosted Pages (Beta) ──
+//
+// Returned by POST /hosted/consent-requests. Distinct from the
+// account-auth-requests path: Yapily renders the bank-picker, the
+// post-consent page, and any QR/decoupled-auth flows itself, then
+// redirects back to our redirectUrl with consentRequestId in the
+// query string.
+//
+// hostedUrl is short-lived (10 min). consentRequestId is the durable
+// handle we pass back to GET /hosted/consent-requests/{id} to read
+// status + retrieve the consentToken.
+
+export interface YapilyHostedConsentRequest {
+  id: string;
+  applicationUserId: string;
+  institutionId?: string;
+  status: string;
+  createdAt: string;
+  expiresAt?: string;
+  consentToken?: string;
+  hostedUrl?: string;
+  redirectUrl?: string;
+}
+
+export interface YapilyHostedConsentResponse {
+  meta?: { tracingId?: string };
+  data: YapilyHostedConsentRequest;
+}
+
 export interface YapilyErrorResponse {
   error: {
     code: number;
