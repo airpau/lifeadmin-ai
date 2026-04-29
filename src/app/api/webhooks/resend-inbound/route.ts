@@ -108,6 +108,44 @@ function extractTicketRef(payload: {
   return null;
 }
 
+/**
+ * Fetch full email body by Resend email_id.
+ *
+ * Resend's email.received webhook payload only includes metadata —
+ * to get the text/html body you have to call the API explicitly.
+ * Same pattern used by the legacy /api/support/inbound-email handler.
+ * Returns blanks on failure so the caller can render a placeholder
+ * instead of crashing.
+ */
+async function fetchResendEmailBody(
+  emailId: string,
+): Promise<{ text: string; html: string }> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey || !emailId) return { text: '', html: '' };
+  try {
+    const res = await fetch(`https://api.resend.com/emails/${emailId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) {
+      console.warn(
+        `[resend-inbound] Resend API returned ${res.status} for email ${emailId}`,
+      );
+      return { text: '', html: '' };
+    }
+    const data = await res.json();
+    return {
+      text: typeof data.text === 'string' ? data.text : '',
+      html: typeof data.html === 'string' ? data.html : '',
+    };
+  } catch (err) {
+    console.warn(
+      `[resend-inbound] Resend API fetch failed for ${emailId}:`,
+      err instanceof Error ? err.message : err,
+    );
+    return { text: '', html: '' };
+  }
+}
+
 function trimReplyBody(text: string): string {
   // Strip the quoted previous email (everything after a typical quote marker).
   // Handles common patterns like "On Mon, Apr 24, 2026 at 9:30 PM, Riley..." or "> Quoted..."
@@ -146,6 +184,7 @@ async function handle(req: NextRequest) {
   let payload: {
     type?: string;
     data?: {
+      email_id?: string;
       from?: string;
       from_email?: string;
       to?: string[];
@@ -168,7 +207,30 @@ async function handle(req: NextRequest) {
     (data.from && String(data.from).toLowerCase()) ||
     null;
   const subject = data.subject || '(no subject)';
-  const bodyText = trimReplyBody(data.text || '');
+
+  // Resend's email.received webhook payload is METADATA-ONLY (email_id,
+  // from, to, subject, message_id, attachments/bcc/cc, created_at).
+  // The text/html body is NOT included. We have to fetch full content
+  // by email_id from the Resend API. Falls through gracefully when the
+  // fetch fails — subject-line TKT-XXXX matching keeps the routing
+  // logic working even with no body, so Riley still sees the reply
+  // arrived and can prompt the user to resend.
+  let bodyText = '';
+  if (data.text) {
+    bodyText = trimReplyBody(data.text);
+  } else if (data.html) {
+    bodyText = trimReplyBody(data.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+  } else if (data.email_id) {
+    const fetched = await fetchResendEmailBody(data.email_id);
+    if (fetched.text) {
+      bodyText = trimReplyBody(fetched.text);
+    } else if (fetched.html) {
+      bodyText = trimReplyBody(fetched.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+    }
+  }
+  if (!bodyText) {
+    bodyText = `[Inbound email from ${fromEmail ?? 'unknown'} — body fetch failed; check Resend logs for ${data.email_id ?? 'no email_id'}.]`;
+  }
 
   if (!fromEmail) {
     return NextResponse.json({ ok: false, reason: 'no from address' }, { status: 400 });
