@@ -157,10 +157,34 @@ const recordLetterSentTool: ChatTool = {
   },
 };
 
+const discardLetterDraftTool: ChatTool = {
+  name: 'discard_letter_draft',
+  description:
+    "Discard the most recent pending dispute letter draft. Call when the user replies DISCARD, 'don't send', 'forget it', 'cancel that draft'. Stops the 1-hour follow-up cron from pinging.",
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      provider: { type: 'string', description: 'Dispute provider name.' },
+      reason: { type: 'string', description: 'Optional reason for audit.' },
+    },
+    required: ['provider'],
+  },
+  handler: async (args: { provider: string; reason?: string }, userId: string) => {
+    const result = await executeToolCall(
+      'discard_letter_draft',
+      { provider: args.provider, reason: args.reason },
+      userId,
+      'chatbot',
+    );
+    return { text: result.text };
+  },
+};
+
 export const disputeTools: ChatTool[] = [
   getDisputesTool,
   getDisputeDetailTool,
   findEmailThreadForDisputeTool,
   linkEmailThreadToDisputeTool,
   recordLetterSentTool,
+  discardLetterDraftTool,
 ];

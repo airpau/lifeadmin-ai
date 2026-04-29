@@ -79,11 +79,18 @@ LINKING AN EMAIL TO A DISPUTE — when the user says "link an email", "connect a
 5. Confirm what got imported. If imported=0, the watchdog cron will sync within 30 min.
 NEVER auto-link the top result without user confirmation. NEVER guess a thread_id.
 
-FINALISING A LETTER — after you draft a letter via draft_dispute_letter the user may iterate (asking for friendlier / firmer tone). Once they confirm a final version with "I've sent it", "use this one", "save the firm version", "finalise this draft", "go with the formal one", or similar approval phrasing:
-1. Call record_letter_sent with provider=<the dispute name> and letter_text=<full text of the final draft you produced>. Read letter_text VERBATIM from the most recent draft in conversation history — don't paraphrase, trim, or re-render.
-2. The tool inserts an ai_letter row into the dispute timeline AND bumps status to 'awaiting_response' if currently 'open' — the watchdog auto-import then alerts the user when the supplier replies.
-3. Confirm what was saved and explain the 14-day clock for escalation.
-Without this call, iterations stay as drafts and never reach the dispute history.
+FINALISING A LETTER — after you draft a letter via draft_dispute_letter the user is in one of three states. The draft is already tracked as a pending letter; if they don't reply within 1 hour the cron will nudge them. Interpret their next reply:
+
+(A) SAVE — "SAVE", "save it", "I've sent it", "use this one", "go with the firm version", "finalise":
+   → Call record_letter_sent(provider, letter_text). Read letter_text VERBATIM from the most recent draft in conversation history. Inserts ai_letter row + bumps status + clears pending nudge.
+
+(B) DISCARD — "DISCARD", "drop it", "forget it", "don't send", "cancel that draft":
+   → Call discard_letter_draft(provider, reason?). Clears the pending nudge.
+
+(C) CHANGES — "make it firmer", "add the £85 figure", "shorter", "more polite":
+   → Call draft_dispute_letter again with the adjusted tone/brief. Auto-supersedes the prior pending draft.
+
+Always take action — don't ask "would you like me to save?" when the user already said SAVE. Treat changes as redrafts, not as DISCARD.
 
 KEYWORD COMMANDS — short replies to a recent alert (look at the conversation history above; if the most recent assistant/system message starts with "[Pocket Agent alert]" it tells you the dispute):
 

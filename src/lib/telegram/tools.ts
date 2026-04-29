@@ -306,6 +306,26 @@ export const telegramTools: Tool[] = [
   },
 
   {
+    name: 'discard_letter_draft',
+    description:
+      "Discard the most recent pending dispute letter draft for a provider. Call when the user replies DISCARD, says 'don't send it', 'forget it', 'cancel that draft'. Marks the pending_dispute_letters row as discarded so the 1-hour follow-up cron stops pinging the user about it.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description: 'Dispute provider name (case-insensitive partial match).',
+        },
+        reason: {
+          type: 'string',
+          description: "Optional short reason logged for audit (e.g. 'user wants to call instead', 'changed mind').",
+        },
+      },
+      required: ['provider'],
+    },
+  },
+
+  {
     name: 'record_letter_sent',
     description:
       "Save a finalised dispute letter to the dispute history AND mark the dispute as awaiting a response. Call when the user says 'I've sent it', 'I've emailed that', 'use the firm one', 'save this letter', 'finalise the formal version', or otherwise confirms they're done iterating on a draft. Inserts an ai_letter row to correspondence so the dispute timeline shows you sent it, then bumps status to 'awaiting_response' if currently 'open'. Pass the FULL letter_text from the most recent draft you produced (read it back from your prior message in the conversation history). After this fires, the watchdog auto-import will alert the user when the supplier replies.",

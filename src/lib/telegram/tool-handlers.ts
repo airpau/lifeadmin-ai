@@ -189,7 +189,7 @@ export async function executeToolCall(
         senderAddress: toolInput.sender_address as string | undefined,
       });
     case 'draft_dispute_letter':
-      return draftDisputeLetter(supabase, userId, {
+      return draftDisputeLetter(supabase, userId, channel, {
         provider: toolInput.provider as string,
         issue_description: toolInput.issue_description as string,
         desired_outcome: toolInput.desired_outcome as string,
@@ -197,6 +197,11 @@ export async function executeToolCall(
         supplier_latest_message: toolInput.supplier_latest_message as string | undefined,
         user_reply_brief: toolInput.user_reply_brief as string | undefined,
         reply_tone: (toolInput.reply_tone as ReplyTone | undefined) ?? 'auto',
+      });
+    case 'discard_letter_draft':
+      return discardLetterDraft(supabase, userId, {
+        provider: toolInput.provider as string,
+        reason: toolInput.reason as string | undefined,
       });
     case 'search_legal_rights':
       return searchLegalRights(
@@ -1081,6 +1086,7 @@ function toneGuidance(tone: ReplyTone, hasSupplierContext: boolean): string {
 async function draftDisputeLetter(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
+  channel: 'telegram' | 'whatsapp' | 'chatbot',
   params: {
     provider: string;
     issue_description: string;
@@ -1182,16 +1188,59 @@ async function draftDisputeLetter(
     letter_text: letterText,
   };
 
+  // Track this draft in pending_dispute_letters so the 1-hour follow-up
+  // cron can ping the user if they neither SAVE nor DISCARD it. Without
+  // this row the draft just rots — Paul flagged 2026-04-29 that users
+  // copy + email + forget to come back to the bot.
+  // Resolve the active dispute (skip if there isn't one yet — the
+  // letter might be for a brand-new complaint that hasn't been
+  // logged as a dispute yet).
+  try {
+    const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+    if (resolved.ok) {
+      // Mark any older pending draft for the same dispute as discarded
+      // so we only ever track the LATEST iteration.
+      await supabase
+        .from('pending_dispute_letters')
+        .update({ status: 'discarded', resolved_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('dispute_id', resolved.dispute.id)
+        .eq('status', 'pending');
+
+      const followupDue = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await supabase.from('pending_dispute_letters').insert({
+        user_id: userId,
+        dispute_id: resolved.dispute.id,
+        letter_text: letterText,
+        letter_title: isReply
+          ? `Reply to ${params.provider} (${tone})`
+          : `Complaint to ${params.provider} (${tone})`,
+        channel,
+        followup_due_at: followupDue.toISOString(),
+      });
+    }
+  } catch (err) {
+    console.warn('[draftDisputeLetter] pending_dispute_letters insert failed', err);
+    // Non-fatal — letter still drafted, just won't get a follow-up.
+  }
+
   // text = HEADER ONLY. The letter body lives in pendingAction.letter_text
-  // and the bot caller (Telegram + WhatsApp user-bot.ts) sends it as a
-  // separate message after the header. Previously the letter body was
-  // duplicated into text, which on WhatsApp caused the same letter to
-  // arrive twice (Paul reported 2026-04-29). On Telegram the keyboard
-  // for "Approve and save" now attaches to the letter chunk, not the
-  // header chunk.
+  // and the bot caller sends it separately. Previously they were
+  // concatenated and WhatsApp double-sent (Paul reported 2026-04-29).
+  // The header now ENDS with an explicit save/discard prompt because
+  // users were drafting + emailing + forgetting to come back — relying
+  // on them to remember to type "I've sent it" was unreliable. The
+  // bot follows up an hour later if they don't reply, but this opening
+  // CTA primes them.
   const header = isReply
-    ? `*Draft reply to ${params.provider}* _(${tone} tone)_ — review below, then say "send the firm one" / "use this version" to save it to the dispute history.`
-    : `*Draft letter for ${params.provider}* _(${tone} tone)_ — review below, then say "save this letter" / "I've sent it" once you've emailed it so I can update the dispute history.`;
+    ? `*Draft reply to ${params.provider}* _(${tone} tone)_ — review below.\n\n` +
+      `📤 *When you've sent it via email, reply SAVE* and I'll log it on the dispute timeline + start the 14-day clock.\n` +
+      `🔄 Want changes? Reply with what to tweak (e.g. "make it firmer", "add the £85").\n` +
+      `🗑 Reply DISCARD to drop this draft.`
+    : `*Draft letter for ${params.provider}* _(${tone} tone)_ — review below.\n\n` +
+      `📤 *When you've sent it via email, reply SAVE* and I'll log it on the dispute timeline + start the 14-day clock.\n` +
+      `🔄 Want changes? Reply with what to tweak.\n` +
+      `🗑 Reply DISCARD to drop this draft.`;
 
   return {
     text: header,
@@ -2433,10 +2482,50 @@ async function recordLetterSent(
     }
   }
 
+  // Resolve any matching pending_dispute_letters row so the
+  // follow-up cron stops nagging the user about this one.
+  await supabase
+    .from('pending_dispute_letters')
+    .update({ status: 'saved', resolved_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('dispute_id', dispute.id)
+    .eq('status', 'pending');
+
   return {
     text:
       `✅ Saved the letter to your *${dispute.provider_name}* dispute timeline (entry: "${title}").${statusNote} ` +
       `If they don't reply within 14 days you can ask me to "escalate the ${dispute.provider_name} dispute" and I'll draft the regulator letter.`,
+  };
+}
+
+async function discardLetterDraft(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider: string; reason?: string },
+): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const dispute = resolved.dispute;
+
+  const { data: discarded } = await supabase
+    .from('pending_dispute_letters')
+    .update({ status: 'discarded', resolved_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('dispute_id', dispute.id)
+    .eq('status', 'pending')
+    .select('id, letter_title');
+
+  if (!discarded || discarded.length === 0) {
+    return {
+      text: `No pending drafts found for *${dispute.provider_name}*. If you want to start a new draft, ask me to "draft a complaint to ${dispute.provider_name}".`,
+    };
+  }
+
+  return {
+    text:
+      `🗑 Discarded ${discarded.length} pending draft${discarded.length === 1 ? '' : 's'} for *${dispute.provider_name}*.` +
+      (params.reason ? ` Logged: "${params.reason}"` : '') +
+      `\n\nIf you want a fresh version with a different angle, just ask — e.g. "draft a polite reply" or "write something firmer".`,
   };
 }
 
