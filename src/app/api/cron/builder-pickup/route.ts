@@ -24,6 +24,7 @@ const PICK_FIX_TYPES = ['code_fix', 'database_fix', 'config_fix'];
 const MAX_PER_RUN = 3; // never fire more than 3 Builder sessions per cycle (cost guard)
 const MAX_ITERATIONS = 3; // never iterate more than 3 times on the same ticket (loop guard)
 const REJECTION_COOLDOWN_HOURS = 4; // wait this long after a rejection before re-firing
+const SESSION_COOLDOWN_MIN = 60; // wait this long after firing a session before re-firing on the same ticket
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -175,6 +176,29 @@ async function handle(req: NextRequest) {
         ticket_number: ticket.ticket_number,
         status: 'skipped',
         reason: `existing proposal ${inFlight.id} in flight (${inFlight.status})`,
+      });
+      continue;
+    }
+
+    // SESSION COOLDOWN: avoid firing 4× in 30min on the same ticket while a
+    // running Builder session hasn't yet had time to call propose_code_fix.
+    // Look at business_log for "Builder pickup cycle — 1 session fired" rows
+    // mentioning this ticket in the last SESSION_COOLDOWN_MIN minutes.
+    const cooldownCutoff = new Date(Date.now() - SESSION_COOLDOWN_MIN * 60_000).toISOString();
+    const { data: recentFires } = await supabase
+      .from('business_log')
+      .select('id, created_at')
+      .eq('created_by', 'builder-pickup')
+      .ilike('content', `%${ticket.ticket_number ?? ticket.id.slice(0, 8)}=fired%`)
+      .gte('created_at', cooldownCutoff)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (recentFires && recentFires.length > 0) {
+      const ageMin = Math.floor((Date.now() - new Date(recentFires[0].created_at).getTime()) / 60_000);
+      results.push({
+        ticket_number: ticket.ticket_number,
+        status: 'skipped',
+        reason: `recent Builder session fired ${ageMin}min ago on this ticket (cooldown ${SESSION_COOLDOWN_MIN}min). Waiting for it to finish.`,
       });
       continue;
     }

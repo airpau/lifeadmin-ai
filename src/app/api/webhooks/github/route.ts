@@ -145,7 +145,14 @@ async function handleDeploymentStatus(
   // For efficiency, we just trigger the builder-verify cron path by NOT trying to
   // resolve to proposal here — instead log + let next cron pick it up.
   // (GitHub deployment webhooks come from Vercel's GitHub Deployments integration.)
-  if (state === 'success' && env === 'production') {
+  // Only ALERT on production failures. Preview failures are routine CI failures
+  // and should be handled silently — if they're for a Builder draft PR, Stage A.5
+  // of builder-verify auto-closes the PR; if they're for a regular user-pushed
+  // commit, the next deploy supersedes it. Either way, no Telegram noise.
+  const envLower = (env || '').toLowerCase();
+  const isProduction = envLower === 'production';
+
+  if (state === 'success' && isProduction) {
     await supabase.from('business_log').insert({
       category: 'info',
       title: `Production deploy succeeded (sha=${sha.slice(0, 7)})`,
@@ -154,11 +161,23 @@ async function handleDeploymentStatus(
     });
     return { handled: true, note: `prod deploy success for ${sha.slice(0, 7)} — verify cron will resolve tickets` };
   }
-  if (state === 'failure' || state === 'error') {
+  if ((state === 'failure' || state === 'error') && isProduction) {
     await notifyFounderTelegram(
       `🔴 <b>Production deploy ${state}</b>\nsha=<code>${sha.slice(0, 7)}</code> env=${env}\n${payload.deployment_status.description ?? ''}`,
     );
     return { handled: true, note: `prod deploy ${state} for ${sha.slice(0, 7)}` };
+  }
+  // Preview failures — log to business_log only (no Telegram). If it matches a Builder
+  // draft PR, Stage A.5 of builder-verify will auto-close the PR + Telegram from there
+  // (with the proposal context, which is more useful than a raw deploy alert).
+  if (state === 'failure' || state === 'error') {
+    await supabase.from('business_log').insert({
+      category: 'info',
+      title: `Preview deploy ${state} (sha=${sha.slice(0, 7)})`,
+      content: `Non-production deploy_status webhook (env=${env}). No founder alert sent. If this is a Builder draft PR, Stage A.5 will auto-close it.`,
+      created_by: 'github-webhook',
+    });
+    return { handled: true, note: `non-prod ${state} suppressed (env=${env})` };
   }
   return { handled: false, note: `state='${state}' env='${env}' not actioned` };
 }

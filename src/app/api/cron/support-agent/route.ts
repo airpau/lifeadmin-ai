@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { resend, FROM_EMAIL } from '@/lib/resend';
+import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
 import Anthropic from '@anthropic-ai/sdk';
 
 /**
@@ -18,7 +18,13 @@ import Anthropic from '@anthropic-ai/sdk';
  */
 
 const AGENT_ID = 'riley-support-agent';
-const TICKET_REPLY_TO = 'support@paybacker.co.uk';
+// Routes to mail.paybacker.co.uk via REPLY_TO from src/lib/resend.ts (the apex
+// paybacker.co.uk has receiving=disabled in Resend; user replies were silently
+// bouncing pre-2026-04-26). REPLY_TO is the canonical address used everywhere.
+const TICKET_REPLY_TO = REPLY_TO;
+// Don't fire two Telegram escalation alerts on the same ticket within this
+// window — multi-turn re-engagement should NOT trigger fresh alerts.
+const ESCALATION_ALERT_DEDUPE_MIN = 60;
 
 export const maxDuration = 300;
 export const runtime = 'nodejs';
@@ -125,10 +131,38 @@ async function searchResolutions(supabase: ReturnType<typeof getAdmin>, category
 // ─────────────────────────────────────────────
 // Telegram alert to founder on escalation
 // ─────────────────────────────────────────────
-async function alertFounder(ticketRef: string, subject: string, fixType: string, urgency: string, summary: string) {
+async function alertFounder(
+  supabase: ReturnType<typeof getAdmin>,
+  ticketRef: string,
+  subject: string,
+  fixType: string,
+  urgency: string,
+  summary: string,
+) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
   if (!token || !chatId) return;
+
+  // DEDUPE: skip if we Telegram-alerted on this same ticket within the last
+  // ESCALATION_ALERT_DEDUPE_MIN minutes. Multi-turn user replies that re-open
+  // a ticket should not trigger a fresh alert (that's noise).
+  const cutoff = new Date(Date.now() - ESCALATION_ALERT_DEDUPE_MIN * 60_000).toISOString();
+  const { data: recent } = await supabase
+    .from('business_log')
+    .select('id, created_at')
+    .eq('created_by', AGENT_ID)
+    .eq('category', 'finding')
+    .ilike('title', `%${ticketRef}%`)
+    .gte('created_at', cutoff)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (recent && recent.length > 0) {
+    const ageMin = Math.floor((Date.now() - new Date(recent[0].created_at).getTime()) / 60_000);
+    console.log(
+      `[${AGENT_ID}] Suppressing Telegram alert for ${ticketRef} — already alerted ${ageMin}min ago (dedupe ${ESCALATION_ALERT_DEDUPE_MIN}min).`,
+    );
+    return;
+  }
 
   const urgencyEmoji: Record<string, string> = {
     critical: '🔴',
@@ -557,8 +591,9 @@ export async function GET(request: NextRequest) {
           console.error(`[${AGENT_ID}] Escalation email failed for ${ticketRef}:`, emailErr);
         }
 
-        // Telegram alert to founder
+        // Telegram alert to founder (deduped — won't re-alert within 60min on the same ticket)
         await alertFounder(
+          supabase,
           ticketRef,
           ticket.subject,
           escalationFixType,
