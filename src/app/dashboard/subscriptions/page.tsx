@@ -716,7 +716,7 @@ export default function SubscriptionsPage() {
         : parseFloat(String(sub.amount)) || 0;
 
     try {
-      await fetch(`/api/subscriptions/${sub.id}`, {
+      const res = await fetch(`/api/subscriptions/${sub.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -725,7 +725,31 @@ export default function SubscriptionsPage() {
           money_saved: parseFloat(monthlyAmt.toFixed(2)),
         }),
       });
-      await fetchSubscriptions();
+
+      // PATCH returns updated totals via the cancel_subscription / get_subscription_total
+      // RPC — apply them directly and update the row in place so headline figures
+      // move without a separate refetch.
+      if (res.ok) {
+        const payload = await res.json().catch(() => null);
+        const cancelledAt = new Date().toISOString();
+        setSubscriptions((prev) => prev.map((s) =>
+          s.id === sub.id ? { ...s, status: 'cancelled', cancel_requested_at: cancelledAt } : s
+        ));
+        const totals = payload?.subscription_totals;
+        if (totals && typeof totals.monthly_total === 'number') {
+          setRpcTotals({
+            monthly_total: totals.monthly_total,
+            subscriptions_monthly: totals.subscriptions_monthly ?? 0,
+            subscriptions_count: totals.subscriptions_count ?? 0,
+            mortgages_monthly: totals.mortgages_monthly ?? 0,
+            mortgages_count: totals.mortgages_count ?? 0,
+            loans_monthly: totals.loans_monthly ?? 0,
+            loans_count: totals.loans_count ?? 0,
+            council_tax_monthly: totals.council_tax_monthly ?? 0,
+            council_tax_count: totals.council_tax_count ?? 0,
+          });
+        }
+      }
 
       // Show share modal if the saving is substantial
       if (shouldShowShareModal('cancellation', annualSaving) && !hasSharedThisSession()) {
@@ -882,15 +906,32 @@ export default function SubscriptionsPage() {
 
   const handleDeleteSubscription = async (id: string) => {
     try {
-      await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
       // Optimistic update for instant UI feedback
       setSubscriptions((prev) => prev.filter((s) => s.id !== id));
       if (selectedSub?.id === id) {
         setSelectedSub(null);
         setCancellationEmail(null);
       }
-      // Refetch to ensure totals and all derived state are consistent
-      await fetchSubscriptions();
+      // The DELETE endpoint runs the dismiss_subscription RPC and returns the
+      // updated totals — apply them directly so the headline figures move
+      // immediately, no second fetch needed.
+      if (res.ok) {
+        const payload = await res.json().catch(() => null);
+        if (payload && typeof payload.monthly_total === 'number') {
+          setRpcTotals({
+            monthly_total: payload.monthly_total,
+            subscriptions_monthly: payload.subscriptions_monthly ?? 0,
+            subscriptions_count: payload.subscriptions_count ?? 0,
+            mortgages_monthly: payload.mortgages_monthly ?? 0,
+            mortgages_count: payload.mortgages_count ?? 0,
+            loans_monthly: payload.loans_monthly ?? 0,
+            loans_count: payload.loans_count ?? 0,
+            council_tax_monthly: payload.council_tax_monthly ?? 0,
+            council_tax_count: payload.council_tax_count ?? 0,
+          });
+        }
+      }
     } catch (error) {
       console.error('Error deleting subscription:', error);
     }
@@ -1002,7 +1043,9 @@ export default function SubscriptionsPage() {
   };
 
   const handleBulkMarkCancelled = async () => {
-    for (const id of Array.from(selectedForBulk)) {
+    const ids = Array.from(selectedForBulk);
+    let lastTotals: any = null;
+    for (const id of ids) {
       const sub = subscriptions.find(s => s.id === id);
       if (!sub) continue;
       const monthlyAmt = sub.billing_cycle === 'yearly'
@@ -1010,7 +1053,7 @@ export default function SubscriptionsPage() {
         : sub.billing_cycle === 'quarterly'
           ? parseFloat(String(sub.amount)) / 3
           : parseFloat(String(sub.amount)) || 0;
-      await fetch(`/api/subscriptions/${id}`, {
+      const res = await fetch(`/api/subscriptions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1019,9 +1062,31 @@ export default function SubscriptionsPage() {
           money_saved: parseFloat(monthlyAmt.toFixed(2)),
         }),
       });
+      if (res.ok) {
+        const payload = await res.json().catch(() => null);
+        if (payload?.subscription_totals) lastTotals = payload.subscription_totals;
+      }
     }
     setSelectedForBulk(new Set());
-    await fetchSubscriptions();
+    // Optimistically mark every cancelled row in place and apply the final totals
+    // returned by the last PATCH — saves a full subscriptions refetch.
+    const cancelledAt = new Date().toISOString();
+    setSubscriptions((prev) => prev.map((s) =>
+      ids.includes(s.id) ? { ...s, status: 'cancelled', cancel_requested_at: cancelledAt } : s
+    ));
+    if (lastTotals && typeof lastTotals.monthly_total === 'number') {
+      setRpcTotals({
+        monthly_total: lastTotals.monthly_total,
+        subscriptions_monthly: lastTotals.subscriptions_monthly ?? 0,
+        subscriptions_count: lastTotals.subscriptions_count ?? 0,
+        mortgages_monthly: lastTotals.mortgages_monthly ?? 0,
+        mortgages_count: lastTotals.mortgages_count ?? 0,
+        loans_monthly: lastTotals.loans_monthly ?? 0,
+        loans_count: lastTotals.loans_count ?? 0,
+        council_tax_monthly: lastTotals.council_tax_monthly ?? 0,
+        council_tax_count: lastTotals.council_tax_count ?? 0,
+      });
+    }
   };
 
   const [inlineRecatSub, setInlineRecatSub] = useState<string | null>(null);
