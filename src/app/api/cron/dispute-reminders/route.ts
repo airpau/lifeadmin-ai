@@ -44,25 +44,39 @@ export async function GET(request: NextRequest) {
   const now = new Date();
   const results: Array<{ userId: string; disputeId: string; type: string; emailSent: boolean; telegramSent: boolean }> = [];
 
-  const cutoff14 = new Date(now.getTime() - FOURTEEN_DAYS_MS).toISOString();
-
-  // Fetch all active disputes that are at least 14 days old, join with profiles
+  // Reminder clock = max(created_at, last_letter_sent_at). On a
+  // back-and-forth dispute, sending a fresh letter resets the clock —
+  // we don't want to nudge "have you heard back?" the day after the
+  // user just emailed a follow-up. last_letter_sent_at is null on
+  // disputes that never had an ai_letter, so we coalesce to created_at.
   const { data: disputes, error: disputesErr } = await supabase
     .from('disputes')
     .select(`
-      id, user_id, provider_name, status, created_at, last_reminder_sent, reminder_count, disputed_amount,
+      id, user_id, provider_name, status, created_at, last_letter_sent_at, last_reminder_sent, reminder_count, disputed_amount,
       profiles:user_id ( id, email, first_name, full_name )
     `)
     .in('status', ACTIVE_STATUSES)
-    .lte('created_at', cutoff14)
     .order('created_at', { ascending: true });
 
   if (disputesErr || !disputes || disputes.length === 0) {
     return NextResponse.json({ ok: true, message: 'No stale disputes found', sent: 0 });
   }
 
-  const userIds = [...new Set(disputes.map((d) => d.user_id))];
-  
+  // Filter to disputes whose effective clock (latest letter sent OR
+  // creation) is at least 14 days ago. We do this in JS instead of the
+  // SQL WHERE clause because Supabase doesn't make COALESCE on the
+  // selected columns trivial.
+  const staleDisputes = disputes.filter((d) => {
+    const clockSrc = d.last_letter_sent_at ?? d.created_at;
+    return new Date(clockSrc).getTime() <= now.getTime() - FOURTEEN_DAYS_MS;
+  });
+
+  if (staleDisputes.length === 0) {
+    return NextResponse.json({ ok: true, message: 'No stale disputes found', sent: 0 });
+  }
+
+  const userIds = [...new Set(staleDisputes.map((d) => d.user_id))];
+
   // Get Telegram sessions for those users
   const { data: sessions } = await supabase
     .from('telegram_sessions')
@@ -72,14 +86,18 @@ export async function GET(request: NextRequest) {
 
   const sessionMap = new Map((sessions || []).map((s) => [s.user_id, Number(s.telegram_chat_id)]));
 
-  for (const dispute of disputes) {
+  for (const dispute of staleDisputes) {
     // Skip if a reminder was sent within the last 7 days
     if (dispute.last_reminder_sent) {
       const lastSent = new Date(dispute.last_reminder_sent).getTime();
       if (now.getTime() - lastSent < SEVEN_DAYS_MS) continue;
     }
 
-    const disputeAgeMs = now.getTime() - new Date(dispute.created_at).getTime();
+    // Age = "days since the most recent action on this dispute".
+    // A fresh letter resets it, so a long-running dispute with active
+    // back-and-forth doesn't keep tripping the 14d/30d windows.
+    const clockSrc = dispute.last_letter_sent_at ?? dispute.created_at;
+    const disputeAgeMs = now.getTime() - new Date(clockSrc).getTime();
     const isEscalation = disputeAgeMs >= THIRTY_DAYS_MS;
     const daysOld = Math.floor(disputeAgeMs / (24 * 60 * 60 * 1000));
 

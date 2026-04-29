@@ -2476,9 +2476,25 @@ async function recordLetterSent(
     if (current?.status === 'open') {
       await supabase
         .from('disputes')
-        .update({ status: 'awaiting_response', updated_at: new Date().toISOString() })
+        .update({
+          status: 'awaiting_response',
+          last_letter_sent_at: today.toISOString(),
+          last_reminder_sent: null, // reset dedup window so the 14d nudge fires from today, not from the prior reminder
+          updated_at: today.toISOString(),
+        })
         .eq('id', dispute.id);
       statusNote = ' Status flipped to awaiting_response — the watchdog will alert you here when they reply.';
+    } else {
+      // Status already past 'open' (e.g. awaiting_response, escalated).
+      // Still stamp last_letter_sent_at so the reminder clock resets.
+      await supabase
+        .from('disputes')
+        .update({
+          last_letter_sent_at: today.toISOString(),
+          last_reminder_sent: null,
+          updated_at: today.toISOString(),
+        })
+        .eq('id', dispute.id);
     }
   }
 
@@ -2491,10 +2507,16 @@ async function recordLetterSent(
     .eq('dispute_id', dispute.id)
     .eq('status', 'pending');
 
+  // Compute the exact 14-day deadline so the user knows when to
+  // expect a nudge if there's no reply.
+  const deadlineDate = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const deadlineStr = deadlineDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
   return {
     text:
       `✅ Saved the letter to your *${dispute.provider_name}* dispute timeline (entry: "${title}").${statusNote} ` +
-      `If they don't reply within 14 days you can ask me to "escalate the ${dispute.provider_name} dispute" and I'll draft the regulator letter.`,
+      `\n\n⏰ I'll ping you on *${deadlineStr}* (14 days) if there's no reply yet — at that point you can escalate to the ombudsman. ` +
+      `If they reply via email sooner and the inbox is linked, you'll get an alert here within minutes.`,
   };
 }
 
