@@ -108,17 +108,16 @@ export async function GET(request: NextRequest) {
       // Yapily renders the bank-picker / consent / decoupled-auth
       // screens on its own domain; we get back a hostedUrl + a
       // consentRequestId we'll use in the callback to retrieve the
-      // consentToken via GET /hosted/consent-requests/{id}.
+      // consentId + consentToken via GET /hosted/consent-requests/{id}.
       //
-      // We DON'T set institutionId here because Migle's tutorial pre-
-      // selects via institutionIdentifiers.institutionId — but our UI
-      // already picks the bank, so we pass it to skip Yapily's picker.
+      // We DO set institutionId because our UI already picks the bank,
+      // so Yapily skips its own picker (per HostedAccountRequest spec
+      // — institutionIdentifiers + institutionId pre-selects).
       //
-      // featureScope on Hosted Pages is an open question (asked Migle
-      // in the 29 Apr email reply). Until confirmed, the upcoming-
-      // payments scopes are not requested through this path; existing
-      // /account-auth-requests connections retain their scopes via
-      // PR-N's renew flow until the next user reconnect.
+      // featureScope (resolved 29 Apr from the OpenAPI spec): passed
+      // via the `accountRequest.featureScope` body field. Mirrors the
+      // upcoming-payments scopes we already request on the legacy
+      // /account-auth-requests path.
       const hosted = await createHostedConsentRequest({
         applicationUserId: user.id,
         redirectUrl: redirectWithState,
@@ -126,6 +125,7 @@ export async function GET(request: NextRequest) {
         institutionId,
         language: 'EN',
         location: 'GB',
+        featureScope: UPCOMING_FEATURE_SCOPES,
       });
 
       // Track this in-flight request so the abandonment poller can
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
         );
         await admin.from('yapily_pending_consent_requests').insert({
           user_id: user.id,
-          consent_request_id: hosted.id,
+          consent_request_id: hosted.consentRequestId,
           institution_id: institutionId,
           redirect_url: redirectWithState,
           status: 'pending',
@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
       }
 
       console.log(
-        `Yapily auth (hosted): created hosted consent for user=${user.id} institution=${institutionId} consentRequestId=${hosted.id}`
+        `Yapily auth (hosted): created hosted consent for user=${user.id} institution=${institutionId} consentRequestId=${hosted.consentRequestId}`
       );
       return NextResponse.json({
         // Frontend-facing URL — kept under both names so existing
@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
         // cutover, and any new code can prefer hostedUrl.
         authorisationUrl: hosted.hostedUrl,
         hostedUrl: hosted.hostedUrl,
-        consentRequestId: hosted.id,
+        consentRequestId: hosted.consentRequestId,
         // No consentId at this stage; we'll fetch it in the callback
         // alongside the consentToken.
       });

@@ -263,12 +263,37 @@ export interface CreateHostedConsentRequestInput {
    * Two-letter location code for the hosted UI (default 'GB').
    */
   location?: string;
+  /**
+   * Yapily AccountRequest scopes — passed via the `accountRequest`
+   * field per the OpenAPI spec (mirrored back as `accountRequestDetails`
+   * on the response). Use to request ACCOUNT_SCHEDULED_PAYMENTS /
+   * ACCOUNT_PERIODIC_PAYMENTS / ACCOUNT_DIRECT_DEBITS etc. Omitted by
+   * default — Yapily applies sensible AIS defaults.
+   */
+  featureScope?: readonly string[];
+  /**
+   * Earliest transaction date to make available on this consent.
+   * Optional; useful for retrieving older history on banks that
+   * support it.
+   */
+  transactionFrom?: string;
+  /**
+   * Latest transaction date to make available on this consent.
+   * Optional.
+   */
+  transactionTo?: string;
 }
 
 /**
  * Creates a hosted consent request. Returns the hostedUrl (short-lived,
- * ~10min) the user must be redirected to plus the consentRequestId we'll
- * use to look up status after the user completes the flow.
+ * ~10min) the user must be redirected to plus the consentRequestId
+ * we'll use to look up status after the user completes the flow.
+ *
+ * NOTE on the response shape: per the Yapily OpenAPI 12.3.4, the POST
+ * response carries `consentRequestId` + `hostedUrl` but does NOT carry
+ * `consentId` or `consentToken` — those are only populated on the GET
+ * once the user has completed the bank-side journey. Don't try to
+ * persist them from this call.
  */
 export async function createHostedConsentRequest(
   input: CreateHostedConsentRequestInput,
@@ -286,6 +311,17 @@ export async function createHostedConsentRequest(
     },
   };
 
+  // accountRequest (request side) ↔ accountRequestDetails (response
+  // side). Only emit it when at least one nested field is set so the
+  // serialised body stays minimal.
+  const accountRequest: Record<string, unknown> = {};
+  if (input.featureScope && input.featureScope.length) {
+    accountRequest.featureScope = Array.from(input.featureScope);
+  }
+  if (input.transactionFrom) accountRequest.transactionFrom = input.transactionFrom;
+  if (input.transactionTo) accountRequest.transactionTo = input.transactionTo;
+  if (Object.keys(accountRequest).length) body.accountRequest = accountRequest;
+
   const response = await yapilyRequest<YapilyHostedConsentResponse>(
     '/hosted/consent-requests',
     {
@@ -296,6 +332,9 @@ export async function createHostedConsentRequest(
 
   if (!response.data?.hostedUrl) {
     throw new Error('Yapily did not return a hostedUrl for the consent request');
+  }
+  if (!response.data.consentRequestId) {
+    throw new Error('Yapily did not return a consentRequestId');
   }
   return response.data;
 }

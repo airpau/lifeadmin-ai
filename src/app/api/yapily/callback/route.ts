@@ -92,6 +92,17 @@ export async function GET(request: NextRequest) {
   // On the legacy flow Yapily puts both in the redirect query. On Hosted
   // Pages we get only consentRequestId — fetch the rest before continuing.
   // Tutorial step 4: check status before proceeding.
+  //
+  // Schema (verified against Yapily OpenAPI 12.3.4 on 29 Apr 2026):
+  //   data.consentRequestId  — the request handle (already in our query)
+  //   data.consentId         — the underlying consent identifier; the
+  //                             same shape /account-auth-requests/{id}
+  //                             accepts. THIS is what we persist into
+  //                             bank_connections.yapily_consent_id so
+  //                             renew + delete keep working.
+  //   data.consentToken      — the credential we attach to data calls.
+  //   data.status            — AUTHORIZED once the user has completed
+  //                             the bank-side flow.
   if (consentRequestId && !consentToken) {
     try {
       const hosted = await getHostedConsentRequest(consentRequestId);
@@ -110,16 +121,18 @@ export async function GET(request: NextRequest) {
           new URL('/dashboard/money-hub?error=hosted_consent_token_missing', request.url),
         );
       }
+      if (!hosted.consentId) {
+        // AUTHORIZED responses MUST carry consentId per OpenAPI 12.3.4.
+        // If Yapily ever returns AUTHORIZED without one, we bail rather
+        // than persist the consentRequestId in the wrong slot — the
+        // renew + disconnect flows would silently break otherwise.
+        console.error(`[yapily.callback] hosted consent ${consentRequestId} authorised but no consentId returned`);
+        return NextResponse.redirect(
+          new URL('/dashboard/money-hub?error=hosted_consent_id_missing', request.url),
+        );
+      }
       consentToken = hosted.consentToken;
-      // The Hosted Pages response carries the underlying consent id on
-      // hosted.id when in legacy-compat mode, or under a separate field
-      // we can't be sure of from the tutorial alone — fall back to the
-      // request id if the dedicated id isn't surfaced. The renew flow
-      // uses yapily_consent_id, so storing SOMETHING durable here is
-      // important; consentRequestId is acceptable as a fallback because
-      // PUT /account-auth-requests/{id} will 404 cleanly if it's the
-      // wrong shape, prompting full reconnect.
-      yapilyConsentId = hosted.id || consentRequestId;
+      yapilyConsentId = hosted.consentId;
     } catch (err) {
       console.error(`[yapily.callback] hosted consent fetch failed for ${consentRequestId}:`, err);
       return NextResponse.redirect(
