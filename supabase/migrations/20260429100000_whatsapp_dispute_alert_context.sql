@@ -79,6 +79,8 @@ BEGIN
   END IF;
 END $$;
 
+-- 'manual' is a legacy source value present on existing rows — must
+-- be in the allowed list or this CHECK fails on re-apply.
 ALTER TABLE support_tickets
   ADD CONSTRAINT support_tickets_source_check
-  CHECK (source IN ('chatbot', 'telegram', 'whatsapp', 'email', 'dashboard', 'api'));
+  CHECK (source IN ('chatbot', 'telegram', 'whatsapp', 'email', 'dashboard', 'api', 'manual'));

@@ -164,12 +164,12 @@ export async function GET(request: NextRequest) {
   for (const [url, refsUsingIt] of sourceCounts.entries()) {
     const { data: lastCheck } = await sb
       .from('legal_audit_log')
-      .select('created_at')
+      .select('checked_at')
       .eq('source_url', url)
-      .order('created_at', { ascending: false })
+      .order('checked_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    const lastCheckedAt = lastCheck?.created_at ?? null;
+    const lastCheckedAt = lastCheck?.checked_at ?? null;
     if (!lastCheckedAt || lastCheckedAt < sourceCutoff) {
       const hoursSince = lastCheckedAt
         ? Math.floor((Date.now() - new Date(lastCheckedAt).getTime()) / 3600_000)

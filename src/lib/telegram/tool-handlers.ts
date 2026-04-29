@@ -2009,10 +2009,15 @@ async function getDisputeDetail(
 
   if (letters && letters.length > 0) {
     text += `\n*Correspondence (${letters.length}):*\n`;
+    // Cap each entry at 1500 chars so the bot has enough to quote the
+    // supplier's actual words verbatim when the user asks "what did
+    // they say". 300 was too short to be useful — Claude only saw a
+    // teaser and so could only paraphrase. 1500 is generous but
+    // still bounded; very long emails get truncated with an ellipsis.
     for (const l of letters) {
       text += `\n📄 *${l.title ?? l.entry_type}* — ${fmtDate(l.entry_date)}\n`;
       if (l.content) {
-        const preview = l.content.length > 300 ? l.content.slice(0, 300) + '...' : l.content;
+        const preview = l.content.length > 1500 ? l.content.slice(0, 1500) + '...' : l.content;
         text += `${preview}\n`;
       }
     }

@@ -60,8 +60,10 @@ FROM legal_references lr
 WHERE al.legal_reference_id = lr.id
   AND al.source_url IS NULL;
 
+-- Production schema uses checked_at (not created_at as the original
+-- migration declared). Index ordered by checked_at to match.
 CREATE INDEX IF NOT EXISTS idx_legal_audit_source_url
-  ON legal_audit_log(source_url, created_at DESC)
+  ON legal_audit_log(source_url, checked_at DESC)
   WHERE source_url IS NOT NULL;
 
 -- ------------------------------------------------------------
