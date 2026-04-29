@@ -211,16 +211,7 @@ FINANCIAL INTELLIGENCE — CRITICAL:
 
 CRITICAL: When you commit to an action (creating a goal, setting a budget, adding a subscription, generating a letter), you MUST call the tool. Never say "I've done X" without calling the tool first.
 
-When a user asks to create a savings goal with a monthly saving amount, ALSO call set_budget to create a budget for that category.
-
-KEYWORD COMMANDS — short replies to a recent dispute alert (look at the conversation history above; if the most recent assistant/system message starts with "[Pocket Agent alert]" it tells you which dispute):
-
-- ACCEPT / YES / OK / FINE / SOUNDS GOOD: user accepts the supplier's latest offer in that dispute. Call get_dispute_detail, then update_dispute_status with new_status="resolved_partial" or "resolved_won" and clear notes. If a money figure was offered, set money_recovered. Confirm what you've recorded.
-- REJECT / NO / DECLINE / NOT GOOD ENOUGH: user rejects the offer. update_dispute_status with new_status="awaiting_response" and notes capturing the rejection. Then offer to draft a counter-reply via draft_dispute_letter.
-- ESCALATE / OMBUDSMAN / TAKE IT UP: user escalates. update_dispute_status with new_status="escalated", then draft_dispute_letter with the right regulator (Ofgem/Energy Ombudsman for energy, CISAS/Ofcom for broadband, FOS for finance, CEDR for flights).
-- GIVE ME THEIR LAST UPDATE / WHAT DID THEY SAY / SHOW THE REPLY / WHAT'S THEIR LATEST: call get_dispute_detail for the recently-alerted dispute, find the most recent company_email entry, and quote the supplier's content verbatim (truncate only if >1000 chars). Add the FCA 8-week clock if relevant.
-
-If you can't tell which dispute the keyword refers to (no recent alert in history), call get_disputes with status="open" and ask the user which one. Don't guess.`;
+When a user asks to create a savings goal with a monthly saving amount, ALSO call set_budget to create a budget for that category.`;
 
 // ============================================================
 // Rate limiter — 200 messages per user per hour
@@ -351,7 +342,6 @@ async function callClaudeWithTools(
             block.name,
             block.input as Record<string, unknown>,
             userId,
-            'telegram',
           );
         } catch (err: any) {
           console.error(`[UserBot] Tool error (${block.name}):`, err);
@@ -1969,20 +1959,49 @@ Return JSON: { "subject": "...", "body": "..." }`;
     // -----------------------------------------------------------------
     // Ticket-thread routing: if this user has an open Telegram-source
     // support ticket, treat their message as a ticket reply rather than
-    // a fresh chatbot prompt. Insert into ticket_messages, reset status
-    // to 'open' so Riley re-engages on next 15-min cron, and send a
-    // brief acknowledgement instead of the chatbot's improvised answer.
+    // a fresh chatbot prompt. Also auto-reopens RECENTLY-resolved tickets
+    // (resolved within last 7 days) so a "still broken" follow-up routes
+    // back into Riley instead of restarting the conversation cold.
+    // Inserts into ticket_messages, resets status to 'open' so Riley
+    // re-engages on next 15-min cron, and sends a brief acknowledgement
+    // instead of the chatbot's improvised answer.
     // -----------------------------------------------------------------
     try {
-      const { data: openTicket } = await supabase
+      // First look for a non-terminal open ticket.
+      const { data: liveTicket } = await supabase
         .from('support_tickets')
-        .select('id, ticket_number, status, metadata')
+        .select('id, ticket_number, status, metadata, resolved_at')
         .eq('user_id', session.user_id)
         .eq('source', 'telegram')
         .not('status', 'in', '("resolved","closed","dismissed")')
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
+
+      // If no live ticket, fall back to a recently-resolved one (within 7 days).
+      // A user replying within a week is probably saying "this is still broken" —
+      // auto-reopen rather than starting a new chatbot conversation.
+      let openTicket = liveTicket as
+        | { id: string; ticket_number: string | null; status: string; metadata: Record<string, unknown> | null; resolved_at: string | null }
+        | null;
+      let isReopen = false;
+      if (!openTicket) {
+        const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
+        const { data: recentResolved } = await supabase
+          .from('support_tickets')
+          .select('id, ticket_number, status, metadata, resolved_at')
+          .eq('user_id', session.user_id)
+          .eq('source', 'telegram')
+          .in('status', ['resolved', 'closed'])
+          .gte('resolved_at', sevenDaysAgo)
+          .order('resolved_at', { ascending: false })
+          .limit(1)
+          .single();
+        if (recentResolved) {
+          openTicket = recentResolved as unknown as typeof openTicket;
+          isReopen = true;
+        }
+      }
 
       if (openTicket?.id) {
         // 1. Append the user's message to the ticket conversation history.
@@ -1994,6 +2013,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
         });
 
         // 2. Reset status to 'open' + clear chase metadata so Riley re-processes.
+        // If this is a reopen of a recently-resolved ticket, also clear resolved_at.
         const meta = (openTicket.metadata || {}) as Record<string, unknown>;
         const userReplies = (meta.user_replies as Array<{ at: string; excerpt: string }>) || [];
         const updatedMeta: Record<string, unknown> = {
@@ -2007,24 +2027,41 @@ Return JSON: { "subject": "...", "body": "..." }`;
         delete updatedMeta.chase_sent_at;
         delete updatedMeta.auto_closed;
         delete updatedMeta.auto_closed_at;
+        if (isReopen) {
+          updatedMeta.reopened_at = new Date().toISOString();
+          updatedMeta.reopen_count = ((meta.reopen_count as number | undefined) || 0) + 1;
+        }
+
+        const updatePayload: Record<string, unknown> = {
+          status: 'open',
+          assigned_to: null,
+          metadata: updatedMeta,
+          updated_at: new Date().toISOString(),
+        };
+        if (isReopen) {
+          updatePayload.resolved_at = null;
+        }
 
         await supabase
           .from('support_tickets')
-          .update({
-            status: 'open',
-            assigned_to: null,
-            metadata: updatedMeta,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq('id', openTicket.id);
 
         // 3. Brief acknowledgement (Riley will respond properly within ~15 min).
         const ref = openTicket.ticket_number || openTicket.id.slice(0, 8).toUpperCase();
-        await ctx.reply(
-          `Got it — added to your ticket *${ref}*. Riley will respond shortly (usually within 15 minutes).\n\n` +
-            `If it's urgent, reply with the word *urgent* and we'll prioritise.`,
-          { parse_mode: 'Markdown' },
-        );
+        if (isReopen) {
+          await ctx.reply(
+            `Sorry to hear it's still not sorted — I've re-opened ticket *${ref}* and Riley will take another look (usually within 15 minutes).\n\n` +
+              `If it's urgent, reply with the word *urgent* and we'll prioritise.`,
+            { parse_mode: 'Markdown' },
+          );
+        } else {
+          await ctx.reply(
+            `Got it — added to your ticket *${ref}*. Riley will respond shortly (usually within 15 minutes).\n\n` +
+              `If it's urgent, reply with the word *urgent* and we'll prioritise.`,
+            { parse_mode: 'Markdown' },
+          );
+        }
 
         // Skip the chatbot processing for this message — Riley owns the conversation now.
         console.log(

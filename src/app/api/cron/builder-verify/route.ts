@@ -52,11 +52,16 @@ function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
-async function ghFetch(path: string): Promise<Response> {
+async function ghFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const t = process.env.GITHUB_TOKEN;
   if (!t) throw new Error('GITHUB_TOKEN not configured');
   return fetch(`https://api.github.com${path}`, {
-    headers: { Authorization: `Bearer ${t}`, Accept: 'application/vnd.github+json' },
+    ...init,
+    headers: {
+      Authorization: `Bearer ${t}`,
+      Accept: 'application/vnd.github+json',
+      ...((init.headers as Record<string, string>) ?? {}),
+    },
   });
 }
 
@@ -165,6 +170,144 @@ async function notifyTicketUser(
   }
   // For chatbot source — no proactive push channel, the user will see the message
   // in their conversation history next time they open the chat widget.
+}
+
+async function processStageDraftCi(
+  supabase: ReturnType<typeof getAdmin>,
+  proposals: ProposalRow[],
+): Promise<{ promoted: number; ci_failed: number; still_pending: number; errors: string[] }> {
+  let promoted = 0;
+  let ciFailed = 0;
+  let stillPending = 0;
+  const errors: string[] = [];
+
+  for (const p of proposals) {
+    if (!p.pr_number) continue;
+    try {
+      const prRes = await ghFetch(`/repos/${GITHUB_REPO}/pulls/${p.pr_number}`);
+      if (!prRes.ok) {
+        errors.push(`PR #${p.pr_number}: github ${prRes.status}`);
+        continue;
+      }
+      const pr = (await prRes.json()) as {
+        draft: boolean;
+        state: string;
+        head: { sha: string; ref: string };
+      };
+      if (!pr.draft) {
+        // Already ready_for_review — fall through to Stage A handling next pass.
+        continue;
+      }
+      if (pr.state === 'closed') {
+        await supabase
+          .from('builder_proposals')
+          .update({
+            status: 'rejected',
+            rejected_at: new Date().toISOString(),
+            rejection_reason: 'Draft PR was closed without merging',
+            verify_check_count: p.verify_check_count + 1,
+            verify_last_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', p.id);
+        ciFailed += 1;
+        continue;
+      }
+      // Find the Vercel preview deployment for this PR's HEAD commit.
+      const depRes = await vercelFetch(
+        `/v6/deployments?projectId=${VERCEL_PROJECT_ID}&teamId=${VERCEL_TEAM_ID}&target=preview&limit=20`,
+      );
+      if (!depRes.ok) {
+        errors.push(`Vercel ${depRes.status}`);
+        continue;
+      }
+      const dep = (await depRes.json()) as {
+        deployments: Array<{ uid: string; state: string; url: string; meta?: { githubCommitSha?: string } }>;
+      };
+      const match = dep.deployments.find((d) => d.meta?.githubCommitSha === pr.head.sha);
+      if (!match) {
+        // Vercel hasn't started building yet (or just queued). Wait.
+        stillPending += 1;
+        await supabase
+          .from('builder_proposals')
+          .update({
+            verify_check_count: p.verify_check_count + 1,
+            verify_last_at: new Date().toISOString(),
+          })
+          .eq('id', p.id);
+        continue;
+      }
+      if (match.state === 'READY') {
+        // Promote draft → ready_for_review.
+        const patchRes = await ghFetch(`/repos/${GITHUB_REPO}/pulls/${p.pr_number}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ draft: false }),
+        });
+        if (!patchRes.ok) {
+          // Some repos require GraphQL for un-drafting. Try GraphQL fallback.
+          const node_id = ((await patchRes.json().catch(() => ({}))) as { node_id?: string }).node_id;
+          if (node_id) {
+            await fetch('https://api.github.com/graphql', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                query: `mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { number isDraft } } }`,
+                variables: { id: node_id },
+              }),
+            });
+          }
+        }
+        await supabase
+          .from('builder_proposals')
+          .update({
+            verify_check_count: p.verify_check_count + 1,
+            verify_last_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', p.id);
+        await notifyFounderTelegram(
+          `🟢 <b>Builder PR ready to merge</b>\n#${p.pr_number}: ${p.summary}\nVercel preview deploy: <a href="https://${match.url}">${match.url}</a> (READY)\nReview &amp; merge: ${p.pr_url}`,
+        );
+        promoted += 1;
+      } else if (match.state === 'ERROR' || match.state === 'CANCELED') {
+        // Close the draft PR + mark proposal failed.
+        await ghFetch(`/repos/${GITHUB_REPO}/pulls/${p.pr_number}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ state: 'closed' }),
+        });
+        await supabase
+          .from('builder_proposals')
+          .update({
+            status: 'failed',
+            last_error: `Vercel preview deploy state=${match.state} (uid=${match.uid})`,
+            verify_check_count: p.verify_check_count + 1,
+            verify_last_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', p.id);
+        await notifyFounderTelegram(
+          `🔴 <b>Builder PR auto-closed: CI failed</b>\n#${p.pr_number}: ${p.summary}\nVercel preview state=<b>${match.state}</b>.\nDraft PR has been closed automatically. Builder will re-iterate after the 4h cooldown with a different approach.\n\nDeployment uid: <code>${match.uid}</code>`,
+        );
+        ciFailed += 1;
+      } else {
+        // BUILDING / QUEUED — wait next pass.
+        stillPending += 1;
+        await supabase
+          .from('builder_proposals')
+          .update({
+            verify_check_count: p.verify_check_count + 1,
+            verify_last_at: new Date().toISOString(),
+          })
+          .eq('id', p.id);
+      }
+    } catch (e) {
+      errors.push(`PR #${p.pr_number}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return { promoted, ci_failed: ciFailed, still_pending: stillPending, errors };
 }
 
 async function processStageA(
@@ -417,6 +560,18 @@ async function handle(req: NextRequest) {
   }
   const supabase = getAdmin();
 
+  // Stage A.5 (DRAFT_CI): proposal is applied AND PR is still a draft (waiting for CI).
+  // Same query as Stage A — we differentiate by PR state inside processStageDraftCi
+  // (it skips non-draft PRs and lets Stage A pick them up).
+  const { data: stageDraftRows } = await supabase
+    .from('builder_proposals')
+    .select('id, ticket_id, ticket_number, summary, pr_number, pr_url, status, pr_merged_at, deploy_verified_at, ticket_resolved_at, verify_check_count, fix_type')
+    .eq('status', 'applied')
+    .is('pr_merged_at', null)
+    .lt('verify_check_count', 100)
+    .order('updated_at', { ascending: true })
+    .limit(20);
+
   // Stage A: applied + not yet merged. Cap at 100 checks per proposal so we don't poll forever.
   const { data: stageARows } = await supabase
     .from('builder_proposals')
@@ -448,22 +603,26 @@ async function handle(req: NextRequest) {
     .order('deploy_verified_at', { ascending: true })
     .limit(20);
 
+  const draft = await processStageDraftCi(supabase, (stageDraftRows || []) as ProposalRow[]);
   const a = await processStageA(supabase, (stageARows || []) as ProposalRow[]);
   const b = await processStageB(supabase, (stageBRows || []) as ProposalRow[]);
   const c = await processStageC(supabase, (stageCRows || []) as ProposalRow[]);
 
   // Audit row only when something actually happened — avoid noisy clean-cycle rows.
-  if (a.merged + a.closed_without_merge + b.verified + c.resolved > 0) {
+  const totalActions =
+    draft.promoted + draft.ci_failed + a.merged + a.closed_without_merge + b.verified + c.resolved;
+  if (totalActions > 0) {
     await supabase.from('business_log').insert({
       category: 'info',
-      title: `Builder verify cycle — merged=${a.merged} verified=${b.verified} resolved=${c.resolved}`,
-      content: `Stage A (applied→merged): ${a.merged} merged, ${a.closed_without_merge} closed-w/o-merge, ${a.still_open} still open. Stage B (merged→deploy): ${b.verified} verified, ${b.pending} pending. Stage C (deploy→ticket): ${c.resolved} ticket(s) resolved. Errors: ${[...a.errors, ...b.errors, ...c.errors].join('; ') || 'none'}.`,
+      title: `Builder verify — promoted=${draft.promoted} ci_failed=${draft.ci_failed} merged=${a.merged} verified=${b.verified} resolved=${c.resolved}`,
+      content: `Stage A.5 (draft→ready): ${draft.promoted} promoted, ${draft.ci_failed} CI-failed (auto-closed), ${draft.still_pending} still pending. Stage A (applied→merged): ${a.merged} merged, ${a.closed_without_merge} closed-w/o-merge, ${a.still_open} still open. Stage B (merged→deploy): ${b.verified} verified, ${b.pending} pending. Stage C (deploy→ticket): ${c.resolved} ticket(s) resolved. Errors: ${[...draft.errors, ...a.errors, ...b.errors, ...c.errors].join('; ') || 'none'}.`,
       created_by: 'builder-verify',
     });
   }
 
   return NextResponse.json({
     ok: true,
+    stage_draft_ci: draft,
     stage_a: a,
     stage_b: b,
     stage_c: c,

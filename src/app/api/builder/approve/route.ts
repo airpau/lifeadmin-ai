@@ -151,6 +151,10 @@ async function createBranchAndFiles(proposal: Proposal): Promise<{
     .filter(Boolean)
     .join('\n');
 
+  // Open PR as DRAFT so Vercel preview CI can run before founder is asked to merge.
+  // builder-verify cron will poll the preview deployment; on READY it PATCHes the PR
+  // to ready_for_review (and Telegrams the founder). On ERROR it closes the PR and
+  // marks the proposal failed.
   const prRes = await ghFetch(`/repos/${GITHUB_REPO}/pulls`, {
     method: 'POST',
     body: JSON.stringify({
@@ -158,7 +162,7 @@ async function createBranchAndFiles(proposal: Proposal): Promise<{
       head: branchName,
       base: BASE_BRANCH,
       body: prBody,
-      draft: false,
+      draft: true,
     }),
   });
   if (!prRes.ok) throw new Error(`open PR: ${prRes.status} ${(await prRes.text()).slice(0, 200)}`);
@@ -260,13 +264,17 @@ export async function GET(req: NextRequest) {
   }
 
   return htmlPage(
-    'Approved & PR opened',
+    'Approved & draft PR opened',
     `<div class="box">
-      <h2>✅ Approved &amp; PR opened</h2>
+      <h2>✅ Approved — draft PR opened</h2>
       <p>Branch: <code>${result.branchName}</code></p>
-      <p>PR: <a href="${result.prUrl}" target="_blank" rel="noopener">#${result.prNumber}</a></p>
-      <p>Run <code>npx tsc --noEmit</code> locally and merge when CI is green.</p>
-      <p>You can also leave the tab open and the digest cron will pick this up tomorrow morning.</p>
+      <p>PR: <a href="${result.prUrl}" target="_blank" rel="noopener">#${result.prNumber}</a> <strong>(draft)</strong></p>
+      <p>The PR is currently a <strong>draft</strong>. Vercel CI is running on the preview deployment. Within ~3-5 min:</p>
+      <ul>
+        <li>If CI <strong>passes</strong> → the PR is auto-promoted to ready-for-review and you'll get a Telegram + email ping to merge.</li>
+        <li>If CI <strong>fails</strong> → the PR is auto-closed and Builder marks the proposal failed (you'll get a Telegram alert with the failure reason). Builder can re-iterate after the 4h cooldown with a different approach.</li>
+      </ul>
+      <p>You don't need to do anything right now.</p>
     </div>`,
     '#059669'
   );
