@@ -22,6 +22,8 @@ export const maxDuration = 90;
 
 const PICK_FIX_TYPES = ['code_fix', 'database_fix', 'config_fix'];
 const MAX_PER_RUN = 3; // never fire more than 3 Builder sessions per cycle (cost guard)
+const MAX_ITERATIONS = 3; // never iterate more than 3 times on the same ticket (loop guard)
+const REJECTION_COOLDOWN_HOURS = 4; // wait this long after a rejection before re-firing
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -38,9 +40,27 @@ interface EscalatedTicket {
   created_at: string;
 }
 
-function buildBuilderTask(ticket: EscalatedTicket, fixType: string, summary: string): string {
+function buildBuilderTask(
+  ticket: EscalatedTicket,
+  fixType: string,
+  summary: string,
+  iteration: number,
+  priorRejections: Array<{ summary: string; reason: string | null; created_at: string }>,
+): string {
   const ref = ticket.ticket_number || ticket.id.slice(0, 8).toUpperCase();
-  return `BUILDER ESCALATION TASK — ${ref}
+  const priorBlock =
+    iteration > 1 && priorRejections.length > 0
+      ? `\n\nPRIOR REJECTIONS ON THIS TICKET (do NOT propose the same approach):\n` +
+        priorRejections
+          .map(
+            (r, i) =>
+              `${i + 1}. (${r.created_at.slice(0, 16)}) "${r.summary}" — rejected because: ${r.reason || '(no reason given)'}`,
+          )
+          .join('\n') +
+        `\n\nThis is iteration ${iteration} of ${MAX_ITERATIONS}. Take a different approach. If you genuinely cannot find a different valid fix, append_business_log with category='recommendation' explaining what's blocking and stop.`
+      : '';
+
+  return `BUILDER ESCALATION TASK — ${ref}${iteration > 1 ? ` (iteration ${iteration}/${MAX_ITERATIONS})` : ''}
 
 Riley has escalated this support ticket as needing a ${fixType}. Your job:
 1. Read the ticket details below.
@@ -73,7 +93,7 @@ TICKET DETAILS:
 - Subject: ${ticket.subject}
 - Description: ${(ticket.description ?? '').slice(0, 2000)}
 - Riley's escalation summary: ${summary}
-- Created: ${ticket.created_at}
+- Created: ${ticket.created_at}${priorBlock}
 
 Begin.`;
 }
@@ -108,7 +128,12 @@ async function handle(req: NextRequest) {
   }
 
   let fired = 0;
-  const results: Array<{ ticket_number: string | null; status: 'fired' | 'skipped'; reason?: string; session_id?: string }> = [];
+  const results: Array<{
+    ticket_number: string | null;
+    status: 'fired' | 'skipped';
+    reason?: string;
+    session_id?: string;
+  }> = [];
 
   for (const ticket of candidates) {
     if (fired >= MAX_PER_RUN) {
@@ -122,25 +147,88 @@ async function handle(req: NextRequest) {
       continue;
     }
 
-    // Skip if there's already a non-terminal proposal for this ticket.
-    const { data: existing } = await supabase
+    // Look at all prior proposals for this ticket. We need:
+    //  - skip if any 'pending_review' / 'approved' / 'applied' (in flight)
+    //  - skip if iteration count already >= MAX_ITERATIONS
+    //  - skip if most recent rejection is younger than the cooldown window
+    //  - otherwise re-fire with rejection feedback as iteration N+1
+    const { data: priorRows } = await supabase
       .from('builder_proposals')
-      .select('id, status')
+      .select('id, status, summary, rejection_reason, created_at, iteration')
       .eq('ticket_id', ticket.id)
-      .in('status', ['pending_review', 'approved', 'applied'])
-      .limit(1)
-      .maybeSingle();
-    if (existing) {
-      results.push({ ticket_number: ticket.ticket_number, status: 'skipped', reason: `existing proposal ${existing.id} (${existing.status})` });
+      .order('created_at', { ascending: false })
+      .limit(20);
+    const priors = (priorRows || []) as Array<{
+      id: string;
+      status: string;
+      summary: string;
+      rejection_reason: string | null;
+      created_at: string;
+      iteration: number;
+    }>;
+
+    const inFlight = priors.find((p) =>
+      ['pending_review', 'approved', 'applied'].includes(p.status),
+    );
+    if (inFlight) {
+      results.push({
+        ticket_number: ticket.ticket_number,
+        status: 'skipped',
+        reason: `existing proposal ${inFlight.id} in flight (${inFlight.status})`,
+      });
       continue;
     }
 
+    const lastIteration = priors[0]?.iteration ?? 0;
+    if (lastIteration >= MAX_ITERATIONS) {
+      results.push({
+        ticket_number: ticket.ticket_number,
+        status: 'skipped',
+        reason: `max iterations reached (${MAX_ITERATIONS}) — escalating to founder via business_log only`,
+      });
+      // One-time audit so the digest surfaces it.
+      await supabase.from('business_log').insert({
+        category: 'escalation',
+        title: `Builder gave up on ${ticket.ticket_number ?? ticket.id.slice(0, 8)} after ${MAX_ITERATIONS} attempts`,
+        content: `Ticket needs manual handling. Subject: ${ticket.subject}. Riley's escalation_summary: ${meta.escalation_summary ?? '(none)'}.`,
+        created_by: 'builder-pickup',
+      });
+      continue;
+    }
+
+    const lastRejection = priors.find((p) => p.status === 'rejected' || p.status === 'failed' || p.status === 'expired');
+    if (lastRejection) {
+      const ageMs = Date.now() - new Date(lastRejection.created_at).getTime();
+      if (ageMs < REJECTION_COOLDOWN_HOURS * 3600_000) {
+        results.push({
+          ticket_number: ticket.ticket_number,
+          status: 'skipped',
+          reason: `cooldown after ${lastRejection.status}: re-fire eligible in ${Math.ceil((REJECTION_COOLDOWN_HOURS * 3600_000 - ageMs) / 60000)} min`,
+        });
+        continue;
+      }
+    }
+
+    const priorRejections = priors
+      .filter((p) => p.status === 'rejected' || p.status === 'failed')
+      .map((p) => ({ summary: p.summary, reason: p.rejection_reason, created_at: p.created_at }));
+
+    const iteration = lastIteration + 1;
+
     try {
-      const session = await createSession(builderConfig, `Builder pickup — ${ticket.ticket_number ?? ticket.id.slice(0, 8)}`);
+      const session = await createSession(
+        builderConfig,
+        `Builder pickup — ${ticket.ticket_number ?? ticket.id.slice(0, 8)} (iter ${iteration})`,
+      );
       const summary = String(meta.escalation_summary || ticket.subject);
-      await sendTaskMessage(session.id, buildBuilderTask(ticket, fixType, summary));
+      await sendTaskMessage(session.id, buildBuilderTask(ticket, fixType, summary, iteration, priorRejections));
       fired += 1;
-      results.push({ ticket_number: ticket.ticket_number, status: 'fired', session_id: session.id });
+      results.push({
+        ticket_number: ticket.ticket_number,
+        status: 'fired',
+        session_id: session.id,
+        ...(iteration > 1 ? { reason: `iteration ${iteration} after ${priorRejections.length} prior rejection(s)` } : {}),
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       results.push({ ticket_number: ticket.ticket_number, status: 'skipped', reason: `session error: ${msg.slice(0, 200)}` });

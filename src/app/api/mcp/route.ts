@@ -1222,6 +1222,24 @@ function createPaybackerMcpServer(): McpServer {
         .join("");
 
       const { url, key } = getSupabaseCredentials();
+
+      // Auto-compute iteration: previous proposals for this ticket + 1.
+      let iteration = 1;
+      if (ticket_id) {
+        try {
+          const priorRes = await fetch(
+            `${url}/rest/v1/builder_proposals?ticket_id=eq.${ticket_id}&select=iteration&order=iteration.desc&limit=1`,
+            { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+          );
+          if (priorRes.ok) {
+            const priors = (await priorRes.json()) as Array<{ iteration: number }>;
+            if (priors.length > 0) iteration = (priors[0].iteration ?? 0) + 1;
+          }
+        } catch {
+          // best-effort — default iteration=1 is safe
+        }
+      }
+
       const insertRes = await fetch(`${url}/rest/v1/builder_proposals`, {
         method: "POST",
         headers: {
@@ -1239,6 +1257,7 @@ function createPaybackerMcpServer(): McpServer {
           proposed_files,
           approval_token: token,
           status: "pending_review",
+          iteration,
         }),
       });
       if (!insertRes.ok) {
