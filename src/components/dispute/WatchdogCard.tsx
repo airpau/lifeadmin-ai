@@ -38,6 +38,11 @@ interface Candidate {
    *  every row so users with multiple linked accounts know which one
    *  contains the thread. */
   inboxEmail?: string;
+  /** All inboxes the deduper merged this thread from. When a Gmail
+   *  filter forwards the same email between two Workspace accounts
+   *  we collapse the duplicates and list every inbox here so the
+   *  picker can show "in inbox-A · also in inbox-B". */
+  inInboxes?: string[];
   provider: 'gmail' | 'outlook' | 'imap';
   threadId: string;
   subject: string;
@@ -230,6 +235,7 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
       const rows: Candidate[] = (data.threads ?? []).map((t: any) => ({
         connectionId: t.connectionId,
         inboxEmail: t.emailAddress,
+        inInboxes: Array.isArray(t.inInboxes) ? t.inInboxes : undefined,
         provider: t.provider,
         threadId: t.threadId,
         subject: t.subject,
@@ -239,6 +245,9 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
         messageCount: t.messageCount ?? 1,
         snippet: t.snippet ?? '',
       }));
+      // Newest first — defensive sort even though the API already
+      // returns sorted; protects against any caller-side reshuffle.
+      rows.sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
       setCandidates(rows);
       if (Array.isArray(data.errors) && data.errors.length > 0) setSearchErrors(data.errors);
     } catch (e) {
@@ -660,9 +669,21 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                           )}
                         </div>
                         <p className="text-xs text-slate-500 truncate">from {c.senderAddress}</p>
-                        {c.inboxEmail && (
-                          <p className="text-[10px] text-slate-500 mt-0.5 truncate">in {c.inboxEmail}</p>
-                        )}
+                        {(c.inInboxes && c.inInboxes.length > 0) || c.inboxEmail ? (
+                          <p className="text-[11px] mt-1 truncate">
+                            <span className="text-slate-500">in </span>
+                            <span className="text-slate-800 font-medium">
+                              {c.inInboxes && c.inInboxes.length > 0
+                                ? c.inInboxes.join(' · ')
+                                : c.inboxEmail}
+                            </span>
+                            {c.inInboxes && c.inInboxes.length > 1 && (
+                              <span className="text-[10px] text-amber-600 ml-1.5 font-medium">
+                                · in {c.inInboxes.length} inboxes
+                              </span>
+                            )}
+                          </p>
+                        ) : null}
                         <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.snippet}</p>
                         <div className="flex items-center gap-2 mt-2 flex-wrap">
                           <span className="text-[10px] uppercase tracking-wider text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">
@@ -672,7 +693,14 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                             {c.messageCount} msg{c.messageCount === 1 ? '' : 's'}
                           </span>
                           <span className="text-[10px] text-slate-500">
-                            · {new Date(c.latestDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: new Date(c.latestDate).getFullYear() !== new Date().getFullYear() ? '2-digit' : undefined })}
+                            · {new Date(c.latestDate).toLocaleString('en-GB', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: new Date(c.latestDate).getFullYear() !== new Date().getFullYear() ? '2-digit' : undefined,
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: false,
+                            })}
                           </span>
                           {c.reason && (
                             <span className="text-[10px] text-slate-500 truncate">· {c.reason}</span>

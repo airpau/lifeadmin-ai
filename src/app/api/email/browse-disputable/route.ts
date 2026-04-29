@@ -216,11 +216,48 @@ export async function GET(request: Request) {
     }
   }
 
+  // Dedupe identical emails surfacing in multiple inboxes. Paul
+  // reported (2026-04-29) a search for "alice" returning the same
+  // Enterprise Rent-a-Car email twice — once per Gmail connection
+  // — because Gmail filter-forwarding had copied it between his two
+  // Workspace inboxes. Both hits are technically real but show as
+  // confusing duplicates. Collapse them by content fingerprint
+  // (sender + subject + minute-rounded latestDate); merge the
+  // inbox-list so we still tell the user which inboxes hold a copy.
+  const dedupeKey = (t: BrowsedThread) =>
+    [
+      (t.senderAddress || '').toLowerCase(),
+      (t.subject || '').toLowerCase().trim(),
+      // Round to nearest minute — Gmail and Outlook can disagree on
+      // sub-second timestamps for the same forwarded email.
+      Math.floor(new Date(t.latestDate).getTime() / 60_000),
+    ].join('|');
+
+  const merged = new Map<string, BrowsedThread & { inInboxes: string[] }>();
+  for (const t of all) {
+    const key = dedupeKey(t);
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...t, inInboxes: [t.emailAddress] });
+    } else {
+      // Already seen in another inbox. Add this inbox to the list and
+      // keep the entry with the most messages (more complete history).
+      if (!existing.inInboxes.includes(t.emailAddress)) {
+        existing.inInboxes.push(t.emailAddress);
+      }
+      if (t.messageCount > existing.messageCount) {
+        merged.set(key, { ...t, inInboxes: existing.inInboxes });
+      }
+    }
+  }
+
   // Sort newest first; cap at 50 across all inboxes so the picker
   // stays usable on mobile.
-  all.sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
+  const out = Array.from(merged.values())
+    .sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime())
+    .slice(0, 50);
   return NextResponse.json({
-    threads: all.slice(0, 50),
+    threads: out,
     connections: connections.map((c) => ({ id: c.id, email_address: c.email_address, provider: c.provider_type })),
     errors: errors.length > 0 ? errors : undefined,
   });
