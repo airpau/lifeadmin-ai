@@ -284,6 +284,65 @@ export const telegramTools: Tool[] = [
   },
 
   {
+    name: 'find_email_thread_for_dispute',
+    description:
+      "Search the user's connected inboxes (Gmail / Outlook) for email threads that could be linked to one of their disputes. Use when the user says 'link an email', 'connect a thread', 'find the email about X', or 'attach the response from Y'. Returns up to 5 candidate threads with subject + sender + date + the connection_id and thread_id needed for link_email_thread_to_dispute. Always present the list to the user and ask them to pick before linking — never auto-link the top result.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description:
+            'Provider/dispute name (case-insensitive partial match — "Nuki" matches "Nuki Home Solutions"). Used to find the active dispute and seed the inbox search.',
+        },
+        query: {
+          type: 'string',
+          description:
+            "Optional extra search keyword if the user gave one (e.g. 'alice', 'refund', 'ticket 785661'). Falls back to the provider name when omitted.",
+        },
+      },
+      required: ['provider'],
+    },
+  },
+
+  {
+    name: 'link_email_thread_to_dispute',
+    description:
+      "Link a specific email thread to a dispute. Call this AFTER find_email_thread_for_dispute returned candidates AND the user picked one. Pass the connection_id + thread_id + provider_type from the chosen candidate verbatim. Triggers an immediate sync so the body imports into Paybacker right away — the user sees Hadil-style supplier replies in the dispute timeline within seconds. Replaces any previously-linked thread on this dispute (one active link at a time).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description: 'Dispute provider name (same value passed to find_email_thread_for_dispute).',
+        },
+        connection_id: {
+          type: 'string',
+          description: "The candidate's connection_id from find_email_thread_for_dispute.",
+        },
+        thread_id: {
+          type: 'string',
+          description: "The candidate's thread_id from find_email_thread_for_dispute.",
+        },
+        provider_type: {
+          type: 'string',
+          enum: ['gmail', 'outlook', 'imap'],
+          description: 'gmail | outlook | imap — from the candidate.',
+        },
+        subject: {
+          type: 'string',
+          description: 'Optional thread subject for display in dispute history.',
+        },
+        sender_address: {
+          type: 'string',
+          description: "Optional supplier email address (e.g. 'contact@nuki.io') for the thread.",
+        },
+      },
+      required: ['provider', 'connection_id', 'thread_id', 'provider_type'],
+    },
+  },
+
+  {
     name: 'get_deals',
     description:
       "Get current affiliate deals and offers from Paybacker's deals page — broadband, mobile, SIM-only, and other money-saving offers. Use this when the user asks about deals, switching providers, saving on bills, or 'what deals do you have?'. NEVER refer them to Uswitch or other external comparison sites — use this tool to show Paybacker's own deals.",

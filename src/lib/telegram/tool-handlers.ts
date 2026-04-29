@@ -168,6 +168,20 @@ export async function executeToolCall(
       return getIncomeBreakdown(supabase, userId, toolInput.month as string | undefined);
     case 'get_dispute_detail':
       return getDisputeDetail(supabase, userId, toolInput.provider as string);
+    case 'find_email_thread_for_dispute':
+      return findEmailThreadForDispute(supabase, userId, {
+        provider: toolInput.provider as string,
+        query: toolInput.query as string | undefined,
+      });
+    case 'link_email_thread_to_dispute':
+      return linkEmailThreadToDispute(supabase, userId, {
+        provider: toolInput.provider as string,
+        connectionId: toolInput.connection_id as string,
+        threadId: toolInput.thread_id as string,
+        providerType: toolInput.provider_type as 'gmail' | 'outlook' | 'imap',
+        subject: toolInput.subject as string | undefined,
+        senderAddress: toolInput.sender_address as string | undefined,
+      });
     case 'draft_dispute_letter':
       return draftDisputeLetter(supabase, userId, {
         provider: toolInput.provider as string,
@@ -686,11 +700,23 @@ async function getDisputes(
   let text = `*Disputes (${data.length})*\n\n`;
   for (const d of data) {
     const emoji = statusEmoji[d.status] ?? '⚪';
-    const daysSince = Math.floor(
+    // Surface BOTH "opened" and "last activity" with explicit labels —
+    // Claude was conflating updated_at with creation time and
+    // describing month-old disputes as "opened 1 day ago" because
+    // updated_at had bumped today (sync, backfill, reply import,
+    // etc.). The labels here are non-negotiable: don't compress to
+    // a single relative time, the bot will misinterpret it.
+    const openedDays = Math.floor(
+      (Date.now() - new Date(d.created_at).getTime()) / (1000 * 60 * 60 * 24),
+    );
+    const lastActivityDays = Math.floor(
       (Date.now() - new Date(d.updated_at).getTime()) / (1000 * 60 * 60 * 24),
     );
     text += `${emoji} *${d.provider_name}* — ${d.issue_type.replace(/_/g, ' ')}\n`;
-    text += `   Status: ${d.status.replace(/_/g, ' ')} · ${daysSince}d ago`;
+    text += `   Status: ${d.status.replace(/_/g, ' ')} · opened ${openedDays}d ago (${fmtDate(d.created_at)})`;
+    if (lastActivityDays !== openedDays) {
+      text += ` · last activity ${lastActivityDays}d ago`;
+    }
     if (d.money_recovered && Number(d.money_recovered) > 0) {
       text += ` · Recovered: ${fmt(d.money_recovered)}`;
     }
@@ -2071,6 +2097,276 @@ async function getDisputeDetail(
     }
   }
 
+  return { text };
+}
+
+// ============================================================
+// EMAIL-THREAD LINKING HANDLERS (Pocket Agent feature parity)
+// ============================================================
+// Two tools that let WhatsApp / Telegram users link an email
+// thread to a dispute from inside the chat — same flow as the
+// dashboard WatchdogCard "Find thread" modal, no need to switch
+// to the website. Built 2026-04-29 per Paul's request.
+
+async function resolveActiveDisputeForBot(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  provider: string,
+): Promise<
+  | { ok: true; dispute: { id: string; provider_name: string; issue_type: string; issue_summary: string | null; created_at: string } }
+  | { ok: false; text: string }
+> {
+  const RESOLVED = new Set(['resolved_won', 'resolved_partial', 'resolved_lost', 'closed']);
+  const { data: matches } = await supabase
+    .from('disputes')
+    .select('id, provider_name, issue_type, issue_summary, status, created_at')
+    .eq('user_id', userId)
+    .ilike('provider_name', `%${provider}%`)
+    .order('created_at', { ascending: false });
+
+  if (!matches || matches.length === 0) {
+    return { ok: false, text: `No dispute found matching "${provider}". Open one first via the dashboard or by asking me to "draft a complaint to ${provider}".` };
+  }
+  const active = matches.filter((m) => !RESOLVED.has(m.status));
+  if (active.length === 0) {
+    return {
+      ok: false,
+      text: `Your "${provider}" dispute is closed (${matches[0].status.replace(/_/g, ' ')}). Email-linking only applies to active disputes — re-open the case or open a new one if you want to attach replies.`,
+    };
+  }
+  if (active.length > 1) {
+    let t = `You have ${active.length} active disputes matching "${provider}". Which one do you want to link an email to?\n`;
+    for (const m of active) t += `\n• ${m.provider_name} — opened ${fmtDate(m.created_at)}: _${(m.issue_summary || '').slice(0, 80)}${(m.issue_summary || '').length > 80 ? '…' : ''}_`;
+    return { ok: false, text: t };
+  }
+  const d = active[0];
+  return {
+    ok: true,
+    dispute: {
+      id: d.id,
+      provider_name: d.provider_name,
+      issue_type: d.issue_type,
+      issue_summary: d.issue_summary,
+      created_at: d.created_at,
+    },
+  };
+}
+
+async function findEmailThreadForDispute(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider: string; query?: string },
+): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const dispute = resolved.dispute;
+
+  const { data: connections } = await supabase
+    .from('email_connections')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .is('archived_at', null);
+
+  if (!connections || connections.length === 0) {
+    return {
+      text: `No email connection on this account. Connect Gmail or Outlook in dashboard → Profile first, then ask me again. The link goes here: paybacker.co.uk/dashboard/profile`,
+    };
+  }
+
+  // Reuse the same matcher the dashboard uses — keeps ranking + dedupe consistent.
+  const { findThreadCandidates } = await import('@/lib/dispute-sync/matcher');
+  type EmailConnectionRow = {
+    id: string;
+    email_address: string;
+    provider_type: string;
+  };
+  type RawCandidate = Awaited<ReturnType<typeof findThreadCandidates>>[number];
+  type Candidate = RawCandidate & { connectionId: string; inboxEmail: string };
+
+  // Optional query keyword hint — bias the dispute summary so the
+  // matcher considers the user's word (e.g. "alice", "refund").
+  const disputeForMatch = params.query
+    ? { ...dispute, issue_summary: `${dispute.issue_summary || ''} ${params.query}`.trim() }
+    : dispute;
+
+  const candidates: Candidate[] = [];
+  for (const conn of connections as EmailConnectionRow[]) {
+    try {
+      const cands: RawCandidate[] = await findThreadCandidates(
+        conn as Parameters<typeof findThreadCandidates>[0],
+        disputeForMatch as Parameters<typeof findThreadCandidates>[1],
+        5,
+      );
+      for (const c of cands) candidates.push({ ...c, connectionId: conn.id, inboxEmail: conn.email_address });
+    } catch (err) {
+      console.warn('[bot.find_email_thread] matcher failed for', conn.email_address, err);
+    }
+  }
+
+  if (candidates.length === 0) {
+    return {
+      text: `Couldn't find any matching email threads in your inbox for "${dispute.provider_name}". Try a more specific keyword (e.g. the supplier's reply subject line, a ticket reference, or a sender's first name). Ask me again with: "find the email about [keyword] for ${dispute.provider_name}".`,
+    };
+  }
+
+  // Dedupe identical hits across inboxes (sender + subject + minute) —
+  // mirrors /api/email/browse-disputable so multi-Gmail users with
+  // filter-forwarding don't get duplicate rows.
+  type DedupedCandidate = Candidate & { inInboxes: string[] };
+  const merged = new Map<string, DedupedCandidate>();
+  for (const c of candidates.sort((a, b) => b.confidence - a.confidence)) {
+    const key = [
+      (c.senderAddress || '').toLowerCase(),
+      (c.subject || '').toLowerCase().trim(),
+      Math.floor(c.latestDate.getTime() / 60_000),
+    ].join('|');
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...c, inInboxes: [c.inboxEmail] });
+    } else if (!existing.inInboxes.includes(c.inboxEmail)) {
+      existing.inInboxes.push(c.inboxEmail);
+    }
+  }
+
+  const top = Array.from(merged.values())
+    .sort((a, b) => b.confidence - a.confidence || b.latestDate.getTime() - a.latestDate.getTime())
+    .slice(0, 5);
+
+  let text = `Found ${top.length} matching email thread${top.length === 1 ? '' : 's'} for *${dispute.provider_name}*. Pick one and I'll link it:\n`;
+  top.forEach((c, i) => {
+    const dateStr = c.latestDate.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+    text += `\n${i + 1}. *${c.subject || '(no subject)'}*`;
+    text += `\n   from ${c.senderAddress || 'unknown'} · ${dateStr} · ${c.messageCount} msg${c.messageCount === 1 ? '' : 's'} · ${Math.round(c.confidence * 100)}% match`;
+    if (c.inInboxes.length > 0) text += `\n   in ${c.inInboxes.join(' · ')}`;
+    if (c.snippet) text += `\n   _${c.snippet.slice(0, 120)}${c.snippet.length > 120 ? '…' : ''}_`;
+    // Tool-result metadata Claude must echo back into link_email_thread_to_dispute.
+    text += `\n   [connection_id=${c.connectionId} thread_id=${c.threadId} provider_type=${c.provider}]`;
+  });
+  text += `\n\nReply with the number (1-${top.length}) or say "link the one from contact@nuki.io" and I'll attach it. The body imports immediately after linking.`;
+  return { text };
+}
+
+async function linkEmailThreadToDispute(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider: string;
+    connectionId: string;
+    threadId: string;
+    providerType: 'gmail' | 'outlook' | 'imap';
+    subject?: string;
+    senderAddress?: string;
+  },
+): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const dispute = resolved.dispute;
+
+  // Plan-limit check — same gate the dashboard uses.
+  const { checkWatchdogLinkLimit } = await import('@/lib/plan-limits');
+  const limitCheck = await checkWatchdogLinkLimit(userId);
+  if (!limitCheck.allowed) {
+    return {
+      text: `Your ${limitCheck.tier} plan is at the cap of ${limitCheck.limit} linked thread${limitCheck.limit === 1 ? '' : 's'}. Either unlink an older one or upgrade to link more: paybacker.co.uk/pricing`,
+    };
+  }
+
+  // Verify ownership of the email connection.
+  const { data: conn } = await supabase
+    .from('email_connections')
+    .select('*')
+    .eq('id', params.connectionId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (!conn) {
+    return { text: `That email connection doesn't belong to your account. Run find_email_thread_for_dispute again to get fresh candidates.` };
+  }
+
+  // Disable any previously-linked thread for this dispute so only
+  // one is active at a time (same rule the dashboard enforces).
+  await supabase
+    .from('dispute_watchdog_links')
+    .update({ sync_enabled: false, updated_at: new Date().toISOString() })
+    .eq('dispute_id', dispute.id)
+    .eq('user_id', userId)
+    .eq('sync_enabled', true);
+
+  const senderDomain =
+    params.senderAddress && params.senderAddress.includes('@')
+      ? params.senderAddress.split('@')[1].toLowerCase()
+      : null;
+
+  const { data: linkRow, error: linkErr } = await supabase
+    .from('dispute_watchdog_links')
+    .upsert(
+      {
+        dispute_id: dispute.id,
+        user_id: userId,
+        email_connection_id: params.connectionId,
+        provider: params.providerType,
+        thread_id: params.threadId,
+        subject: params.subject ?? null,
+        sender_domain: senderDomain,
+        sender_address: params.senderAddress ?? null,
+        sync_enabled: true,
+        match_source: 'user_confirmed',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,provider,thread_id' },
+    )
+    .select()
+    .single();
+
+  if (linkErr || !linkRow) {
+    console.error('[bot.link_email_thread] insert failed', linkErr);
+    return { text: `Couldn't save the link: ${linkErr?.message || 'unknown error'}. Try linking from the dashboard's Watchdog card instead.` };
+  }
+
+  // Initial sync — pull the thread history so the body imports
+  // immediately. Mirrors the dashboard endpoint's behaviour.
+  let imported = 0;
+  try {
+    const { fetchNewMessages } = await import('@/lib/dispute-sync/fetchers');
+    type EmailConnectionRow = Parameters<typeof fetchNewMessages>[0];
+    const messages = await fetchNewMessages(conn as EmailConnectionRow, params.threadId, null);
+    for (const m of messages) {
+      const { error } = await supabase.from('correspondence').insert({
+        dispute_id: dispute.id,
+        user_id: userId,
+        entry_type: 'company_email',
+        title: m.subject || null,
+        content: m.body,
+        summary: m.snippet,
+        sender_address: m.fromAddress,
+        sender_name: m.fromName || null,
+        supplier_message_id: m.messageId,
+        detected_from_email: true,
+        email_thread_id: linkRow.id,
+        entry_date: m.receivedAt.toISOString(),
+      });
+      if (!error) imported++;
+    }
+    if (messages.length > 0) {
+      await supabase
+        .from('dispute_watchdog_links')
+        .update({
+          last_synced_at: new Date().toISOString(),
+          last_message_date: messages[messages.length - 1].receivedAt.toISOString(),
+        })
+        .eq('id', linkRow.id);
+    }
+  } catch (err) {
+    console.warn('[bot.link_email_thread] initial sync failed', err);
+    // Non-fatal — link is saved; cron will pick up on next pass.
+  }
+
+  let text = `✅ Linked the *${params.subject || 'email thread'}* to your *${dispute.provider_name}* dispute.\n`;
+  if (imported > 0) {
+    text += `Imported ${imported} message${imported === 1 ? '' : 's'} into the dispute history just now. New replies will auto-sync going forward — I'll alert you here when they land.`;
+  } else {
+    text += `Couldn't pull the messages immediately, but the watchdog will sync on its next cron run (within 30 min) and you'll see them in the dispute timeline.`;
+  }
   return { text };
 }
 
