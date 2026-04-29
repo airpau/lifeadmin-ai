@@ -3,21 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { normalizeSpendingCategoryKey, buildMoneyHubOverrideMaps, findMatchingCategoryOverride, resolveMoneyHubTransaction } from '@/lib/money-hub-classification';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { loadLearnedRules } from '@/lib/learning-engine';
-import { listSpaces } from '@/lib/spaces';
-import {
-  type BotSpaceScope,
-  applyTxSpaceFilter,
-  loadBotSpace,
-  matchesSpace,
-  resolveSpaceByName,
-  setBotActiveSpace,
-} from '@/lib/telegram/spaces';
-import {
-  EVENT_CATALOG,
-  getEventMeta,
-  type NotificationEventType,
-} from '@/lib/notifications/events';
-import { getEffectiveTier } from '@/lib/plan-limits';
+import { deriveRecurringGroup } from '@/lib/subscription-key';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -34,11 +20,9 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 /** Classify transactions using the same engine as the Money Hub dashboard */
 async function classifyTransactions(supabase: ReturnType<typeof getAdmin>, userId: string, startDate: string, endDate: string) {
-  // connection_id + account_id travel through so callers can space-filter
-  // the classified rows without a second fetch.
   const [{ data: txns }, { data: overrideRows }] = await Promise.all([
     supabase.from('bank_transactions')
-      .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type, connection_id, account_id')
+      .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
       .eq('user_id', userId)
       .gte('timestamp', startDate)
       .lt('timestamp', endDate)
@@ -145,14 +129,6 @@ export async function executeToolCall(
       return getSavingsChallenges(supabase, userId);
     case 'get_bank_connections':
       return getBankConnections(supabase, userId);
-    case 'remove_bank_connection':
-      return removeBankConnection(supabase, userId, toolInput.identifier as string);
-    case 'list_spaces':
-      return listSpacesTool(supabase, userId);
-    case 'set_active_space':
-      return setActiveSpaceTool(supabase, userId, toolInput.name as string);
-    case 'get_active_space':
-      return getActiveSpaceTool(supabase, userId);
     case 'get_verified_savings':
       return getVerifiedSavings(supabase, userId);
     case 'get_monthly_trends':
@@ -302,19 +278,6 @@ export async function executeToolCall(
         category: (toolInput.category as string | undefined) ?? 'general',
         priority: (toolInput.priority as string | undefined) ?? 'medium',
       });
-    case 'set_notification_schedule':
-      return setNotificationSchedule(supabase, userId, toolInput);
-    case 'disable_notification':
-      return toggleNotification(supabase, userId, toolInput.event as string, false);
-    case 'enable_notification':
-      return toggleNotification(supabase, userId, toolInput.event as string, true);
-    case 'list_notification_schedules':
-      return listNotificationSchedules(supabase, userId);
-    case 'set_quiet_hours':
-      return setQuietHours(supabase, userId, {
-        start: toolInput.start as string,
-        end: toolInput.end as string,
-      });
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -346,19 +309,11 @@ async function getSpendingSummary(
   const prevDate = new Date(year, mon - 2, 1).toISOString();
 
   // Use classification engine for both months
-  const [classifiedAll, prevClassifiedAll, connections, scope] = await Promise.all([
+  const [classified, prevClassified, connections] = await Promise.all([
     classifyTransactions(supabase, userId, startDate, endDate),
     classifyTransactions(supabase, userId, prevDate, startDate),
     supabase.from('bank_connections').select('bank_name, status, last_synced_at').eq('user_id', userId),
-    loadBotSpace(supabase, userId),
   ]);
-
-  const classified = scope.isDefault
-    ? classifiedAll
-    : classifiedAll.filter((t) => matchesSpace(t, scope));
-  const prevClassified = scope.isDefault
-    ? prevClassifiedAll
-    : prevClassifiedAll.filter((t) => matchesSpace(t, scope));
 
   const connData = connections.data ?? [];
   const EXPIRED_STATUSES = ['expired', 'expired_legacy', 'revoked'];
@@ -402,8 +357,7 @@ async function getSpendingSummary(
 
   const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
-  const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
-  let text = `*Spending Summary — ${monthLabel}${scopeHeader}*\n`;
+  let text = `*Spending Summary — ${monthLabel}*\n`;
   text += `Total Spending: *${fmt(grandTotal)}*\n`;
   if (totalIncome > 0) text += `Income: *${fmt(totalIncome)}*\n`;
   text += `\n`;
@@ -445,11 +399,7 @@ async function listTransactions(
   const maxResults = params.limit ?? 25;
 
   // Use classification engine to get proper categories
-  const classifiedAll = await classifyTransactions(supabase, userId, startDate, endDate);
-  const scope = await loadBotSpace(supabase, userId);
-  const classified = scope.isDefault
-    ? classifiedAll
-    : classifiedAll.filter((t) => matchesSpace(t, scope));
+  const classified = await classifyTransactions(supabase, userId, startDate, endDate);
 
   const connResult = await supabase.from('bank_connections').select('status, last_synced_at').eq('user_id', userId);
   const connData = connResult.data ?? [];
@@ -494,8 +444,7 @@ async function listTransactions(
 
   const display = filtered.slice(0, maxResults);
   const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
-  let text = `*Transactions — ${monthLabel}${scopeHeader}*`;
+  let text = `*Transactions — ${monthLabel}*`;
   if (targetCategory) text += ` (${CATEGORY_LABELS[targetCategory] || targetCategory})`;
   if (params.merchant) text += ` matching "${params.merchant}"`;
   text += `\n\n`;
@@ -574,14 +523,10 @@ async function getSubscriptions(
     return FINANCE_KEYWORDS.some(kw => lower.includes(kw));
   };
 
-  // Deduplicate by normalised provider name + amount band (mirrors website logic).
-  // Two separate subscriptions at the same provider but different amounts
-  // (e.g. two council-tax DDs for different properties) are kept distinct.
+  // Deduplicate by normalised provider name (same as website)
   const seen = new Set<string>();
   const deduped = data.filter(s => {
-    const normName = s.provider_name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const band = Math.round(Math.log(Math.max(Math.abs(parseFloat(String(s.amount)) || 0), 0.01)) / Math.log(1.1));
-    const key = `${normName}|${band}`;
+    const key = s.provider_name.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -1326,6 +1271,45 @@ async function addSubscription(
   userId: string,
   params: { provider_name: string; amount: number; billing_cycle: string; category: string },
 ): Promise<ToolResult> {
+  // Merge with existing active row for this provider, if one exists.
+  // Pocket users regularly say "add my Hounslow parking as yearly £144"
+  // when the item is already tracked — insertion would either duplicate
+  // or trip the partial unique index (see 20260422020000).
+  const recurringGroup = deriveRecurringGroup(params.provider_name);
+
+  if (recurringGroup) {
+    const { data: existing } = await supabase
+      .from('subscriptions')
+      .select('id, provider_name')
+      .eq('user_id', userId)
+      .eq('recurring_group', recurringGroup)
+      .is('dismissed_at', null)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      const { error: updErr } = await supabase
+        .from('subscriptions')
+        .update({
+          amount: params.amount,
+          billing_cycle: params.billing_cycle,
+          category: params.category,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .eq('user_id', userId);
+
+      if (updErr) {
+        return { text: `Failed to update existing ${existing.provider_name}: ${updErr.message}` };
+      }
+
+      const cycleA = params.billing_cycle;
+      const annualA = params.amount * (cycleA === 'monthly' ? 12 : cycleA === 'quarterly' ? 4 : 1);
+      return { text: `Updated existing *${existing.provider_name}* — ${fmt(params.amount)}/${cycleA} (${fmt(annualA)}/year). Category: ${params.category}.` };
+    }
+  }
+
   const { error } = await supabase.from('subscriptions').insert({
     user_id: userId,
     provider_name: params.provider_name,
@@ -1333,6 +1317,8 @@ async function addSubscription(
     billing_cycle: params.billing_cycle,
     category: params.category,
     status: 'active',
+    recurring_group: recurringGroup,
+    source: 'telegram',
   });
 
   if (error) {
@@ -1380,106 +1366,27 @@ async function getFinancialOverview(
   userId: string,
 ): Promise<ToolResult> {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const monthStart = new Date(year, month - 1, 1).toISOString();
-  const monthEnd = new Date(year, month, 1).toISOString();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
 
-  const scope = await loadBotSpace(supabase, userId);
-
-  // Two code paths: (1) default scope uses the same RPCs as Money Hub for
-  // authoritative totals. (2) Space-scoped calls fetch the month's raw
-  // transactions, filter to the Space, then apply the same transfer
-  // exclusions the RPC would.
-  let totalIncome = 0;
-  let totalSpending = 0;
-  let topCats: [string, number][] = [];
-
-  const sharedPromises = [
+  const [subs, disputes, banks, transactions, budgets, savings] = await Promise.all([
     supabase.from('subscriptions').select('amount, billing_cycle, category', { count: 'exact' })
       .eq('user_id', userId).eq('status', 'active').is('dismissed_at', null),
     supabase.from('disputes').select('id', { count: 'exact', head: true })
       .eq('user_id', userId).not('status', 'in', '("resolved","dismissed")'),
-    supabase.from('bank_connections').select('id, bank_name, status', { count: 'exact' })
-      .eq('user_id', userId).is('deleted_at', null),
+    supabase.from('bank_connections').select('bank_name, status', { count: 'exact' })
+      .eq('user_id', userId),
+    supabase.from('bank_transactions').select('amount, category')
+      .eq('user_id', userId).gte('timestamp', monthStart).lt('timestamp', monthEnd),
     supabase.from('money_hub_budgets').select('category, monthly_limit')
       .eq('user_id', userId),
     supabase.from('verified_savings').select('amount_saved, annual_saving')
       .eq('user_id', userId),
-  ] as const;
-
-  if (scope.isDefault) {
-    const [subs, disputes, banks, budgets, savings, incomeRes, spendRes, breakdownRes] = await Promise.all([
-      ...sharedPromises,
-      supabase.rpc('get_monthly_income_total', { p_user_id: userId, p_year: year, p_month: month }),
-      supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: year, p_month: month }),
-      supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: year, p_month: month }),
-    ]);
-    totalIncome = Number(incomeRes.data ?? 0);
-    totalSpending = Number(spendRes.data ?? 0);
-    type BreakdownRow = { category: string; category_total: string };
-    topCats = ((breakdownRes.data as BreakdownRow[]) ?? [])
-      .map((r) => [r.category, Number(r.category_total) || 0] as [string, number])
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5);
-
-    return renderOverview({
-      subs, disputes, banks, budgets, savings,
-      totalIncome, totalSpending, topCats,
-      scope, monthLabel: new Date(year, month - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
-    });
-  }
-
-  // Space-scoped path.
-  let txQuery = supabase
-    .from('bank_transactions')
-    .select('amount, user_category, income_type, category, connection_id, account_id')
-    .eq('user_id', userId)
-    .gte('timestamp', monthStart)
-    .lt('timestamp', monthEnd);
-  txQuery = applyTxSpaceFilter(txQuery, scope);
-
-  const [subs, disputes, banks, budgets, savings, txRes] = await Promise.all([
-    ...sharedPromises,
-    txQuery,
   ]);
 
-  const catTotals: Record<string, number> = {};
-  for (const t of (txRes.data ?? []) as Array<{ amount: number; user_category: string | null; income_type: string | null; category: string | null }>) {
-    if (isTransferLike(t)) continue;
-    const amt = Number(t.amount);
-    if (amt > 0) {
-      totalIncome += amt;
-    } else if (amt < 0) {
-      if (t.user_category === 'income') continue;
-      totalSpending += -amt;
-      const cat = t.user_category || 'other';
-      catTotals[cat] = (catTotals[cat] ?? 0) + -amt;
-    }
-  }
-  topCats = Object.entries(catTotals).sort(([, a], [, b]) => b - a).slice(0, 5);
+  const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
-  return renderOverview({
-    subs, disputes, banks, budgets, savings,
-    totalIncome, totalSpending, topCats,
-    scope, monthLabel: new Date(year, month - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
-  });
-}
-
-function renderOverview(args: {
-  subs: { data: Array<{ amount: string | number; billing_cycle: string }> | null; count: number | null };
-  disputes: { count: number | null };
-  banks: { data: Array<{ id: string; bank_name: string | null; status: string }> | null };
-  budgets: { data: unknown[] | null };
-  savings: { data: Array<{ amount_saved: string | number | null; annual_saving: string | number | null }> | null };
-  totalIncome: number;
-  totalSpending: number;
-  topCats: [string, number][];
-  scope: BotSpaceScope;
-  monthLabel: string;
-}): ToolResult {
-  const { subs, disputes, banks, budgets, savings, totalIncome, totalSpending, topCats, scope, monthLabel } = args;
-
+  // Calculate totals
   const subsList = subs.data ?? [];
   const monthlySubsTotal = subsList.reduce((sum, s) => {
     const amt = Number(s.amount);
@@ -1489,20 +1396,26 @@ function renderOverview(args: {
     return sum;
   }, 0);
 
+  const txs = transactions.data ?? [];
+  const totalSpending = txs.filter(t => Number(t.amount) < 0).reduce((sum, t) => sum + (-Number(t.amount)), 0);
+  const totalIncome = txs.filter(t => Number(t.amount) > 0).reduce((sum, t) => sum + Number(t.amount), 0);
+
   const totalSaved = (savings.data ?? []).reduce((sum, s) => sum + Number(s.amount_saved ?? 0), 0);
   const annualSaved = (savings.data ?? []).reduce((sum, s) => sum + Number(s.annual_saving ?? 0), 0);
 
-  // Banks count respects the active Space — same as the dashboard's
-  // Accounts tile when a Space is active.
-  const banksInScope = scope.connectionIds
-    ? (banks.data ?? []).filter((b) => scope.connectionIds!.includes(b.id))
-    : (banks.data ?? []);
-  const activeBanks = banksInScope.filter((b) => b.status === 'active');
+  // Category breakdown (top 5)
+  const catTotals: Record<string, number> = {};
+  txs.filter(t => Number(t.amount) < 0).forEach(t => {
+    const cat = t.category || 'other';
+    if (cat !== 'transfers') {
+      catTotals[cat] = (catTotals[cat] ?? 0) + (-Number(t.amount));
+    }
+  });
+  const topCats = Object.entries(catTotals).sort(([, a], [, b]) => b - a).slice(0, 5);
 
-  const scopeHeader = scope.space && !scope.isDefault
-    ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}`
-    : '';
-  let text = `*Financial Overview — ${monthLabel}${scopeHeader}*\n\n`;
+  const activeBanks = (banks.data ?? []).filter(b => b.status === 'active');
+
+  let text = `*Financial Overview — ${monthLabel}*\n\n`;
 
   text += `*This Month:*\n`;
   text += `• Income: *${fmt(totalIncome)}*\n`;
@@ -1612,36 +1525,21 @@ async function getBankConnections(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
 ): Promise<ToolResult> {
-  // Hide revoked + expired_legacy (terminal states the user can't fix) and
-  // anything soft-deleted via /api/bank/remove. Keeps the bot list in sync
-  // with what Money Hub shows. When the user has scoped to a specific
-  // Space, narrow the list to connections that belong to it.
-  const scope = await loadBotSpace(supabase, userId);
-  let query = supabase
+  const { data, error } = await supabase
     .from('bank_connections')
-    .select('id, bank_name, status, last_synced_at, connected_at, account_display_names, consent_expires_at')
+    .select('bank_name, status, last_synced_at, connected_at, account_display_names, consent_expires_at')
     .eq('user_id', userId)
-    .is('deleted_at', null)
-    .not('status', 'in', '("revoked","expired_legacy")')
     .order('connected_at', { ascending: false });
-  if (scope.connectionIds) {
-    if (scope.connectionIds.length === 0) {
-      return { text: `No bank connections in *${scope.space?.name ?? 'this Space'}* yet. Connect one or say "switch to everything" to see all accounts.` };
-    }
-    query = query.in('id', scope.connectionIds);
-  }
-  const { data, error } = await query;
 
   if (error || !data || data.length === 0) {
     return { text: 'No bank accounts connected. Connect one at paybacker.co.uk/dashboard/subscriptions' };
   }
 
   const statusEmoji: Record<string, string> = {
-    active: '🟢', expired: '🔴', expiring_soon: '🟡', token_expired: '🔴',
+    active: '🟢', expired: '🔴', expiring_soon: '🟡', revoked: '⚫', expired_legacy: '⚫',
   };
 
-  const scopeTag = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
-  let text = `*Bank Connections (${data.length})${scopeTag}*\n\n`;
+  let text = `*Bank Connections (${data.length})*\n\n`;
   for (const b of data) {
     const emoji = statusEmoji[b.status] ?? '⚪';
     text += `${emoji} *${b.bank_name ?? 'Unknown Bank'}* — ${b.status.replace(/_/g, ' ')}\n`;
@@ -1654,155 +1552,6 @@ async function getBankConnections(
   }
 
   return { text };
-}
-
-/**
- * In-memory replica of get_monthly_{income,spending}_total's exclusions
- * so bot paths that can't use the RPCs (because they need a Space
- * filter) still match what Money Hub reports.
- */
-export function isTransferLike(t: {
-  user_category?: string | null;
-  income_type?: string | null;
-  category?: string | null;
-}): boolean {
-  const userCat = (t.user_category ?? '').toString();
-  const incomeType = (t.income_type ?? '').toString();
-  const rawCat = (t.category ?? '').toString().toUpperCase();
-  if (rawCat === 'TRANSFER') return true;
-  if (userCat === 'transfers') return true;
-  // Only pure transfers are excluded. credit_loan / loan_repayment
-  // contribute to income totals via migration 20260423020000 — they
-  // surface as "Loan Credit" in the Money Hub UI, so dropping them
-  // here would make Telegram trends diverge downward from the web.
-  if (incomeType === 'transfer') return true;
-  return false;
-}
-
-/**
- * Soft-delete a bank connection the user no longer wants to see —
- * typically a sandbox/test connection still showing as revoked.
- * Matches by name substring (case-insensitive) so the user can say
- * "remove the modelo connection" rather than quote a UUID.
- */
-async function removeBankConnection(
-  supabase: ReturnType<typeof getAdmin>,
-  userId: string,
-  identifier: string,
-): Promise<ToolResult> {
-  const needle = identifier?.trim().toLowerCase();
-  if (!needle) {
-    return { text: "I need a bank name to remove — try e.g. 'remove the modelo connection'." };
-  }
-
-  const { data: matches } = await supabase
-    .from('bank_connections')
-    .select('id, bank_name, status, account_display_names')
-    .eq('user_id', userId)
-    .is('deleted_at', null);
-
-  const candidates = (matches ?? []).filter((m) => {
-    const name = (m.bank_name ?? '').toLowerCase();
-    const accounts = (m.account_display_names ?? []).join(' ').toLowerCase();
-    return name.includes(needle) || accounts.includes(needle);
-  });
-
-  if (candidates.length === 0) {
-    return { text: `No connection matches "${identifier}". Try get_bank_connections to see what's connected.` };
-  }
-  if (candidates.length > 1) {
-    const list = candidates.map((c) => `• ${c.bank_name} (${c.status})`).join('\n');
-    return { text: `Multiple connections match "${identifier}":\n${list}\n\nTell me which one — e.g. include the bank name as it appears above.` };
-  }
-
-  const target = candidates[0];
-  const { error } = await supabase
-    .from('bank_connections')
-    .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq('id', target.id)
-    .eq('user_id', userId);
-
-  if (error) {
-    return { text: `Couldn't remove ${target.bank_name}: ${error.message}` };
-  }
-
-  return { text: `✅ Removed *${target.bank_name}* from your connections. It won't appear here or in Money Hub again.` };
-}
-
-// ============================================================
-// ACCOUNT SPACES — scope-switch tools for the bot
-// ============================================================
-
-async function listSpacesTool(
-  supabase: ReturnType<typeof getAdmin>,
-  userId: string,
-): Promise<ToolResult> {
-  const [spaces, activeScope] = await Promise.all([
-    listSpaces(supabase, userId),
-    loadBotSpace(supabase, userId),
-  ]);
-
-  if (spaces.length === 0) {
-    return { text: 'No Spaces set up yet. Create one at paybacker.co.uk/dashboard/settings/spaces.' };
-  }
-
-  const activeId = activeScope.space?.id ?? null;
-  let text = `*Money Hub Spaces (${spaces.length})*\n\n`;
-  for (const s of spaces) {
-    const marker = s.id === activeId ? '→ ' : '  ';
-    const tag = s.is_default ? ' · default' : '';
-    const scope =
-      s.connection_ids.length === 0 && s.account_refs.length === 0
-        ? 'all connections'
-        : `${s.connection_ids.length} connection${s.connection_ids.length === 1 ? '' : 's'}${s.account_refs.length > 0 ? ` + ${s.account_refs.length} account${s.account_refs.length === 1 ? '' : 's'}` : ''}`;
-    text += `${marker}${s.emoji ?? '📁'} *${s.name}*${tag}\n   ${scope}\n`;
-  }
-  text += `\nSay "switch to <name>" to change scope, or "switch to everything" to clear it.`;
-  return { text };
-}
-
-async function setActiveSpaceTool(
-  supabase: ReturnType<typeof getAdmin>,
-  userId: string,
-  name: string,
-): Promise<ToolResult> {
-  if (!name?.trim()) {
-    return { text: 'Which Space? Try "switch to business" or list_spaces to see what\'s available.' };
-  }
-
-  const match = await resolveSpaceByName(supabase, userId, name);
-  if (match === null) {
-    return { text: `I couldn't find a Space matching "${name}". Try list_spaces to see what's available.` };
-  }
-  if (match === 'AMBIGUOUS') {
-    return { text: `"${name}" matches more than one Space. Be more specific — try list_spaces to see the full names.` };
-  }
-
-  // If the user explicitly asked for "everything" / "all" / etc., clear
-  // the override so future sessions inherit the profile default. For a
-  // specific Space, persist it on the session.
-  const alias = ['everything', 'all', 'default', 'any', 'clear', 'reset'].includes(
-    name.trim().toLowerCase(),
-  );
-  await setBotActiveSpace(supabase, userId, alias ? null : match.id);
-
-  return {
-    text: `✅ Scope set to ${match.emoji ?? '📁'} *${match.name}*${match.is_default ? ' (default)' : ''}. All financial answers will now reflect this Space until you switch again.`,
-  };
-}
-
-async function getActiveSpaceTool(
-  supabase: ReturnType<typeof getAdmin>,
-  userId: string,
-): Promise<ToolResult> {
-  const scope = await loadBotSpace(supabase, userId);
-  if (!scope.space) {
-    return { text: 'No Spaces set up yet — everything is in scope by default.' };
-  }
-  const tag = scope.isDefault ? ' (covers all connections)' : '';
-  return {
-    text: `Currently scoped to ${scope.space.emoji ?? '📁'} *${scope.space.name}*${tag}. Say "switch to <name>" to change, or list_spaces to see all options.`,
-  };
 }
 
 async function getVerifiedSavings(
@@ -1846,55 +1595,30 @@ async function getMonthlyTrends(
   const now = new Date();
   const startDate = new Date(now.getFullYear(), now.getMonth() - lookback, 1).toISOString();
 
-  const scope = await loadBotSpace(supabase, userId);
-
-  // Pull the same columns the get_monthly_*_total RPCs filter on so we
-  // can replicate their exclusions client-side (one query is cheaper
-  // than N-months × 2 RPC round-trips). Otherwise transfers + credit-loan
-  // flows inflate both sides and make trends disagree with Money Hub.
-  let query = supabase
+  const { data, error } = await supabase
     .from('bank_transactions')
-    .select('amount, timestamp, category, user_category, income_type, connection_id, account_id')
+    .select('amount, timestamp')
     .eq('user_id', userId)
     .gte('timestamp', startDate)
     .order('timestamp', { ascending: true });
-  query = applyTxSpaceFilter(query, scope);
-  const { data, error } = await query;
 
   if (error || !data || data.length === 0) {
-    const tag = scope.space && !scope.isDefault ? ` in ${scope.space.name}` : '';
-    return { text: `No transaction data found for the last ${lookback} months${tag}.` };
+    return { text: `No transaction data found for the last ${lookback} months.` };
   }
 
   const monthlyData: Record<string, { income: number; spending: number }> = {};
   data.forEach((txn: any) => {
-    const rawCat = (txn.category ?? '').toString().toUpperCase();
-    const userCat = (txn.user_category ?? '').toString();
-    const incomeType = (txn.income_type ?? '').toString();
-    if (rawCat === 'TRANSFER') return;
-
     const m = txn.timestamp.slice(0, 7);
     const key = `${m}-01`;
     const amt = Number(txn.amount);
     if (!monthlyData[key]) monthlyData[key] = { income: 0, spending: 0 };
-
-    if (amt > 0) {
-      if (userCat === 'transfers') return;
-      // Keep credit_loan / loan_repayment — the income RPC includes
-      // them since migration 20260423020000; dropping them here would
-      // make the bot trend short by real loan drawdowns.
-      if (incomeType === 'transfer') return;
-      monthlyData[key].income += amt;
-    } else if (amt < 0) {
-      if (userCat === 'transfers' || userCat === 'income') return;
-      monthlyData[key].spending += -amt;
-    }
+    if (amt > 0) monthlyData[key].income += amt;
+    else monthlyData[key].spending += (-amt);
   });
 
   const sorted = Object.entries(monthlyData).sort(([a], [b]) => a.localeCompare(b));
 
-  const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
-  let text = `*Monthly Trends (last ${lookback} months)${scopeHeader}*\n\n`;
+  let text = `*Monthly Trends (last ${lookback} months)*\n\n`;
   for (const [month, vals] of sorted) {
     const [y, m] = month.split('-').map(Number);
     const label = new Date(y, m - 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -1927,18 +1651,11 @@ async function getIncomeBreakdown(
   const startDate = new Date(year, mon - 1, 1).toISOString();
   const endDate = new Date(year, mon, 1).toISOString();
 
-  const [classifiedAll, scope] = await Promise.all([
-    classifyTransactions(supabase, userId, startDate, endDate),
-    loadBotSpace(supabase, userId),
-  ]);
-  const classified = scope.isDefault
-    ? classifiedAll
-    : classifiedAll.filter((t) => matchesSpace(t, scope));
+  const classified = await classifyTransactions(supabase, userId, startDate, endDate);
   const incomeTxns = classified.filter(t => t.resolved.kind === 'income');
 
   if (incomeTxns.length === 0) {
-    const tag = scope.space && !scope.isDefault ? ` in ${scope.space.name}` : '';
-    return { text: `No income found for ${targetMonth}${tag}.` };
+    return { text: `No income found for ${targetMonth}.` };
   }
 
   const total = incomeTxns.reduce((sum, t) => sum + Number(t.amount), 0);
@@ -1955,8 +1672,7 @@ async function getIncomeBreakdown(
   const sorted = Object.entries(sources).sort(([, a], [, b]) => b - a);
 
   const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
-  let text = `*Income Breakdown — ${monthLabel}${scopeHeader}*\n`;
+  let text = `*Income Breakdown — ${monthLabel}*\n`;
   text += `Total: *${fmt(total)}*\n\n`;
 
   for (const [source, amount] of sorted) {
@@ -2321,6 +2037,56 @@ async function addContract(
   },
 ): Promise<ToolResult> {
   const annual = params.monthly_cost * 12;
+  const recurringGroup = deriveRecurringGroup(params.provider_name);
+
+  // If there's already an active row for this provider, augment it with
+  // contract fields instead of inserting a duplicate. Contracts and
+  // subscriptions share the same row in this schema (contract_type !=
+  // null distinguishes them) so the partial unique index in
+  // 20260422020000 would otherwise reject the insert.
+  if (recurringGroup) {
+    const { data: existing } = await supabase
+      .from('subscriptions')
+      .select('id, provider_name')
+      .eq('user_id', userId)
+      .eq('recurring_group', recurringGroup)
+      .is('dismissed_at', null)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      const { error: updErr } = await supabase
+        .from('subscriptions')
+        .update({
+          category: params.category,
+          amount: params.monthly_cost,
+          billing_cycle: 'monthly',
+          contract_type: 'fixed_contract',
+          contract_start_date: params.contract_start_date ?? null,
+          contract_end_date: params.contract_end_date ?? null,
+          auto_renews: params.auto_renews,
+          interest_rate: params.interest_rate ?? null,
+          remaining_balance: params.remaining_balance ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .eq('user_id', userId);
+
+      if (updErr) {
+        return { text: `Failed to update contract: ${updErr.message}` };
+      }
+
+      let textA = `Updated contract on existing *${existing.provider_name}* [${params.category}] — ${fmt(params.monthly_cost)}/month (${fmt(annual)}/year)`;
+      if (params.contract_end_date) {
+        const daysLeftA = Math.ceil(
+          (new Date(params.contract_end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+        );
+        textA += `\nEnds: ${fmtDate(params.contract_end_date)} (${daysLeftA} days)`;
+      }
+      return { text: textA };
+    }
+  }
 
   const { error } = await supabase.from('subscriptions').insert({
     user_id: userId,
@@ -2336,6 +2102,7 @@ async function addContract(
     remaining_balance: params.remaining_balance ?? null,
     status: 'active',
     source: 'telegram',
+    recurring_group: recurringGroup,
   });
 
   if (error) {
@@ -2946,84 +2713,32 @@ async function getMonthlyRecap(
   const targetDate = new Date(targetYear, targetMonth - 1, 1);
   const prevDate = new Date(targetYear, targetMonth - 2, 1);
 
-  const scope = await loadBotSpace(supabase, userId);
+  const [spendRes, prevSpendRes, incomeRes, breakdownRes] = await Promise.all([
+    supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
+    supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: prevDate.getFullYear(), p_month: prevDate.getMonth() + 1 }),
+    supabase.rpc('get_monthly_income_total', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
+    supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
+  ]);
 
-  let spending = 0;
-  let prevSpending = 0;
-  let income = 0;
-  let top5: Array<{ category: string; total: number }> = [];
-
-  if (scope.isDefault) {
-    const [spendRes, prevSpendRes, incomeRes, breakdownRes] = await Promise.all([
-      supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
-      supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: prevDate.getFullYear(), p_month: prevDate.getMonth() + 1 }),
-      supabase.rpc('get_monthly_income_total', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
-      supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
-    ]);
-    spending = parseFloat(spendRes.data) || 0;
-    prevSpending = parseFloat(prevSpendRes.data) || 0;
-    income = parseFloat(incomeRes.data) || 0;
-    type SpendingRow = { category: string; category_total: string };
-    top5 = ((breakdownRes.data as SpendingRow[]) ?? [])
-      .map((r) => ({ category: r.category, total: parseFloat(r.category_total) || 0 }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-  } else {
-    // Space-scoped: raw SELECT + in-JS aggregation matching the RPCs.
-    const monthStart = targetDate.toISOString();
-    const monthEnd = new Date(targetYear, targetMonth, 1).toISOString();
-    const prevStart = prevDate.toISOString();
-    const prevEnd = monthStart;
-
-    const [curRes, prevRes] = await Promise.all([
-      applyTxSpaceFilter(
-        supabase.from('bank_transactions')
-          .select('amount, user_category, income_type, category, connection_id, account_id')
-          .eq('user_id', userId).gte('timestamp', monthStart).lt('timestamp', monthEnd),
-        scope,
-      ),
-      applyTxSpaceFilter(
-        supabase.from('bank_transactions')
-          .select('amount, user_category, income_type, category, connection_id, account_id')
-          .eq('user_id', userId).gte('timestamp', prevStart).lt('timestamp', prevEnd),
-        scope,
-      ),
-    ]);
-
-    const cats: Record<string, number> = {};
-    for (const t of (curRes.data ?? []) as Array<{ amount: number; user_category: string | null; income_type: string | null; category: string | null }>) {
-      if (isTransferLike(t)) continue;
-      const amt = Number(t.amount);
-      if (amt > 0) income += amt;
-      else if (amt < 0) {
-        if (t.user_category === 'income') continue;
-        spending += -amt;
-        const cat = t.user_category || 'other';
-        cats[cat] = (cats[cat] ?? 0) + -amt;
-      }
-    }
-    for (const t of (prevRes.data ?? []) as Array<{ amount: number; user_category: string | null; income_type: string | null; category: string | null }>) {
-      if (isTransferLike(t)) continue;
-      const amt = Number(t.amount);
-      if (amt < 0 && t.user_category !== 'income') prevSpending += -amt;
-    }
-    top5 = Object.entries(cats)
-      .map(([category, total]) => ({ category, total }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-  }
+  const spending = parseFloat(spendRes.data) || 0;
+  const prevSpending = parseFloat(prevSpendRes.data) || 0;
+  const income = parseFloat(incomeRes.data) || 0;
 
   if (spending === 0 && income === 0) {
-    const tag = scope.space && !scope.isDefault ? ` in ${scope.space.name}` : '';
-    return { text: `No financial data found for ${targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}${tag}. Connect a bank account at paybacker.co.uk/dashboard/money-hub.` };
+    return { text: `No financial data found for ${targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}. Connect a bank account at paybacker.co.uk/dashboard/money-hub.` };
   }
 
   const monthLabel = targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const savingsRate = income > 0 ? ((income - spending) / income) * 100 : 0;
   const spendingDiff = spending - prevSpending;
 
-  const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
-  let text = `📊 *${monthLabel} Financial Recap${scopeHeader}*\n\n`;
+  type SpendingRow = { category: string; category_total: string };
+  const top5 = ((breakdownRes.data as SpendingRow[]) ?? [])
+    .map((r) => ({ category: r.category, total: parseFloat(r.category_total) || 0 }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+
+  let text = `📊 *${monthLabel} Financial Recap*\n\n`;
   text += `💰 Income: *${fmt(income)}*\n`;
   text += `💸 Spending: *${fmt(spending)}*\n`;
   const net = income - spending;
@@ -4207,20 +3922,6 @@ async function createSupportTicket(
     .eq('id', userId)
     .single();
 
-  // Look up the user's Telegram chat_id from telegram_sessions so Riley can
-  // DM them back. If we can't find one, fall back to source='chatbot' (no
-  // Telegram delivery — Riley will email as before).
-  const { data: tgSession } = await supabase
-    .from('telegram_sessions')
-    .select('chat_id')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single();
-  const telegramChatId = tgSession?.chat_id ?? null;
-
-  const ticketSource = telegramChatId ? 'telegram' : 'chatbot';
-
   const { data: ticket, error } = await supabase
     .from('support_tickets')
     .insert({
@@ -4229,13 +3930,9 @@ async function createSupportTicket(
       description: params.description,
       category: params.category,
       priority: params.priority,
-      source: ticketSource,
+      source: 'chatbot',
       status: 'open',
-      metadata: {
-        channel: 'telegram',
-        telegram_chat_id: telegramChatId,
-        telegram_session_lookup_at: new Date().toISOString(),
-      },
+      metadata: { channel: 'telegram' },
     })
     .select('id, ticket_number, created_at')
     .single();
@@ -4263,7 +3960,7 @@ async function createSupportTicket(
       const resend = new Resend(process.env.RESEND_API_KEY!);
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
-        replyTo: process.env.RESEND_REPLY_TO || 'support@mail.paybacker.co.uk',
+        replyTo: 'support@paybacker.co.uk',
         to: userEmail,
         subject: `Support ticket received: ${ref}`,
         html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -4335,345 +4032,4 @@ async function createSupportTicket(
   text += `_Reply to the confirmation email if you need to add more details._`;
 
   return { text };
-}
-
-// ============================================================
-// NOTIFICATION SCHEDULE HANDLERS
-// ============================================================
-// Implementations for the user-configurable schedule tools. The
-// agent calls these when the user asks things like "send me a morning
-// summary at 9am" or "stop sending renewal reminders". Tier gates +
-// validation enforced here, not at the schema level — that way the
-// agent can return helpful upgrade prompts to the user rather than a
-// blank failure.
-
-/**
- * Schedule a notification event for the user. Called by the agent
- * after parsing their natural-language request into structured args.
- */
-async function setNotificationSchedule(
-  supabase: ReturnType<typeof getAdmin>,
-  userId: string,
-  args: Record<string, unknown>,
-): Promise<ToolResult> {
-  const event = args.event as NotificationEventType;
-  const meta = getEventMeta(event);
-  if (!meta) {
-    return { text: `Unknown notification event: ${event}.` };
-  }
-
-  // Tier gate
-  const tier = await getEffectiveTier(userId);
-  if (tier === 'free') {
-    return {
-      text:
-        `Custom notification schedules are part of Paybacker Essential and Pro. ` +
-        `Upgrade and you can configure your ${meta.label} timing yourself.\n\n` +
-        `paybacker.co.uk/pricing`,
-    };
-  }
-
-  // Schedule-kind gate — only schedulable events accept this tool. The
-  // agent should pick disable/enable for system events, but defend here
-  // anyway in case it slips.
-  if (
-    meta.scheduleKind !== 'cron' &&
-    meta.scheduleKind !== 'lead_time' &&
-    meta.scheduleKind !== 'threshold'
-  ) {
-    return {
-      text:
-        `${meta.label} can't be rescheduled — it's a real-time alert that fires when something is detected. ` +
-        `You can use disable_notification or enable_notification instead.`,
-    };
-  }
-
-  // Validate matching args
-  const cronExpr = (args.cron_expression as string | undefined) ?? null;
-  const leadTimeDays = (args.lead_time_days as number[] | undefined) ?? null;
-  const thresholdPercent = (args.threshold_percent as number | undefined) ?? null;
-  const customPrompt = (args.custom_prompt as string | undefined) ?? null;
-
-  if (meta.scheduleKind === 'cron') {
-    if (!cronExpr) {
-      return {
-        text: `That event needs a time. Tell me when, e.g. "9am every morning" → I\'ll set it to "0 9 * * *".`,
-      };
-    }
-    if (cronExpr.trim().split(/\s+/).length !== 5) {
-      return { text: `Invalid cron expression: must be 5 fields. Got "${cronExpr}".` };
-    }
-  } else if (meta.scheduleKind === 'lead_time') {
-    if (!leadTimeDays || leadTimeDays.length === 0) {
-      return {
-        text: `${meta.label} needs days-before triggers. E.g. [60, 14] for 60 and 14 days ahead.`,
-      };
-    }
-    if (leadTimeDays.some((d) => d < 0 || d > 365)) {
-      return { text: `Lead-time days must be between 0 and 365.` };
-    }
-  } else if (meta.scheduleKind === 'threshold') {
-    if (thresholdPercent == null) {
-      return { text: `${meta.label} needs a threshold percentage (0-200).` };
-    }
-    if (thresholdPercent < 0 || thresholdPercent > 200) {
-      return { text: `Threshold must be 0-200.` };
-    }
-  }
-
-  // Pro-only: custom_prompt
-  if (customPrompt && tier !== 'pro') {
-    return {
-      text:
-        `Custom prompts are a Pro feature. I can still set the timing for you on Essential — ` +
-        `try again without the style preference.`,
-    };
-  }
-
-  // Upsert via the user_chat unique index — same (user, event, source=user_chat)
-  // overwrites previous, no duplicates.
-  const row = {
-    user_id: userId,
-    event_type: event,
-    schedule_kind: meta.scheduleKind,
-    cron_expression: cronExpr,
-    cron_timezone: 'Europe/London',
-    lead_time_days: leadTimeDays,
-    threshold:
-      thresholdPercent != null
-        ? { value: thresholdPercent, unit: 'percent' }
-        : null,
-    custom_prompt: customPrompt,
-    enabled: true,
-    source: 'user_chat',
-    updated_at: new Date().toISOString(),
-  };
-
-  const { error } = await supabase
-    .from('user_notification_schedules')
-    .upsert(row, { onConflict: 'user_id,event_type' });
-
-  if (error) {
-    return { text: `Couldn't save your schedule: ${error.message}` };
-  }
-
-  // Friendly confirmation per kind
-  if (meta.scheduleKind === 'cron') {
-    return {
-      text: `✓ Saved. ${meta.label} will fire on cron "${cronExpr}" (${row.cron_timezone}).`,
-    };
-  }
-  if (meta.scheduleKind === 'lead_time') {
-    return {
-      text: `✓ Saved. ${meta.label} will fire ${leadTimeDays!.join(', ')} days before each trigger.`,
-    };
-  }
-  return {
-    text: `✓ Saved. ${meta.label} will fire when you reach ${thresholdPercent}% of the limit.`,
-  };
-}
-
-async function toggleNotification(
-  supabase: ReturnType<typeof getAdmin>,
-  userId: string,
-  event: string,
-  enabled: boolean,
-): Promise<ToolResult> {
-  const meta = getEventMeta(event as NotificationEventType);
-  if (!meta) return { text: `Unknown notification event: ${event}.` };
-
-  if (!enabled && meta.mandatory) {
-    return {
-      text: `${meta.label} can't be disabled — these are required service notifications (e.g. support replies). Without them you wouldn't know when we'd answered you.`,
-    };
-  }
-
-  if (!enabled && meta.critical) {
-    // The agent should already have warned the user, but enforce a soft
-    // confirmation hint in the response. We DO honour the disable — users
-    // are adults — but flag it.
-    // (No interruption here; the user said disable, we disable.)
-  }
-
-  // Upsert: keep existing custom_prompt / cron / etc. if any.
-  const existing = await supabase
-    .from('user_notification_schedules')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('event_type', event)
-    .eq('source', 'user_chat')
-    .maybeSingle();
-
-  if (existing.data) {
-    const { error } = await supabase
-      .from('user_notification_schedules')
-      .update({ enabled, updated_at: new Date().toISOString() })
-      .eq('id', existing.data.id);
-    if (error) return { text: `Couldn't update: ${error.message}` };
-  } else {
-    // No row yet — insert one as 'always_on' kind so the toggle is recorded.
-    const { error } = await supabase.from('user_notification_schedules').insert({
-      user_id: userId,
-      event_type: event,
-      schedule_kind: 'always_on',
-      enabled,
-      source: 'user_chat',
-    });
-    if (error) return { text: `Couldn't update: ${error.message}` };
-  }
-
-  // Also reflect in notification_preferences so the dispatcher honours
-  // it across all channels even if no per-channel pref existed yet.
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', userId)
-    .maybeSingle();
-  if (profile) {
-    const update = enabled
-      ? {
-          email: meta.defaultEmail,
-          telegram: meta.defaultTelegram,
-          whatsapp: meta.defaultWhatsapp,
-          push: meta.defaultPush,
-        }
-      : { email: false, telegram: false, whatsapp: false, push: false };
-    await supabase
-      .from('notification_preferences')
-      .upsert(
-        {
-          user_id: userId,
-          event_type: event,
-          ...update,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id,event_type' },
-      );
-  }
-
-  return {
-    text: enabled
-      ? `✓ ${meta.label} is back on.`
-      : `✓ ${meta.label} is off. Tell me "turn ${meta.label} back on" any time.`,
-  };
-}
-
-async function listNotificationSchedules(
-  supabase: ReturnType<typeof getAdmin>,
-  userId: string,
-): Promise<ToolResult> {
-  const tier = await getEffectiveTier(userId);
-
-  const { data: rows } = await supabase
-    .from('user_notification_schedules')
-    .select('event_type, schedule_kind, cron_expression, lead_time_days, threshold, custom_prompt, enabled')
-    .eq('user_id', userId)
-    .eq('source', 'user_chat')
-    .order('event_type');
-
-  interface ScheduleListRow {
-    event_type: string;
-    schedule_kind: string;
-    cron_expression: string | null;
-    lead_time_days: number[] | null;
-    threshold: { value: number; unit: string } | null;
-    custom_prompt: string | null;
-    enabled: boolean;
-  }
-  const customByEvent = new Map<string, ScheduleListRow>();
-  for (const r of (rows ?? []) as ScheduleListRow[]) customByEvent.set(r.event_type, r);
-
-  let text = `*Your notification schedules*\n\n`;
-
-  // Group by category so the user can quickly see what's scheduled, what's
-  // detection-driven, and what's mandatory.
-  const grouped: Record<string, string[]> = {
-    schedulable: [],
-    lead_time: [],
-    threshold: [],
-    system: [],
-  };
-
-  for (const meta of EVENT_CATALOG) {
-    if (meta.scheduleKind === 'none') continue;
-
-    const custom = customByEvent.get(meta.event);
-    const enabled = custom?.enabled ?? true;
-
-    let line = `${enabled ? '🔔' : '🔕'} ${meta.label}`;
-    if (meta.proOnly) line += ` (Pro)`;
-    if (meta.mandatory) line += ` _required_`;
-
-    if (custom && enabled) {
-      if (meta.scheduleKind === 'cron' && custom.cron_expression) {
-        line += ` — _custom: ${custom.cron_expression}_`;
-      } else if (meta.scheduleKind === 'lead_time' && custom.lead_time_days?.length) {
-        line += ` — _${custom.lead_time_days.join(', ')}d ahead_`;
-      } else if (meta.scheduleKind === 'threshold' && custom.threshold) {
-        const t = custom.threshold as { value: number; unit: string };
-        line += ` — _at ${t.value}${t.unit === 'percent' ? '%' : ''}_`;
-      }
-      if (custom.custom_prompt) {
-        line += ` 🎨`;
-      }
-    } else if (meta.scheduleKind === 'cron' && meta.defaultCron) {
-      line += ` — default ${meta.defaultCron}`;
-    } else if (meta.scheduleKind === 'lead_time' && meta.defaultLeadTimeDays) {
-      line += ` — default ${meta.defaultLeadTimeDays.join(', ')}d ahead`;
-    }
-
-    if (meta.scheduleKind === 'cron') grouped.schedulable.push(line);
-    else if (meta.scheduleKind === 'lead_time') grouped.lead_time.push(line);
-    else if (meta.scheduleKind === 'threshold') grouped.threshold.push(line);
-    else grouped.system.push(line);
-  }
-
-  if (grouped.schedulable.length > 0) {
-    text += `*Daily/weekly summaries* (you set the time):\n${grouped.schedulable.join('\n')}\n\n`;
-  }
-  if (grouped.lead_time.length > 0) {
-    text += `*Reminders* (you set days-ahead):\n${grouped.lead_time.join('\n')}\n\n`;
-  }
-  if (grouped.threshold.length > 0) {
-    text += `*Threshold alerts* (you set the trigger):\n${grouped.threshold.join('\n')}\n\n`;
-  }
-  if (grouped.system.length > 0) {
-    text += `*Real-time alerts* (fire when detected):\n${grouped.system.join('\n')}\n\n`;
-  }
-
-  if (tier === 'free') {
-    text += `_Upgrade to Essential or Pro to customise these times yourself._\n`;
-  } else if (tier === 'essential') {
-    text += `_Pro adds custom prompts (style preferences) per schedule._\n`;
-  }
-
-  return { text };
-}
-
-async function setQuietHours(
-  supabase: ReturnType<typeof getAdmin>,
-  userId: string,
-  args: { start: string; end: string },
-): Promise<ToolResult> {
-  const valid = (s: string) => /^$|^([01]\d|2[0-3]):([0-5]\d)$/.test(s);
-  if (!valid(args.start) || !valid(args.end)) {
-    return { text: `Times must be HH:MM (24h) or empty. Got start="${args.start}" end="${args.end}".` };
-  }
-
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      quiet_hours_start: args.start || null,
-      quiet_hours_end: args.end || null,
-    })
-    .eq('id', userId);
-
-  if (error) return { text: `Couldn't save quiet hours: ${error.message}` };
-
-  if (!args.start && !args.end) {
-    return { text: `✓ Quiet hours cleared. You'll receive Pocket Agent and push notifications 24/7.` };
-  }
-  return {
-    text: `✓ Quiet hours: ${args.start} → ${args.end} (Europe/London). I'll hold Pocket Agent and push notifications during that window. Email still lands in your inbox.`,
-  };
 }

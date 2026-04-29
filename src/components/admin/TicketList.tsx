@@ -37,15 +37,17 @@ const statusColors: Record<string, string> = {
   in_progress: 'bg-blue-500/20 text-blue-400',
   awaiting_reply: 'bg-purple-500/20 text-purple-400',
   resolved: 'bg-green-500/20 text-green-400',
-  closed: 'bg-slate-500/20 text-slate-500',
+  closed: 'bg-slate-500/20 text-slate-400',
 };
 
 const priorityColors: Record<string, string> = {
   urgent: 'bg-red-500/20 text-red-400',
   high: 'bg-orange-500/20 text-orange-400',
   medium: 'bg-amber-500/20 text-amber-400',
-  low: 'bg-slate-500/20 text-slate-500',
+  low: 'bg-slate-500/20 text-slate-400',
 };
+
+const CRON_SECRET = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
 
 export default function TicketList() {
   const [tickets, setTickets] = useState<TicketData[]>([]);
@@ -63,7 +65,9 @@ export default function TicketList() {
     if (filterStatus) params.set('status', filterStatus);
     if (filterPriority) params.set('priority', filterPriority);
 
-    const res = await fetch(`/api/support/tickets?${params}`, { credentials: 'include' }).then(r => r.json());
+    const res = await fetch(`/api/support/tickets?${params}`, {
+      headers: { Authorization: `Bearer ${CRON_SECRET}` },
+    }).then(r => r.json());
 
     if (res.tickets) setTickets(res.tickets);
     setLoading(false);
@@ -71,7 +75,9 @@ export default function TicketList() {
 
   const loadTicketDetail = async (ticket: TicketData) => {
     setSelectedTicket(ticket);
-    const res = await fetch(`/api/support/tickets/${ticket.id}`, { credentials: 'include' }).then(r => r.json());
+    const res = await fetch(`/api/support/tickets/${ticket.id}`, {
+      headers: { Authorization: `Bearer ${CRON_SECRET}` },
+    }).then(r => r.json());
 
     if (res.messages) setMessages(res.messages);
   };
@@ -82,8 +88,10 @@ export default function TicketList() {
 
     await fetch(`/api/support/tickets/${selectedTicket.id}/messages`, {
       method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${CRON_SECRET}`,
+      },
       body: JSON.stringify({
         sender_type: 'agent',
         sender_name: 'Admin',
@@ -101,12 +109,16 @@ export default function TicketList() {
     if (!selectedTicket) return;
     await fetch(`/api/support/tickets/${selectedTicket.id}`, {
       method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${CRON_SECRET}`,
+      },
       body: JSON.stringify({ [field]: value }),
     });
     // Refresh
-    const res = await fetch(`/api/support/tickets/${selectedTicket.id}`, { credentials: 'include' }).then(r => r.json());
+    const res = await fetch(`/api/support/tickets/${selectedTicket.id}`, {
+      headers: { Authorization: `Bearer ${CRON_SECRET}` },
+    }).then(r => r.json());
     if (res.ticket) setSelectedTicket(res.ticket);
   };
 
@@ -120,16 +132,16 @@ export default function TicketList() {
   if (selectedTicket) {
     return (
       <div>
-        <button onClick={() => { setSelectedTicket(null); loadTickets(); }} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-4 text-sm">
+        <button onClick={() => { setSelectedTicket(null); loadTickets(); }} className="flex items-center gap-2 text-slate-400 hover:text-white mb-4 text-sm">
           <ArrowLeft className="h-4 w-4" /> Back to tickets
         </button>
 
         {/* Ticket Header */}
-        <div className="bg-slate-900/50 border border-slate-200 rounded-2xl p-5 mb-4">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 mb-4">
           <div className="flex items-start justify-between mb-3">
             <div>
               <p className="text-slate-500 text-xs font-mono">{selectedTicket.ticket_number}</p>
-              <h3 className="text-slate-900 text-lg font-semibold">{selectedTicket.subject}</h3>
+              <h3 className="text-white text-lg font-semibold">{selectedTicket.subject}</h3>
               <p className="text-slate-500 text-xs mt-1">
                 via {selectedTicket.source} · {new Date(selectedTicket.created_at).toLocaleString('en-GB')}
               </p>
@@ -144,7 +156,7 @@ export default function TicketList() {
             <select
               value={selectedTicket.status}
               onChange={(e) => updateTicket('status', e.target.value)}
-              className="bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900"
+              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
             >
               <option value="open">New & Unassigned (open)</option>
               <option value="in_progress">Escalated / In Progress (in_progress)</option>
@@ -155,7 +167,7 @@ export default function TicketList() {
             <select
               value={selectedTicket.priority}
               onChange={(e) => updateTicket('priority', e.target.value)}
-              className="bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900"
+              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
             >
               {['low', 'medium', 'high', 'urgent'].map(p => (
                 <option key={p} value={p}>{p}</option>
@@ -164,7 +176,7 @@ export default function TicketList() {
             <select
               value={selectedTicket.category}
               onChange={(e) => updateTicket('category', e.target.value)}
-              className="bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900"
+              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
             >
               {['general', 'billing', 'technical', 'complaint', 'account'].map(c => (
                 <option key={c} value={c}>{c}</option>
@@ -174,8 +186,8 @@ export default function TicketList() {
         </div>
 
         {/* Messages */}
-        <div className="bg-slate-900/50 border border-slate-200 rounded-2xl p-5 mb-4">
-          <h4 className="text-slate-900 font-semibold mb-3 flex items-center gap-2">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 mb-4">
+          <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-amber-500" /> Conversation
           </h4>
           <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -186,7 +198,7 @@ export default function TicketList() {
                     ? 'bg-amber-500 text-slate-950'
                     : msg.sender_type === 'system'
                     ? 'bg-slate-800/50 text-slate-500 text-xs italic'
-                    : 'bg-slate-100 text-slate-700'
+                    : 'bg-slate-800 text-slate-200'
                 }`}>
                   <p className="text-xs opacity-60 mb-1">{msg.sender_name} · {new Date(msg.created_at).toLocaleString('en-GB')}</p>
                   <p className="whitespace-pre-wrap">{msg.message}</p>
@@ -197,19 +209,19 @@ export default function TicketList() {
         </div>
 
         {/* Reply */}
-        <div className="bg-slate-900/50 border border-slate-200 rounded-2xl p-5">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
           <textarea
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             placeholder="Type your reply..."
             rows={3}
-            className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-none"
+            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-none"
           />
           <div className="flex justify-end mt-2 gap-2">
             <button
               onClick={sendReply}
               disabled={!replyText.trim() || sending}
-              className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-900 font-semibold px-5 py-2 rounded-lg flex items-center gap-2 text-sm"
+              className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-semibold px-5 py-2 rounded-lg flex items-center gap-2 text-sm"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Send Reply
@@ -237,28 +249,28 @@ export default function TicketList() {
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-slate-900/50 border border-amber-500/30 rounded-xl p-4">
           <AlertTriangle className="h-5 w-5 text-amber-500 mb-1" />
-          <p className="text-2xl font-bold text-slate-900">{openCount}</p>
+          <p className="text-2xl font-bold text-white">{openCount}</p>
           <p className="text-slate-500 text-xs">Open tickets</p>
         </div>
         <div className="bg-slate-900/50 border border-red-500/30 rounded-xl p-4">
           <Clock className="h-5 w-5 text-red-500 mb-1" />
-          <p className="text-2xl font-bold text-slate-900">{urgentCount}</p>
+          <p className="text-2xl font-bold text-white">{urgentCount}</p>
           <p className="text-slate-500 text-xs">Urgent</p>
         </div>
         <div className="bg-slate-900/50 border border-green-500/30 rounded-xl p-4">
           <CheckCircle className="h-5 w-5 text-green-500 mb-1" />
-          <p className="text-2xl font-bold text-slate-900">{resolvedCount}</p>
+          <p className="text-2xl font-bold text-white">{resolvedCount}</p>
           <p className="text-slate-500 text-xs">Resolved</p>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex items-center gap-3 mb-4">
-        <Filter className="h-4 w-4 text-slate-500" />
+        <Filter className="h-4 w-4 text-slate-400" />
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900"
+          className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
         >
           <option value="">All tickets</option>
           <option value="active">Needs Action (Open/Escalated)</option>
@@ -271,14 +283,14 @@ export default function TicketList() {
         <select
           value={filterPriority}
           onChange={(e) => setFilterPriority(e.target.value)}
-          className="bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900"
+          className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
         >
           <option value="">All priorities</option>
           {['urgent', 'high', 'medium', 'low'].map(p => (
             <option key={p} value={p}>{p}</option>
           ))}
         </select>
-        <button onClick={loadTickets} className="text-slate-500 hover:text-slate-900">
+        <button onClick={loadTickets} className="text-slate-400 hover:text-white">
           <RefreshCw className="h-4 w-4" />
         </button>
       </div>
@@ -291,7 +303,7 @@ export default function TicketList() {
       ) : tickets.length === 0 ? (
         <div className="text-center py-12">
           <Ticket className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-500">No tickets found</p>
+          <p className="text-slate-400">No tickets found</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -299,16 +311,16 @@ export default function TicketList() {
             <button
               key={t.id}
               onClick={() => loadTicketDetail(t)}
-              className="w-full flex items-center justify-between bg-slate-900/50 border border-slate-200 hover:border-amber-500/50 rounded-xl px-4 py-3 transition-all text-left"
+              className="w-full flex items-center justify-between bg-slate-900/50 border border-slate-800 hover:border-amber-500/50 rounded-xl px-4 py-3 transition-all text-left"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-slate-500 text-xs font-mono">{t.ticket_number}</span>
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusColors[t.status]}`}>{t.status}</span>
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${priorityColors[t.priority]}`}>{t.priority}</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-700 text-slate-700">{t.category}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-700 text-slate-300">{t.category}</span>
                 </div>
-                <p className="text-slate-900 text-sm font-medium truncate">{t.subject}</p>
+                <p className="text-white text-sm font-medium truncate">{t.subject}</p>
                 <p className="text-slate-500 text-xs">via {t.source} · {t.assigned_to || 'unassigned'}</p>
               </div>
               <div className="flex items-center gap-3 ml-4 shrink-0">

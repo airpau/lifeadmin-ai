@@ -3,17 +3,10 @@
 // Export destinations page — send Paybacker data to third-party tools.
 // Currently live: Google Sheets sync, CSV + Excel one-shot download.
 // Coming soon: Notion, YNAB, Actual Budget.
-//
-// Pro-only per the tier matrix in src/lib/plan-limits.ts. Free + Essential
-// users see the lock screen; the page surface is otherwise identical so
-// upgrade re-enables instantly without a re-render shuffle.
 
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import GoogleSheetsConnect from '@/components/GoogleSheetsConnect'
 import DataExportCard from '@/components/DataExportCard'
-import UpgradeLock from '@/components/UpgradeLock'
-import { createClient } from '@/lib/supabase/client'
 
 type ComingSoonDestination = {
   name: string
@@ -26,11 +19,11 @@ const comingSoon: ComingSoonDestination[] = [
   {
     name: 'Notion',
     blurb: 'Sync transactions into a Notion database',
-    iconBg: 'bg-slate-100',
+    iconBg: 'bg-white/5',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="2" fill="#0f172a"/>
-        <path d="M7 7h2l4 7V7h2v10h-2l-4-7v7H7z" fill="#ffffff"/>
+        <rect x="3" y="3" width="18" height="18" rx="2" fill="#ffffff"/>
+        <path d="M7 7h2l4 7V7h2v10h-2l-4-7v7H7z" fill="#0f172a"/>
       </svg>
     ),
   },
@@ -59,147 +52,70 @@ const comingSoon: ComingSoonDestination[] = [
 ]
 
 export default function ExportPage() {
-  const [tier, setTier] = useState<'free' | 'essential' | 'pro' | null>(null);
-  useEffect(() => {
-    const sb = createClient();
-    sb.auth.getUser().then(({ data: { user } }) => {
-      if (!user) { setTier('free'); return; }
-      sb.from('profiles').select('subscription_tier').eq('id', user.id).single()
-        .then(({ data }) => setTier((data?.subscription_tier as 'free' | 'essential' | 'pro') ?? 'free'));
-    });
-  }, []);
-
-  // Pro-only feature per CLAUDE.md tier matrix. Until tier loads, show a
-  // lightweight skeleton (no flash of unlocked content for free users).
-  if (tier !== 'pro') {
-    return (
-      <div className="max-w-5xl">
-        <div className="page-title-row" style={{ marginBottom: 14 }}>
-          <div>
-            <h1 className="page-title">Export</h1>
-            <p className="page-sub">
-              Send your Paybacker data to Google Sheets, CSV/Excel, and (soon) Notion / YNAB / Actual Budget.
-            </p>
-          </div>
-        </div>
-        <UpgradeLock
-          feature="Data export"
-          requiredTier="pro"
-          size="panel"
-        />
-        <p className="text-xs text-slate-500 mt-3 text-center">
-          Your data is kept either way. Pro re-enables one-click sync to the tools above.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-5xl">
-      {/* Variant A header (batch5 ExportHub) */}
-      <div className="page-title-row" style={{ marginBottom: 14 }}>
-        <div>
-          <h1 className="page-title">Export</h1>
-          <p className="page-sub">
-            Send your Paybacker data to the tools you already use. Connect once and we keep it in sync automatically. You always own your data — revoke anytime.
-          </p>
-        </div>
-        <Link
-          href="mailto:hello@paybacker.co.uk?subject=Destination%20request"
-          className="cta-ghost"
-        >
-          Request a destination →
-        </Link>
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl md:text-3xl font-bold text-white">Export</h1>
+        <p className="mt-2 text-sm text-slate-400 max-w-2xl">
+          Send your Paybacker data to the tools you already use. Connect a destination once and
+          we&rsquo;ll keep it in sync automatically.
+        </p>
       </div>
 
       {/* Live destinations */}
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '.1em',
-          textTransform: 'uppercase',
-          color: 'var(--text-3)',
-          marginBottom: 8,
-        }}
-      >
-        Available now
-      </div>
-      <div className="grid grid-cols-1 gap-3 mb-6">
-        <GoogleSheetsConnect />
-        <DataExportCard />
-      </div>
+      <section>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
+          Available now
+        </h2>
+        <div className="grid grid-cols-1 gap-4">
+          <GoogleSheetsConnect />
+          <DataExportCard />
+        </div>
+      </section>
 
       {/* Coming soon */}
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '.1em',
-          textTransform: 'uppercase',
-          color: 'var(--text-3)',
-          marginBottom: 8,
-        }}
-      >
-        Coming soon
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {comingSoon.map((d) => (
-          <div
-            key={d.name}
-            className="card"
-            style={{ padding: 14, opacity: 0.75 }}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Coming soon
+          </h2>
+          <Link
+            href="mailto:hello@paybacker.co.uk?subject=Destination%20request"
+            className="text-xs text-mint-400 hover:text-mint-300 transition-colors"
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <div
-                className={`w-10 h-10 rounded-lg ${d.iconBg} flex items-center justify-center flex-shrink-0`}
-              >
-                {d.icon}
-              </div>
-              <div style={{ fontSize: 13.5, fontWeight: 700 }}>{d.name}</div>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  letterSpacing: '.04em',
-                  background: '#F3F4F6',
-                  color: 'var(--text-2)',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Soon
-              </span>
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-2)', lineHeight: 1.4, marginBottom: 10, minHeight: 32 }}>
-              {d.blurb}
-            </div>
-            <Link
-              href={`mailto:hello@paybacker.co.uk?subject=Notify%20me%20about%20${encodeURIComponent(d.name)}`}
-              className="cta-ghost"
-              style={{ padding: '5px 10px', fontSize: 11.5, width: '100%', justifyContent: 'center', display: 'inline-flex' }}
+            Request a destination →
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {comingSoon.map((d) => (
+            <div
+              key={d.name}
+              className="rounded-2xl border border-navy-700/50 bg-navy-900/60 p-5 opacity-80"
             >
-              Notify me
-            </Link>
-          </div>
-        ))}
-      </div>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-lg ${d.iconBg} flex items-center justify-center flex-shrink-0`}>
+                  {d.icon}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-white text-sm">{d.name}</h3>
+                    <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-slate-400 bg-slate-400/10">
+                      Soon
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">{d.blurb}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* Privacy footer */}
-      <div
-        style={{
-          marginTop: 18,
-          padding: '10px 14px',
-          background: '#F9FAFB',
-          border: '1px solid var(--divider)',
-          borderRadius: 10,
-          fontSize: 11.5,
-          color: 'var(--text-3)',
-        }}
-      >
+      <div className="text-xs text-slate-500 pt-2">
         Paybacker only writes to destinations you connect yourself. You can disconnect any time
-        — your existing sheets, exports and Notion databases aren&rsquo;t deleted.
+        — your existing sheets and exports aren&rsquo;t deleted.
       </div>
     </div>
   )

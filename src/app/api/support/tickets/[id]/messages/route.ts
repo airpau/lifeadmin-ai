@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { resend, FROM_EMAIL } from '@/lib/resend';
-import { authorizeAdminOrCron } from '@/lib/admin-auth';
 
 // Reply-to uses inbound subdomain so replies go through Resend webhook and auto-update tickets
 const TICKET_REPLY_TO = 'support@mail.paybacker.co.uk';
@@ -26,9 +25,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await authorizeAdminOrCron(request);
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.reason ?? 'Unauthorized' }, { status: auth.status });
+  const secret = request.headers.get('authorization');
+  if (secret !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const { id: ticketId } = await params;

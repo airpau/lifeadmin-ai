@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAccounts, getTransactions } from '@/lib/yapily';
+import {
+  getAccessTokenWithClient,
+  fetchAccounts as fetchTrueLayerAccounts,
+  fetchTransactions as fetchTrueLayerTransactions,
+  fetchBalances,
+  fetchPendingTransactions,
+} from '@/lib/truelayer';
 import { decrypt } from '@/lib/encrypt';
-import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import {
@@ -22,14 +28,12 @@ interface BankConnection {
   // Yapily fields
   consent_token: string | null;
   consent_expires_at: string | null;
-  // TrueLayer fields (legacy — archived 2026-04-27)
+  // TrueLayer fields
   access_token: string | null;
   refresh_token: string | null;
   token_expires_at: string | null;
   // Common
   account_ids: string[] | null;
-  account_identifications_hashes: string[] | null;
-  account_display_names: string[] | null;
   bank_name: string | null;
   status: string;
   last_synced_at: string | null;
@@ -116,9 +120,7 @@ export async function GET(request: NextRequest) {
     .from('bank_connections')
     .select('*')
     .in('status', ['active', 'token_expired'])
-    .eq('provider', 'yapily')
-    .is('archived_at', null)
-    .is('deleted_at', null)
+    .in('provider', ['truelayer', 'yapily'])
     .in('user_id', orderedUserIds.length > 0 ? orderedUserIds : ['00000000-0000-0000-0000-000000000000']);
 
   if (connError || !connections || connections.length === 0) {
@@ -171,16 +173,191 @@ export async function GET(request: NextRequest) {
       let transactionSyncSucceeded = false;
       const accountErrors: string[] = [];
 
-      // === TrueLayer deprecated 2026-04-27 ===
-      // TL connections are archived in DB and will not be returned by the
-      // bank_connections query (.eq provider=yapily below). The skip here
-      // is defensive — anything else means corrupted state.
-      if (connection.provider !== "yapily") {
-        console.warn(`Bank sync: skipping non-Yapily connection ${connection.id} (provider=${connection.provider})`);
-        totalApiCalls += connectionApiCalls;
-        continue;
-      }
-      {
+      if (connection.provider === 'truelayer') {
+        // === TrueLayer path ===
+        if (!connection.access_token) {
+          console.error(`Bank sync: no access token for TrueLayer connection ${connection.id}`);
+          await supabase
+            .from('bank_connections')
+            .update({ status: 'expired', updated_at: now })
+            .eq('id', connection.id);
+
+          await supabase.from('bank_sync_log').insert({
+            user_id: connection.user_id,
+            connection_id: connection.id,
+            trigger_type: 'cron',
+            status: 'failed',
+            api_calls_made: connectionApiCalls,
+            error_message: 'No access token — reconnect required',
+          });
+
+          results.push({
+            user_id: connection.user_id,
+            connection_id: connection.id,
+            tier,
+            transactions: 0,
+            recurring: 0,
+            api_calls: connectionApiCalls,
+            error: 'No access token',
+          });
+          totalApiCalls += connectionApiCalls;
+          continue;
+        }
+
+        // Get access token, refreshing if expired — mark connection expired if refresh fails
+        let accessToken: string;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          accessToken = await getAccessTokenWithClient(connection as any, supabase);
+        } catch (refreshErr: any) {
+          console.error(`Bank sync: token refresh failed for ${connection.id}:`, refreshErr.message);
+          await supabase
+            .from('bank_connections')
+            .update({ status: 'expired', updated_at: now })
+            .eq('id', connection.id);
+
+          await supabase.from('bank_sync_log').insert({
+            user_id: connection.user_id,
+            connection_id: connection.id,
+            trigger_type: 'cron',
+            status: 'failed',
+            api_calls_made: connectionApiCalls,
+            error_message: 'Token refresh failed — reconnect required',
+          });
+
+          results.push({
+            user_id: connection.user_id,
+            connection_id: connection.id,
+            tier,
+            transactions: 0,
+            recurring: 0,
+            api_calls: connectionApiCalls,
+            error: 'Token refresh failed',
+          });
+          totalApiCalls += connectionApiCalls;
+          continue;
+        }
+
+        // Backfill bank name if missing
+        let accountIds = connection.account_ids || [];
+
+        if (accountIds.length === 0 || !connection.bank_name) {
+          try {
+            const accounts = await fetchTrueLayerAccounts(accessToken);
+            connectionApiCalls++;
+            const bankName = accounts[0]?.provider?.display_name || accounts[0]?.display_name || null;
+            const displayNames = accounts.map((a) => a.display_name || 'Account');
+            accountIds = accounts.map((a) => a.account_id);
+            await supabase.from('bank_connections').update({
+              bank_name: bankName,
+              account_display_names: displayNames,
+              account_ids: accountIds,
+            }).eq('id', connection.id);
+          } catch {
+            // Non-fatal
+          }
+        }
+
+        if (accountIds.length === 0) {
+          throw new Error('No bank accounts available to sync');
+        }
+
+        // Determine the earliest date we may query for this connection.
+        // NatWest and other UK banks often restrict transaction history to on or after
+        // the consent / reconnection date. Requesting older dates returns HTTP 400.
+        // We use connected_at as the floor and cap at 90 days for safety.
+        const connectedAtDate = connection.connected_at
+          ? new Date(connection.connected_at)
+          : ninetyDaysAgo;
+        connectedAtDate.setHours(0, 0, 0, 0);
+        const fromDate = connectedAtDate > ninetyDaysAgo ? connectedAtDate : ninetyDaysAgo;
+
+        // Sync transactions for each account
+        for (const accountId of accountIds) {
+          try {
+            const transactions = await fetchTrueLayerTransactions(accessToken, accountId, fromDate);
+            connectionApiCalls++;
+            transactionSyncSucceeded = true;
+
+            if (transactions.length === 0) continue;
+
+            const rows = transactions.map((tx) => ({
+              user_id: connection.user_id,
+              connection_id: connection.id,
+              transaction_id: tx.transaction_id,
+              account_id: accountId,
+              amount: tx.amount,
+              currency: tx.currency || 'GBP',
+              description: tx.description || null,
+              merchant_name: tx.merchant_name || null,
+              category: null,
+              timestamp: tx.timestamp,
+              is_pending: false,
+            }));
+
+            const { error: upsertError } = await supabase
+              .from('bank_transactions')
+              .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
+
+            if (!upsertError) totalSynced += rows.length;
+            else console.error(`Bank sync: upsert error for ${accountId}:`, upsertError);
+          } catch (err: any) {
+            const msg: string = err.message ?? String(err);
+            accountErrors.push(`${accountId}: ${msg}`);
+            console.error(`Bank sync: error on account ${accountId}:`, msg);
+          }
+        }
+
+        // Fetch balances for each account
+        for (const accountId of accountIds) {
+          try {
+            const balance = await fetchBalances(accessToken, accountId);
+            connectionApiCalls++;
+            if (balance) {
+              await supabase
+                .from('bank_connections')
+                .update({
+                  current_balance: balance.current,
+                  available_balance: balance.available,
+                  balance_updated_at: now,
+                })
+                .eq('id', connection.id);
+            }
+          } catch (err: any) {
+            console.log(`Bank sync: balance fetch error for ${accountId}:`, err.message);
+          }
+        }
+
+        // Fetch and store pending transactions for each account
+        for (const accountId of accountIds) {
+          try {
+            const pendingTxs = await fetchPendingTransactions(accessToken, accountId);
+            connectionApiCalls++;
+
+            if (pendingTxs.length === 0) continue;
+
+            const pendingRows = pendingTxs.map((tx) => ({
+              user_id: connection.user_id,
+              connection_id: connection.id,
+              transaction_id: tx.transaction_id,
+              account_id: accountId,
+              amount: tx.amount,
+              currency: tx.currency || 'GBP',
+              description: tx.description || null,
+              merchant_name: tx.merchant_name || null,
+              category: null,
+              timestamp: tx.timestamp,
+              is_pending: true,
+            }));
+
+            await supabase
+              .from('bank_transactions')
+              .upsert(pendingRows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
+          } catch (err: any) {
+            console.log(`Bank sync: pending transactions error for ${accountId}:`, err.message);
+          }
+        }
+      } else {
         // === Yapily path ===
         if (!connection.consent_token) {
           console.error(`Bank sync: no consent token for ${connection.id}`);
@@ -273,49 +450,38 @@ export async function GET(request: NextRequest) {
           throw new Error('No bank accounts available to sync');
         }
 
-        // Route through connection-store so the cron uses the same
-        // dedup invariants as the OAuth callback's initial-sync.
-        // Replaced 2026-04-28 — the OLD upsert pattern keyed on
-        // (user_id, transaction_id) and Yapily reissues IDs across
-        // calls, so each cron run was inserting phantom duplicates.
-        const storedHashes: string[] = Array.isArray(connection.account_identifications_hashes)
-          ? connection.account_identifications_hashes
-          : [];
-        const storedDisplayNames: string[] = Array.isArray(connection.account_display_names)
-          ? connection.account_display_names
-          : [];
-        const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const toDate = tomorrow.toISOString().split('T')[0];
-
-        for (let i = 0; i < accountIds.length; i++) {
-          const accountId = accountIds[i];
-          const accountHash = storedHashes[i] || null;
-          if (!accountHash) {
-            console.warn(`Bank sync: connection ${connection.id} account ${accountId} has no stored hash — skipping`);
-            continue;
-          }
+        // Sync transactions
+        for (const accountId of accountIds) {
           try {
+            const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const toDate = tomorrow.toISOString().split('T')[0];
             const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
             connectionApiCalls++;
             transactionSyncSucceeded = true;
+
             if (transactions.length === 0) continue;
 
-            const accountSnapshot: AccountSnapshot = {
-              yapilyAccountId: accountId,
-              displayName: storedDisplayNames[i] || 'Account',
-              accountIdentificationsHash: accountHash,
-              accountIdentificationsRaw: [],
-              currency: 'GBP',
-            };
-            const result = await upsertYapilyTransactions({
-              userId: connection.user_id,
-              connectionId: connection.id,
-              account: accountSnapshot,
-              transactions,
-            });
-            totalSynced += result.inserted;
+            const rows = transactions.map((tx) => ({
+              user_id: connection.user_id,
+              connection_id: connection.id,
+              transaction_id: tx.id,
+              account_id: accountId,
+              amount: tx.transactionAmount.amount,
+              currency: tx.transactionAmount.currency || 'GBP',
+              description: tx.description || null,
+              merchant_name: tx.merchantName || null,
+              category: null,
+              timestamp: tx.bookingDateTime,
+            }));
+
+            const { error: upsertError } = await supabase
+              .from('bank_transactions')
+              .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
+
+            if (!upsertError) totalSynced += rows.length;
+            else console.error(`Bank sync: upsert error for ${accountId}:`, upsertError);
           } catch (err: any) {
             console.error(`Bank sync: error on account ${accountId}:`, err.message);
           }
@@ -327,16 +493,12 @@ export async function GET(request: NextRequest) {
         throw new Error(`All account sync attempts failed: ${detail}`);
       }
 
-      // Post-sync enrichment: fix merchant names, auto-categorise, detect recurring,
-      // pair-match internal transfers across the user's connected accounts.
-      // These DB functions must run for every user after every sync (they are idempotent).
-      // Order matters: categorise first (sets user_category), then pair-match
-      // (which respects existing user_category), then recurring detection.
+      // Post-sync enrichment: fix merchant names, auto-categorise, detect recurring
+      // These DB functions must run for every user after every sync (they are idempotent)
       const enrichmentFunctions = [
         { name: 'deduplicate_bank_transactions', args: { p_user_id: connection.user_id } },
         { name: 'fix_ee_card_merchant_names', args: { p_user_id: connection.user_id } },
         { name: 'auto_categorise_transactions', args: { p_user_id: connection.user_id } },
-        { name: 'mark_internal_transfers', args: { p_user_id: connection.user_id } },
         { name: 'detect_and_sync_recurring_transactions', args: { p_user_id: connection.user_id } },
       ] as const;
 

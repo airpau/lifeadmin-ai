@@ -1,12 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// force-dynamic prevents build-time prerender that hangs the build
-// when Supabase is saturated (incident 2026-04-28). Live data; OK to
-// compute per-request.
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
 /**
  * GET /api/preview/homepage-stats
  *
@@ -37,10 +31,7 @@ export const revalidate = 0;
  *      so the UI can still decide how to label it.
  */
 
-// Was: export const revalidate = 300 (ISR). Replaced 2026-04-28 with
-// the force-dynamic + revalidate=0 declaration at the top of the file
-// so a saturated Supabase can't block builds. The route is still cheap
-// per-request and Vercel's edge cache absorbs traffic spikes.
+export const revalidate = 300; // 5 min ISR cache — anonymous visitors won't hammer Supabase
 
 // Trust floor for the "Founding members" card. See header note.
 const FOUNDING_TRUST_FLOOR = 250;

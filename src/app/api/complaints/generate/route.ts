@@ -8,12 +8,7 @@ import { awardPoints } from '@/lib/loyalty';
 import { getProviderTerms } from '@/lib/provider-match';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
-// 120s — the engine's worst-case path is two Claude calls (citation
-// guarantee retry) plus retrieval, plus thread-context loading. 60s
-// was too tight and surfaced as "Load failed" in Safari (a Vercel
-// 504 hitting fetch). 120s gives comfortable headroom while still
-// far below Vercel Pro's serverless ceiling.
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
@@ -169,14 +164,7 @@ export async function POST(request: NextRequest) {
     }
 
     const issueTypeToCategory: Record<string, string[]> = {
-      // 'complaint' is the catch-all letterType for "I'm being charged
-      // something I don't think I owe / didn't agree to". Most of those
-      // involve a payment (card, PayPal, direct debit, BNPL), so we
-      // include 'finance' by default — the dynamic detector below can
-      // still narrow further. Without 'finance' here the engine misses
-      // Payment Services Regs 2017 reg 76 (unauthorised payment refund)
-      // which is often the STRONGEST ground.
-      complaint: ['general', 'finance'],
+      complaint: ['general'],
       energy_dispute: ['general', 'energy'],
       broadband_complaint: ['general', 'broadband'],
       flight_compensation: ['general', 'travel'],
@@ -210,80 +198,18 @@ export async function POST(request: NextRequest) {
 
     // Two-step resolution: issue_type is more specific, so try it first.
     // This prevents a 'government' provider_type from pulling in HMRC refs on a council tax dispute.
-    let categories =
+    const categories =
       issueTypeToCategory[disputeIssueType || ''] ||
       issueTypeToCategory[body.letterType || ''] ||
       (disputeProviderType ? providerTypeToCategory[disputeProviderType] : null) ||
       ['general'];
 
-    // Dynamic augmentation — scan the scenario text for sector signals
-    // and add the matching category if not already present. This is
-    // the same trick the B2B engine uses (src/lib/b2b/disputes.ts
-    // detectScenarioCategory) and it catches cases the static
-    // letterType→category map misses.
-    //
-    // Most-impactful signal: PAYMENT keywords. An unauthorised PayPal /
-    // card / direct-debit charge is fundamentally a finance dispute
-    // even when the user clicked 'complaint' as the letter type, and
-    // the engine MUST cite Payment Services Regulations 2017 reg 76
-    // (unauthorised payment refund) — pulling 'finance' makes that
-    // ref available to Claude.
-    const scenarioForDetect = (
-      `${body.issueDescription ?? ''} ${body.companyName ?? ''} ${body.desiredOutcome ?? ''}`
-    ).toLowerCase();
-
-    function augment(category: string, regex: RegExp) {
-      if (regex.test(scenarioForDetect) && !categories.includes(category)) {
-        categories = [...categories, category];
-      }
-    }
-
-    // Finance signals — payment instruments, chargeback, unauthorised
-    // charges, BNPL, debit/credit cards. We deliberately include
-    // 'paypal' / 'klarna' / 'clearpay' as merchant-specific signals
-    // because users say "PayPal charged me" not "I had an unauthorised
-    // payment under PSR 2017".
-    augment('finance', /\b(paypal|klarna|clearpay|chargeback|section\s*75|s\.?\s*75|cca\s*1974|credit\s*card|debit\s*card|direct\s*debit|standing\s*order|unauthori[sz]ed\s*(payment|charge|transaction|debit)|(took|charged|deducted|debited)\s*(£|gbp|money)|payment\s*(taken|removed|deducted)|automatic\s*(charge|renewal|payment)|recurring\s*(charge|payment)|subscription)\b/);
-
-    // Travel signals (flight cancellation / delay).
-    augment('travel', /\b(flight|airline|cancel(?:l?ed)?\s*(my\s+)?flight|delay(?:ed)?\s*(my\s+)?flight|baggage|boarding|ryanair|easyjet|jet2|tui|british\s*airways|wizz\s*air|caa\b|uk261|eu261)\b/);
-
-    // Energy signals.
-    augment('energy', /\b(energy|gas|electric(ity)?|ofgem|british\s*gas|octopus(\s*energy)?|edf|ovo|e\.?on|sse\b|scottish\s*power|smart\s*meter|back-?bill)\b/);
-
-    // Broadband / telecoms.
-    augment('broadband', /\b(broadband|mobile\s*(?:contract|provider|tariff|bill)?|isp|ofcom|talktalk|mid-?contract\s*(price\s*rise|increase))\b/);
-
-    // Debt / collection.
-    augment('debt', /\b(debt\s*(claim|collection)|bailiff|enforcement\s*officer|statute\s*barred|lowell|cabot|intrum)\b/);
-
-    // Insurance.
-    augment('insurance', /\b(insurance|insurer|claim\s*declined|underwriter|loss\s*adjuster|policy\s*(claim|wording|exclusion))\b/);
-
-    // 2026-04-28 — INCIDENT FIX. Previously this filter was
-    // .in('verification_status', ['current', 'updated']) which silently
-    // dropped 28+ critical rules flagged 'needs_review' (Ofcom
-    // Auto-Compensation, Ofgem back-billing rules, GC C1/C4, rail
-    // passenger rights, etc.). Engine was generating letters BLIND to
-    // these rules, missing money owed to the user.
-    //
-    // Now we include 'needs_review' refs too — the rule's EXISTENCE is
-    // verified even when specific quantitative values may have drifted.
-    // The rows are annotated below with [UNDER REVIEW — verify current
-    // figure] so Claude knows to use directional language for any
-    // numeric value (rate per day, threshold, etc.) when citing them.
-    //
-    // 'url_dead' is EXCLUDED — it means the source URL has 404'd
-    // (or 5xx'd) for 3+ consecutive verify-legal-refs runs and the
-    // rule may have moved or been repealed. Rules in this state need
-    // founder review (find a new source URL or mark superseded)
-    // BEFORE the engine cites them. See verify-legal-refs cron for
-    // promotion logic.
+    // NOTE: legal_references has no confidence_score column — filter by verification_status only
     const { data: legalRefs } = await supabase
       .from('legal_references')
-      .select('id, category, law_name, section, summary, source_url, escalation_body, strength, applies_to, verification_status')
+      .select('id, category, law_name, section, summary, source_url, escalation_body, strength, applies_to')
       .in('category', categories)
-      .in('verification_status', ['current', 'updated', 'needs_review']);
+      .in('verification_status', ['current', 'updated']);
 
     // Filter out 'general' refs that have a sector-specific applies_to array which doesn't
     // overlap with the current dispute's categories. This prevents gym/fitness legal refs
@@ -325,20 +251,9 @@ export async function POST(request: NextRequest) {
 
     let verifiedLegalRefs = '';
     if (relevantRefs.length > 0) {
-      verifiedLegalRefs = relevantRefs.map((r) => {
-        // Annotate needs_review rows so Claude knows to USE the rule
-        // (the rule exists and is binding) but treat any specific
-        // figure inside the summary as potentially-out-of-date. The
-        // engine's prompt-side anti-hallucination guard does the
-        // rest: it'll cite the rule with directional language ("you
-        // are entitled to per-day compensation under the Ofcom
-        // Auto-Compensation Scheme; the current rate published by
-        // Ofcom should be applied") rather than a specific stale £.
-        const reviewFlag = r.verification_status === 'needs_review'
-          ? ' [UNDER REVIEW — quantitative values may be slightly out-of-date; cite the rule and use directional language for specific figures]'
-          : '';
-        return `- ${r.law_name}${r.section ? `, ${r.section}` : ''}: ${r.summary}${r.escalation_body ? ` (Escalate to: ${r.escalation_body})` : ''}${reviewFlag} [Source: ${r.source_url}]`;
-      }).join('\n');
+      verifiedLegalRefs = relevantRefs.map(r =>
+        `- ${r.law_name}${r.section ? `, ${r.section}` : ''}: ${r.summary}${r.escalation_body ? ` (Escalate to: ${r.escalation_body})` : ''} [Source: ${r.source_url}]`
+      ).join('\n');
     }
 
     // Fetch provider-specific terms (cancellation, complaints, ombudsman)
@@ -506,9 +421,6 @@ export async function POST(request: NextRequest) {
         model_name: 'claude-sonnet-4-6',
         status: 'completed',
         input_data: body,
-        // citationGuarantee on output_data for audit. UI reads this to
-        // show a "we auto-added X citations — verify" badge when
-        // forced_after_retry is non-empty.
         output_data: { ...result, rightsPills },
         legal_references: result.legalReferences,
         input_tokens: result.usage?.input_tokens || null,

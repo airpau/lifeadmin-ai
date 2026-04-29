@@ -15,7 +15,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   AGENTS,
   type AgentConfig,
-  agentsDueAt,
   createSession,
   sendTaskMessage,
 } from '@/lib/managed-agents/config';
@@ -138,14 +137,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // No specific agent — run only agents whose schedule matches NOW (UTC).
-  // The vercel.json entry hits this route every hour at :00; agentsDueAt filters to the
-  // subset whose cron expression matches the current minute+hour.
-  const dueAgents = agentsDueAt(new Date());
-  const agentsToRun = dueAgents.map((config) => {
-    const key = Object.entries(AGENTS).find(([, c]) => c === config)?.[0] ?? 'unknown';
-    return [key, config] as [string, AgentConfig];
-  });
+  // No specific agent — run all scheduled agents
+  const agentsToRun = Object.entries(AGENTS).filter(([, config]) => config.schedule !== null);
   const results: Array<{
     agent: string;
     sessionId?: string;

@@ -46,8 +46,6 @@ const ALIASES: Record<string, string> = {
   // Travel
   'ryanair': 'ryanair',
   'easyjet': 'easyjet', 'easy jet': 'easyjet',
-  // Smart-home / IoT
-  'nuki': 'nuki', 'nuki home solutions': 'nuki', 'nuki smart locks': 'nuki', 'nukihomesolutions': 'nuki',
 };
 
 /**

@@ -7,16 +7,20 @@
 
 This project uses a unified system across three Claude interfaces (Code, Desktop, Browser Extension). At the START of every session:
 
-1. **Call `get_project_briefing` (paybacker MCP)** — one call returns all shared-context files, git status, open PRs, and recent business_log rows. This is the fastest way to pick up where the last session left off.
-2. If the MCP is unavailable, fall back to reading manually: `shared-context/active-sessions.md`, `shared-context/handoff-notes.md`, `shared-context/task-queue.md`, then `gh pr list -R airpau/lifeadmin-ai --state open` and the `business_log` table.
+1. Read `shared-context/active-sessions.md` to see what other interfaces have done
+2. Read `shared-context/handoff-notes.md` for the latest handoff
+3. Read `shared-context/task-queue.md` for current priorities
+4. Check `gh pr list -R airpau/lifeadmin-ai --state open` for developer agent PRs
+5. Check `business_log` table in Supabase for recent agent activity
 
 At the END of every session:
-1. Call `log_session` (paybacker MCP) to record what you did
-2. Call `log_handoff` (paybacker MCP) with summary and next steps for the next chat
+1. Update `shared-context/active-sessions.md` with what you did
+2. Append to `shared-context/handoff-notes.md` with summary and next steps
 3. Update `shared-context/task-queue.md` with any new/completed tasks
-4. Commit and push all changes
+4. Update `business_log` table so AI agents have current context
+5. Commit and push all changes
 
-The MCP server at `/mcp-server/` provides tools for all interfaces to read/write shared context, post to social media, check infrastructure, and manage tasks. The new `get_project_briefing` tool bundles the read-side of that into a single call so every new chat starts with full context without burning tokens on repeated reads.
+The MCP server at `/mcp-server/` provides tools for all interfaces to read/write shared context, post to social media, check infrastructure, and manage tasks.
 
 ---
 
@@ -34,188 +38,46 @@ This project has an existing production codebase with real users and live data. 
 
 ---
 
-## SURFACE CHECK — DO THIS BEFORE EVERY EDIT
-
-Paybacker ships **two distinct products from one codebase**: a B2C consumer app and a B2B engineering-buyer API. They are separate businesses sharing a repo. **Mixing them is a deploy-blocking mistake** — wrong voice, wrong audience, wrong contract.
-
-Before editing any file, identify the surface and stay in lane:
-
-| Surface | Paths (exhaustive) | Voice | Audience |
-|---|---|---|---|
-| **B2B (engineering buyer)** | `src/app/for-business/**`, `src/app/api/v1/**`, `src/lib/b2b/**`, `src/app/dashboard/api-keys/**`, `src/app/dashboard/admin/b2b/**` | Precise, evidence-led, no consumer empathy. Talk request shape, latency, error contract, integration cost. | UK fintechs, insurers, energy retailers, claims platforms, MGAs, CX vendors, AI agent builders |
-| **B2C (consumer)** | Everything else under `src/app/**` and `src/lib/**` — including `src/app/page.tsx`, `src/app/dashboard/**` (except api-keys/admin-b2b), `src/app/blog/**`, `src/lib/agents/**`, `src/lib/telegram/**`, `src/lib/whatsapp/**`, `src/lib/dispute-sync/**`, all consumer crons | "Fight unfair bills", first-person empathy, household savings stories | UK consumers aged 25-50, time-poor professionals overpaying on bills |
-
-**Rules:**
-1. **Don't bundle B2C and B2B work in the same PR** unless the change genuinely touches both. Split by surface.
-2. **Don't apply consumer voice to B2B paths.** No "fight unfair bills" copy on `/for-business`. No founder savings stories on `/for-business/docs`.
-3. **Don't apply B2B engineering voice to B2C paths.** No "request shape" jargon on `/dashboard`.
-4. **Shared engine is `generateComplaintLetter` only** (`src/lib/agents/complaints-agent.ts`). Both products call it. Any change to its contract must keep both call-sites working.
-5. **`legal_references` is a shared table.** Schema changes affect both products.
-6. **`DisputeResponse` shape (`src/lib/b2b/disputes.ts`)** is a public contract. Don't break it without `/v2`. Additive optional fields are fine.
-
-When ambiguous (e.g. shared utility, marketing surface), ask before editing.
-
-For deeper guidance per directory, see the `SCOPE.md` file at the root of each major tree.
-
----
-
 ## PRODUCT OVERVIEW
 
 **Company:** Paybacker LTD (UK registered)
 **Website:** paybacker.co.uk
 **Founded:** March 2026
-**Contact:** hello@paybacker.co.uk (consumer) · business@paybacker.co.uk (B2B)
+**Contact:** hello@paybacker.co.uk
 
-Paybacker ships **two products from one codebase**:
+Paybacker is an AI-powered savings platform for UK consumers. It helps people dispute unfair bills, track every subscription and contract, scan their bank account and email inbox for hidden costs, and take control of their finances. The AI generates professional complaint letters citing exact UK consumer law in 30 seconds.
 
-### 1. Consumer app (B2C) — paybacker.co.uk
-AI-powered savings platform for UK consumers. Disputes unfair bills, tracks every subscription / contract, scans bank + email inbox for hidden costs. The AI generates professional complaint letters citing exact UK consumer law in 30 seconds. **Target audience:** UK consumers aged 25-50, time-poor professionals overpaying on bills.
-
-### 2. UK Consumer Rights API (B2B) — paybacker.co.uk/for-business
-The same engine exposed as a single REST endpoint for UK fintechs, insurers, energy retailers, and claims platforms. `POST /v1/disputes` returns the cited statute, sector classification, regulator, entitlement summary, customer-facing response, agent talking points, claim value estimate, time sensitivity, escalation path, and draft letter — in one call. Launched 2026-04-28.
-
-- **Tiers:** Starter (free, 1k calls/mo, self-serve mint), Growth (£499/mo, 10k calls), Enterprise (£1,999/mo, 100k calls + SLA).
-- **Decision rule:** 10 qualified UK fintech signups in 30 days post-launch (≈ 28 May 2026) → green-light deeper build. <10 → archive `/for-business`.
-- **Tables:** `b2b_waitlist`, `b2b_api_keys`, `b2b_api_usage`, `b2b_portal_tokens`.
-- **Key files:** `src/lib/b2b/{auth,disputes,stripe-webhook,key-reveal}.ts`, `src/app/api/v1/{disputes,checkout,free-pilot,portal-login,portal-keys,key-reveal}/route.ts`, `src/app/for-business/{page,docs,coverage,thanks}/`, `src/app/dashboard/api-keys/`, `src/app/dashboard/admin/b2b/`.
-- **Auth model:** bearer token `pbk_<8hex>_<32hex>`; SHA-256 hash + 8-char prefix in DB. Plaintext shown ONCE via single-use email link, never persisted, never logged.
-- **Stripe:** live products `prod_UPqX0DuQzRRqjI` (Growth) and `prod_UPqXc86ZeTqXFL` (Enterprise). Env vars `STRIPE_PRICE_API_GROWTH_MONTHLY`, `STRIPE_PRICE_API_ENTERPRISE_MONTHLY`. Webhook `we_1TDVvr7qw7mEWYpy2hLTs9S3` subscribes to `checkout.session.{completed,expired}` + sub lifecycle. **Always idempotent on `checkout.session.completed`** (Stripe replays).
-- **Crons:** `/api/cron/b2b-nurture` daily 10:00 UTC drips d1/d3/d7/d14 emails to non-converters; uses `notes` column tag like `[nurture:d3]` for dedup.
-- **Daily B2B alerts** (Telegram + founder email): free-pilot mint, Stripe checkout started, sale, abandonment.
-- **Customer portal:** `/dashboard/api-keys` (token-gated via passwordless email link, 30-min expiry, single-use on mutating actions). Reveal/Re-issue/Revoke.
-
-### Treat B2C and B2B as two separate businesses sharing one codebase
-
-The two products are **functionally distinct** — different audiences, different
-voices, different inboxes, different feature sets, different pricing logic.
-Future Claude sessions MUST treat them as two entities and avoid crossover:
-
-| Aspect | Consumer (B2C) | Business (B2B) |
-|---|---|---|
-| **Domain surface** | `/`, `/dashboard`, `/blog`, `/pricing`, `/deals`, etc. | `/for-business`, `/for-business/{docs,coverage,thanks}`, `/dashboard/admin/b2b`, `/dashboard/api-keys` |
-| **Audience** | UK households, individual consumers | UK fintechs, insurers, energy retailers, claims platforms, CX/eng teams |
-| **Tone of voice** | "Fight unfair bills", first-person empathy, household savings stories | Engineering buyer voice — precise, evidence-led, no consumer empathy copy |
-| **From-email** | `Paybacker <noreply@paybacker.co.uk>` (consumer) / `hello@paybacker.co.uk` (founder) | `Paybacker for Business <noreply@paybacker.co.uk>` with `replyTo: business@paybacker.co.uk` |
-| **Founder inbox** | Consumer → `aireypaul@googlemail.com` only when explicitly required | B2B → `business@paybacker.co.uk` (set via `FOUNDER_EMAIL` env) |
-| **Telegram** | Consumer flow alerts | B2B flow alerts — different message prefixes (🛒 / 💰 / 🛒💀) |
-| **Auth** | Supabase Auth (sign up / log in / OAuth) | Bearer API key + passwordless portal magic link (no Supabase user account) |
-| **Tables** | `profiles`, `subscriptions`, `complaints`, `tasks`, `bank_*`, `gmail_*`, `whatsapp_*` etc. | `b2b_waitlist`, `b2b_api_keys`, `b2b_api_usage`, `b2b_portal_tokens` |
-| **Pricing** | Free / Essential £4.99/mo / Pro £9.99/mo (per individual) | Starter free / Growth £499/mo / Enterprise £1,999/mo (per company) |
-| **Stripe metadata** | No `product` tag (default consumer flow) | `metadata.product = 'b2b_api'` — webhook routes by this tag |
-| **Demotion logic** | Webhook-driven, never auto-demote (see "System rules" above) | Webhook revokes the linked B2B key on `customer.subscription.deleted` |
-| **Marketing channels** | r/ukpersonalfinance, MoneySavingExpert, Reddit, consumer TikTok | LinkedIn DMs, Show HN, dev blogs, fintech newsletters |
-| **Crons** | Bank sync, digest, price alerts, etc. | `b2b-nurture` only — separate from consumer crons |
-
-**Concrete rules to enforce the separation:**
-
-1. **Never link consumer dashboards from B2B surfaces or vice versa.** A B2B
-   customer should never land on `/dashboard/complaints`; a consumer should
-   never land on `/for-business/docs` from the consumer dashboard.
-2. **Never copy consumer marketing copy into B2B surfaces.** The £2,000+
-   founder-recovery story belongs on consumer pages and the LinkedIn
-   personal profile — not on `/for-business`. The "10 qualified signups"
-   gate is B2B-only and must not appear on consumer pages.
-3. **Consumer-tier helpers (`canUseWhatsApp`, `getEffectiveTier`,
-   `PLAN_LIMITS`) must not be called from B2B routes.** B2B uses its own
-   tier model in `b2b_api_keys.tier`.
-4. **`generateComplaintLetter` is the ONLY shared helper** — it's the
-   engine. Both products call it. Any change to its contract must keep
-   both call-sites working. Run `grep -r "generateComplaintLetter" src/`
-   before touching it.
-5. **`legal_references` table is shared.** A schema change affects both
-   products. Always check both `/api/complaints/generate` (consumer) and
-   `/lib/b2b/disputes.ts` (B2B) when migrating it.
-6. **Don't bundle B2C and B2B work in the same PR** unless the change
-   genuinely touches both. Split PRs by product surface for cleaner
-   review and rollback.
-7. **The B2B API response shape (`DisputeResponse` in
-   `src/lib/b2b/disputes.ts`) is a public contract.** Don't break it
-   without a `/v2` path.
-8. **Keep this CLAUDE.md updated** when new B2B endpoints, env vars,
-   Stripe products, or crons are added.
+**Target audience:** UK consumers aged 25-50, tech-savvy professionals who are time-poor and overpaying on bills without realising it.
 
 ---
 
 ## PRICING
 
-_Updated 2026-04-22 after Emma-matched tier review — see
-`src/lib/plan-limits.ts` for the authoritative matrix._
-
-**Free — £0:**
-- 2 bank connections with daily auto-sync
-- 1 email connection with 30-min Watchdog dispute-reply polling
-- Unlimited dispute thread links (email-thread monitoring)
+**Free:**
 - 3 AI letters per month
 - Unlimited manual subscription tracking
+- One-time bank scan
+- One-time email inbox scan
+- One-time opportunity scan
 - Basic spending overview (top 5 categories)
-- Pocket Agent (Telegram bot)
 - AI chatbot
 
-**Essential — £4.99/month or £44.99/year:**
-- 3 bank connections with daily auto-sync
-- 3 email connections with 30-min Watchdog polling
+**Essential — £4.99/month or £44.99/year (Founding Member Pricing):**
 - Unlimited AI letters
-- AI cancellation emails with legal context
+- 1 bank account with daily auto-sync
+- Monthly email and opportunity re-scans
+- Full spending intelligence dashboard
+- Cancellation emails with legal context
 - Renewal reminders (30/14/7 days)
-- Full spending intelligence dashboard with all 20+ categories
-- Money Hub Budgets + Savings Goals
-- Price-increase alerts via email
-- Contract end-date tracking
-- Pocket Agent (Telegram bot)
+- Contract end date tracking
 
-**Pro — £9.99/month or £94.99/year:**
-- Unlimited bank connections
-- Unlimited email connections
+**Pro — £9.99/month or £94.99/year (Founding Member Pricing):**
 - Everything in Essential
-- **Pocket Agent on WhatsApp** (Pro-only — Telegram remains across all tiers)
-- Money Hub Top Merchants
-- Price-increase alerts via Telegram + WhatsApp (instant)
-- Daily morning brief + weekly recovery digest via WhatsApp
-- Export (CSV / PDF)
-- Paybacker Assistant (MCP integration)
+- Unlimited bank accounts
+- Unlimited email and opportunity scans
 - Full transaction-level analysis
 - Priority support
-- On-demand bank sync (manual refresh)
 - Automated cancellations (coming soon)
-
-### WhatsApp Pocket Agent — tier policy (2026-04-27)
-
-WhatsApp is Pro-only because every outbound template costs us £0.003-£0.06
-per send via Meta. Telegram is free for us so it stays on every tier as
-the no-cost Pocket Agent. Enforcement points:
-
-1. `canUseWhatsApp(userId)` in `src/lib/plan-limits.ts` is the
-   single source of truth.
-2. `/api/whatsapp/opt-in` returns 403 with `upgradeUrl` for non-Pro.
-3. `/api/whatsapp/webhook` sends ONE upgrade nudge per non-Pro number
-   (tracked via `whatsapp_sessions.upgrade_nudge_sent_at`), then silently
-   logs further inbounds.
-4. `/api/cron/whatsapp-alerts` filters recipients by tier before sending.
-
-Trial Pro users (active onboarding trial via `getEffectiveTier`) inherit
-WhatsApp during the trial window only. Demotion mid-trial is webhook-driven
-(no auto-demote — same rule as bank/email caps).
-
-Template registry lives at `src/lib/whatsapp/template-registry.ts`. 16
-templates submitted to Meta on 2026-04-27: 14 utility, 1 authentication
-(OTP — not Pro-gated), 1 marketing (`paybacker_better_deal_found` — needs
-separate marketing opt-in before send).
-
-### System rules (tier logic)
-- Paid tiers are **never auto-demoted**. `/api/stripe/sync` promotes
-  only. Demotion is webhook-driven (`customer.subscription.deleted`).
-- **No 14-day Pro trial** — it produced silent downgrades at expiry.
-  `TrialBanner` still flags an active trial when `trial_ends_at` is
-  explicitly set, but we don't grant trials automatically on signup.
-- `getEffectiveTier(userId)` trusts `profile.subscription_tier` as
-  source of truth. Single override: an active onboarding trial
-  (`trial_ends_at > now() && !trial_converted_at && !trial_expired_at`)
-  returns `'pro'` for the trial window.
-- Bank/email caps are enforced at the connect endpoints
-  (`/api/auth/truelayer`, `/api/auth/google`, `/api/auth/microsoft`,
-  `/api/auth/yapily`) reading `PLAN_LIMITS[tier].maxBanks` /
-  `maxEmails`. Over-cap attempts return 403 (bank APIs) or redirect
-  to `/dashboard/profile?email_limit_reached=1` (OAuth flows).
 
 ---
 
@@ -383,14 +245,14 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 - Securely connects bank accounts (read-only)
 - Automatically detects all subscriptions and recurring payments
 - Spending intelligence dashboard with 20+ categories
-- Free: 2 banks with daily auto-sync. Essential: 3 banks with daily auto-sync. Pro: unlimited banks + on-demand manual sync.
+- Free: one-time scan. Essential: 1 bank with daily sync. Pro: unlimited banks
 
 ### 4. Email Inbox Scanning
 - Connect Gmail or Outlook (read-only, Google OAuth verified)
 - Scans up to 2 years of email history
 - Opportunity Scanner: finds overcharges, forgotten subscriptions, flight delay opportunities, debt disputes
 - Smart action buttons: Add to Subscriptions, Write Complaint Letter, Claim Compensation, Create Task, Dismiss
-- Free: 1 email account with 30-min auto-sync for dispute replies. Essential: 3 email accounts. Pro: unlimited.
+- Free: one-time scan. Essential: monthly. Pro: unlimited
 
 ### 5. AI Cancellation Emails
 - Generates cancellation email citing UK consumer law for any subscription

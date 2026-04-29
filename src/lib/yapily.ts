@@ -5,6 +5,8 @@ import type {
   YapilyApiResponse,
   YapilyAuthResponse,
   YapilyErrorResponse,
+  YapilyHostedConsentRequest,
+  YapilyHostedConsentResponse,
 } from '@/types/yapily';
 
 const YAPILY_BASE_URL = 'https://api.yapily.com';
@@ -210,6 +212,156 @@ export async function getConsent(
     `/account-auth-requests/${consentId}`,
   );
   return response.data;
+}
+
+// ── Hosted Pages (Beta) ──
+//
+// Migle's onboarding plan (29 Apr 2026) requires the Hosted Pages flow
+// for build sign-off. Tutorial:
+//   https://docs.yapily.com/tools-and-services/hosted-pages/payment-tutorial-hosted-data
+//
+// Flow:
+//   1. POST /hosted/consent-requests → { hostedUrl, consentRequestId }
+//   2. Redirect user to hostedUrl (top-level, no iframe)
+//   3. User completes journey → Yapily redirects to redirectUrl with
+//      consentRequestId in query
+//   4. GET /hosted/consent-requests/{consentRequestId} → consentToken + status
+//   5. Use consentToken on /accounts and /transactions as before
+//
+// Both helpers below are guarded behind YAPILY_HOSTED_PAGES_ENABLED at
+// the call-site (src/app/api/auth/yapily/route.ts) — keeping the helpers
+// importable even when the flag is off so unit tests can exercise them.
+
+export interface CreateHostedConsentRequestInput {
+  /**
+   * The user's stable application id. We pass profile.id so Yapily can
+   * group multiple consents under the same end-user.
+   */
+  applicationUserId: string;
+  /**
+   * Where Yapily should send the user after the consent journey
+   * completes. Must include any state-bearing query params we care
+   * about — Yapily appends consentRequestId on top.
+   */
+  redirectUrl: string;
+  /**
+   * Two-letter country code for institutions allowed in this consent
+   * (Vitally checklist C1: must be set correctly per market).
+   */
+  institutionCountryCode: string;
+  /**
+   * Pre-select a specific institution so Yapily skips its own
+   * bank-picker UI. We render our own institution list, so we always
+   * pass this when the user has chosen.
+   */
+  institutionId?: string;
+  /**
+   * Two-letter language code for the hosted UI (default 'EN').
+   */
+  language?: string;
+  /**
+   * Two-letter location code for the hosted UI (default 'GB').
+   */
+  location?: string;
+}
+
+/**
+ * Creates a hosted consent request. Returns the hostedUrl (short-lived,
+ * ~10min) the user must be redirected to plus the consentRequestId we'll
+ * use to look up status after the user completes the flow.
+ */
+export async function createHostedConsentRequest(
+  input: CreateHostedConsentRequestInput,
+): Promise<YapilyHostedConsentRequest> {
+  const body: Record<string, unknown> = {
+    redirectUrl: input.redirectUrl,
+    institutionIdentifiers: {
+      institutionCountryCode: input.institutionCountryCode,
+      ...(input.institutionId ? { institutionId: input.institutionId } : {}),
+    },
+    applicationUserId: input.applicationUserId,
+    userSettings: {
+      language: input.language ?? 'EN',
+      location: input.location ?? 'GB',
+    },
+  };
+
+  const response = await yapilyRequest<YapilyHostedConsentResponse>(
+    '/hosted/consent-requests',
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
+
+  if (!response.data?.hostedUrl) {
+    throw new Error('Yapily did not return a hostedUrl for the consent request');
+  }
+  return response.data;
+}
+
+/**
+ * Reads the current state of a hosted consent request. After Yapily
+ * redirects back to our app we call this to confirm status before
+ * proceeding (recommended by the tutorial). Also used by the
+ * abandonment poller for users who don't return to the callback URL.
+ */
+export async function getHostedConsentRequest(
+  consentRequestId: string,
+): Promise<YapilyHostedConsentRequest> {
+  const response = await yapilyRequest<YapilyHostedConsentResponse>(
+    `/hosted/consent-requests/${consentRequestId}`,
+  );
+  return response.data;
+}
+
+/**
+ * Single source of truth for whether the Hosted Pages flow is on. Read
+ * once per request — the flag is meant to be flipped via env, not
+ * mid-process. Defaults to false so existing /account-auth-requests
+ * code stays the canonical path until we cut over.
+ */
+export function isHostedPagesEnabled(): boolean {
+  return process.env.YAPILY_HOSTED_PAGES_ENABLED?.toLowerCase() === 'true';
+}
+
+// ── Consent Deletion ──
+
+/**
+ * Revokes a consent on Yapily's side. Required by Migle for the
+ * compliance build review — the user-facing disconnect button must
+ * actually call Yapily, not just flip a local flag.
+ *
+ * Idempotent on Yapily's side: a 404 means the consent is already
+ * gone, which is what we wanted anyway. Callers should treat 404 as
+ * success and only surface other failures.
+ */
+export async function deleteConsent(consentId: string): Promise<void> {
+  const url = `${YAPILY_BASE_URL}/account-auth-requests/${consentId}`;
+
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      Authorization: getAuthHeader(),
+      'Content-Type': 'application/json',
+    },
+  });
+
+  // 404 = already revoked → success.
+  if (res.status === 404) return;
+
+  if (!res.ok) {
+    let errorMessage = `Yapily delete-consent error: ${res.status} ${res.statusText}`;
+    try {
+      const errorBody = (await res.json()) as YapilyErrorResponse;
+      if (errorBody.error?.message) {
+        errorMessage = `Yapily delete-consent error: ${errorBody.error.message} (${res.status})`;
+      }
+    } catch {
+      // body not parseable — keep default message
+    }
+    throw new Error(errorMessage);
+  }
 }
 
 // ── Account-identity helpers ──

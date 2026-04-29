@@ -3,10 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // Public endpoint — no auth required.
 // Returns platform-wide dispute totals for the public "claims resolved" counter.
-// Switched from ISR to force-dynamic 2026-04-28 — build-time prerender
-// hangs when Supabase is saturated. Per-request fetch is cheap.
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300; // Cache for 5 minutes
 
 const RESOLVED_STATUSES = ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'];
 

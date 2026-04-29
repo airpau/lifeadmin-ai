@@ -46,6 +46,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { deleteConsent } from '@/lib/yapily';
 
 type DisconnectMode = 'keep_history' | 'delete_transactions' | 'erase_all';
 
@@ -54,6 +55,26 @@ function getAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
+}
+
+/**
+ * Best-effort revoke of the upstream Yapily consent. We never block local
+ * cleanup on this — if Yapily is down, we still want the user's bank
+ * disappearing from their dashboard. Logged failures get surfaced via the
+ * standard error path (Sentry / Telegram alerts) so we can chase them.
+ *
+ * 404 from Yapily means the consent is already gone, which is the exact
+ * end-state we're trying to achieve, so deleteConsent() treats it as
+ * success (no throw).
+ */
+async function revokeYapilyConsentIfPossible(consentId: string | null | undefined): Promise<void> {
+  if (!consentId) return; // legacy connection without yapily_consent_id — nothing to revoke
+  try {
+    await deleteConsent(consentId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown';
+    console.error(`[bank.disconnect] yapily deleteConsent failed for ${consentId}: ${msg}`);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -75,6 +96,18 @@ export async function POST(request: NextRequest) {
   if (!connectionId) {
     // Legacy "revoke everything" path for callers that don't pass an id.
     // Stays at keep_history semantics for backwards compatibility.
+    // Best-effort revoke each consent on Yapily's side too — we can't
+    // tell from here which provider each row uses, so we just attempt
+    // the call and let yapily_consent_id being null short-circuit it.
+    const adminBulk = getAdmin();
+    const { data: bulkRows } = await adminBulk
+      .from('bank_connections')
+      .select('yapily_consent_id')
+      .eq('user_id', user.id)
+      .in('status', ['active', 'expired', 'token_expired', 'expired_legacy', 'expiring_soon']);
+    if (bulkRows?.length) {
+      await Promise.all(bulkRows.map((r) => revokeYapilyConsentIfPossible(r.yapily_consent_id)));
+    }
     const { error } = await supabase
       .from('bank_connections')
       .update({ status: 'revoked', updated_at: new Date().toISOString() })
@@ -86,11 +119,11 @@ export async function POST(request: NextRequest) {
 
   // Look up the connection so we can record bank_name/provider in the
   // audit row (especially important for erase_all where we then delete
-  // the row).
+  // the row) and revoke the upstream Yapily consent.
   const admin = getAdmin();
   const { data: conn, error: connErr } = await admin
     .from('bank_connections')
-    .select('id, user_id, bank_name, provider, status, account_ids, account_display_names')
+    .select('id, user_id, bank_name, provider, status, account_ids, account_display_names, yapily_consent_id')
     .eq('id', connectionId)
     .eq('user_id', user.id)
     .maybeSingle();
@@ -125,6 +158,17 @@ export async function POST(request: NextRequest) {
         .filter((n): n is string => n !== null)
     : [];
   const willRevokeConnection = !isAccountScoped || remainingAccountIds.length === 0;
+
+  // If this disconnect is going to revoke the entire connection (rather
+  // than just trim one account off a multi-account consent), revoke the
+  // upstream Yapily consent too. We do this BEFORE the local mutations
+  // so a Yapily-side success isn't followed by a local failure that
+  // leaves us out of sync. Per Migle's compliance requirement (29 Apr
+  // call): user-initiated disconnect must reach Yapily, not just flip
+  // local rows.
+  if (willRevokeConnection) {
+    await revokeYapilyConsentIfPossible(conn.yapily_consent_id);
+  }
 
   let transactionsAffected = 0;
 

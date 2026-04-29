@@ -102,34 +102,8 @@ export async function POST(request: NextRequest) {
 
   try {
     switch (event.type) {
-      case 'checkout.session.expired': {
-        const session = event.data.object as Stripe.Checkout.Session;
-        if (session.metadata?.product === 'b2b_api') {
-          try {
-            const { handleB2bCheckoutExpired } = await import('@/lib/b2b/stripe-webhook');
-            await handleB2bCheckoutExpired(supabase as any, session);
-          } catch (e: any) {
-            console.error('[stripe webhook] b2b checkout.expired failed:', e?.message);
-          }
-        }
-        break;
-      }
-
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-
-        // B2B API checkouts have metadata.product='b2b_api' and skip the
-        // consumer profile-update path entirely. Mint key, email plaintext.
-        if (session.metadata?.product === 'b2b_api') {
-          try {
-            const { handleB2bCheckoutCompleted } = await import('@/lib/b2b/stripe-webhook');
-            await handleB2bCheckoutCompleted(supabase as any, stripe, session);
-          } catch (e: any) {
-            console.error('[stripe webhook] b2b checkout failed:', e?.message);
-          }
-          break;
-        }
-
         const userId = session.metadata?.user_id;
         console.log(`Webhook checkout.session.completed: userId=${userId} customer=${session.customer} subscription=${session.subscription}`);
 
@@ -255,40 +229,20 @@ export async function POST(request: NextRequest) {
         const priceId = subscription.items.data[0]?.price.id || '';
         const tier = getPlanTier(priceId);
         const status = subscription.status;
-        const newTier = status === 'canceled' ? 'free' : tier;
 
         console.log(`Webhook subscription.updated: status=${status} customer=${customerId} tier=${tier}`);
-
-        // Read the old tier so we can decide whether this is a downgrade.
-        const { data: existing } = await supabase
-          .from('profiles')
-          .select('id, subscription_tier')
-          .eq('stripe_customer_id', customerId)
-          .neq('founding_member', true)
-          .maybeSingle();
 
         const { error } = await supabase
           .from('profiles')
           .update({
-            subscription_tier: newTier,
+            subscription_tier: status === 'canceled' ? 'free' : tier,
             subscription_status: status,
             updated_at: new Date().toISOString(),
           })
-          .eq('stripe_customer_id', customerId)
-          .neq('founding_member', true);
+          .eq('stripe_customer_id', customerId);
 
         if (error) console.error('Webhook: subscription.updated FAILED:', error.message);
         else console.log('Webhook: subscription.updated OK');
-
-        // Grace-period hook — fires when tier drops to a lower one.
-        if (!error && existing?.id && existing.subscription_tier) {
-          try {
-            const { openDowngradeEvent } = await import('@/lib/plan-downgrade');
-            await openDowngradeEvent(supabase as any, existing.id, existing.subscription_tier as any, newTier as any);
-          } catch (e) {
-            console.error('Webhook: openDowngradeEvent failed:', e);
-          }
-        }
         break;
       }
 
@@ -296,24 +250,6 @@ export async function POST(request: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
         console.log(`Webhook subscription.deleted: customer=${customerId}`);
-
-        // B2B API subscription cancellation → revoke the linked key.
-        if (subscription.metadata?.product === 'b2b_api') {
-          try {
-            const { handleB2bSubscriptionDeleted } = await import('@/lib/b2b/stripe-webhook');
-            await handleB2bSubscriptionDeleted(supabase as any, subscription);
-          } catch (e: any) {
-            console.error('[stripe webhook] b2b sub.deleted failed:', e?.message);
-          }
-          break;
-        }
-
-        const { data: existing } = await supabase
-          .from('profiles')
-          .select('id, subscription_tier')
-          .eq('stripe_customer_id', customerId)
-          .neq('founding_member', true)
-          .maybeSingle();
 
         const { error } = await supabase
           .from('profiles')
@@ -323,20 +259,10 @@ export async function POST(request: NextRequest) {
             stripe_subscription_id: null,
             updated_at: new Date().toISOString(),
           })
-          .eq('stripe_customer_id', customerId)
-          .neq('founding_member', true);
+          .eq('stripe_customer_id', customerId);
 
         if (error) console.error('Webhook: subscription.deleted FAILED:', error.message);
         else console.log('Webhook: subscription.deleted — downgraded to free');
-
-        if (!error && existing?.id && existing.subscription_tier) {
-          try {
-            const { openDowngradeEvent } = await import('@/lib/plan-downgrade');
-            await openDowngradeEvent(supabase as any, existing.id, existing.subscription_tier as any, 'free' as any);
-          } catch (e) {
-            console.error('Webhook: openDowngradeEvent failed:', e);
-          }
-        }
         break;
       }
 

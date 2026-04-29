@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { detectPriceIncreases } from '@/lib/price-increase-detector';
-import { buildPriceIncreaseEmail } from '@/lib/email/price-increase-alerts';
-import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
-import { sendNotification } from '@/lib/notifications/dispatch';
+import { sendPriceIncreaseAlert } from '@/lib/email/price-increase-alerts';
+import { canSendEmail } from '@/lib/email-rate-limit';
 
 export const maxDuration = 60;
 
@@ -36,8 +35,7 @@ export async function GET(request: NextRequest) {
   const { data: connections, error: connError } = await supabase
     .from('bank_connections')
     .select('user_id')
-    .eq('status', 'active')
-    .is('archived_at', null);
+    .eq('status', 'active');
 
   if (connError || !connections || connections.length === 0) {
     return NextResponse.json({ message: 'No active bank connections', alerts_created: 0 });
@@ -55,15 +53,12 @@ export async function GET(request: NextRequest) {
       const increases = await detectPriceIncreases(userId);
       if (increases.length === 0) continue;
 
-      // Get existing alerts (any status) for this user to prevent duplicates.
-      // Without including dismissed/actioned, every cron run recreates an
-      // alert the user has already dealt with — confirmed in production
-      // where Winchester Council Tax accumulated 7 rows and HMRC 5.
+      // Get existing active alerts for this user to prevent duplicates
       const { data: existingAlerts } = await supabase
         .from('price_increase_alerts')
         .select('merchant_normalized')
         .eq('user_id', userId)
-        .in('status', ['active', 'dismissed', 'actioned']);
+        .eq('status', 'active');
 
       const existingMerchants = new Set(
         (existingAlerts || []).map(a => a.merchant_normalized)
@@ -99,7 +94,6 @@ export async function GET(request: NextRequest) {
             annual_impact: increase.annualImpact,
             old_date: increase.oldDate,
             new_date: increase.newDate,
-            category: increase.category,
             status: 'active',
           });
 
@@ -112,29 +106,13 @@ export async function GET(request: NextRequest) {
         newIncreases.push(increase);
       }
 
-      // Route via the unified dispatcher — user's notification_preferences
-      // decide which of email / telegram / push fires. Free users still
-      // skip email (the dispatcher doesn't enforce tier, but this cron does).
-      if (newIncreases.length > 0) {
+      // Send ONE consolidated email with ALL price increases for this user
+      if (isPaid && profile?.email && newIncreases.length > 0) {
+        // Global daily email rate limit
         const rateCheck = await canSendEmail(supabase, userId, 'price_increase_alert');
-        const emailAllowed = isPaid && rateCheck.allowed;
-
-        const { subject, html } = buildPriceIncreaseEmail(userName, newIncreases as any);
-        const headline = newIncreases.length === 1
-          ? `💸 *${newIncreases[0].merchantNormalized}* went up £${(newIncreases[0].newAmount - newIncreases[0].oldAmount).toFixed(2)} (+${newIncreases[0].increasePct}%)`
-          : `💸 *${newIncreases.length} price increases detected* on your bills`;
-        const telegramText = `${headline}\n\n${newIncreases.map(i => `• ${i.merchantNormalized}: £${i.oldAmount} → £${i.newAmount} (+${i.increasePct}%)`).join('\n')}\n\nOpen Paybacker → Dashboard → Price increase alerts to action.`;
-
-        const result = await sendNotification(supabase, {
-          userId,
-          event: 'price_increase',
-          email: emailAllowed ? { subject, html } : undefined,
-          telegram: { text: telegramText },
-          push: { title: 'Price hike detected', body: headline.replace(/\*/g, '') },
-        });
-        if (result.delivered.includes('email')) {
-          totalEmailsSent++;
-          await markEmailSent(supabase, userId, 'price_increase_alert', `Price increase alert: ${newIncreases.length} merchant${newIncreases.length === 1 ? '' : 's'}`);
+        if (rateCheck.allowed) {
+          const sent = await sendPriceIncreaseAlert(profile.email, userName, newIncreases as any);
+          if (sent) totalEmailsSent++;
         }
       }
     } catch (err) {

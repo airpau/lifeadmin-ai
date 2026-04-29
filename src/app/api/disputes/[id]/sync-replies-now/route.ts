@@ -49,11 +49,9 @@ export async function POST(
     );
   }
 
-  const debug = (globalThis as any).__lastWatchdogDebug ?? null;
   return NextResponse.json({
     success: true,
     imported: result.imported,
     disputeId: result.disputeId,
-    debug,
   });
 }

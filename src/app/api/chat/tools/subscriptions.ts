@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { resolveProviderLogo } from '@/lib/logo-resolver';
+import { deriveRecurringGroup } from '@/lib/subscription-key';
 import { ChatTool } from './registry';
 
 function getAdmin() {
@@ -309,6 +310,52 @@ const createSubscription: ChatTool = {
 
     // Try to resolve logo
     const logoUrl = await resolveProviderLogo(args.provider_name);
+    const recurringGroup = deriveRecurringGroup(args.provider_name);
+
+    // Merge into an existing active row for the same provider instead of
+    // inserting a duplicate. The partial unique index from 20260422020000
+    // would otherwise 23505 on insert.
+    if (recurringGroup) {
+      const { data: existing } = await admin
+        .from('subscriptions')
+        .select('id, provider_name')
+        .eq('user_id', userId)
+        .eq('recurring_group', recurringGroup)
+        .is('dismissed_at', null)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        const patchFields: Record<string, unknown> = {
+          amount: args.amount,
+          billing_cycle: args.billing_cycle || 'monthly',
+          updated_at: new Date().toISOString(),
+        };
+        if (args.category)          patchFields.category = args.category;
+        if (args.contract_end_date) patchFields.contract_end_date = args.contract_end_date;
+        if (args.provider_type)     patchFields.provider_type = args.provider_type;
+        if (args.notes)             patchFields.notes = args.notes;
+        if (args.next_billing_date) patchFields.next_billing_date = args.next_billing_date;
+
+        const { data: updated, error: updErr } = await admin
+          .from('subscriptions')
+          .update(patchFields)
+          .eq('id', existing.id)
+          .eq('user_id', userId)
+          .select('id, provider_name, category, amount, billing_cycle, status')
+          .single();
+
+        if (updErr) return { error: updErr.message };
+        return {
+          message: `Updated existing subscription for ${updated.provider_name}.`,
+          subscription: {
+            ...updated,
+            amount: `£${Number(updated.amount).toFixed(2)}`,
+          },
+        };
+      }
+    }
 
     const { data, error } = await admin
       .from('subscriptions')
@@ -327,6 +374,7 @@ const createSubscription: ChatTool = {
         next_billing_date: args.next_billing_date || null,
         logo_url: logoUrl,
         source: 'manual',
+        recurring_group: recurringGroup,
       })
       .select('id, provider_name, category, amount, billing_cycle, status')
       .single();
@@ -393,9 +441,13 @@ const dismissSubscription: ChatTool = {
       return { error: 'Please provide either an id or provider_name.' };
     }
 
+    // Use status='cancelled' — 'dismissed' is not in the subscriptions
+    // CHECK constraint (20260101000000 line 241) so the previous value was
+    // failing the update silently on strict drivers. 'cancelled' matches
+    // what dismiss_subscription RPC + DELETE route already write.
     const { data, error } = await admin
       .from('subscriptions')
-      .update({ dismissed_at: new Date().toISOString(), status: 'dismissed' })
+      .update({ dismissed_at: new Date().toISOString(), status: 'cancelled' })
       .eq('id', subscriptionId)
       .eq('user_id', userId)
       .select('id, provider_name')

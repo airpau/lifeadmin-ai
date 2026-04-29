@@ -21,11 +21,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Fetch all published blog posts from database (skip gracefully if env vars absent at build time)
   let blogPosts: { slug: string; published_at: string }[] | null = null;
   if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    // 5s build-time hard cap (same defence as blog/page.tsx) so a
-    // saturated Supabase can't block sitemap generation and fail the
-    // entire production build.
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -35,13 +30,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .from('blog_posts')
         .select('slug, published_at')
         .eq('status', 'published')
-        .order('published_at', { ascending: false })
-        .abortSignal(controller.signal);
+        .order('published_at', { ascending: false });
       blogPosts = data;
     } catch {
       // fall through — only static blog entries will appear in sitemap
-    } finally {
-      clearTimeout(timeout);
     }
   }
 
@@ -67,10 +59,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: baseUrl, lastModified: now, changeFrequency: 'weekly', priority: 1 },
     { url: `${baseUrl}/pricing`, lastModified: now, changeFrequency: 'weekly', priority: 0.9 },
     { url: `${baseUrl}/about`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/how-it-works`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/careers`, lastModified: now, changeFrequency: 'monthly', priority: 0.5 },
-    { url: `${baseUrl}/templates`, lastModified: now, changeFrequency: 'monthly', priority: 0.85 },
-    { url: `${baseUrl}/for-business`, lastModified: now, changeFrequency: 'weekly', priority: 0.9 },
 
     // Solution landing pages (highest SEO value)
     ...solutions.map(slug => ({
@@ -93,7 +81,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/flight-delay-compensation`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
     { url: `${baseUrl}/cancel-gym-membership`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
     { url: `${baseUrl}/council-tax-challenge`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
-    { url: `${baseUrl}/debt-collection-response`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
+    { url: `${baseUrl}/debt-collection-letter`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
+    { url: `${baseUrl}/debt-collection-response`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
     { url: `${baseUrl}/broadband-overcharging`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
     { url: `${baseUrl}/hidden-subscriptions`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
     { url: `${baseUrl}/insurance-complaint`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
@@ -114,6 +103,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/privacy-policy`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
     { url: `${baseUrl}/terms-of-service`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
     { url: `${baseUrl}/cookie-policy`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
-    { url: `${baseUrl}/ico-notice`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
   ];
 }

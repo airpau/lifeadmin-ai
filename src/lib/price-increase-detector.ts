@@ -1,43 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
-import { hasMeaningfulPriceSignal, bucketFor } from '@/lib/category-taxonomy';
 
 function getAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
-}
-
-// Pull tokens from the user's full name so we can spot transfers-to-self
-// in descriptions like "PAUL AIREY HALIFAX VIA MOBILE — PYMT". Tokens
-// shorter than 3 chars are dropped to avoid false positives ("LE", "MR").
-async function loadUserNameTokens(userId: string): Promise<string[]> {
-  const supabase = getAdmin();
-  const { data } = await supabase
-    .from('profiles')
-    .select('full_name')
-    .eq('id', userId)
-    .maybeSingle();
-  const name: string = String(data?.full_name ?? '');
-  return name
-    .toLowerCase()
-    .split(/\s+/)
-    .map((t: string) => t.replace(/[^a-z]/g, ''))
-    .filter((t: string) => t.length >= 3);
-}
-
-function looksLikeTransferToSelf(
-  description: string,
-  merchantName: string | null | undefined,
-  userNameTokens: string[],
-): boolean {
-  if (userNameTokens.length === 0) return false;
-  const haystack = `${description} ${merchantName ?? ''}`.toLowerCase();
-  // Both first + last (or all) name tokens must appear — single-token
-  // matches are too noisy (common surnames hit unrelated merchants).
-  const hits = userNameTokens.filter((t) => haystack.includes(t)).length;
-  return hits >= Math.min(2, userNameTokens.length);
 }
 
 export interface PriceIncrease {
@@ -49,37 +17,25 @@ export interface PriceIncrease {
   annualImpact: number;
   oldDate: string;
   newDate: string;
-  category: string;
 }
 
-// Bank-level (raw) transaction-type codes that are never recurring bills.
-// Category-level filtering goes through hasMeaningfulPriceSignal() —
-// those rules live in category-taxonomy.ts.
-const RAW_BANK_TYPES_NO_PRICE_SIGNAL = new Set([
+// Categories where amounts vary naturally -- skip these
+const VARIABLE_CATEGORIES = new Set([
+  'groceries', 'fuel', 'eating_out', 'shopping', 'cash', 'transfers',
+  'income', 'other', 'transport', 'gambling',
+  // Bank categories that are one-off purchases, not recurring bills
   'PURCHASE', 'ATM', 'TRANSFER', 'FEE_CHARGE', 'CASH',
   'CREDIT', 'INTEREST', 'OTHER',
 ]);
 
-// Only these (raw) transaction-type codes signal a recurring bill.
-const RECURRING_BANK_TYPES = new Set(['DIRECT_DEBIT', 'STANDING_ORDER']);
-
-// Merchant-name heuristics -- block even if category looks recurring
-const BLOCKED_MERCHANT_PATTERNS = [
-  /\bcouncil\s*tax\b/i,
-  /\bfunding\s*circle\b/i,
-  /\bklarna\b/i,
-  /\bpaypal\s*credit\b/i,
-  /\bPYMT\s*FP\b/i,          // manual Faster Payments (e.g. Halifax mobile)
-  /\bBTPP\b/i,               // Bill payment transfers
-  /\b(b\/?card|barclaycard|amex|visa\s+plat)\b/i,
-];
-
-// Hard cap -- if the "new" payment is more than this multiple of the old,
-// it is almost certainly a different kind of transaction, not a price rise.
-const MAX_PRICE_INCREASE_RATIO = 2.0;
-
-// Require at least this many prior payments to establish a stable baseline.
-const MIN_PREVIOUS_PAYMENTS = 3;
+// Only these transaction categories can be recurring bills
+const RECURRING_CATEGORIES = new Set([
+  'DIRECT_DEBIT', 'STANDING_ORDER',
+  // Mapped internal categories
+  'energy', 'broadband', 'mobile', 'streaming', 'insurance',
+  'mortgage', 'loans', 'credit', 'council_tax', 'water',
+  'fitness', 'software', 'bills',
+]);
 
 /**
  * Detect price increases in recurring payments for a user.
@@ -88,7 +44,6 @@ const MIN_PREVIOUS_PAYMENTS = 3;
  */
 export async function detectPriceIncreases(userId: string): Promise<PriceIncrease[]> {
   const supabase = getAdmin();
-  const userNameTokens = await loadUserNameTokens(userId);
 
   // Fetch last 6 months of debit transactions
   const sixMonthsAgo = new Date();
@@ -123,29 +78,12 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
 
     // Use user_category if set, otherwise category
     const cat = tx.user_category || tx.category || '';
-    // Bank-level codes that are never recurring (raw transaction-type strings)
-    if (RAW_BANK_TYPES_NO_PRICE_SIGNAL.has(cat)) continue;
-    // Canonical filter: skip variable / amortising / transfer / income categories.
-    // Replaces VARIABLE_CATEGORIES + EXCLUDED_FROM_PRICE_DETECTION drift.
-    if (!hasMeaningfulPriceSignal(cat)) continue;
-    // Only track rows that look like recurring bills — either a bank-level
-    // DD/SO type, OR a fixed-cost-bucket category that the canonical
-    // taxonomy says has a price signal.
-    const bucket = bucketFor(cat);
-    const isRecurringRow = RECURRING_BANK_TYPES.has(cat) || bucket === 'fixed_cost';
-    if (!isRecurringRow) continue;
-
-    // Transfers to self (e.g. "PAUL AIREY … HALIFAX VIA MOBILE — PYMT") can
-    // otherwise look like huge price rises when amounts vary. Skip them.
-    if (looksLikeTransferToSelf(tx.description || '', tx.merchant_name, userNameTokens)) continue;
+    if (VARIABLE_CATEGORIES.has(cat)) continue;
+    // Only track categories that represent recurring bills
+    if (!RECURRING_CATEGORIES.has(cat)) continue;
 
     const normalised = normaliseMerchantName(tx.description || tx.merchant_name || '');
     if (normalised === 'Unknown') continue;
-
-    // Merchant-level blocklist -- catches transactions that slip through the
-    // category filter (manual transfers, council tax, loan repayments, etc.)
-    const haystack = `${normalised} ${tx.description || ''}`;
-    if (BLOCKED_MERCHANT_PATTERNS.some(rx => rx.test(haystack))) continue;
 
     const month = new Date(tx.timestamp).toISOString().slice(0, 7); // YYYY-MM
 
@@ -178,10 +116,8 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
 
-    // Need at least MIN_PREVIOUS_PAYMENTS months of prior data + 1 latest.
-    // A single prior payment gives a variance of zero so any spike passes --
-    // that's how manual transfers were sneaking through.
-    if (monthlyPayments.length < MIN_PREVIOUS_PAYMENTS + 1) continue;
+    // Need at least 2 months of data
+    if (monthlyPayments.length < 2) continue;
 
     const latest = monthlyPayments[monthlyPayments.length - 1];
     const previous = monthlyPayments.slice(0, -1);
@@ -192,21 +128,17 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
     // Calculate average of previous payments
     const avgPrevious = previous.reduce((sum, p) => sum + p.amount, 0) / previous.length;
 
-    // Require previous payments to be tight (std dev < 15% of mean). Loan /
-    // council-tax style schedules used to slip through at 20%.
+    // Check previous payments were roughly consistent (std dev < 20% of mean)
+    // This ensures we're comparing recurring payments, not random purchases
     const variance = previous.reduce((sum, p) => sum + Math.pow(p.amount - avgPrevious, 2), 0) / previous.length;
     const stdDev = Math.sqrt(variance);
-    if (avgPrevious > 0 && stdDev / avgPrevious > 0.15) continue;
-
-    // Sanity cap -- anything more than a 2x jump is almost certainly a
-    // different kind of transaction, not a price increase.
-    if (avgPrevious > 0 && latest.amount > avgPrevious * MAX_PRICE_INCREASE_RATIO) continue;
+    if (avgPrevious > 0 && stdDev / avgPrevious > 0.20) continue;
 
     // Calculate increase
     const increasePct = ((latest.amount - avgPrevious) / avgPrevious) * 100;
 
-    // Require ≥5% increase (old 2% was catching rounding noise)
-    if (increasePct < 5) continue;
+    // Flag if increase > 2%
+    if (increasePct <= 2) continue;
 
     const annualImpact = (latest.amount - avgPrevious) * 12;
 
@@ -219,7 +151,6 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
       annualImpact: Math.round(annualImpact * 100) / 100,
       oldDate: previous[previous.length - 1].timestamp.split('T')[0],
       newDate: latest.timestamp.split('T')[0],
-      category: latest.category,
     });
   }
 

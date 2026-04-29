@@ -152,23 +152,15 @@ export async function POST(request: NextRequest) {
 
         if (matching && matching.length > 0) {
           // Split into positive-amount (income side) and negative-amount (spending side).
-          // For positive amounts re-tagged as a NON-income category, also stamp
-          // income_type='credit_loan' so Money Hub excludes them from monthly
-          // income (isExcludedIncomeType). But if the user is reclassifying TO
-          // 'income', clear income_type so the classifier can re-detect
-          // income_type naturally from the transaction's own signals.
+          // For positive amounts, also exclude from income totals by setting
+          // income_type = 'credit_loan' (which isExcludedIncomeType treats as non-income).
           const positiveIds = matching.filter(t => Number(t.amount) > 0).map(t => t.id);
           const negativeIds = matching.filter(t => Number(t.amount) <= 0).map(t => t.id);
-
-          const isIncomeRecat = newCategory === 'income';
-          const positivePatch = isIncomeRecat
-            ? { user_category: newCategory, income_type: null }
-            : { user_category: newCategory, income_type: 'credit_loan' };
 
           for (let i = 0; i < positiveIds.length; i += 50) {
             const batch = positiveIds.slice(i, i + 50);
             const { count } = await admin.from('bank_transactions')
-              .update(positivePatch)
+              .update({ user_category: newCategory, income_type: 'credit_loan' })
               .in('id', batch);
             if (count) updated += count;
           }
@@ -189,25 +181,6 @@ export async function POST(request: NextRequest) {
         userId: user.id,
       }).catch((e) => console.error('Learn error (non-fatal):', e.message));
 
-      // 4. Reverse-sync to subscriptions: if the user recategorised a
-      // merchant in Money Hub, the matching subscription row was
-      // stuck on its old category — the subscriptions PATCH path
-      // goes subs→Money Hub, but this endpoint was one-way. That
-      // meant "Test Valley" could be council_tax in bank_transactions
-      // but still 'other' on the Subscriptions page. Keeps the two
-      // stores aligned regardless of which screen the user corrects
-      // from.
-      try {
-        const { error: subSyncErr } = await admin.from('subscriptions')
-          .update({ category: newCategory })
-          .eq('user_id', user.id)
-          .is('dismissed_at', null)
-          .or(`provider_name.ilike.%${overridePattern}%,bank_description.ilike.%${overridePattern}%`);
-        if (subSyncErr) console.error('Sub reverse-sync failed (non-fatal):', subSyncErr.message);
-      } catch (e) {
-        console.error('Sub reverse-sync threw:', e);
-      }
-
       return NextResponse.json({
         success: true,
         updated,
@@ -226,14 +199,9 @@ export async function POST(request: NextRequest) {
         .single();
 
       const txnPatch: Record<string, any> = { user_category: newCategory };
-      // For positive-amount transactions:
-      // - re-tagged as a non-income category → stamp 'credit_loan' so Money Hub
-      //   excludes it from monthly income
-      // - re-tagged TO 'income' → clear any stale income_type so the classifier
-      //   can re-detect it (was previously left untouched, which occasionally
-      //   left a credit_loan flag in place that still suppressed income)
-      if (txnData && Number(txnData.amount) > 0) {
-        txnPatch.income_type = newCategory === 'income' ? null : 'credit_loan';
+      // For positive-amount transactions, also exclude from income by flagging credit_loan
+      if (txnData && Number(txnData.amount) > 0 && newCategory !== 'income') {
+        txnPatch.income_type = 'credit_loan';
       }
 
       await admin.from('bank_transactions')

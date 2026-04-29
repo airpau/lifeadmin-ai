@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { randomBytes } from 'crypto';
 import { resend, FROM_EMAIL } from '@/lib/resend';
-import { authorizeAdminOrCron } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
@@ -17,9 +16,9 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
 
 // GET — list proposals
 export async function GET(request: NextRequest) {
-  const auth = await authorizeAdminOrCron(request);
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.reason ?? 'Unauthorized' }, { status: auth.status });
+  const secret = request.headers.get('authorization');
+  if (secret !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const supabase = getAdmin();
@@ -45,9 +44,9 @@ export async function GET(request: NextRequest) {
 
 // POST — create a new proposal (called by agents or meeting)
 export async function POST(request: NextRequest) {
-  const auth = await authorizeAdminOrCron(request);
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.reason ?? 'Unauthorized' }, { status: auth.status });
+  const secret = request.headers.get('authorization');
+  if (secret !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const body = await request.json();

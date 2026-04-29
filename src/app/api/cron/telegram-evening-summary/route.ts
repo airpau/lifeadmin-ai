@@ -16,7 +16,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendBatchedDigest } from '@/lib/telegram/queue';
-import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -118,15 +117,20 @@ export async function GET(request: NextRequest) {
   const userIds = sessions.map((s) => s.user_id);
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id')
     .in('id', userIds);
 
-  // Eligibility helper covers past_due / unpaid / incomplete (Stripe
-  // retry window) so users keep getting alerts during the 7-day grace
-  // before auto-demotion. See lib/telegram/eligibility.ts.
   const proUserIds = new Set(
     (profiles ?? [])
-      .filter((p) => isProPocketAgentEligible(p))
+      .filter((p) => {
+        const tier = p.subscription_tier;
+        const status = p.subscription_status;
+        const hasStripe = !!p.stripe_subscription_id;
+        return (
+          tier === 'pro' &&
+          (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing')
+        );
+      })
       .map((p) => p.id),
   );
 
@@ -304,15 +308,7 @@ export async function GET(request: NextRequest) {
         .order('amount', { ascending: true }) // most negative first = biggest spend
         .limit(8);
 
-      // Mirror lib/spending.ts exclusions so notable transactions
-      // don't surface CC bill payments / pension top-ups / Loqbox
-      // moves as "spending" the user should care about.
-      const EXCLUDE_CATS = new Set([
-        'transfer', 'transfers', 'internal_transfer', 'self_transfer',
-        'credit_card_payment', 'credit_card',
-        'investment', 'investments', 'savings', 'pension',
-        'income', 'fee_refund',
-      ]);
+      const EXCLUDE_CATS = new Set(['transfers', 'income']);
       const notableTx = (recentTxData ?? []).filter(
         tx => !EXCLUDE_CATS.has(tx.user_category ?? '') && Math.abs(Number(tx.amount)) >= 10,
       ).slice(0, 5);

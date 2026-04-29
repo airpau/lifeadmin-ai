@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { X, Sparkles, ArrowRight } from 'lucide-react';
+import { isNativeShell } from '@/lib/native-shell';
+import NativeIapButtons from './NativeIapButtons';
 
 interface UpgradePromptProps {
   variant: 'banner' | 'modal' | 'inline';
@@ -11,6 +13,15 @@ interface UpgradePromptProps {
 
 export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) {
   const [dismissed, setDismissed] = useState(false);
+  const [native, setNative] = useState(false);
+
+  // Inside the iOS/Android Capacitor shell the web Stripe link would
+  // violate Apple Guideline 3.1.1 / Google Play's billing policy — render
+  // the native IAP buttons instead. Cross-source double-charge prevention
+  // happens inside NativeIapButtons via /api/subscription/active.
+  useEffect(() => {
+    setNative(isNativeShell());
+  }, []);
 
   const handleClose = () => {
     setDismissed(true);
@@ -18,6 +29,20 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
   };
 
   if (dismissed) return null;
+
+  if (native && variant === 'modal') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={handleClose} />
+        <div className="relative max-w-md w-full">
+          <NativeIapButtons onClose={handleClose} />
+        </div>
+      </div>
+    );
+  }
+  if (native) {
+    return <NativeIapButtons onClose={onClose} />;
+  }
 
   if (variant === 'banner') {
     return (

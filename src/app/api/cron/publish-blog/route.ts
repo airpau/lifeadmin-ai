@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { resend, FROM_EMAIL } from '@/lib/resend';
-import { generateSocialImage, buildBrandedPrompt } from '@/lib/generate-image';
-import { uploadImageToStorage } from '@/lib/storage';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+export const maxDuration = 120;
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -97,65 +95,36 @@ export async function GET(request: NextRequest) {
     console.log(`[blog] All topics written. Refreshing: ${topic.slug}`);
   }
 
-  // Step 1: Research with Perplexity. Two prompts in parallel:
-  //  (a) deep-dive — current law, figures, deadlines for accuracy
-  //  (b) topical-news — anything from the last 14 days that could anchor
-  //      the post to a real news beat (Ofcom ruling, court judgement,
-  //      regulator fine, viral incident). The cron runs Mon/Wed/Fri so
-  //      14 days catches the previous fortnight's news cycle.
+  // Step 1: Research with Perplexity for up-to-date UK info
   const perplexityKey = process.env.PERPLEXITY_API_KEY;
   let researchContext = '';
-  let topicalHook = '';
-  let topicalSources: Array<{ url: string; title?: string }> = [];
 
   if (perplexityKey) {
-    const researchPromise = fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${perplexityKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [{
-          role: 'user',
-          content: `What is the latest UK consumer advice for "${topic.keyword}" as of 2026? Include recent law changes, current figures, deadlines, compensation amounts, relevant regulators (Ofcom, Ofgem, FCA, etc.), and ombudsman processes. Focus on practical, accurate information for UK consumers.`,
-        }],
-      }),
-    }).then((r) => r.ok ? r.json() : null).catch(() => null);
+    try {
+      const researchRes = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${perplexityKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'sonar',
+          messages: [{
+            role: 'user',
+            content: `What is the latest UK consumer advice for "${topic.keyword}" as of 2026? Include recent law changes, current figures, deadlines, compensation amounts, relevant regulators (Ofcom, Ofgem, FCA, etc.), and ombudsman processes. Focus on practical, accurate information for UK consumers.`,
+          }],
+        }),
+      });
 
-    const topicalPromise = fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${perplexityKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [{
-          role: 'user',
-          content: `Is there any UK news in the last 14 days directly relevant to "${topic.keyword}"? Examples: Ofcom/Ofgem/FCA rulings, Ombudsman decisions, court judgements, supplier collapses, regulator fines, price cap changes, viral consumer incidents. Reply in this exact format if you find something: "HOOK: [one-sentence summary, citing the publication date and source name]". If nothing genuinely topical, reply only with the literal word "NONE".`,
-        }],
-        return_citations: true,
-      }),
-    }).then((r) => r.ok ? r.json() : null).catch(() => null);
-
-    const [researchData, topicalData] = await Promise.all([researchPromise, topicalPromise]);
-
-    researchContext = researchData?.choices?.[0]?.message?.content || '';
-    if (researchContext) {
-      console.log(`[blog] Perplexity research: ${researchContext.length} chars`);
-    } else {
-      console.warn('[blog] Perplexity research empty or failed');
-    }
-
-    const topicalRaw = topicalData?.choices?.[0]?.message?.content?.trim() || '';
-    if (topicalRaw && !/^none$/i.test(topicalRaw)) {
-      const m = topicalRaw.match(/HOOK:\s*([\s\S]+)$/i);
-      topicalHook = (m?.[1] || topicalRaw).trim().slice(0, 600);
-      const cites = topicalData?.citations || topicalData?.choices?.[0]?.message?.citations;
-      if (Array.isArray(cites)) {
-        topicalSources = cites.slice(0, 6).map((c: any) =>
-          typeof c === 'string' ? { url: c } : { url: c?.url || '', title: c?.title }
-        ).filter((c) => c.url);
+      if (researchRes.ok) {
+        const researchData = await researchRes.json();
+        researchContext = researchData.choices?.[0]?.message?.content || '';
+        console.log(`[blog] Perplexity: ${researchContext.length} chars for "${topic.keyword}"`);
+      } else {
+        console.warn(`[blog] Perplexity returned ${researchRes.status}`);
       }
-      console.log(`[blog] Topical hook: "${topicalHook.slice(0, 80)}…" (${topicalSources.length} sources)`);
-    } else {
-      console.log('[blog] No topical news this week');
+    } catch (err: any) {
+      console.error('[blog] Perplexity failed:', err.message);
     }
   }
 
@@ -181,10 +150,6 @@ export async function GET(request: NextRequest) {
     ? `\n- Near the end, mention that users can compare ${topic.dealCategory} deals on Paybacker to find a better provider.`
     : '';
 
-  const topicalBlock = topicalHook
-    ? `\n\nTOPICAL NEWS HOOK (use this to anchor the opening paragraph — readers should feel the post is about something happening RIGHT NOW, not generic evergreen advice):\n${topicalHook}`
-    : '';
-
   let response;
   try {
     response = await anthropic.messages.create({
@@ -198,8 +163,7 @@ Write comprehensive, genuinely helpful blog posts that:
 - Use H2 for main sections and H3 for sub-sections - clear hierarchy
 - Include specific UK legislation (Consumer Rights Act 2015, Consumer Credit Act 1974, etc.), named regulators (Ofcom, Ofgem, FCA, ICO, etc.), and current figures from the research
 - Include 2 inline CTAs placed naturally within the content (not just at the end)
-- Include 3-4 internal links to relevant Paybacker tools / sibling guides spread through the body — at least one in the intro third, one mid-post, one near the close. Internal links are how readers convert; do not concentrate them all in the closing paragraph.
-- If a topical news hook is provided, OPEN the post with it so the reader knows this guide reflects the current moment, then transition into the evergreen advice.
+- Add 1-2 internal links to relevant Paybacker tools where they naturally fit
 - Are written in British English (£ symbols, British spelling, UK-specific advice)
 - Never use em dashes - use hyphens or colons instead
 - Use a helpful, expert-but-approachable tone
@@ -227,14 +191,7 @@ INTERNAL LINKS (use where naturally relevant - open as normal links):
 - Flight compensation: <a href="/flight-delay-compensation">our flight delay compensation guide</a>
 - Gym cancellations: <a href="/cancel-gym-membership">how to cancel your gym membership</a>
 - Council tax: <a href="/council-tax-challenge">our council tax challenge guide</a>
-- Debt response: <a href="/debt-collection-response">our debt letter response guide</a>
-- Broadband overcharging: <a href="/broadband-overcharging">our broadband overcharging guide</a>
-- Hidden subscriptions: <a href="/hidden-subscriptions">our hidden subscription scanner</a>
-- Insurance complaints: <a href="/insurance-complaint">our insurance complaint guide</a>
-- Mobile contract disputes: <a href="/mobile-contract-dispute">our mobile contract dispute guide</a>
-- Parking appeals: <a href="/parking-appeal">our parking charge appeal guide</a>
-- Letter templates: <a href="/templates">our UK consumer letter templates</a>
-- Pricing & plans: <a href="/pricing">Paybacker pricing</a>
+- Debt letters: <a href="/debt-collection-letter">our debt letter response guide</a>
 - Paybacker complaints tool: <a href="/auth/signup">Paybacker's AI complaints tool</a>
 
 Return ONLY a valid JSON object with no markdown code fences:
@@ -242,8 +199,7 @@ Return ONLY a valid JSON object with no markdown code fences:
   "title": "SEO title 60-70 characters, primary keyword near start",
   "metaDescription": "Meta description 150-160 chars - compelling, includes keyword, ends with a soft CTA",
   "content": "Complete HTML blog post (no <h1> tag - use <h2> and <h3> only, plus <p>, <ul>, <li>, <ol>, <strong>, <a> tags)",
-  "excerpt": "2-3 engaging sentences summarising the post for the blog index page",
-  "imagePrompt": "A short visual brief (under 200 chars) describing an abstract editorial illustration that represents this post's TOPIC (NOT the post itself). Examples: 'a stylised pound coin breaking through a paper utility bill', 'an abstract glowing flight path crossed by a calendar grid', 'a concept of layered subscription cards fanned out'. NO text, NO faces, NO photorealism — abstract editorial only."
+  "excerpt": "2-3 engaging sentences summarising the post for the blog index page"
 }`,
       messages: [{
         role: 'user',
@@ -251,7 +207,7 @@ Return ONLY a valid JSON object with no markdown code fences:
 
 Today's date: ${today}
 Category: ${topic.category}
-${internalLinkHint}${dealHint}${topicalBlock}${researchBlock}
+${internalLinkHint}${dealHint}${researchBlock}
 
 Make it genuinely useful for someone searching "${topic.keyword}" on Google. Include real UK law references, specific figures, and practical steps. The post should establish Paybacker as the go-to tool for UK consumer disputes.`,
       }],
@@ -282,36 +238,6 @@ Make it genuinely useful for someone searching "${topic.keyword}" on Google. Inc
     return NextResponse.json({ error: 'Missing required fields in parsed post', parsed }, { status: 500 });
   }
 
-  // Step 3: Generate hero image via Imagen, upload to Supabase Storage.
-  // Non-fatal — if image gen fails the post still ships and the index
-  // falls back to the gradient placeholder. The image is regenerated
-  // on every upsert (re-run blog cron to refresh visuals).
-  let imageUrl: string | null = null;
-  let imageAlt: string | null = null;
-  if (process.env.GEMINI_API_KEY) {
-    try {
-      // Two-tier visual brief: prefer the per-post brief Claude wrote
-      // alongside the content, but fall back to the deterministic
-      // category-keyword helper if Claude omitted it. The helper
-      // guarantees a topic-specific subject so we never end up with
-      // a plane illustration on a builder-dispute post.
-      const { buildVisualBrief } = await import('@/lib/blog-visual-brief');
-      const visualBrief = (parsed.imagePrompt && typeof parsed.imagePrompt === 'string' && parsed.imagePrompt.trim().length > 20)
-        ? parsed.imagePrompt
-        : buildVisualBrief({ title: parsed.title, keyword: topic.keyword, category: topic.category });
-      const fullPrompt = buildBrandedPrompt(visualBrief);
-      const { imageBase64, mimeType } = await generateSocialImage(fullPrompt, { aspectRatio: '16:9' });
-      imageUrl = await uploadImageToStorage(imageBase64, mimeType, `blog/${topic.slug}.png`);
-      imageAlt = `Editorial illustration for ${parsed.title}`;
-      console.log(`[blog] Hero image: ${imageUrl}`);
-    } catch (imgErr) {
-      const msg = imgErr instanceof Error ? imgErr.message : String(imgErr);
-      console.warn(`[blog] Hero image generation failed (non-fatal): ${msg}`);
-    }
-  } else {
-    console.warn('[blog] GEMINI_API_KEY missing — skipping hero image');
-  }
-
   // Save to database
   const { error: insertErr } = await supabase.from('blog_posts').upsert({
     slug: topic.slug,
@@ -324,10 +250,6 @@ Make it genuinely useful for someone searching "${topic.keyword}" on Google. Inc
     deal_category: topic.dealCategory,
     status: 'published',
     published_at: new Date().toISOString(),
-    image_url: imageUrl,
-    image_alt: imageAlt,
-    topical_hook: topicalHook || null,
-    topical_sources: topicalSources.length ? topicalSources : null,
   }, { onConflict: 'slug' });
 
   if (insertErr) {

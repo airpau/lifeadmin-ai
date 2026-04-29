@@ -72,41 +72,21 @@ async function findGmailCandidates(
   const explicit = hasExplicitDomains(dispute.provider_name);
 
   // Cascading query strategy — start narrow, broaden if nothing found.
-  // 2026-04-28 — broadened to include sent emails (`to:` matches) so a
-  // user who just sent a complaint and CC'd themselves can link THAT
-  // outbound thread before the supplier replies. Previously we only
-  // matched `from:supplier` which structurally excluded the just-sent
-  // case Paul hit on the Nuki dispute.
+  // This fixes the case where a supplier sends from an unexpected subdomain
+  // (e.g. noreply@billing.onestream-telecom.co.uk) or uses subjects without
+  // the brand name (e.g. "Your January invoice").
   const providerPhrase = dispute.provider_name.trim();
   const subjectTerm = providerPhrase.split(/\s+/)[0].toLowerCase();
   const fromClauses = domains.map((d) => `from:${d}`).join(' OR ');
-  // Same domains, but matched on the recipient side. `to:` in Gmail
-  // covers both To: and Cc: at the message level, so this catches
-  // user-sent-and-CC'd-self complaint letters.
-  const toClauses = domains.map((d) => `to:${d}`).join(' OR ');
 
-  // 2026-04-28 — narrowed the default window. Was 365d, which surfaced
-  // a July 2025 Nuki Smart Lock support ticket as the top candidate
-  // for a today-dated dispute. New disputes almost always relate to
-  // recent correspondence; an old thread is rarely the right link.
-  // We try 90d first; if nothing, fall back to 365d. Old threads stay
-  // findable but lose top-of-list bias.
   const queries: string[] = [];
-  if (fromClauses && toClauses) {
-    queries.push(`(${fromClauses} OR ${toClauses}) newer_than:90d`);
-    queries.push(`(${fromClauses} OR ${toClauses}) newer_than:365d`);
-  } else if (fromClauses) {
-    queries.push(`(${fromClauses}) newer_than:90d`);
+  if (fromClauses) {
     queries.push(`(${fromClauses}) newer_than:365d`);
   }
-  // Broad full-text fallback: catches emails that mention the provider
-  // anywhere in headers/body, even if the from/to domain isn't in our
-  // allowlist (the case for new providers Paybacker doesn't yet have
-  // a domain mapping for).
-  queries.push(`"${providerPhrase}" newer_than:90d`);
+  // Broad full-text: catches emails that mention the provider anywhere in
+  // headers/body, even if the from-domain isn't in our allowlist.
   queries.push(`"${providerPhrase}" newer_than:365d`);
   if (providerPhrase.toLowerCase() !== subjectTerm) {
-    queries.push(`"${subjectTerm}" newer_than:90d`);
     queries.push(`"${subjectTerm}" newer_than:365d`);
   }
 
@@ -114,7 +94,7 @@ async function findGmailCandidates(
   for (const q of queries) {
     const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/threads');
     listUrl.searchParams.set('q', q);
-    listUrl.searchParams.set('maxResults', '30');
+    listUrl.searchParams.set('maxResults', '20');
     const listRes = await fetch(listUrl.toString(), {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -129,31 +109,12 @@ async function findGmailCandidates(
     }
   }
 
-  // The connected inbox's own address — used to identify user-sent
-  // (outbound) threads when the user has CC'd themselves into a
-  // letter to the supplier and we want to surface it as a candidate
-  // before the supplier has replied. See the "outbound" boost below.
-  const ownAddr = (conn.email_address || '').toLowerCase().trim();
-
   const candidates: ThreadCandidate[] = [];
-  // Pull metadata in parallel — Gmail's per-thread fetch is the
-  // dominant latency cost, and we now scan up to 30 threads (was 10)
-  // because the broadened query may surface both inbound and
-  // outbound matches together.
-  const detailUrls = threads.slice(0, 30).map(
-    (t) =>
-      `https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Subject&metadataHeaders=Date`,
-  );
-  const detailFetches = await Promise.all(
-    detailUrls.map((url) =>
-      fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null),
-    ),
-  );
-
-  for (const thr of detailFetches) {
-    if (!thr) continue;
+  for (const t of threads.slice(0, 10)) {
+    const detailUrl = `https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`;
+    const r = await fetch(detailUrl, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) continue;
+    const thr = await r.json();
     const msgs = thr.messages ?? [];
     if (msgs.length === 0) continue;
 
@@ -164,126 +125,35 @@ async function findGmailCandidates(
       headers.find((x) => x.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 
     const fromStr = h('From');
-    const toStr = h('To');
-    const ccStr = h('Cc');
     const fromAddr = fromStr.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0]?.toLowerCase() ?? '';
     const fromDomain = fromAddr.split('@')[1] ?? '';
-    const recipientAddrs = `${toStr} ${ccStr}`
-      .toLowerCase()
-      .match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) ?? [];
-
-    // Did the USER initiate this thread? Yes if the first message's
-    // From: matches the connected inbox's address, AND a recipient
-    // address belongs to a supplier domain. This is the "I just sent
-    // a complaint and CC'd myself" pattern — Paul's Nuki case.
-    const userInitiated =
-      ownAddr.length > 0 && fromAddr === ownAddr;
-
-    // Recipient match: prefer explicit domain mapping, fall back to a
-    // fuzzy "recipient domain contains the provider's first token"
-    // check so the outbound flow works for providers we don't yet
-    // have in provider-domains.ts (e.g. nuki.io for "Nuki Home
-    // Solutions" before the explicit mapping landed).
-    const recipientMatchesProvider = recipientAddrs.some((addr) => {
-      if (addressMatchesProvider(addr, dispute.provider_name)) return true;
-      const recipDomain = (addr.split('@')[1] ?? '').toLowerCase();
-      return (
-        subjectTerm.length >= 3 &&
-        recipDomain.length > 0 &&
-        recipDomain.includes(subjectTerm)
-      );
-    });
-
     const latestInternal = Number(latest.internalDate ?? 0);
-    const ageMs = Date.now() - latestInternal;
-    const isFresh = ageMs >= 0 && ageMs < 7 * 86_400_000;
 
     let confidence = 0.3;
     const reasons: string[] = [];
-
-    if (userInitiated && recipientMatchesProvider) {
-      // User just sent a letter to this supplier (and CC'd themselves
-      // OR the message landed in All Mail). Surface near the top so
-      // they can adopt this thread for tracking — this is the
-      // outbound-track flow.
-      confidence += 0.55;
-      reasons.push(`outbound — you sent this to ${dispute.provider_name}`);
-      if (isFresh) {
-        confidence += 0.1;
-        reasons.push('sent within last 7 days');
-      }
-    } else if (explicit && addressMatchesProvider(fromAddr, dispute.provider_name)) {
+    if (explicit && addressMatchesProvider(fromAddr, dispute.provider_name)) {
       confidence += 0.5;
       reasons.push(`sender domain matches ${dispute.provider_name}`);
     } else if (fromDomain.includes(subjectTerm)) {
       confidence += 0.25;
       reasons.push(`sender domain contains '${subjectTerm}'`);
     }
-
     const subj = h('Subject').toLowerCase();
     if (subj.includes(subjectTerm)) {
       confidence += 0.1;
       reasons.push('subject mentions provider');
     }
-
-    // 2026-04-28 — recency aware. Was: msgs.length >= 2 → +0.1 (any
-    // age). That promoted old multi-message support threads above
-    // today's single-reply emails, which is exactly backwards for a
-    // freshly-created dispute. Paul hit this on Nuki: a July 2025
-    // support thread (5 messages) outranked tonight's "[Nuki] Re:
-    // Customer Service Form Submission" (1 message) and got linked
-    // by mistake.
-    //
-    // New scoring (reuses the ageMs computed above):
-    //   - Recency: thread latest within 7d → +0.20
-    //                          within 30d → +0.10
-    //                          older than 90d → −0.25 (heavy penalty)
-    //                          older than 30d → −0.10
-    //   - Multi-message: +0.05 ONLY when the thread is recent (<30d).
-    //     A multi-message ANCIENT thread no longer gets a boost.
-    if (ageMs < 7 * 86_400_000) {
-      confidence += 0.20;
-      reasons.push('latest message in last 7 days');
-    } else if (ageMs < 30 * 86_400_000) {
-      confidence += 0.10;
-      reasons.push('latest message in last 30 days');
-    } else if (ageMs > 90 * 86_400_000) {
-      confidence -= 0.25;
-      reasons.push('latest message over 90 days old — likely not this dispute');
-    } else if (ageMs > 30 * 86_400_000) {
-      confidence -= 0.10;
-      reasons.push('latest message over 30 days old');
-    }
-    if (msgs.length >= 2 && ageMs < 30 * 86_400_000) {
-      confidence += 0.05;
-      reasons.push(`${msgs.length} messages — active thread`);
+    if (msgs.length >= 2) {
+      confidence += 0.1;
+      reasons.push(`${msgs.length} messages in thread`);
     }
 
     candidates.push({
       provider: 'gmail',
       threadId: thr.id,
       subject: h('Subject'),
-      // For outbound threads, surface the supplier address as the
-      // "sender" the UI shows — that's what the user expects to see in
-      // the candidate row, not their own email.
-      senderAddress: (() => {
-        if (userInitiated && recipientAddrs.length > 0) {
-          return recipientAddrs.find((a) => addressMatchesProvider(a, dispute.provider_name))
-            ?? recipientAddrs[0]
-            ?? fromAddr;
-        }
-        return fromAddr;
-      })(),
-      senderDomain: (() => {
-        if (userInitiated && recipientAddrs.length > 0) {
-          const supplierAddr = recipientAddrs.find((a) => addressMatchesProvider(a, dispute.provider_name))
-            ?? recipientAddrs[0];
-          if (supplierAddr) {
-            return supplierAddr.split('@')[1] ?? fromDomain;
-          }
-        }
-        return fromDomain;
-      })(),
+      senderAddress: fromAddr,
+      senderDomain: fromDomain,
       latestDate: new Date(latestInternal),
       messageCount: msgs.length,
       snippet: thr.snippet ?? firstMsg.snippet ?? '',

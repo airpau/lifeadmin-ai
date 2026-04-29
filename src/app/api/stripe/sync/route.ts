@@ -60,11 +60,7 @@ export async function POST() {
       .single();
 
     if (!profile?.stripe_customer_id) {
-      return NextResponse.json({
-        synced: true,
-        tier: profile?.subscription_tier || 'free',
-        reason: 'No Stripe customer — stored tier is authoritative',
-      });
+      return NextResponse.json({ synced: false, tier: 'free', reason: 'No Stripe customer' });
     }
 
     // Fetch active/trialing subs
@@ -75,24 +71,17 @@ export async function POST() {
 
     const allSubs = [...(activeSubs.data || []), ...(trialingSubs.data || [])];
 
-    // IMPORTANT: this route is PROMOTE-ONLY. We never downgrade a user
-    // here — that was the root cause of the April 2026 founder
-    // downgrade incident. Demotion is now webhook-driven only:
-    // customer.subscription.deleted / .updated with status=canceled
-    // in /api/stripe/webhooks explicitly writes subscription_tier='free'.
-    //
-    // If the user has no active Stripe sub but the profile still says
-    // essential/pro, we leave it alone. Either:
-    //   (a) their webhook just hasn't landed yet (race condition — retry);
-    //   (b) they were granted a tier manually (admin grant, comped);
-    //   (c) they're on an onboarding trial (trial_ends_at still in future).
-    // None of these justify a silent tier wipe on every dashboard mount.
     if (allSubs.length === 0) {
-      return NextResponse.json({
-        synced: true,
-        tier: profile.subscription_tier || 'free',
-        reason: 'No active Stripe sub — stored tier preserved (promote-only policy)',
-      });
+      if (profile.subscription_tier !== 'free') {
+        const admin = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+        await admin.from('profiles').update({
+          subscription_tier: 'free',
+          subscription_status: null,
+          stripe_subscription_id: null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', user.id);
+      }
+      return NextResponse.json({ synced: true, tier: 'free' });
     }
 
     // Get full subscription details directly
@@ -144,28 +133,14 @@ export async function POST() {
 
     console.log(`Sync: tier=${currentTier} pendingChange=${JSON.stringify(pendingChange)}`);
 
-    // Update profile. Surface any error (was silently swallowed before — the
-    // 'plus'/'essential' check-constraint bug went undetected for weeks
-    // because this update failed every time without anyone noticing).
+    // Update profile
     const admin = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-    const { error: updateError } = await admin.from('profiles').update({
+    await admin.from('profiles').update({
       subscription_tier: currentTier,
       subscription_status: sub.status,
       stripe_subscription_id: sub.id,
       updated_at: new Date().toISOString(),
     }).eq('id', user.id);
-
-    if (updateError) {
-      console.error('Stripe sync: profile UPDATE FAILED:', updateError.message, {
-        userId: user.id,
-        attemptedTier: currentTier,
-        stripeSubId: sub.id,
-      });
-      return NextResponse.json(
-        { error: `Profile update failed: ${updateError.message}`, attemptedTier: currentTier },
-        { status: 500 },
-      );
-    }
 
     // Build period end date safely
     const periodEndTimestamp = sub.current_period_end || sub.cancel_at;

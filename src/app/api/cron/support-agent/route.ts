@@ -227,12 +227,10 @@ export async function GET(request: NextRequest) {
   let ticketsResolved = 0;
 
   try {
-    // 1. Fetch open tickets with no agent assignment.
-    // source + metadata included so Riley can branch reply channel
-    // (telegram → DM via Telegram bot; otherwise → email).
+    // 1. Fetch open tickets with no agent assignment
     const { data: openTickets, error: ticketsError } = await supabase
       .from('support_tickets')
-      .select('id, user_id, subject, description, ticket_number, priority, category, source, metadata')
+      .select('id, user_id, subject, description, ticket_number, priority, category')
       .eq('status', 'open')
       .is('assigned_to', null)
       .order('created_at', { ascending: true })
@@ -260,15 +258,13 @@ export async function GET(request: NextRequest) {
 
       if (!messages || messages.length === 0) continue;
 
-      // GUARDRAIL: Don't double-reply — only proceed when the latest message in the
-      // conversation is from the user (or the system seed message). If Riley already
-      // replied as the most recent message, skip until the user replies again.
-      // (Removed 2026-04-26: the previous "if any agent has ever replied, skip"
-      // hasAgentReply guard which made Riley single-touch and broke multi-turn after
-      // user replies came back through the Resend inbound webhook → status reset to
-      // 'open'. This single guard on the LATEST message is sufficient.)
+      // GUARDRAIL: Don't double-reply — skip if last message is from an agent
       const lastMessage = messages[messages.length - 1];
       if (lastMessage.sender_type !== 'user' && lastMessage.sender_type !== 'system') continue;
+
+      // GUARDRAIL: Don't reply if an agent has already responded
+      const hasAgentReply = messages.some(m => m.sender_type === 'agent');
+      if (hasAgentReply) continue;
 
       // 3. Get user info
       const ticketRef = ticket.ticket_number || ticket.id.slice(0, 8).toUpperCase();
@@ -412,65 +408,8 @@ export async function GET(request: NextRequest) {
         message: reply,
       });
 
-      // 10a. If the ticket originated from Telegram, DM Riley's reply to the user via the
-      // Telegram bot. Falls through to email as a belt-and-braces if Telegram delivery fails.
-      const ticketSource = (ticket as { source?: string }).source as string | undefined;
-      const ticketMetadata = (ticket as { metadata?: Record<string, unknown> }).metadata || {};
-      const telegramChatId = (ticketMetadata as Record<string, unknown>).telegram_chat_id as
-        | number
-        | string
-        | null
-        | undefined;
-      let telegramDelivered = false;
-      if (ticketSource === 'telegram' && telegramChatId) {
-        try {
-          const tgToken = process.env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_USER_BOT_TOKEN;
-          if (tgToken) {
-            // Telegram caps message text at 4096 chars; chunk the reply if longer.
-            const intro = `🤝 *Riley · Paybacker Support* (ticket ${ticketRef})\n\n`;
-            const fullText = intro + reply;
-            const chunks: string[] = [];
-            for (let i = 0; i < fullText.length; i += 3800) {
-              chunks.push(fullText.slice(i, i + 3800));
-            }
-            for (const chunk of chunks) {
-              const res = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({
-                  chat_id: Number(telegramChatId),
-                  text: chunk,
-                  parse_mode: 'Markdown',
-                  disable_web_page_preview: true,
-                }),
-              });
-              if (!res.ok) {
-                // Retry once without Markdown in case of formatting issues
-                const retry = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
-                  method: 'POST',
-                  headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({
-                    chat_id: Number(telegramChatId),
-                    text: chunk,
-                  }),
-                });
-                if (!retry.ok) {
-                  throw new Error(`Telegram send failed: ${res.status}`);
-                }
-              }
-            }
-            telegramDelivered = true;
-          }
-        } catch (tgErr) {
-          console.error(
-            `[${AGENT_ID}] Telegram reply failed for ${ticketRef}, falling back to email:`,
-            tgErr,
-          );
-        }
-      }
-
-      // 10b. Email Riley's response to the user (skipped if Telegram already delivered).
-      if (userEmail && !telegramDelivered) {
+      // 10. Email Riley's response to the user
+      if (userEmail) {
         try {
           const htmlReply = reply
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')

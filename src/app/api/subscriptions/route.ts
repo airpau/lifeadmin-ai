@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { deriveRecurringGroup } from '@/lib/subscription-key';
 
 export async function GET() {
   try {
@@ -19,56 +20,32 @@ export async function GET() {
 
     if (error) throw error;
 
-    // Deduplicate on the server side as a safety net —
-    // prevents duplicate cron entries from leaking to the client.
-    // Key includes amount band so that two legitimately separate subscriptions
-    // to the same provider at different amounts are NOT collapsed (e.g. two
-    // council-tax DDs for different properties, two gym memberships, etc.).
-    const amountBand = (amount: number) => {
-      if (amount <= 0) return 0;
-      return Math.round(Math.log(Math.max(amount, 0.01)) / Math.log(1.1));
-    };
-    const seen = new Map<string, boolean>();
-    const deduped = (data || []).filter((sub: any) => {
-      const band = amountBand(Math.abs(parseFloat(String(sub.amount)) || 0));
-      const key = `${(sub.provider_name || '').toLowerCase().trim()}|${sub.billing_cycle}|${sub.status}|${band}`;
-      if (seen.has(key)) return false;
-      seen.set(key, true);
-      return true;
-    });
-
-    // Auto-advance next_billing_date if in the past (only run on small batches to avoid timeout)
+    // Auto-advance next_billing_date if in the past
     const now = new Date();
-    const toAdvance = deduped.filter((sub: any) =>
-      sub.next_billing_date && sub.status === 'active' && new Date(sub.next_billing_date) < now
-    );
-
-    for (const sub of toAdvance) {
-      try {
-        const newDate = new Date(sub.next_billing_date);
-        let iterations = 0;
-        while (newDate < now && iterations < 24) {
-          if (sub.billing_cycle === 'monthly') newDate.setMonth(newDate.getMonth() + 1);
-          else if (sub.billing_cycle === 'quarterly') newDate.setMonth(newDate.getMonth() + 3);
-          else if (sub.billing_cycle === 'yearly') newDate.setFullYear(newDate.getFullYear() + 1);
-          else break;
-          iterations++;
+    for (const sub of data || []) {
+      if (sub.next_billing_date && sub.status === 'active') {
+        const billDate = new Date(sub.next_billing_date);
+        if (billDate < now) {
+          // Advance based on billing cycle
+          const newDate = new Date(billDate);
+          while (newDate < now) {
+            if (sub.billing_cycle === 'monthly') newDate.setMonth(newDate.getMonth() + 1);
+            else if (sub.billing_cycle === 'quarterly') newDate.setMonth(newDate.getMonth() + 3);
+            else if (sub.billing_cycle === 'yearly') newDate.setFullYear(newDate.getFullYear() + 1);
+            else break;
+          }
+          sub.next_billing_date = newDate.toISOString().split('T')[0];
+          // Update in background — catch errors to avoid unhandled promise rejections
+          Promise.resolve(
+            supabase.from('subscriptions').update({ next_billing_date: sub.next_billing_date }).eq('id', sub.id)
+          )
+            .then(({ error }) => { if (error) console.error(`Failed to advance billing date for sub ${sub.id}:`, error.message); })
+            .catch((err: unknown) => console.error(`Failed to advance billing date for sub ${sub.id}:`, err));
         }
-        sub.next_billing_date = newDate.toISOString().split('T')[0];
-        // Update in background — don't await so we don't block the response
-        Promise.resolve(
-          supabase.from('subscriptions')
-            .update({ next_billing_date: sub.next_billing_date })
-            .eq('id', sub.id)
-        )
-          .then(({ error }) => { if (error) console.error(`Failed to advance billing date for sub ${sub.id}:`, error.message); })
-          .catch((err: unknown) => console.error(`Failed to advance billing date for sub ${sub.id}:`, err));
-      } catch (advErr) {
-        console.error(`Error advancing billing date for sub ${sub.id}:`, advErr);
       }
     }
 
-    return NextResponse.json(deduped);
+    return NextResponse.json(data || []);
   } catch (error: any) {
     console.error('Error fetching subscriptions:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -91,6 +68,53 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields: provider_name, amount, billing_cycle' },
         { status: 400 }
       );
+    }
+
+    // Canonical key so the row plays nicely with get_subscription_total and
+    // the partial unique index on (user_id, recurring_group). See
+    // 20260422020000.
+    const recurringGroup = deriveRecurringGroup(body.provider_name);
+
+    // If an active row for this provider already exists, merge into it
+    // instead of inserting a duplicate. This is the user-friendly flip-side
+    // of the partial unique index — without it the INSERT would 23505 and
+    // the caller would see a 500.
+    if (recurringGroup) {
+      const { data: existing } = await supabase
+        .from('subscriptions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('recurring_group', recurringGroup)
+        .is('dismissed_at', null)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        const patch: Record<string, unknown> = {
+          updated_at: new Date().toISOString(),
+          amount: parseFloat(body.amount),
+          billing_cycle: body.billing_cycle,
+        };
+        if (body.category)            patch.category = body.category;
+        if (body.next_billing_date)   patch.next_billing_date = body.next_billing_date;
+        if (body.contract_end_date)   patch.contract_end_date = body.contract_end_date;
+        if (body.contract_start_date) patch.contract_start_date = body.contract_start_date;
+        if (body.provider_type)       patch.provider_type = body.provider_type;
+        if (body.current_tariff)      patch.current_tariff = body.current_tariff;
+        if (body.notes)               patch.notes = body.notes;
+
+        const { data: updated, error: updErr } = await supabase
+          .from('subscriptions')
+          .update(patch)
+          .eq('id', existing.id)
+          .eq('user_id', user.id)
+          .select()
+          .single();
+
+        if (updErr) throw updErr;
+        return NextResponse.json(updated, { status: 200 });
+      }
     }
 
     const { data, error } = await supabase
@@ -120,6 +144,7 @@ export async function POST(request: NextRequest) {
         alert_before_days: body.alert_before_days || 30,
         contract_end_source: body.contract_end_source || (body.contract_end_date ? 'manual' : null),
         source: body.source || 'manual',
+        recurring_group: recurringGroup,
       })
       .select()
       .single();

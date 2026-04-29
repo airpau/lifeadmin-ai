@@ -1,99 +1,63 @@
-import { isSwitchable } from './category-taxonomy';
-
-/**
- * @deprecated Kept for backwards compatibility. New code should call
- * `isSwitchable(category)` from category-taxonomy.ts — the single source
- * of truth for "can the user switch to a better deal here?".
- */
 export const EXCLUDED_SAVINGS_CATEGORIES = new Set([
   'mortgage', 'mortgages', 'loan', 'loans', 'council_tax', 'tax',
   'credit_card', 'credit cards', 'credit-cards', 'car_finance', 'car finance', 'car-finance',
   'fee', 'parking',
-  'bank_transfer', 'transfer', 'transfers', 'debt_repayment',
 ]);
-
-// Merchant-name heuristics for alerts where `category` is null (legacy rows
-// written before category was stored on price_increase_alerts).
-const ALERT_MERCHANT_BLOCKLIST = [
-  /\bcouncil\s*tax\b/i,
-  /\bfunding\s*circle\b/i,
-  /\bklarna\b/i,
-  /\bpaypal\s*credit\b/i,
-  /\bPYMT\s*FP\b/i,
-  /\bBTPP\b/i,
-  /\b(halifax|santander|barclays|natwest|lloyds|hsbc|nationwide|bank of scotland)\b/i,
-  /\b(b\/?card|barclaycard|amex|visa\s+plat)\b/i,
-];
-
-// Cap per-alert annual impact at 80% of prior annual spend. Anything above
-// that is almost certainly a detector false positive, not a price rise.
-const ALERT_IMPACT_CAP_RATIO = 0.8;
 
 export function isDealValid(deal: { category?: string | null; currentPrice?: number; annualSaving?: number; subscriptionName?: string; providerName?: string }): boolean {
   if (!deal.category) return false;
-
-  // Canonical "can this be switched?" — replaces EXCLUDED_SAVINGS_CATEGORIES.
-  if (!isSwitchable(deal.category)) return false;
-
+  
+  const catLower = deal.category.toLowerCase();
+  if (EXCLUDED_SAVINGS_CATEGORIES.has(catLower)) return false;
+  
   const name = (deal.subscriptionName || deal.providerName || '').toLowerCase();
   if (name.includes('chris hillier')) return false;
-
+  
   // 80% cap: if annual saving > 80% of current annual spend, skip
   const currentPrice = deal.currentPrice || 0;
   const annualSaving = deal.annualSaving || 0;
   if (currentPrice > 0 && annualSaving > currentPrice * 12 * 0.8) return false;
-
+  
   return true;
 }
 
-export function isPriceAlertValid(alert: {
-  category?: string | null;
-  merchant_normalized?: string | null;
-  merchant_name?: string | null;
-  old_amount?: number | string | null;
-  new_amount?: number | string | null;
-}): boolean {
-  // Canonical: only categories with a meaningful price signal can produce
-  // a useful alert. Excludes amortising debt, variable spend, transfers.
-  if (alert.category && !isSwitchable(alert.category)) return false;
-
-  const haystack = `${alert.merchant_normalized || ''} ${alert.merchant_name || ''}`;
-  if (ALERT_MERCHANT_BLOCKLIST.some(rx => rx.test(haystack))) return false;
-
-  const oldAmt = parseFloat(String(alert.old_amount)) || 0;
-  const newAmt = parseFloat(String(alert.new_amount)) || 0;
-  // Reject 2x+ jumps -- detector false positive
-  if (oldAmt > 0 && newAmt > oldAmt * 2) return false;
-
-  return true;
-}
-
-export function priceAlertAnnualImpact(alert: {
-  old_amount?: number | string | null;
-  new_amount?: number | string | null;
-  annual_impact?: number | string | null;
-}): number {
-  const oldAmt = parseFloat(String(alert.old_amount)) || 0;
-  const newAmt = parseFloat(String(alert.new_amount)) || 0;
-  const diff = newAmt - oldAmt;
-  const raw = diff > 0 ? diff * 12 : (parseFloat(String(alert.annual_impact)) || 0);
-  // Cap at 80% of prior annual spend to prevent any single alert from
-  // dominating the headline if the detector misfires.
-  if (oldAmt > 0) {
-    const cap = oldAmt * 12 * ALERT_IMPACT_CAP_RATIO;
-    return Math.min(raw, cap);
+/**
+ * Headline "Potential Savings Found" figure shown on the dashboard.
+ *
+ * Only real switch-deal savings contribute to this total. Price-increase
+ * alerts are surfaced separately (via PriceIncreaseCard) — they represent
+ * *mitigable overspend*, not guaranteed savings, and rolling them into the
+ * same bucket was producing inflated, unreliable totals (e.g. £36k/yr)
+ * because:
+ *   (a) the same recurring merchant can produce multiple active alerts
+ *       over consecutive months, so the delta gets counted every time,
+ *   (b) one-off / non-recurring transactions occasionally slip through the
+ *       detector and show up as huge notional "increases",
+ *   (c) an alert's annual_impact is already the annualised delta, so the
+ *       previous code double-counted on the positive-diff branch.
+ *
+ * Deals are de-duplicated by subscriptionName so the same provider cannot
+ * contribute twice (parseComparisonDeals already takes the best comparison
+ * per subscription, but this is a belt-and-braces check for callers that
+ * pass pre-flattened lists).
+ *
+ * The second parameter is kept for backwards-compat with existing call
+ * sites; it is intentionally ignored.
+ */
+export function calculateTotalSavings(
+  deals: any[],
+  _priceAlerts?: any[],
+): number {
+  const seen = new Set<string>();
+  let total = 0;
+  for (const d of deals || []) {
+    if (!isDealValid(d)) continue;
+    const key = (d.subscriptionName || d.providerName || '').toLowerCase().trim();
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    total += d.annualSaving || 0;
   }
-  return raw;
-}
-
-export function calculateTotalSavings(deals: any[], priceAlerts: any[]): number {
-  const validDeals = (deals || []).filter(isDealValid);
-  const dealsTotal = validDeals.reduce((sum, d) => sum + (d.annualSaving || 0), 0);
-
-  const validAlerts = (priceAlerts || []).filter(isPriceAlertValid);
-  const alertTotal = validAlerts.reduce((sum, a) => sum + priceAlertAnnualImpact(a), 0);
-
-  return dealsTotal + alertTotal;
+  return total;
 }
 
 export function parseComparisonDeals(data: any) {

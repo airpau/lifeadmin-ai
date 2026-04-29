@@ -21,19 +21,6 @@ function normaliseBillName(name: string): string {
 }
 
 /**
- * Map an amount to a logarithmic band (base 1.1, ~10% wide each).
- * Amounts within ~5% of each other fall in the same band; amounts
- * differing by >10% produce distinct bands.
- *
- * Examples:  £122.94 → 50,  £123.00 → 50  (same band — minor variation)
- *            £123.00 → 50,  £144.00 → 52  (different bands — separate bills)
- */
-function amountBand(amount: number): number {
-  if (amount <= 0) return 0;
-  return Math.round(Math.log(Math.max(amount, 0.01)) / Math.log(1.1));
-}
-
-/**
  * Fuzzy name match between a transaction and an expected bill.
  * Returns true if any of these hold:
  *   1. Normalised prefix overlap (original logic, 10-char cap)
@@ -133,28 +120,22 @@ export async function GET(request: Request) {
       }
     }
 
-    // Merge similar providers by normalised name + amount band.
-    // Using name alone would incorrectly collapse two genuinely separate recurring
-    // payments from the same merchant (e.g. two council-tax DDs for different
-    // properties, two Spotify accounts, etc.).  Including the amount band keeps
-    // entries distinct when their amounts differ by more than ~10%.
+    // Merge similar providers by normalised name
     const mergedMap = new Map<string, any>();
     for (const bill of bills) {
       const normKey = normaliseBillName(bill.provider_name);
       if (!normKey) continue;
-      const band = amountBand(parseFloat(bill.expected_amount) || 0);
-      const dedupKey = `${normKey}|${band}`;
-      const existing = mergedMap.get(dedupKey);
+      const existing = mergedMap.get(normKey);
       if (existing) {
         if (bill.is_subscription && !existing.is_subscription) {
-          mergedMap.set(dedupKey, bill);
+          mergedMap.set(normKey, bill);
         } else if (existing.is_subscription && !bill.is_subscription) {
           // keep existing
         } else if (bill.occurrence_count > existing.occurrence_count) {
-          mergedMap.set(dedupKey, bill);
+          mergedMap.set(normKey, bill);
         }
       } else {
-        mergedMap.set(dedupKey, bill);
+        mergedMap.set(normKey, bill);
       }
     }
     bills = Array.from(mergedMap.values());

@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Switched from ISR to force-dynamic 2026-04-28 — pre-rendering at
-// build time hangs and fails the entire deploy when Supabase is
-// saturated. Computing fresh per-request is fine; the route is
-// hit infrequently and Vercel caches at edge anyway.
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300; // Cache for 5 minutes
 
 function getAdmin() {
   return createClient(
