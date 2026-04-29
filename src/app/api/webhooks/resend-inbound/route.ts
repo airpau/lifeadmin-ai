@@ -126,22 +126,26 @@ function extractTicketRef(payload: {
  */
 async function fetchResendEmailBody(
   emailId: string,
-): Promise<{ text: string; html: string }> {
+): Promise<{ text: string; html: string; lastStatus: number | null; lastUrl: string | null }> {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey || !emailId) return { text: '', html: '' };
-  // Try inbound endpoint first; if that 404s (older Resend account
-  // without inbound parsing surfaced as an API resource) fall back
-  // to the outbound endpoint just in case the email came in via a
-  // different code path.
+  if (!apiKey || !emailId) {
+    return { text: '', html: '', lastStatus: null, lastUrl: null };
+  }
+  // Try inbound endpoint first; outbound is a defensive fallback in
+  // case an outbound ID ever reaches this code path.
   const endpoints = [
     `https://api.resend.com/emails/receiving/${emailId}`,
     `https://api.resend.com/emails/${emailId}`,
   ];
+  let lastStatus: number | null = null;
+  let lastUrl: string | null = null;
   for (const url of endpoints) {
     try {
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
+      lastStatus = res.status;
+      lastUrl = url;
       if (!res.ok) {
         console.warn(
           `[resend-inbound] ${url} returned ${res.status} for email ${emailId}`,
@@ -151,7 +155,7 @@ async function fetchResendEmailBody(
       const data = await res.json();
       const text = typeof data.text === 'string' ? data.text : '';
       const html = typeof data.html === 'string' ? data.html : '';
-      if (text || html) return { text, html };
+      if (text || html) return { text, html, lastStatus, lastUrl };
     } catch (err) {
       console.warn(
         `[resend-inbound] ${url} fetch failed for ${emailId}:`,
@@ -159,7 +163,7 @@ async function fetchResendEmailBody(
       );
     }
   }
-  return { text: '', html: '' };
+  return { text: '', html: '', lastStatus, lastUrl };
 }
 
 function trimReplyBody(text: string): string {
@@ -232,12 +236,14 @@ async function handle(req: NextRequest) {
   // logic working even with no body, so Riley still sees the reply
   // arrived and can prompt the user to resend.
   let bodyText = '';
+  let lastFetchStatus: number | null = null;
   if (data.text) {
     bodyText = trimReplyBody(data.text);
   } else if (data.html) {
     bodyText = trimReplyBody(data.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
   } else if (data.email_id) {
     const fetched = await fetchResendEmailBody(data.email_id);
+    lastFetchStatus = fetched.lastStatus;
     if (fetched.text) {
       bodyText = trimReplyBody(fetched.text);
     } else if (fetched.html) {
@@ -245,7 +251,13 @@ async function handle(req: NextRequest) {
     }
   }
   if (!bodyText) {
-    bodyText = `[Inbound email from ${fromEmail ?? 'unknown'} — body fetch failed; check Resend logs for ${data.email_id ?? 'no email_id'}.]`;
+    // Surface the actual HTTP status so future placeholders are
+    // self-diagnosing — 401 = RESEND_API_KEY lacks inbound scope,
+    // 404 = email_id wrong shape, etc. Saves a Vercel log dive.
+    const statusHint = lastFetchStatus
+      ? ` (Resend API ${lastFetchStatus}${lastFetchStatus === 401 ? ' — RESEND_API_KEY likely lacks Inbound read scope' : ''})`
+      : '';
+    bodyText = `[Inbound email from ${fromEmail ?? 'unknown'} — body fetch failed${statusHint}. email_id: ${data.email_id ?? 'none'}.]`;
   }
 
   if (!fromEmail) {
