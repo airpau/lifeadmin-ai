@@ -56,15 +56,31 @@ export interface AccountSnapshot {
  * Project a Yapily account list into the snapshot shape the rest of
  * this module operates on. Computed once in the callback, passed to
  * the sync — keeps the hashing logic in one place.
+ *
+ * Suppresses Monzo "POT" accounts. Per Yapily docs (Vitally GA2):
+ * Monzo doesn't return transaction data for type=POT, so they show
+ * up as ghost accounts in the UI with eternally-empty histories.
+ * We hide them here so they never enter bank_connections.account_ids,
+ * never appear in the dashboard, and aren't fetched by any sync.
  */
 export function snapshotAccounts(accounts: YapilyAccount[]): AccountSnapshot[] {
-  return accounts.map((a) => ({
-    yapilyAccountId: a.id,
-    displayName: buildYapilyAccountDisplayName(a),
-    accountIdentificationsHash: buildAccountIdentificationsHash(a.accountIdentifications || []),
-    accountIdentificationsRaw: a.accountIdentifications || [],
-    currency: a.currency || 'GBP',
-  }));
+  return accounts
+    .filter((a) => {
+      const t = (a.type ?? '').toUpperCase();
+      const at = (a.accountType ?? '').toUpperCase();
+      const isPot = t === 'POT' || at === 'POT';
+      if (isPot) {
+        console.log(`[yapily.snapshotAccounts] skipping Monzo POT account id=${a.id}`);
+      }
+      return !isPot;
+    })
+    .map((a) => ({
+      yapilyAccountId: a.id,
+      displayName: buildYapilyAccountDisplayName(a),
+      accountIdentificationsHash: buildAccountIdentificationsHash(a.accountIdentifications || []),
+      accountIdentificationsRaw: a.accountIdentifications || [],
+      currency: a.currency || 'GBP',
+    }));
 }
 
 export interface ConnectionUpsertInput {
@@ -166,6 +182,10 @@ export async function upsertYapilyConnection(
           : {}),
         consent_granted_at: now,
         consent_expires_at: input.consentExpiresAt,
+        // Reset the single-use tracking flag — a reconnect means a new
+        // consent, so the upcoming-payments endpoints become callable
+        // again. Null is the "ready to pull" sentinel the cron checks.
+        upcoming_endpoints_fetched_at: null,
         account_ids: incomingAccountIds,
         account_display_names: incomingDisplayNames,
         account_identifications_hashes: incomingHashes.length === incomingAccountIds.length

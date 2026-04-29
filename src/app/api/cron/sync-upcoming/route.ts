@@ -41,6 +41,7 @@ interface BankConnection {
   institution_id: string | null;
   consent_token: string | null;
   consent_expires_at: string | null;
+  upcoming_endpoints_fetched_at: string | null;
   account_ids: string[] | null;
   status: string;
 }
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
   // Pull active Yapily connections with a non-expired consent.
   const { data: connections, error: connErr } = await supabase
     .from('bank_connections')
-    .select('id, user_id, provider, provider_id, institution_id, consent_token, consent_expires_at, account_ids, status')
+    .select('id, user_id, provider, provider_id, institution_id, consent_token, consent_expires_at, upcoming_endpoints_fetched_at, account_ids, status')
     .eq('provider', 'yapily')
     .eq('status', 'active')
     .is('archived_at', null);
@@ -121,6 +122,15 @@ export async function GET(request: NextRequest) {
       continue;
     }
 
+    // Single-use semantics (Migle, 29 Apr): the deterministic
+    // upcoming-payments endpoints are callable ONCE per consent.
+    // If we've already pulled them on this consent, skip the calls
+    // and rely on the recurrence detector + transaction history (run
+    // unconditionally below) to keep predicted rows fresh.
+    // upcoming_endpoints_fetched_at is reset to NULL on reconnect by
+    // upsertYapilyConnection.
+    const alreadyFetchedDeterministic = !!conn.upcoming_endpoints_fetched_at;
+
     // Per-institution feature check (Migle's spec: ~70% of UK banks
     // support these). Looking once per connection — for all accounts
     // on the same consent the feature flags are identical. Defaults
@@ -128,13 +138,15 @@ export async function GET(request: NextRequest) {
     // so we don't regress existing behaviour for connections without
     // metadata.
     const instId = conn.institution_id ?? '';
-    const [hasScheduled, hasPeriodic, hasDirectDebits] = instId
-      ? await Promise.all([
-          supportsFeature(instId, 'ACCOUNT_SCHEDULED_PAYMENTS'),
-          supportsFeature(instId, 'ACCOUNT_PERIODIC_PAYMENTS'),
-          supportsFeature(instId, 'ACCOUNT_DIRECT_DEBITS'),
-        ])
-      : [true, true, true];
+    const [hasScheduled, hasPeriodic, hasDirectDebits] = alreadyFetchedDeterministic
+      ? [false, false, false]
+      : instId
+        ? await Promise.all([
+            supportsFeature(instId, 'ACCOUNT_SCHEDULED_PAYMENTS'),
+            supportsFeature(instId, 'ACCOUNT_PERIODIC_PAYMENTS'),
+            supportsFeature(instId, 'ACCOUNT_DIRECT_DEBITS'),
+          ])
+        : [true, true, true];
 
     for (const accountId of conn.account_ids) {
       const rows: UpsertRow[] = [];
@@ -259,6 +271,23 @@ export async function GET(request: NextRequest) {
         } else {
           summary.predictedRowsUpserted += predictedRows.length;
         }
+      }
+    }
+
+    // Stamp upcoming_endpoints_fetched_at so the next cron tick
+    // skips the deterministic endpoints (single-use semantics). We
+    // only stamp when we actually attempted to call them on this
+    // tick — if alreadyFetchedDeterministic was true we don't need
+    // to re-stamp, the original timestamp stands. We also stamp
+    // even if the calls returned no rows / threw — Yapily counts
+    // the call regardless of outcome.
+    if (!alreadyFetchedDeterministic && (hasScheduled || hasPeriodic || hasDirectDebits)) {
+      const { error: stampErr } = await supabase
+        .from('bank_connections')
+        .update({ upcoming_endpoints_fetched_at: new Date().toISOString() })
+        .eq('id', conn.id);
+      if (stampErr) {
+        console.error(`[sync-upcoming] stamp failed for conn=${conn.id}:`, stampErr.message);
       }
     }
 
