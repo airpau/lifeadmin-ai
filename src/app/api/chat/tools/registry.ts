@@ -8,9 +8,10 @@ export interface ChatTool {
 import { subscriptionTools } from './subscriptions';
 import { moneyHubTools } from './money-hub';
 import { crossTabTools } from './cross-tab';
+import { disputeTools } from './disputes';
 
 export function getAllTools(): ChatTool[] {
-  return [...subscriptionTools, ...moneyHubTools, ...crossTabTools];
+  return [...subscriptionTools, ...moneyHubTools, ...crossTabTools, ...disputeTools];
 }
 
 export function getToolDefinitions(): Array<{
