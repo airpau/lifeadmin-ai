@@ -116,22 +116,34 @@ export async function GET(request: NextRequest) {
   const sb = admin();
 
   // --- Layer 1: index freshness -------------------------------------
+  // Freshness is "did we attempt to check this in the last 14 days",
+  // not "did the source confirm currency". Source-URL flakiness
+  // (FCA handbook 403s, legislation.gov.uk timeouts) is a separate
+  // signal — it shows up in layer 2. Conflating the two means every
+  // ref whose URL flaps daily is permanently flagged stale, drowning
+  // the real signal.
   const stalenessCutoff = new Date(Date.now() - FRESHNESS_DAYS * 86400_000).toISOString();
   const { data: allActive } = await sb
     .from('legal_references')
-    .select('id, law_name, section, last_verified, confidence_score')
+    .select('id, law_name, section, last_verified, last_check_attempt_at, confidence_score')
     .in('verification_status', ['current', 'updated']);
   const total = allActive?.length ?? 0;
-  const stale = (allActive ?? []).filter((r) => !r.last_verified || r.last_verified < stalenessCutoff);
-  const staleRefs = stale.slice(0, 20).map((r) => ({
-    id: r.id,
-    law_name: r.law_name,
-    section: r.section ?? null,
-    days_stale: r.last_verified
-      ? Math.floor((Date.now() - new Date(r.last_verified).getTime()) / 86400_000)
-      : 999,
-    confidence: r.confidence_score ?? 0,
-  }));
+  const stale = (allActive ?? []).filter((r) => {
+    const checked = r.last_check_attempt_at ?? r.last_verified;
+    return !checked || checked < stalenessCutoff;
+  });
+  const staleRefs = stale.slice(0, 20).map((r) => {
+    const checked = r.last_check_attempt_at ?? r.last_verified;
+    return {
+      id: r.id,
+      law_name: r.law_name,
+      section: r.section ?? null,
+      days_stale: checked
+        ? Math.floor((Date.now() - new Date(checked).getTime()) / 86400_000)
+        : 999,
+      confidence: r.confidence_score ?? 0,
+    };
+  });
 
   // --- Layer 2: source freshness ------------------------------------
   // Pull every distinct source_url from active refs and compare against

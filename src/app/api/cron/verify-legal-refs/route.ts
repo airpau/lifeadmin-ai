@@ -60,6 +60,8 @@ export async function GET(request: NextRequest) {
   const issues: Array<{ id: string; law: string; issue: string }> = [];
 
   for (const ref of refs) {
+    let attemptOk = true;
+    let attemptErr: string | null = null;
     try {
       if (ref.source_type === 'statute') {
         await verifyStatute(supabase, ref, results, issues);
@@ -70,16 +72,40 @@ export async function GET(request: NextRequest) {
     } catch (err) {
       console.error(`[verify-legal] Error checking ${ref.law_name}:`, err);
       results.errors++;
-      // Log failed check
-      await supabase.from('legal_audit_log').insert({
-        legal_reference_id: ref.id,
-        check_type: ref.source_type === 'statute' ? 'http_head' : 'ai_comparison',
-        result: 'check_failed',
-        details: err instanceof Error ? err.message : String(err),
-      });
+      attemptOk = false;
+      attemptErr = err instanceof Error ? err.message : String(err);
       // Confidence decay on failure
       const newConfidence = Math.max(0, (ref.confidence_score || 100) - 20);
       await supabase.from('legal_references').update({ confidence_score: newConfidence }).eq('id', ref.id);
+    } finally {
+      // Always stamp last_check_attempt_at — this column drives the
+      // canary's freshness check, so it MUST be updated whether the
+      // verification succeeded, failed with a non-OK source, or
+      // threw. Without this the freshness alert lights up for every
+      // ref whose source URL is flaky, even though we attempted.
+      try {
+        await supabase
+          .from('legal_references')
+          .update({ last_check_attempt_at: new Date().toISOString() })
+          .eq('id', ref.id);
+      } catch (updateErr) {
+        console.warn('[verify-legal] last_check_attempt_at update failed:', updateErr);
+      }
+      // Always log the attempt to legal_audit_log so the canary's
+      // "sources silent 48h+" check sees activity even when the
+      // source URL is failing. Without this, every silent source is
+      // doubly stale.
+      try {
+        await supabase.from('legal_audit_log').insert({
+          legal_reference_id: ref.id,
+          source_url: ref.source_url,
+          check_type: ref.source_type === 'statute' ? 'legislation_api' : 'ai_comparison',
+          result: attemptOk ? 'attempted' : 'check_failed',
+          details: attemptErr ?? 'Verifier ran',
+        });
+      } catch (logErr) {
+        console.warn('[verify-legal] legal_audit_log insert failed:', logErr);
+      }
     }
 
     // Small delay to respect rate limits
