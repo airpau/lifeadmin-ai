@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { handleConfirmationReply, isAwaitingConfirmation } from '@/lib/support/confirmation-reply';
 // product-context.ts is the seed/fallback; runtime source of truth is product_features table
 import { PRODUCT_CONTEXT } from '@/lib/product-context';
 import { getToolDefinitions, executeTool } from './tools/registry';
@@ -397,6 +398,52 @@ export async function POST(request: NextRequest) {
 
     const isLoggedIn = !!userId;
     const userTier = isLoggedIn ? (tier || 'free') : 'anonymous';
+
+    // ── Confirmation reply handler (chatbot) ──
+    // Logged-in users with a ticket in awaiting_user_confirmation get their
+    // next message classified positive/negative/unclear and routed before
+    // the regular Claude call. Short-circuits to a Riley acknowledgement.
+    if (isLoggedIn && userId) {
+      try {
+        const admin = getAdmin();
+        const { data: confirmationTicket } = await admin
+          .from('support_tickets')
+          .select('id, ticket_number, status, subject, source, metadata')
+          .eq('user_id', userId)
+          .eq('status', 'awaiting_user_confirmation')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (confirmationTicket && isAwaitingConfirmation((confirmationTicket as { status: string }).status)) {
+          const lastUser = [...messages].reverse().find((m: { role: string; content: string }) => m.role === 'user');
+          const userText = (lastUser?.content || '').trim();
+          if (userText) {
+            const result = await handleConfirmationReply(
+              admin,
+              confirmationTicket as { id: string; ticket_number: string | null; status: string; subject: string; source: string; metadata: Record<string, unknown> | null },
+              userText,
+            );
+            if (result.handled && result.reply_to_user) {
+              await admin.from('ticket_messages').insert({
+                ticket_id: (confirmationTicket as { id: string }).id,
+                sender_type: 'user',
+                sender_name: 'User (via chatbot)',
+                message: userText,
+              });
+              await admin.from('ticket_messages').insert({
+                ticket_id: (confirmationTicket as { id: string }).id,
+                sender_type: 'system',
+                sender_name: 'Riley',
+                message: result.reply_to_user,
+              });
+              return NextResponse.json({ reply: result.reply_to_user });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[chat] Confirmation reply hook failed (non-fatal):', e);
+      }
+    }
 
     // Anonymous visitors get a restricted prompt -- no free advice
     const anonymousRules = !isLoggedIn ? `

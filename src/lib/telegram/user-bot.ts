@@ -15,6 +15,7 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { telegramTools } from './tools';
 import { executeToolCall, type PendingAction } from './tool-handlers';
+import { handleConfirmationReply, isAwaitingConfirmation } from '@/lib/support/confirmation-reply';
 
 // ============================================================
 // Supabase admin client
@@ -1970,13 +1971,34 @@ Return JSON: { "subject": "...", "body": "..." }`;
       // First look for a non-terminal open ticket.
       const { data: liveTicket } = await supabase
         .from('support_tickets')
-        .select('id, ticket_number, status, metadata, resolved_at')
+        .select('id, ticket_number, status, metadata, resolved_at, subject, source')
         .eq('user_id', session.user_id)
         .eq('source', 'telegram')
         .not('status', 'in', '("resolved","closed","dismissed")')
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
+
+      // ── Confirmation reply handler ──
+      // If the ticket is awaiting_user_confirmation (Builder shipped a fix and
+      // is asking the user to verify), classify the message and route it.
+      if (liveTicket && isAwaitingConfirmation((liveTicket as { status: string }).status)) {
+        const result = await handleConfirmationReply(
+          supabase,
+          liveTicket as { id: string; ticket_number: string | null; status: string; subject: string; source: string; metadata: Record<string, unknown> | null },
+          userMessage,
+        );
+        if (result.handled && result.reply_to_user) {
+          await supabase.from('ticket_messages').insert({
+            ticket_id: (liveTicket as { id: string }).id,
+            sender_type: 'system',
+            sender_name: 'Riley',
+            message: result.reply_to_user,
+          });
+          await ctx.reply(result.reply_to_user, { parse_mode: 'Markdown' as const });
+          return;
+        }
+      }
 
       // If no live ticket, fall back to a recently-resolved one (within 7 days).
       // A user replying within a week is probably saying "this is still broken" —

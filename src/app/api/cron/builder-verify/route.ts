@@ -100,76 +100,165 @@ async function notifyTicketUser(
   prUrl: string,
   summary: string,
 ): Promise<void> {
-  // Look up ticket source + user contact details to message via the right channel.
+  // Look up ticket source + user contact details. Notify on EVERY channel we
+  // have on file (email, telegram, whatsapp if Pro, chatbot ticket_messages),
+  // not just the ticket's original source. Some users come in via chatbot but
+  // also have email — we want them to actually see the message.
   const { data: ticket } = await supabase
     .from('support_tickets')
     .select('id, user_id, source, metadata, subject')
     .eq('id', ticketId)
     .single();
   if (!ticket) return;
-  const source = (ticket as { source: string }).source;
   const meta = (ticket as { metadata: Record<string, unknown> | null }).metadata || {};
+  const subject = (ticket as { subject: string }).subject;
+  const userId = (ticket as { user_id: string | null }).user_id;
 
-  // Always insert a ticket_messages row so the conversation has a record.
+  // 1. Always insert a system message into ticket_messages so the conversation
+  // history is correct (visible in chat widget + admin dashboard + replies).
+  const inAppMessage =
+    `🛠️ We've shipped a code fix for your ticket *${ticketRef}* — "${subject}".\n\n` +
+    `Could you check it's working on your end? **Reply YES if it's resolved, or NO with what's still wrong.**\n\n` +
+    `If you don't reply within 7 days we'll close this out automatically — just reply any time and we'll re-open it.`;
   await supabase.from('ticket_messages').insert({
     ticket_id: ticketId,
     sender_type: 'system',
     sender_name: 'Builder',
-    message: `🛠️ Fix shipped! The code change for "${(ticket as { subject: string }).subject}" has been merged to master and deployed. PR: ${prUrl}\n\nIf you're still seeing the issue, just reply and we'll re-open the ticket.`,
+    message: inAppMessage,
   });
 
-  // Channel-specific notification.
-  if (source === 'telegram') {
-    const tgChatId = (meta as Record<string, unknown>).telegram_chat_id as number | string | null | undefined;
-    const tgToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (tgChatId && tgToken) {
-      try {
-        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: Number(tgChatId),
-            text: `🛠️ <b>Fix shipped — ${ticketRef}</b>\n\n${summary}\n\nThe code change has been merged and deployed. If you're still seeing the issue, just reply here and we'll re-open the ticket.`,
-            parse_mode: 'HTML',
-            disable_web_page_preview: true,
-          }),
-        });
-      } catch {
-        /* best-effort */
-      }
-    }
-  } else if (source === 'email') {
-    // Email path — look up the user's email and send a plain confirmation.
-    const userId = (ticket as { user_id: string | null }).user_id;
-    let email: string | null = null;
-    if (userId) {
-      const { data: prof } = await supabase.from('profiles').select('email').eq('id', userId).single();
-      email = (prof as { email: string | null } | null)?.email ?? null;
-    }
-    if (!email && typeof (meta as Record<string, unknown>).from === 'string') {
-      const m = ((meta as Record<string, unknown>).from as string).match(/<([^>]+)>/);
-      email = m ? m[1] : ((meta as Record<string, unknown>).from as string);
-    }
-    if (email && process.env.RESEND_API_KEY) {
-      try {
-        await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-          body: JSON.stringify({
-            from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
-            replyTo: process.env.RESEND_REPLY_TO || 'support@mail.paybacker.co.uk',
-            to: [email],
-            subject: `Fixed: ${(ticket as { subject: string }).subject} (${ticketRef})`,
-            html: `<p>Hi there,</p><p>Quick update on your support ticket <strong>${ticketRef}</strong>.</p><p>The code fix for <em>"${(ticket as { subject: string }).subject}"</em> has been merged to master and deployed. You should see the issue resolved on your next visit / sync.</p><p>If you're still seeing the problem, just reply to this email and we'll re-open the ticket.</p><p>Best,<br/>Riley<br/><em>Paybacker Support</em></p>`,
-          }),
-        });
-      } catch {
-        /* best-effort */
-      }
+  // 2. Email — if we can resolve an email address. Try profiles.email first,
+  // fall back to metadata.from (set by inbound-email when ticket was created).
+  let email: string | null = null;
+  if (userId) {
+    const { data: prof } = await supabase.from('profiles').select('email').eq('id', userId).single();
+    email = (prof as { email: string | null } | null)?.email ?? null;
+  }
+  if (!email && typeof (meta as Record<string, unknown>).from === 'string') {
+    const m = ((meta as Record<string, unknown>).from as string).match(/<([^>]+)>/);
+    email = m ? m[1] : ((meta as Record<string, unknown>).from as string);
+  }
+  if (email && process.env.RESEND_API_KEY) {
+    try {
+      const verifyHtml =
+        `<p>Hi there,</p>` +
+        `<p>Good news — we've shipped a code fix for your support ticket <strong>${ticketRef}</strong> (<em>${subject}</em>) and it's now live.</p>` +
+        `<p><strong>Could you check it's working on your end?</strong></p>` +
+        `<ul>` +
+        `<li>If it's resolved, just reply <strong>YES</strong> and we'll close the ticket.</li>` +
+        `<li>If it's still broken, reply with what's still wrong — our developer will take another look.</li>` +
+        `</ul>` +
+        `<p>If we don't hear from you in 7 days we'll assume it's sorted and close the ticket automatically. You can reply any time to re-open it.</p>` +
+        `<p>Best,<br/>Riley<br/><em>Paybacker Support</em></p>`;
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
+          replyTo: process.env.RESEND_REPLY_TO || 'support@mail.paybacker.co.uk',
+          to: [email],
+          subject: `Please verify: ${subject} (${ticketRef})`,
+          html: verifyHtml,
+        }),
+      });
+    } catch {
+      /* best-effort */
     }
   }
-  // For chatbot source — no proactive push channel, the user will see the message
-  // in their conversation history next time they open the chat widget.
+
+  // 3. Telegram — if the user has a linked Telegram session.
+  let tgChatId: number | string | null = null;
+  // First try ticket metadata (set when ticket was created via Telegram).
+  const metaTgChat = (meta as Record<string, unknown>).telegram_chat_id;
+  if (typeof metaTgChat === 'number' || (typeof metaTgChat === 'string' && metaTgChat)) {
+    tgChatId = metaTgChat as number | string;
+  } else if (userId) {
+    // Fall back to a linked telegram_sessions row.
+    const { data: tgSession } = await supabase
+      .from('telegram_sessions')
+      .select('chat_id')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const cid = (tgSession as { chat_id: number | string | null } | null)?.chat_id;
+    if (cid != null) tgChatId = cid;
+  }
+  if (tgChatId && process.env.TELEGRAM_BOT_TOKEN) {
+    try {
+      await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: Number(tgChatId),
+          text:
+            `🛠️ <b>Fix shipped — please verify ${ticketRef}</b>\n\n` +
+            `${summary}\n\n` +
+            `Could you check it's working? <b>Reply YES if it's resolved, or NO with what's still wrong.</b>\n\n` +
+            `(We'll auto-close after 7 days of no reply — reply any time to re-open.)`,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true,
+        }),
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  // 4. WhatsApp — Pro-only. Send via Meta WhatsApp Cloud API utility template
+  // if (a) user has a WhatsApp session AND (b) profile.subscription_tier in
+  // ('pro','b2b','admin'). Wraps best-effort; failures don't block the loop.
+  if (userId && process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN) {
+    try {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('subscription_tier')
+        .eq('id', userId)
+        .single();
+      const tier = ((prof as { subscription_tier: string | null } | null)?.subscription_tier ?? 'free').toLowerCase();
+      const proLike = tier === 'pro' || tier === 'b2b' || tier === 'admin';
+      if (proLike) {
+        const { data: waSession } = await supabase
+          .from('whatsapp_sessions')
+          .select('phone_number, opted_in')
+          .eq('user_id', userId)
+          .eq('opted_in', true)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const phone = (waSession as { phone_number: string | null } | null)?.phone_number ?? null;
+        if (phone) {
+          await fetch(
+            `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                to: phone,
+                type: 'text',
+                text: {
+                  body:
+                    `🛠️ Paybacker — fix shipped for ticket ${ticketRef}.\n\n` +
+                    `${summary}\n\n` +
+                    `Could you check it's working? Reply YES if resolved, or tell us what's still wrong. ` +
+                    `(We'll auto-close in 7 days if we don't hear back.)`,
+                },
+              }),
+            },
+          );
+        }
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+  // For chatbot source — the system message inserted at step (1) is visible
+  // when the user next opens the chat widget. The chat route's confirmation
+  // hook (added separately) handles their reply.
 }
 
 // Mark a draft PR as ready-for-review via GraphQL (works on plans where the
@@ -597,22 +686,31 @@ async function processStageC(
         .eq('id', p.ticket_id)
         .single();
       const existingMeta = ((ticketRow as { metadata: Record<string, unknown> | null } | null)?.metadata || {}) as Record<string, unknown>;
+      const fixDeployedAt = new Date().toISOString();
+      // Set status to awaiting_user_confirmation — NOT resolved. The user
+      // gets a "please verify" prompt and their reply (positive/negative/
+      // unclear) is classified by handleConfirmationReply in every inbound
+      // channel. Only a positive reply marks resolved; a negative one
+      // re-escalates to Builder for iteration N+1.
       await supabase
         .from('support_tickets')
         .update({
-          status: 'resolved',
-          resolved_at: new Date().toISOString(),
+          status: 'awaiting_user_confirmation',
           metadata: {
             ...existingMeta,
-            resolved_by: 'builder-fix',
-            resolved_via_pr: p.pr_url,
-            resolved_proposal_id: p.id,
+            fix_deployed_at: fixDeployedAt,
+            fix_deployed_via_pr: p.pr_url,
+            fix_deployed_proposal_id: p.id,
+            confirmation_clarify_count: 0,
+            // Preserve fix_type for re-escalation context if user reports broken.
+            fix_type: existingMeta.fix_type ?? existingMeta.escalation_fix_type ?? 'code_fix',
           },
-          updated_at: new Date().toISOString(),
+          updated_at: fixDeployedAt,
         })
         .eq('id', p.ticket_id);
 
-      // User-facing notification on the original channel.
+      // User-facing "please verify" notification — fans out across email,
+      // telegram, whatsapp (Pro), and ticket_messages (chatbot).
       await notifyTicketUser(
         supabase,
         p.ticket_id,
@@ -621,14 +719,14 @@ async function processStageC(
         p.summary,
       );
 
-      // Founder Telegram + business_log.
+      // Founder Telegram — note this is NOT "resolved" yet, just deployed.
       await notifyFounderTelegram(
-        `✅ <b>Ticket auto-resolved</b>\n${p.ticket_number ?? p.ticket_id.slice(0, 8)}: ${p.summary}\nPR: ${p.pr_url ?? '(none)'}\nUser notified via their original channel.`,
+        `🟡 <b>Ticket awaiting user confirmation</b>\n${p.ticket_number ?? p.ticket_id.slice(0, 8)}: ${p.summary}\nPR: ${p.pr_url ?? '(none)'}\nFix deployed. User asked to verify on their original channel(s). Will close on user-confirmed YES, re-escalate on user-reported NO, or auto-close after 7d silent.`,
       );
       await supabase.from('business_log').insert({
-        category: 'recommendation',
-        title: `Ticket ${p.ticket_number ?? p.ticket_id.slice(0, 8)} auto-resolved by Builder fix`,
-        content: `Proposal ${p.id} merged + deployed. Ticket marked resolved with link to PR ${p.pr_url ?? '(none)'}. User notified on original channel.`,
+        category: 'info',
+        title: `Ticket ${p.ticket_number ?? p.ticket_id.slice(0, 8)} awaiting user confirmation`,
+        content: `Proposal ${p.id} merged + deployed (PR ${p.pr_url ?? '(none)'}). User notified across all channels with a "please verify" prompt. Status flips to resolved on positive reply, in_progress on negative reply (re-escalation to Builder), or after 7 days of silence (auto-close).`,
         created_by: 'builder-verify',
       });
 

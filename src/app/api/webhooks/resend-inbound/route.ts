@@ -28,6 +28,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Webhook } from 'svix';
+import { handleConfirmationReply, isAwaitingConfirmation } from '@/lib/support/confirmation-reply';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -331,6 +332,61 @@ async function handle(req: NextRequest) {
     message: bodyText,
     created_at: new Date().toISOString(),
   });
+
+  // ── Confirmation reply handler ──
+  // If the ticket is awaiting_user_confirmation (Builder shipped a fix and
+  // is asking the user to verify), classify the reply and act on it BEFORE
+  // the generic reopen logic below. This prevents the wrong status
+  // (status='open') from being applied when the user actually confirmed.
+  if (isAwaitingConfirmation(ticket.status)) {
+    const result = await handleConfirmationReply(
+      supabase,
+      {
+        id: ticket.id,
+        ticket_number: ticket.ticket_number,
+        status: ticket.status,
+        subject: ticket.subject,
+        source: 'email',
+        metadata: ticket.metadata,
+      },
+      bodyText,
+    );
+    if (result.handled && result.reply_to_user) {
+      // Send Riley's response back to the user via Resend
+      if (process.env.RESEND_API_KEY) {
+        try {
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
+              replyTo: process.env.RESEND_REPLY_TO || 'support@mail.paybacker.co.uk',
+              to: [fromEmail],
+              subject: `Re: ${ticket.subject} (${result.ticket_number})`,
+              text: result.reply_to_user,
+            }),
+          });
+        } catch {
+          /* best-effort */
+        }
+      }
+      await supabase.from('ticket_messages').insert({
+        ticket_id: ticket.id,
+        sender_type: 'system',
+        sender_name: 'Riley',
+        message: result.reply_to_user,
+      });
+      return NextResponse.json({
+        ok: true,
+        matched: true,
+        outcome: result.outcome,
+        ticket_number: result.ticket_number,
+      });
+    }
+  }
 
   // Append to metadata.user_replies for audit + to reset chase logic.
   const meta = (ticket.metadata || {}) as Record<string, unknown>;

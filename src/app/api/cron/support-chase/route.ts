@@ -289,6 +289,140 @@ async function processChase(
   return { chased, auto_closed: autoClosed, no_contact_closed: noContactClosed, errors };
 }
 
+// PHASE 4: timeout awaiting_user_confirmation tickets after 7 days of silence.
+// Builder shipped a fix and asked the user to verify; if the user never
+// replied (positive or negative) within 7 days, soft-close to 'resolved'
+// with a friendly final note inviting them to reply if it's still broken.
+async function processConfirmationTimeout(
+  supabase: ReturnType<typeof getAdmin>,
+): Promise<{ closed: number; errors: string[] }> {
+  let closed = 0;
+  const errors: string[] = [];
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
+  const { data: tickets } = await supabase
+    .from('support_tickets')
+    .select('id, ticket_number, subject, user_id, status, source, metadata, updated_at')
+    .eq('status', 'awaiting_user_confirmation')
+    .lt('updated_at', sevenDaysAgo)
+    .limit(50);
+
+  for (const row of (tickets || []) as Array<{
+    id: string;
+    ticket_number: string | null;
+    subject: string;
+    user_id: string | null;
+    status: string;
+    source: string;
+    metadata: Record<string, unknown> | null;
+    updated_at: string;
+  }>) {
+    try {
+      const meta = row.metadata || {};
+      const ref = row.ticket_number || row.id.slice(0, 8).toUpperCase();
+      const closingMessage =
+        `We haven't heard back on ticket ${ref} for 7 days, so we're closing it out. ` +
+        `If the original issue isn't fully sorted, just reply any time and we'll re-open it.`;
+
+      // Insert a system note on the ticket so the conversation history records the close.
+      await supabase.from('ticket_messages').insert({
+        ticket_id: row.id,
+        sender_type: 'system',
+        sender_name: 'Riley',
+        message: closingMessage,
+      });
+
+      // Soft-close to resolved with metadata flag so we know it was
+      // confirmation-timeout (not a user-confirmed close).
+      const closedAt = new Date().toISOString();
+      await supabase
+        .from('support_tickets')
+        .update({
+          status: 'resolved',
+          resolved_at: closedAt,
+          metadata: {
+            ...meta,
+            confirmation_timeout_closed_at: closedAt,
+            close_reason: 'confirmation_timeout_7d',
+          },
+          updated_at: closedAt,
+        })
+        .eq('id', row.id);
+
+      // Best-effort final notification across channels.
+      // Email path:
+      let email: string | null = null;
+      if (row.user_id) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('id', row.user_id)
+          .single();
+        email = (prof as { email: string | null } | null)?.email ?? null;
+      }
+      if (!email && typeof (meta as Record<string, unknown>).from === 'string') {
+        const m = ((meta as Record<string, unknown>).from as string).match(/<([^>]+)>/);
+        email = m ? m[1] : ((meta as Record<string, unknown>).from as string);
+      }
+      if (email && process.env.RESEND_API_KEY) {
+        try {
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
+              replyTo: process.env.RESEND_REPLY_TO || 'support@mail.paybacker.co.uk',
+              to: [email],
+              subject: `Closing ticket — ${ref}`,
+              text: closingMessage,
+            }),
+          });
+        } catch {
+          /* best-effort */
+        }
+      }
+      // Telegram path (best-effort): use ticket metadata or telegram_sessions row.
+      try {
+        let tgChatId: number | string | null = null;
+        const metaTg = (meta as Record<string, unknown>).telegram_chat_id;
+        if (typeof metaTg === 'number' || (typeof metaTg === 'string' && metaTg)) {
+          tgChatId = metaTg as number | string;
+        } else if (row.user_id) {
+          const { data: tg } = await supabase
+            .from('telegram_sessions')
+            .select('chat_id')
+            .eq('user_id', row.user_id)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const cid = (tg as { chat_id: number | string | null } | null)?.chat_id;
+          if (cid != null) tgChatId = cid;
+        }
+        if (tgChatId && process.env.TELEGRAM_BOT_TOKEN) {
+          await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: Number(tgChatId),
+              text: closingMessage,
+              disable_web_page_preview: true,
+            }),
+          });
+        }
+      } catch {
+        /* best-effort */
+      }
+      closed += 1;
+    } catch (e) {
+      errors.push(`${row.ticket_number ?? row.id.slice(0, 8)}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return { closed, errors };
+}
+
 async function handle(req: NextRequest) {
   const auth = req.headers.get('authorization');
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -297,8 +431,10 @@ async function handle(req: NextRequest) {
 
   const supabase = getAdmin();
   let result: { chased: number; auto_closed: number; no_contact_closed: number; errors: string[] };
+  let confirmTimeout: { closed: number; errors: string[] };
   try {
     result = await processChase(supabase);
+    confirmTimeout = await processConfirmationTimeout(supabase);
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : String(e) },
@@ -306,11 +442,13 @@ async function handle(req: NextRequest) {
     );
   }
 
+  const allErrors = [...result.errors, ...confirmTimeout.errors];
+
   // Audit row in business_log so the digest cron sees this activity.
   await supabase.from('business_log').insert({
-    category: result.errors.length > 0 ? 'warn' : 'info',
-    title: `Support chase — ${result.chased} chased, ${result.auto_closed} auto-closed, ${result.no_contact_closed} closed (no contact)`,
-    content: `Phase 1 (chase >7d awaiting_reply): ${result.chased}. Phase 2 (auto-close 24h after chase): ${result.auto_closed}. Phase 3 (close >14d with no contact info — chatbot escalations from anonymous users): ${result.no_contact_closed}. Errors: ${result.errors.length === 0 ? 'none' : result.errors.join('; ')}`,
+    category: allErrors.length > 0 ? 'warn' : 'info',
+    title: `Support chase — ${result.chased} chased, ${result.auto_closed} auto-closed, ${result.no_contact_closed} closed (no contact), ${confirmTimeout.closed} confirmation-timeout closed`,
+    content: `Phase 1 (chase >7d awaiting_reply): ${result.chased}. Phase 2 (auto-close 24h after chase): ${result.auto_closed}. Phase 3 (close >14d with no contact info — chatbot escalations from anonymous users): ${result.no_contact_closed}. Phase 4 (close >7d awaiting_user_confirmation — Builder fix shipped, user never verified): ${confirmTimeout.closed}. Errors: ${allErrors.length === 0 ? 'none' : allErrors.join('; ')}`,
     created_by: AGENT_ID,
   });
 
@@ -319,7 +457,8 @@ async function handle(req: NextRequest) {
     chased: result.chased,
     auto_closed: result.auto_closed,
     no_contact_closed: result.no_contact_closed,
-    errors: result.errors,
+    confirmation_timeout_closed: confirmTimeout.closed,
+    errors: allErrors,
     timestamp: new Date().toISOString(),
   });
 }
