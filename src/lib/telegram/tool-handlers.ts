@@ -5650,7 +5650,7 @@ async function getTopMerchants(
 ): Promise<ToolResult> {
   const limit = params.limit ?? 10;
   let query = supabase
-    .from('transactions')
+    .from('bank_transactions')
     .select('merchant_name, amount')
     .eq('user_id', userId)
     .lt('amount', 0); // outgoing only
@@ -5658,7 +5658,7 @@ async function getTopMerchants(
     const start = `${params.month}-01`;
     const next = new Date(`${start}T00:00:00Z`);
     next.setUTCMonth(next.getUTCMonth() + 1);
-    query = query.gte('transaction_date', start).lt('transaction_date', next.toISOString().slice(0, 10));
+    query = query.gte('timestamp', start).lt('timestamp', next.toISOString().slice(0, 10));
   }
   const { data } = await query.limit(5000);
   if (!data || data.length === 0) {
@@ -5696,11 +5696,11 @@ async function getSavingsRate(
     next.setUTCMonth(next.getUTCMonth() + 1);
     const end = next.toISOString().slice(0, 10);
     const { data } = await supabase
-      .from('transactions')
+      .from('bank_transactions')
       .select('amount')
       .eq('user_id', userId)
-      .gte('transaction_date', start)
-      .lt('transaction_date', end)
+      .gte('timestamp', start)
+      .lt('timestamp', end)
       .limit(5000);
     let income = 0;
     let spending = 0;
@@ -6078,7 +6078,7 @@ async function mergeSubscriptions(supabase: ReturnType<typeof getAdmin>, userId:
 
 async function tagTransaction(supabase: ReturnType<typeof getAdmin>, userId: string, transactionId: string, tag: string): Promise<ToolResult> {
   const tag2 = tag.slice(0, 32);
-  const { error } = await supabase.from('transactions').update({ user_tag: tag2 }).eq('id', transactionId).eq('user_id', userId);
+  const { error } = await supabase.from('bank_transactions').update({ user_tag: tag2 }).eq('id', transactionId).eq('user_id', userId);
   if (error) return { text: `Tag failed: ${error.message}. (transactions.user_tag column may not exist yet — feature partial.)` };
   return { text: `✓ Tagged: "${tag2}"` };
 }
@@ -6126,16 +6126,16 @@ async function searchDisputes(supabase: ReturnType<typeof getAdmin>, userId: str
 }
 
 async function getTransactionDetail(supabase: ReturnType<typeof getAdmin>, userId: string, transactionId: string): Promise<ToolResult> {
-  const { data } = await supabase.from('transactions').select('*').eq('id', transactionId).eq('user_id', userId).maybeSingle();
+  const { data } = await supabase.from('bank_transactions').select('*').eq('id', transactionId).eq('user_id', userId).maybeSingle();
   if (!data) return { text: `Transaction ${transactionId} not found.` };
   let text = `*Transaction ${(data.transaction_id || data.id).slice(0, 8)}:*\n`;
-  text += `\n• Date: ${fmtDate(data.transaction_date)}`;
+  text += `\n• Date: ${fmtDate(data.timestamp)}`;
   text += `\n• Amount: ${fmt(Number(data.amount))}`;
   text += `\n• Merchant: ${data.merchant_name || '—'}`;
   text += `\n• Category: ${data.user_category || data.category || '—'}`;
   text += `\n• Raw description: "${data.description || ''}"`;
-  if (data.bank_name) text += `\n• Bank: ${data.bank_name}`;
-  if (data.is_subscription) text += `\n• Linked to a subscription`;
+  if (data.connection_id) text += `\n• Bank: ${data.connection_id}`;
+  if (data.is_recurring) text += `\n• Linked to a subscription`;
   return { text };
 }
 
