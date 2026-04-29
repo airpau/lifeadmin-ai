@@ -760,12 +760,22 @@ async function sendWhatsAppSafely(args: {
   if (!allowed) return;
 
   const c = args.classification;
-  // Build the summary that fills {{2}}. Prefer the classifier's
-  // one-sentence rationale because it's already action-oriented; fall
-  // back to the raw snippet. Twilio rejects empty content variables, so
-  // never let this be a blank string.
-  const rawSummary = c?.rationale?.trim() || args.snippet?.trim() || args.subject || 'New reply received';
-  const summary = rawSummary.length > 240 ? rawSummary.slice(0, 237) + '…' : rawSummary;
+  // Build the summary that fills {{2}}. Paul's 2026-04-29 feedback:
+  // we were truncating to a 240-char rationale and not including the
+  // supplier's actual words, so he had to open the dashboard to read
+  // any reply. Now we include:
+  //   1. Classifier rationale (action-oriented, ~1 sentence)
+  //   2. Supplier first-line snippet (raw words from the email body)
+  // Capped at 800 chars total — Twilio's per-variable limit is 1024,
+  // and Meta's WhatsApp template body cap is generous. We strip
+  // newlines because templates render them as literal "\n" text.
+  const rationale = c?.rationale?.trim() || '';
+  const snippet = (args.snippet || '').trim();
+  const composed = [
+    rationale,
+    snippet ? `They said: "${snippet}"` : '',
+  ].filter(Boolean).join(' — ').replace(/\s+/g, ' ').trim() || args.subject || 'New reply received';
+  const summary = composed.length > 800 ? composed.slice(0, 797) + '…' : composed;
 
   // {{3}} is the thread_url — the dispute deep-link inside the app.
   // Templates approved by Meta on 2026-04-27 require an absolute URL,
@@ -776,9 +786,49 @@ async function sendWhatsAppSafely(args: {
     : `${origin}${args.linkUrl}`;
 
   const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
-  await sendWhatsAppTemplate({
+  const sendResult = await sendWhatsAppTemplate({
     to: session.whatsapp_phone,
     templateName: 'paybacker_dispute_reply',
     parameters: [args.providerName, summary, threadUrl],
   });
+
+  // Log the outbound template + remember which dispute it was about.
+  // Without this, the bot's conversation history loader sees only the
+  // user's reply ("ACCEPT", "give me their update") with zero context
+  // — Claude can't tell which dispute they mean. Logging here is the
+  // load-bearing fix for keyword commands working at all.
+  try {
+    await db.from('whatsapp_message_log').insert({
+      user_id: args.userId,
+      whatsapp_phone: session.whatsapp_phone,
+      direction: 'outbound',
+      message_type: 'template',
+      template_name: 'paybacker_dispute_reply',
+      // Render the message text the way the bot's history will read
+      // it back. Mirrors what the user sees on their phone.
+      message_text:
+        `[Pocket Agent alert] ${args.providerName} replied to your dispute. ${summary} ` +
+        `Open: ${threadUrl}`,
+      provider: sendResult.provider,
+      provider_message_id: sendResult.providerMessageId,
+      dispute_id: args.disputeId,
+    });
+  } catch (logErr) {
+    console.warn('[watchdog] whatsapp_message_log insert failed:', logErr);
+  }
+
+  // Stamp the session pointer so the bot can resolve unqualified
+  // keyword replies even after older alerts have rolled out of the
+  // 10-message history window.
+  try {
+    await db
+      .from('whatsapp_sessions')
+      .update({
+        last_alert_dispute_id: args.disputeId,
+        last_alert_at: new Date().toISOString(),
+      })
+      .eq('whatsapp_phone', session.whatsapp_phone);
+  } catch (sessErr) {
+    console.warn('[watchdog] whatsapp_sessions last_alert update failed:', sessErr);
+  }
 }

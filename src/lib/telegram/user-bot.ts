@@ -211,7 +211,16 @@ FINANCIAL INTELLIGENCE — CRITICAL:
 
 CRITICAL: When you commit to an action (creating a goal, setting a budget, adding a subscription, generating a letter), you MUST call the tool. Never say "I've done X" without calling the tool first.
 
-When a user asks to create a savings goal with a monthly saving amount, ALSO call set_budget to create a budget for that category.`;
+When a user asks to create a savings goal with a monthly saving amount, ALSO call set_budget to create a budget for that category.
+
+KEYWORD COMMANDS — short replies to a recent dispute alert (look at the conversation history above; if the most recent assistant/system message starts with "[Pocket Agent alert]" it tells you which dispute):
+
+- ACCEPT / YES / OK / FINE / SOUNDS GOOD: user accepts the supplier's latest offer in that dispute. Call get_dispute_detail, then update_dispute_status with new_status="resolved_partial" or "resolved_won" and clear notes. If a money figure was offered, set money_recovered. Confirm what you've recorded.
+- REJECT / NO / DECLINE / NOT GOOD ENOUGH: user rejects the offer. update_dispute_status with new_status="awaiting_response" and notes capturing the rejection. Then offer to draft a counter-reply via draft_dispute_letter.
+- ESCALATE / OMBUDSMAN / TAKE IT UP: user escalates. update_dispute_status with new_status="escalated", then draft_dispute_letter with the right regulator (Ofgem/Energy Ombudsman for energy, CISAS/Ofcom for broadband, FOS for finance, CEDR for flights).
+- GIVE ME THEIR LAST UPDATE / WHAT DID THEY SAY / SHOW THE REPLY / WHAT'S THEIR LATEST: call get_dispute_detail for the recently-alerted dispute, find the most recent company_email entry, and quote the supplier's content verbatim (truncate only if >1000 chars). Add the FCA 8-week clock if relevant.
+
+If you can't tell which dispute the keyword refers to (no recent alert in history), call get_disputes with status="open" and ask the user which one. Don't guess.`;
 
 // ============================================================
 // Rate limiter — 200 messages per user per hour
@@ -342,6 +351,7 @@ async function callClaudeWithTools(
             block.name,
             block.input as Record<string, unknown>,
             userId,
+            'telegram',
           );
         } catch (err: any) {
           console.error(`[UserBot] Tool error (${block.name}):`, err);

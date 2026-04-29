@@ -446,6 +446,49 @@ export async function GET(request: NextRequest) {
           })
           .eq('id', issue.id);
         results.push({ userId, type: 'dispute_follow_up', sent: true });
+
+        // Stamp the session's last-alert pointer so the bot can
+        // resolve unqualified keyword replies (ACCEPT / REJECT /
+        // ESCALATE / "give me their update") to this dispute.
+        // Mirrors the watchdog Watchdog reply alert path; without it,
+        // the user replying to a follow-up alert leaves the bot with
+        // no context.
+        if (issue.source_id) {
+          const sessionTable = session.channel === 'telegram'
+            ? 'telegram_sessions'
+            : 'whatsapp_sessions';
+          const sessionFilterCol = session.channel === 'telegram'
+            ? 'telegram_chat_id'
+            : 'whatsapp_phone';
+          await supabase
+            .from(sessionTable)
+            .update({
+              last_alert_dispute_id: issue.source_id,
+              last_alert_at: new Date().toISOString(),
+            })
+            .eq(sessionFilterCol, session.destination)
+            .then(() => undefined, (err) => console.warn('[telegram-alerts] last_alert update failed:', err));
+
+          // Log the outbound template (WhatsApp path only — Telegram
+          // already writes to telegram_message_log via sendProactiveAlert).
+          if (session.channel === 'whatsapp') {
+            await supabase
+              .from('whatsapp_message_log')
+              .insert({
+                user_id: userId,
+                whatsapp_phone: String(session.destination),
+                direction: 'outbound',
+                message_type: 'template',
+                template_name: 'paybacker_dispute_reply',
+                message_text:
+                  `[Pocket Agent alert] ${followUpText.title}. ${followUpText.detail}`,
+                provider: 'twilio',
+                provider_message_id: messageId,
+                dispute_id: issue.source_id,
+              })
+              .then(() => undefined, (err) => console.warn('[telegram-alerts] whatsapp_message_log insert failed:', err));
+          }
+        }
       }
     }
 

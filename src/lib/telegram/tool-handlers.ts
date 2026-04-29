@@ -108,6 +108,13 @@ export async function executeToolCall(
   toolName: string,
   toolInput: Record<string, unknown>,
   userId: string,
+  /**
+   * Which channel this tool call is being executed FROM. Lets the
+   * support-ticket handler tag source correctly so a WhatsApp ticket
+   * doesn't get logged as 'telegram'. Defaults to 'telegram' for
+   * backward compat with the existing Telegram bot path.
+   */
+  channel: 'telegram' | 'whatsapp' | 'chatbot' = 'telegram',
 ): Promise<ToolResult> {
   const supabase = getAdmin();
 
@@ -296,7 +303,7 @@ export async function executeToolCall(
         account_email: toolInput.account_email as string | undefined,
       });
     case 'create_support_ticket':
-      return createSupportTicket(supabase, userId, {
+      return createSupportTicket(supabase, userId, channel, {
         subject: toolInput.subject as string,
         description: toolInput.description as string,
         category: (toolInput.category as string | undefined) ?? 'general',
@@ -4194,6 +4201,7 @@ async function markBillPaid(
 async function createSupportTicket(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
+  channel: 'telegram' | 'whatsapp' | 'chatbot',
   params: {
     subject: string;
     description: string;
@@ -4207,19 +4215,34 @@ async function createSupportTicket(
     .eq('id', userId)
     .single();
 
-  // Look up the user's Telegram chat_id from telegram_sessions so Riley can
-  // DM them back. If we can't find one, fall back to source='chatbot' (no
-  // Telegram delivery — Riley will email as before).
-  const { data: tgSession } = await supabase
-    .from('telegram_sessions')
-    .select('chat_id')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single();
-  const telegramChatId = tgSession?.chat_id ?? null;
+  // Look up the channel-appropriate session so Riley can reply via
+  // the same channel the user raised the ticket from. Channel is
+  // passed through executeToolCall so a WhatsApp-raised ticket stops
+  // being mis-tagged as 'telegram' (Paul's bug 2026-04-29).
+  let telegramChatId: number | null = null;
+  let whatsappPhone: string | null = null;
+  if (channel === 'telegram') {
+    const { data: tgSession } = await supabase
+      .from('telegram_sessions')
+      .select('chat_id')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+    telegramChatId = tgSession?.chat_id ?? null;
+  } else if (channel === 'whatsapp') {
+    const { data: waSession } = await supabase
+      .from('whatsapp_sessions')
+      .select('whatsapp_phone')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle();
+    whatsappPhone = waSession?.whatsapp_phone ?? null;
+  }
 
-  const ticketSource = telegramChatId ? 'telegram' : 'chatbot';
+  // Source reflects where the ticket was actually raised, not where
+  // Riley happens to be reachable. Hardcoded mapping by call channel.
+  const ticketSource: 'telegram' | 'whatsapp' | 'chatbot' = channel;
 
   const { data: ticket, error } = await supabase
     .from('support_tickets')
@@ -4232,9 +4255,10 @@ async function createSupportTicket(
       source: ticketSource,
       status: 'open',
       metadata: {
-        channel: 'telegram',
+        channel,
         telegram_chat_id: telegramChatId,
-        telegram_session_lookup_at: new Date().toISOString(),
+        whatsapp_phone: whatsappPhone,
+        session_lookup_at: new Date().toISOString(),
       },
     })
     .select('id, ticket_number, created_at')

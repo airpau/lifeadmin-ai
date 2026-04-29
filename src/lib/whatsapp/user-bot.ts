@@ -69,7 +69,19 @@ GENERAL RULES (mirror the dashboard agent):
 - Be specific about financial impact: "that's £276/year" not "your bill went up".
 - For dispute follow-ups: always mention the FCA 8-week deadline.
 
-REPLYING TO A SUPPLIER — same as dashboard agent: if the user asks you to draft / send / reply / chase / follow up with a named supplier, call get_disputes FIRST with status="open" to find the matching dispute (fuzzy-compare provider names), then get_dispute_detail, then draft_dispute_letter with supplier_latest_message verbatim and user_reply_brief in the user's words. Don't embellish.`;
+REPLYING TO A SUPPLIER — same as dashboard agent: if the user asks you to draft / send / reply / chase / follow up with a named supplier, call get_disputes FIRST with status="open" to find the matching dispute (fuzzy-compare provider names), then get_dispute_detail, then draft_dispute_letter with supplier_latest_message verbatim and user_reply_brief in the user's words. Don't embellish.
+
+KEYWORD COMMANDS — short replies to a recent alert (look at the conversation history above; if the most recent assistant/system message starts with "[Pocket Agent alert]" it tells you the dispute):
+
+- ACCEPT / YES / OK / FINE / SOUNDS GOOD: the user is accepting the supplier's latest offer/proposal in that dispute. Call get_dispute_detail for that dispute, look at the latest company_email, then call update_dispute_status with new_status="resolved_partial" (if a partial offer) or "resolved_won" (if full refund / what they wanted) and a clear notes field summarising what they accepted. If a money figure was offered, set money_recovered. Confirm in plain English what you've recorded.
+
+- REJECT / NO / DECLINE / NOT GOOD ENOUGH: user rejects the offer. Call update_dispute_status with new_status="awaiting_response" and notes capturing the rejection. Then offer to draft a counter-reply via draft_dispute_letter.
+
+- ESCALATE / OMBUDSMAN / TAKE IT UP: user wants to escalate. Call update_dispute_status with new_status="escalated", then draft_dispute_letter with letter_type matching the dispute (e.g. "energy_dispute" → Ofgem/Energy Ombudsman, "broadband_complaint" → CISAS/Ofcom, "finance" → FOS) and a strong escalation tone naming the relevant regulator.
+
+- GIVE ME THEIR LAST UPDATE / WHAT DID THEY SAY / SHOW ME THE REPLY / WHAT'S THEIR LATEST: the user wants the actual supplier reply. Call get_dispute_detail for the recently-alerted dispute, find the most recent company_email entry, and quote the supplier's content verbatim (truncate only if >1000 chars). Add the FCA 8-week clock if relevant.
+
+If you can't tell which dispute the keyword refers to (no recent alert in history), call get_disputes with status="open" and ask the user to confirm which one they meant. Don't guess.`;
 
 function getAdmin() {
   return createClient(
@@ -199,6 +211,7 @@ async function callClaudeWithTools(
           block.name,
           block.input as Record<string, unknown>,
           userId,
+          'whatsapp',
         );
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : 'Unknown error';
