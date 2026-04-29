@@ -27,7 +27,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import crypto from 'node:crypto';
+import { Webhook } from 'svix';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -41,15 +41,38 @@ function getAdmin() {
   );
 }
 
-function verifyResendSignature(rawBody: string, signature: string | null): boolean {
+/**
+ * Resend dispatches inbound-email webhooks via Svix (Standard Webhooks
+ * spec) — three headers (svix-id, svix-timestamp, svix-signature)
+ * signing the body as `${id}.${timestamp}.${rawBody}` with the
+ * base64-decoded secret-after-`whsec_` as the HMAC-SHA256 key. The
+ * previous implementation did plain HMAC over body and rejected
+ * everything; this delegates verification to the canonical svix lib
+ * (already in deps) which also enforces the 5-minute replay window.
+ *
+ * Returns true on a valid signature, false otherwise. Never throws —
+ * the caller decides whether to 401 or fall through to the
+ * CRON_SECRET bearer-auth path used for manual testing.
+ */
+function verifyResendSignature(
+  rawBody: string,
+  headers: { id: string | null; timestamp: string | null; signature: string | null },
+): boolean {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
   if (!secret) return false;
-  if (!signature) return false;
-  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  // Resend's signature header is typically `sha256=<hex>` or just hex
-  const cleaned = signature.replace(/^sha256=/i, '').trim();
-  if (cleaned.length !== expected.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(cleaned, 'hex'), Buffer.from(expected, 'hex'));
+  const { id, timestamp, signature } = headers;
+  if (!id || !timestamp || !signature) return false;
+  try {
+    const wh = new Webhook(secret);
+    wh.verify(rawBody, {
+      'svix-id': id,
+      'svix-timestamp': timestamp,
+      'svix-signature': signature,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function extractTicketRef(payload: {
@@ -106,11 +129,15 @@ function trimReplyBody(text: string): string {
 }
 
 async function handle(req: NextRequest) {
-  // Auth: prefer Resend signature; fall back to CRON_SECRET for manual testing.
+  // Auth: prefer Svix signature (Resend's standard webhook delivery
+  // format); fall back to CRON_SECRET Bearer auth for manual testing.
   const rawBody = await req.text();
-  const sig = req.headers.get('resend-signature') || req.headers.get('svix-signature');
   const auth = req.headers.get('authorization');
-  const isResendVerified = verifyResendSignature(rawBody, sig);
+  const isResendVerified = verifyResendSignature(rawBody, {
+    id: req.headers.get('svix-id'),
+    timestamp: req.headers.get('svix-timestamp'),
+    signature: req.headers.get('svix-signature'),
+  });
   const isCronAuthed = auth === `Bearer ${process.env.CRON_SECRET}`;
   if (!isResendVerified && !isCronAuthed) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
