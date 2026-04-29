@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createAccountAuthorisation } from '@/lib/yapily';
+import { createClient as createAdmin } from '@supabase/supabase-js';
+import {
+  createAccountAuthorisation,
+  createHostedConsentRequest,
+  isHostedPagesEnabled,
+} from '@/lib/yapily';
+import { UPCOMING_FEATURE_SCOPES } from '@/lib/yapily/upcoming';
 import { TIER_CONFIG, type BankTier } from '@/lib/bank-tier-config';
 
 /**
@@ -48,7 +54,8 @@ export async function GET(request: NextRequest) {
     .from('bank_connections')
     .select('id')
     .eq('user_id', user.id)
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .is('deleted_at', null);
 
   const connectionCount = existingConnections?.length || 0;
 
@@ -87,23 +94,87 @@ export async function GET(request: NextRequest) {
     'https://paybacker.co.uk/api/yapily/callback';
 
   // ── Create authorisation request ──
-  try {
-    // Encode user ID + institution ID + returnTo as state for CSRF protection + post-callback redirect
-    const returnTo = searchParams.get('returnTo') || '/dashboard/money-hub';
-    const state = Buffer.from(
-      JSON.stringify({ userId: user.id, institutionId, returnTo })
-    ).toString('base64');
+  // Encode user ID + institution ID + returnTo as state for CSRF protection
+  // + post-callback redirect.
+  const returnTo = searchParams.get('returnTo') || '/dashboard/money-hub';
+  const state = Buffer.from(
+    JSON.stringify({ userId: user.id, institutionId, returnTo })
+  ).toString('base64');
+  const redirectWithState = `${callbackUrl}?state=${encodeURIComponent(state)}`;
 
+  try {
+    if (isHostedPagesEnabled()) {
+      // Hosted Pages flow (Migle's onboarding plan, 29 Apr 2026).
+      // Yapily renders the bank-picker / consent / decoupled-auth
+      // screens on its own domain; we get back a hostedUrl + a
+      // consentRequestId we'll use in the callback to retrieve the
+      // consentToken via GET /hosted/consent-requests/{id}.
+      //
+      // We DON'T set institutionId here because Migle's tutorial pre-
+      // selects via institutionIdentifiers.institutionId — but our UI
+      // already picks the bank, so we pass it to skip Yapily's picker.
+      //
+      // featureScope on Hosted Pages is an open question (asked Migle
+      // in the 29 Apr email reply). Until confirmed, the upcoming-
+      // payments scopes are not requested through this path; existing
+      // /account-auth-requests connections retain their scopes via
+      // PR-N's renew flow until the next user reconnect.
+      const hosted = await createHostedConsentRequest({
+        applicationUserId: user.id,
+        redirectUrl: redirectWithState,
+        institutionCountryCode: 'GB',
+        institutionId,
+        language: 'EN',
+        location: 'GB',
+      });
+
+      // Track this in-flight request so the abandonment poller can
+      // chase it if the user never returns. Best-effort: a failure to
+      // record the pending row should not block the user from being
+      // redirected to Yapily.
+      try {
+        const admin = createAdmin(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        );
+        await admin.from('yapily_pending_consent_requests').insert({
+          user_id: user.id,
+          consent_request_id: hosted.id,
+          institution_id: institutionId,
+          redirect_url: redirectWithState,
+          status: 'pending',
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'unknown';
+        console.error(`[yapily.auth] pending row insert failed (non-fatal): ${msg}`);
+      }
+
+      console.log(
+        `Yapily auth (hosted): created hosted consent for user=${user.id} institution=${institutionId} consentRequestId=${hosted.id}`
+      );
+      return NextResponse.json({
+        // Frontend-facing URL — kept under both names so existing
+        // consumers reading authorisationUrl don't break during the
+        // cutover, and any new code can prefer hostedUrl.
+        authorisationUrl: hosted.hostedUrl,
+        hostedUrl: hosted.hostedUrl,
+        consentRequestId: hosted.id,
+        // No consentId at this stage; we'll fetch it in the callback
+        // alongside the consentToken.
+      });
+    }
+
+    // Legacy flow — kept reachable behind the flag so we can roll back
+    // by flipping one env var.
     const authData = await createAccountAuthorisation(
       institutionId,
-      `${callbackUrl}?state=${encodeURIComponent(state)}`,
-      user.id
+      redirectWithState,
+      user.id,
+      UPCOMING_FEATURE_SCOPES,
     );
-
     console.log(
-      `Yapily auth: created authorisation for user=${user.id} institution=${institutionId}`
+      `Yapily auth (legacy): created authorisation for user=${user.id} institution=${institutionId}`
     );
-
     return NextResponse.json({
       authorisationUrl: authData.authorisationUrl,
       consentId: authData.id,

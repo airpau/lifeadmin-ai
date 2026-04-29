@@ -1,24 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAccounts } from '@/lib/yapily';
-import { encrypt } from '@/lib/encrypt';
+import { createClient as createAdmin } from '@supabase/supabase-js';
+import { getAccounts, getHostedConsentRequest } from '@/lib/yapily';
+import { snapshotAccounts, upsertYapilyConnection } from '@/lib/yapily/connection-store';
 
 /**
- * GET /api/yapily/callback?consent=xxx&state=xxx
+ * GET /api/yapily/callback?consent=xxx&consent-id=xxx&state=xxx
  *
- * Yapily redirects here after the user grants consent at their bank.
- * 1. Validates state (CSRF) and consent token
- * 2. Fetches linked accounts
- * 3. Stores bank connection with encrypted consent token
- * 4. Triggers initial 12-month transaction sync
- * 5. Runs recurring payment detection
- * 6. Redirects to dashboard
+ * Yapily redirects here after the user grants (or re-grants) consent
+ * at their bank. The flow is intentionally idempotent:
+ *
+ *   1. Validate state (CSRF) and consent token.
+ *   2. Fetch the linked accounts via Yapily /accounts.
+ *   3. Compute account_identifications_hash for each account from the
+ *      bank's sort code + account number (UK) or IBAN (EU). These
+ *      hashes are stable across reconnects.
+ *   4. Hand off to upsertYapilyConnection — that helper looks for an
+ *      existing live connection for this (user, institution, hashes)
+ *      and either updates it in place or inserts a new row. If the
+ *      user just re-authorised the same bank, we never end up with two
+ *      rows.
+ *   5. Trigger an initial 12-month sync in the background.
+ *   6. Redirect back to the dashboard.
+ *
+ * The callback's job is purely orchestration; the dedup invariants live
+ * in connection-store.ts so the bank-sync cron can reuse them.
  */
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const consentToken = searchParams.get('consent');
+  // Hosted Pages returns ONLY consentRequestId on the redirect — the
+  // consentToken comes from GET /hosted/consent-requests/{id} below.
+  // Legacy /account-auth-requests returns ?consent=<token>&consent-id=<id>.
+  // We detect which mode we're in by which params are present.
+  const consentRequestId =
+    searchParams.get('consentRequestId') ||
+    searchParams.get('consent-request-id') ||
+    '';
+  let consentToken = searchParams.get('consent') || '';
+  let yapilyConsentId =
+    searchParams.get('consent-id') ||
+    searchParams.get('consentId') ||
+    (consentRequestId ? '' : searchParams.get('id') || '') ||
+    '';
   const state = searchParams.get('state');
   const errorParam = searchParams.get('error');
 
@@ -26,23 +51,21 @@ export async function GET(request: NextRequest) {
   if (errorParam) {
     console.error('Yapily callback error:', errorParam);
     return NextResponse.redirect(
-      new URL('/dashboard/money-hub?error=bank_auth_failed', request.url)
+      new URL('/dashboard/money-hub?error=bank_auth_failed', request.url),
     );
   }
 
-  if (!consentToken || !state) {
+  // We need either a consentToken (legacy) or a consentRequestId (hosted)
+  // and always need state for CSRF.
+  if ((!consentToken && !consentRequestId) || !state) {
     return NextResponse.redirect(
-      new URL('/dashboard/money-hub?error=invalid_callback', request.url)
+      new URL('/dashboard/money-hub?error=invalid_callback', request.url),
     );
   }
 
   // ── Verify user auth ──
   const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return NextResponse.redirect(new URL('/auth/login', request.url));
   }
@@ -53,91 +76,130 @@ export async function GET(request: NextRequest) {
     stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf8'));
   } catch {
     return NextResponse.redirect(
-      new URL('/dashboard/money-hub?error=state_mismatch', request.url)
+      new URL('/dashboard/money-hub?error=state_mismatch', request.url),
     );
   }
-
   if (stateData.userId !== user.id) {
     return NextResponse.redirect(
-      new URL('/dashboard/money-hub?error=state_mismatch', request.url)
+      new URL('/dashboard/money-hub?error=state_mismatch', request.url),
     );
   }
 
   const institutionId = stateData.institutionId;
   const returnTo = stateData.returnTo || '/dashboard/money-hub';
 
-  // ── Fetch linked accounts ──
-  let accountIds: string[] = [];
-  let accountDisplayNames: string[] = [];
-  let bankName: string | null = null;
+  // ── Hosted Pages: resolve consentToken + consentId from consentRequestId ──
+  // On the legacy flow Yapily puts both in the redirect query. On Hosted
+  // Pages we get only consentRequestId — fetch the rest before continuing.
+  // Tutorial step 4: check status before proceeding.
+  if (consentRequestId && !consentToken) {
+    try {
+      const hosted = await getHostedConsentRequest(consentRequestId);
+      const hostedStatus = (hosted.status || '').toUpperCase();
+      if (hostedStatus !== 'AUTHORIZED' && hostedStatus !== 'AUTHORISED') {
+        console.warn(
+          `[yapily.callback] hosted consent ${consentRequestId} status=${hostedStatus} — redirecting user back to retry`,
+        );
+        return NextResponse.redirect(
+          new URL(`/dashboard/money-hub?error=hosted_consent_${hostedStatus.toLowerCase() || 'unknown'}`, request.url),
+        );
+      }
+      if (!hosted.consentToken) {
+        console.error(`[yapily.callback] hosted consent ${consentRequestId} authorised but no consentToken returned`);
+        return NextResponse.redirect(
+          new URL('/dashboard/money-hub?error=hosted_consent_token_missing', request.url),
+        );
+      }
+      consentToken = hosted.consentToken;
+      // The Hosted Pages response carries the underlying consent id on
+      // hosted.id when in legacy-compat mode, or under a separate field
+      // we can't be sure of from the tutorial alone — fall back to the
+      // request id if the dedicated id isn't surfaced. The renew flow
+      // uses yapily_consent_id, so storing SOMETHING durable here is
+      // important; consentRequestId is acceptable as a fallback because
+      // PUT /account-auth-requests/{id} will 404 cleanly if it's the
+      // wrong shape, prompting full reconnect.
+      yapilyConsentId = hosted.id || consentRequestId;
+    } catch (err) {
+      console.error(`[yapily.callback] hosted consent fetch failed for ${consentRequestId}:`, err);
+      return NextResponse.redirect(
+        new URL('/dashboard/money-hub?error=hosted_consent_fetch_failed', request.url),
+      );
+    }
+  }
 
-  try {
-    const accounts = await getAccounts(consentToken);
-    accountIds = accounts.map((a) => a.id);
-    accountDisplayNames = accounts.map((a) => {
-      const name =
-        a.accountNames?.[0]?.name || a.nickname || 'Account';
-      return name;
-    });
-    bankName =
-      accounts[0]?.institution?.name || institutionId;
-
-    console.log(
-      `Yapily callback: ${accounts.length} accounts found, bank="${bankName}"`
-    );
-  } catch (err) {
-    console.error('Failed to fetch Yapily accounts:', err);
+  if (!consentToken) {
     return NextResponse.redirect(
-      new URL('/dashboard/money-hub?error=account_fetch_failed', request.url)
+      new URL('/dashboard/money-hub?error=invalid_callback', request.url),
     );
   }
 
-  // ── Consent expiry: 90 days from now (UK Open Banking standard) ──
-  const consentGrantedAt = new Date().toISOString();
-  const consentExpiresAt = new Date(
-    Date.now() + 90 * 24 * 60 * 60 * 1000
-  ).toISOString();
-
-  // Use institution ID as provider_id
-  const providerId = `yapily_${institutionId}_${Date.now()}`;
-
-  // ── Prevent Duplicate Active Connections ──
-  // Revoke any existing active connections for this exact bank to prevent double-counting
-  await supabase
-    .from('bank_connections')
-    .update({ status: 'revoked_duplicate', updated_at: new Date().toISOString() })
-    .eq('user_id', user.id)
-    .eq('institution_id', institutionId)
-    .in('status', ['active']);
-
-  // ── Store connection in DB ──
-  const { data: connection, error: upsertError } = await supabase
-    .from('bank_connections')
-    .upsert(
-      {
-        user_id: user.id,
-        provider: 'yapily',
-        provider_id: providerId,
-        institution_id: institutionId,
-        consent_token: encrypt(consentToken),
-        consent_granted_at: consentGrantedAt,
-        consent_expires_at: consentExpiresAt,
-        account_ids: accountIds,
-        account_display_names: accountDisplayNames,
-        bank_name: bankName,
-        status: 'active',
-        connected_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,provider_id' }
-    )
-    .select()
-    .single();
-
-  if (upsertError || !connection) {
-    console.error('Failed to save Yapily bank connection:', upsertError);
+  // ── Fetch the accounts the user just authorised ──
+  let accounts: Awaited<ReturnType<typeof getAccounts>>;
+  try {
+    accounts = await getAccounts(consentToken);
+  } catch (err) {
+    console.error('Failed to fetch Yapily accounts:', err);
     return NextResponse.redirect(
-      new URL('/dashboard/money-hub?error=save_failed', request.url)
+      new URL('/dashboard/money-hub?error=account_fetch_failed', request.url),
     );
+  }
+
+  if (accounts.length === 0) {
+    return NextResponse.redirect(
+      new URL('/dashboard/money-hub?error=no_accounts', request.url),
+    );
+  }
+
+  const accountSnapshots = snapshotAccounts(accounts);
+  const bankName = accounts[0]?.institution?.name || institutionId;
+
+  // ── 90-day UK consent expiry ──
+  const consentExpiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  // ── Persist via the dedup-aware store ──
+  let upsertResult;
+  try {
+    upsertResult = await upsertYapilyConnection({
+      userId: user.id,
+      institutionId,
+      bankName,
+      consentToken,
+      yapilyConsentId,
+      yapilyConsentRequestId: consentRequestId || null,
+      consentExpiresAt,
+      accounts: accountSnapshots,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown error';
+    console.error('[yapily.callback] upsert failed:', msg);
+    return NextResponse.redirect(
+      new URL('/dashboard/money-hub?error=save_failed', request.url),
+    );
+  }
+
+  console.log(
+    `[yapily.callback] ${upsertResult.reused ? 'reused' : 'inserted'} connection ${upsertResult.connectionId}` +
+    (upsertResult.previousConnectionIds.length ? ` (demoted ${upsertResult.previousConnectionIds.length} stale rows)` : ''),
+  );
+
+  // ── Mark the pending Hosted Pages request resolved (if any) ──
+  // The abandonment poller treats anything still 'pending' after 15 min
+  // as abandoned. Closing the loop here keeps its working set small.
+  if (consentRequestId) {
+    try {
+      const adminBg = createAdmin(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      );
+      await adminBg
+        .from('yapily_pending_consent_requests')
+        .update({ status: 'completed', resolved_at: new Date().toISOString() })
+        .eq('consent_request_id', consentRequestId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      console.error(`[yapily.callback] pending row update failed (non-fatal): ${msg}`);
+    }
   }
 
   // ── Award loyalty points ──
@@ -146,10 +208,12 @@ export async function GET(request: NextRequest) {
       awardPoints(user.id, 'bank_connected');
       awardPoints(user.id, 'first_scan');
     })
-    .catch(() => {});
+    .catch(() => { /* non-fatal */ });
 
-  // ── Trigger full 12-month sync in the background ──
-  // Don't await — redirect the user immediately, sync runs separately
+  // ── Trigger initial 12-month sync in the background ──
+  // The body carries the account snapshots so the sync doesn't have
+  // to re-fetch /accounts (saves a round-trip + uses identical hashes
+  // to whatever we just stored).
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
   fetch(`${appUrl}/api/yapily/initial-sync`, {
     method: 'POST',
@@ -158,14 +222,14 @@ export async function GET(request: NextRequest) {
       'Authorization': `Bearer ${process.env.CRON_SECRET}`,
     },
     body: JSON.stringify({
-      connectionId: connection.id,
+      connectionId: upsertResult.connectionId,
       userId: user.id,
       consentToken,
-      accountIds,
+      accountSnapshots,
     }),
-  }).catch(err => console.error('Failed to trigger initial sync:', err));
+  }).catch((err) => console.error('[yapily.callback] initial-sync trigger failed:', err));
 
   return NextResponse.redirect(
-    new URL(`${returnTo}?connected=true`, request.url)
+    new URL(`${returnTo}?connected=true${upsertResult.reused ? '&merged=1' : ''}`, request.url),
   );
 }
