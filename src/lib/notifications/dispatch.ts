@@ -113,6 +113,14 @@ interface UserRouting {
    * morning would otherwise charge us twice).
    */
   whatsappLastMarketingAt: Date | null;
+  /**
+   * Last time the user messaged US. Determines whether we're inside
+   * the 24h customer-service window. While inside, free-form text is
+   * free and unrestricted — we use this to deliver marketing-equivalent
+   * content (digests, summaries) without burning a marketing
+   * conversation.
+   */
+  whatsappLastMessageAt: Date | null;
   prefs: Record<
     string,
     { email: boolean; telegram: boolean; whatsapp: boolean; push: boolean }
@@ -137,7 +145,7 @@ async function loadUserRouting(
       .maybeSingle(),
     supabase
       .from('whatsapp_sessions')
-      .select('whatsapp_phone, is_active, marketing_opt_in_at, last_marketing_template_at')
+      .select('whatsapp_phone, is_active, marketing_opt_in_at, last_marketing_template_at, last_message_at')
       .eq('user_id', userId)
       .eq('is_active', true)
       .maybeSingle(),
@@ -166,6 +174,7 @@ async function loadUserRouting(
         whatsapp_phone?: string;
         marketing_opt_in_at?: string | null;
         last_marketing_template_at?: string | null;
+        last_message_at?: string | null;
       }
     | null;
 
@@ -179,8 +188,24 @@ async function loadUserRouting(
     whatsappPhone: wa?.whatsapp_phone ?? null,
     whatsappMarketingOptInAt: wa?.marketing_opt_in_at ? new Date(wa.marketing_opt_in_at) : null,
     whatsappLastMarketingAt: wa?.last_marketing_template_at ? new Date(wa.last_marketing_template_at) : null,
+    whatsappLastMessageAt: wa?.last_message_at ? new Date(wa.last_message_at) : null,
     prefs,
   };
+}
+
+/**
+ * 24h customer-service window. WhatsApp gives us a free, unrestricted
+ * outbound channel for 24h after each user-initiated message. If we
+ * have a free-form `text` payload AND we're inside the window, we send
+ * that instead of burning a (possibly marketing) template — same
+ * content delivered to the user, costs us £0, no marketing opt-in
+ * required, no quality-rating risk.
+ */
+const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function isInsideServiceWindow(routing: UserRouting): boolean {
+  if (!routing.whatsappLastMessageAt) return false;
+  return Date.now() - routing.whatsappLastMessageAt.getTime() < SERVICE_WINDOW_MS;
 }
 
 /**
@@ -464,22 +489,36 @@ export async function sendNotification(
       if (await sendTelegram(routing.telegramChatId, input.telegram)) delivered.push('telegram');
       else skipped.push({ channel: 'telegram', reason: 'send failed' });
     } else if (channel === 'whatsapp' && input.whatsapp && routing.whatsappPhone) {
-      // Cost + policy gate. Marketing templates need explicit opt-in
-      // and respect the 24h frequency cap. Non-marketing sends pass
-      // through. Free-form text (no templateName) always passes — the
-      // 24h customer-service window enforces the policy itself.
-      const gate = checkWhatsAppGate(routing, input.whatsapp);
+      // Service-window optimisation: if the user has messaged us in
+      // the last 24h, free-form text is unrestricted and FREE. So if
+      // the caller provided BOTH a templateName AND a text payload,
+      // prefer text while inside the window — same content delivered,
+      // £0 cost, no marketing opt-in required. Pocket Agent users chat
+      // regularly so the majority will be inside this window most of
+      // the time, which is where retention engagement actually lives.
+      let payload: WhatsAppPayload = input.whatsapp;
+      const inWindow = isInsideServiceWindow(routing);
+      if (inWindow && payload.text && payload.templateName) {
+        payload = { text: payload.text };
+      }
+
+      // Cost + policy gate. Only applies if we're sending a template.
+      // Free-form text inside the window bypasses (no template = no
+      // marketing category to enforce). Outside the window with a
+      // marketing template, the gate still requires opt-in + cap.
+      const gate = checkWhatsAppGate(routing, payload);
       if (!gate.allowed) {
         skipped.push({ channel: 'whatsapp', reason: gate.reason });
         continue;
       }
-      if (await sendWhatsApp(routing.whatsappPhone, input.whatsapp)) {
+      if (await sendWhatsApp(routing.whatsappPhone, payload)) {
         delivered.push('whatsapp');
-        // If we just opened a marketing conversation, stamp it so the
-        // 24h frequency cap holds for any concurrent crons firing.
-        if (input.whatsapp.templateName) {
+        // Stamp marketing send timestamp so the 24h frequency cap
+        // holds for any concurrent crons. Only fires when we actually
+        // sent a marketing template (not a free-form fallback).
+        if (payload.templateName) {
           const tpl = (TEMPLATES as Record<string, { category: string }>)[
-            input.whatsapp.templateName as TemplateName
+            payload.templateName as TemplateName
           ];
           if (tpl?.category === 'MARKETING') {
             await supabase
