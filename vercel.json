@@ -38,6 +38,11 @@
     { "path": "/api/cron/citation-audit",            "schedule": "0 4 * * *" },
     { "path": "/api/cron/apply-learned-rules",       "schedule": "0 2 * * *" },
     { "path": "/api/cron/check-deal-prices",         "schedule": "0 6 * * *" },
-    { "path": "/api/cron/managed-agents",            "schedule": "0 * * * *" }
+    { "path": "/api/cron/managed-agents",            "schedule": "0 * * * *" },
+    { "path": "/api/cron/agent-digest",              "schedule": "0 7 * * *" },
+    { "path": "/api/cron/agent-digest",              "schedule": "30 12 * * *" },
+    { "path": "/api/cron/agent-digest",              "schedule": "0 19 * * *" },
+    { "path": "/api/cron/support-chase",             "schedule": "0 9 * * *" },
+    { "path": "/api/cron/builder-pickup",            "schedule": "*/30 * * * *" }
   ]
 }

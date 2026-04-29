@@ -1119,6 +1119,222 @@ function createPaybackerMcpServer(): McpServer {
     }
   );
 
+  // === REPO READS (so Builder can read source before proposing a fix) ===
+
+  server.tool(
+    "read_repo_file",
+    `Read a file from ${GITHUB_REPO} at a specific git ref (branch/sha). Returns the file content (capped at 200KB). Used by Builder to inspect existing code before proposing a fix.`,
+    {
+      path: z.string().min(1).max(500).describe("Path within the repo, e.g. 'src/app/api/cron/support-agent/route.ts'."),
+      ref: z.string().max(100).default("master").describe("Branch or commit SHA. Defaults to 'master'."),
+    },
+    async ({ path, ref }) => {
+      const t = getGithubToken();
+      const r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`,
+        { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github.raw" } }
+      );
+      if (!r.ok) {
+        return { content: [{ type: "text" as const, text: `GitHub error reading ${path}@${ref}: ${r.status}` }] };
+      }
+      const text = await r.text();
+      const truncated = text.length > 200_000;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: text.slice(0, 200_000) + (truncated ? `\n\n[…truncated; full file is ${text.length} chars]` : ""),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "read_repo_dir",
+    `List files in a directory of ${GITHUB_REPO} at a specific git ref. Returns array of {name, type, path, size}. Used by Builder to discover related files before proposing a fix.`,
+    {
+      path: z.string().max(500).default("").describe("Directory path. Empty string = repo root."),
+      ref: z.string().max(100).default("master"),
+    },
+    async ({ path, ref }) => {
+      const t = getGithubToken();
+      const r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`,
+        { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github+json" } }
+      );
+      if (!r.ok) {
+        return { content: [{ type: "text" as const, text: `GitHub error listing ${path}@${ref}: ${r.status}` }] };
+      }
+      const items = (await r.json()) as Array<{ name: string; type: string; path: string; size: number }>;
+      const trimmed = items.map((i) => ({ name: i.name, type: i.type, path: i.path, size: i.size }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(trimmed, null, 2) }] };
+    }
+  );
+
+  // === BUILDER PROPOSAL (gated by founder approval before any code is written) ===
+
+  server.tool(
+    "propose_code_fix",
+    "Submit a code/database fix proposal for founder approval. Inserts a row in builder_proposals with the file changes, generates a one-time approval token, sends approve/reject URLs to the founder via email + Telegram. NO CODE IS WRITTEN until the founder clicks Approve. Returns the proposal_id and approval URL. Builder MUST use this — it cannot directly modify code, push commits, or open PRs without an approved proposal.",
+    {
+      ticket_id: z.string().uuid().nullable().optional().describe("UUID of the support_tickets row that triggered this fix (if any)."),
+      ticket_number: z.string().max(50).nullable().optional().describe("e.g. 'TKT-0042'."),
+      fix_type: z
+        .enum(["code_fix", "database_fix", "config_fix", "migration", "dependency_update", "docs_update", "other"])
+        .describe("What kind of fix."),
+      summary: z.string().min(10).max(500).describe("One-line summary of what the fix does. Becomes the PR title."),
+      rationale: z.string().max(4000).describe("Why this fix is correct. Reference the ticket / business_log row."),
+      proposed_files: z
+        .array(
+          z.object({
+            path: z.string().min(1).max(500).describe("Path within the repo, e.g. 'src/app/api/cron/support-agent/route.ts'."),
+            new_content: z.string().min(1).max(200_000).describe("Full new file content (NOT a diff). Use read_repo_file first to read the original."),
+          })
+        )
+        .min(1)
+        .max(10)
+        .describe("Array of files to write. Up to 10 files per proposal. NEVER include complaint_writer or riley-support-agent paths — those are CLAUDE.md hard-rule untouchable."),
+    },
+    async ({ ticket_id, ticket_number, fix_type, summary, rationale, proposed_files }) => {
+      // HARD RULE: refuse to propose changes to forbidden files.
+      const FORBIDDEN_PATHS = [
+        "src/lib/agents/complaints-agent.ts",
+        "src/app/api/complaints/generate/route.ts",
+      ];
+      const forbidden = proposed_files.find((f) =>
+        FORBIDDEN_PATHS.some((bad) => f.path.includes(bad)) || f.path.includes("complaints-agent.ts")
+      );
+      if (forbidden) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Refused: proposed file '${forbidden.path}' is on the CLAUDE.md never-modify list (complaint_writer / Riley source). Surface this as a recommendation in business_log instead — the founder must implement these manually.`,
+            },
+          ],
+        };
+      }
+
+      // Generate a 32-byte hex approval token.
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      const { url, key } = getSupabaseCredentials();
+      const insertRes = await fetch(`${url}/rest/v1/builder_proposals`, {
+        method: "POST",
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({
+          ticket_id: ticket_id ?? null,
+          ticket_number: ticket_number ?? null,
+          fix_type,
+          summary: summary.slice(0, 500),
+          rationale: rationale.slice(0, 4000),
+          proposed_files,
+          approval_token: token,
+          status: "pending_review",
+        }),
+      });
+      if (!insertRes.ok) {
+        const t = await insertRes.text();
+        return { content: [{ type: "text" as const, text: `Failed to insert proposal: ${insertRes.status} ${t.slice(0, 200)}` }] };
+      }
+      const inserted = (await insertRes.json()) as Array<{ id: string }>;
+      const proposalId = inserted[0]?.id;
+
+      // Build approval URLs.
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://paybacker.co.uk";
+      const approveUrl = `${baseUrl}/api/builder/approve?token=${token}`;
+      const rejectUrl = `${baseUrl}/api/builder/reject?token=${token}`;
+
+      // Notify via Telegram (rate-limit-protected via the existing tool).
+      const tgToken = process.env.TELEGRAM_BOT_TOKEN;
+      const tgChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+      if (tgToken && tgChatId) {
+        const fileList = proposed_files.map((f) => `• ${f.path}`).join("\n");
+        const body = [
+          `🛠️ <b>Builder fix proposal — ${fix_type}</b>`,
+          `<i>Ticket: ${ticket_number ?? "(none)"}</i>`,
+          ``,
+          `<b>Summary:</b> ${summary}`,
+          ``,
+          `<b>Files to change (${proposed_files.length}):</b>`,
+          fileList,
+          ``,
+          `<b>Why:</b> ${rationale.slice(0, 500)}`,
+          ``,
+          `Expires in 24h. Choose:`,
+        ].join("\n").slice(0, 3500);
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: Number(tgChatId),
+            text: body,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: "✅ Approve & Open PR", url: approveUrl },
+                  { text: "❌ Reject", url: rejectUrl },
+                ],
+              ],
+            },
+          }),
+        }).catch(() => {});
+      }
+
+      // Notify via email if RESEND_API_KEY configured.
+      const resendKey = process.env.RESEND_API_KEY;
+      const founderEmail = process.env.FOUNDER_EMAIL || "aireypaul@googlemail.com";
+      if (resendKey && founderEmail) {
+        const filesHtml = proposed_files
+          .map((f) => `<li><code>${f.path}</code></li>`)
+          .join("");
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: process.env.RESEND_FROM_EMAIL || "Paybacker <noreply@paybacker.co.uk>",
+            to: [founderEmail],
+            subject: `🛠️ Builder fix proposal: ${summary.slice(0, 80)}`,
+            html: `<!doctype html><html><body style="font-family:system-ui,-apple-system,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#0B1220;line-height:1.55;">
+<h2 style="margin:0 0 12px;">Builder fix proposal — ${fix_type}</h2>
+<p><strong>Ticket:</strong> ${ticket_number ?? "(none)"}</p>
+<p><strong>Summary:</strong> ${summary}</p>
+<p><strong>Why:</strong></p>
+<blockquote style="border-left:3px solid #e5e7eb;padding-left:12px;margin:0 0 16px;color:#475569;">${rationale.slice(0, 1500).replace(/</g, "&lt;")}</blockquote>
+<p><strong>Files to change (${proposed_files.length}):</strong></p>
+<ul>${filesHtml}</ul>
+<p style="margin-top:24px;">
+  <a href="${approveUrl}" style="display:inline-block;padding:12px 20px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;margin-right:8px;">✅ Approve &amp; Open PR</a>
+  <a href="${rejectUrl}" style="display:inline-block;padding:12px 20px;background:#dc2626;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">❌ Reject</a>
+</p>
+<p style="font-size:12px;color:#6B7280;margin-top:24px;">Token expires in 24h. One-time use.</p>
+</body></html>`,
+          }),
+        }).catch(() => {});
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Proposal ${proposalId} submitted (status=pending_review). Founder notified via email + Telegram with one-click approve/reject. Token expires in 24h. Approve URL: ${approveUrl}`,
+          },
+        ],
+      };
+    }
+  );
+
   // === EMAIL DRAFTS (read existing + insert new pending drafts) ===
 
   server.tool(
