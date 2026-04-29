@@ -1067,4 +1067,60 @@ export const telegramTools: Tool[] = [
       required: ['provider_name'],
     },
   },
+  {
+    name: 'trigger_bank_sync',
+    description:
+      "Trigger a manual bank sync to pull the latest transactions from all connected bank accounts. Use when the user says things like 'sync my bank', 'refresh my transactions', 'update my bank data', or 'my transactions are out of date'. Only available on Pro plan. Enforces a 6-hour cooldown between syncs. Returns the number of new transactions found.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        force: {
+          type: 'boolean',
+          description: 'Set to true to acknowledge the cooldown warning and force a sync anyway (only use if user explicitly requests it despite being told to wait).',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'trigger_email_scan',
+    description:
+      "Trigger a scan of the user's connected email accounts for financial opportunities — hidden subscriptions, price increases, contract renewals, dispute responses, and cancellation confirmations. Use when the user says things like 'scan my inbox', 'check my emails for subscriptions', 'run an email scan', or 'find hidden costs'. Incremental: only processes emails since the last scan to avoid wasting API tokens. Returns a summary of what was found.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'create_dispute',
+    description:
+      "Create a new dispute record in Paybacker against a provider. Use when the user wants to formally raise a dispute and track it — e.g. 'I want to dispute my energy bill', 'raise a complaint against Sky', 'I was overcharged by Netflix'. This creates the dispute record and should be followed by draft_dispute_letter to generate the complaint letter. Returns the new dispute ID.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider_name: {
+          type: 'string',
+          description: 'The name of the provider / company being disputed.',
+        },
+        issue_type: {
+          type: 'string',
+          description: 'Type of issue: overcharge, price_increase, poor_service, cancellation_refused, billing_error, contract_dispute, flight_delay, council_tax, hmrc, other.',
+        },
+        disputed_amount: {
+          type: 'number',
+          description: 'Amount in GBP being disputed (optional — leave blank if not yet known).',
+        },
+        description: {
+          type: 'string',
+          description: 'Brief description of the dispute issue.',
+        },
+        priority: {
+          type: 'string',
+          description: 'Priority level: low, medium, high, urgent. Default is medium.',
+        },
+      },
+      required: ['provider_name', 'issue_type'],
+    },
+  },
 ];

@@ -274,8 +274,20 @@ const SCAN_QUERY_GOVERNMENT =
   '(from:(hmrc.gov.uk gov.uk dvla.gov.uk nhs.uk dwp.gov.uk studentfinance pension) OR subject:("self assessment" OR "tax return" OR "tax code" OR "P60" OR "P45" OR "P800" OR "council tax" OR "MOT reminder" OR "vehicle tax" OR "HMRC" OR "DVLA" OR "student loan" OR "national insurance" OR "tax rebate" OR "overpayment")) newer_than:730d';
 
 export async function scanEmailsForOpportunities(
-  accessToken: string
+  accessToken: string,
+  sinceDate?: Date,
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
+  // For incremental scans, append an after: filter so Gmail only returns emails
+  // received since the last successful scan. This cuts API usage significantly
+  // on daily/weekly rescans — a full 2-year history sweep is only needed once.
+  const afterSuffix = sinceDate
+    ? ` after:${sinceDate.getFullYear()}/${String(sinceDate.getMonth() + 1).padStart(2, '0')}/${String(sinceDate.getDate()).padStart(2, '0')}`
+    : '';
+  // Strip the hard-coded newer_than clause from queries that have one when we
+  // have a tighter date bound, otherwise both filters are applied and the
+  // more-restrictive one wins anyway — no harm done.
+  const q = (base: string) => afterSuffix ? base.replace(/ newer_than:\d+d/, '') + afterSuffix : base;
+
   // Run all queries in parallel for comprehensive scanning
   // Scan up to 250 emails per query for thorough coverage (2 years of history)
   const [
@@ -285,21 +297,21 @@ export async function scanEmailsForOpportunities(
     trialMessages, insuranceRenewalMessages, ddMessages,
     energyBroadbandMessages, governmentMessages,
   ] = await Promise.all([
-    fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 250),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_1, 250),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_2, 250),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_3, 250),
-    fetchEmailList(accessToken, SCAN_QUERY_EXPIRATIONS, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_PAYMENTS, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_PRICE_CHANGES, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_BILLS, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_DISPUTE_RESPONSES, 50),
-    fetchEmailList(accessToken, SCAN_QUERY_CANCELLATIONS, 50),
-    fetchEmailList(accessToken, SCAN_QUERY_TRIALS, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_INSURANCE_RENEWALS, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_DD_NOTICES, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_ENERGY_BROADBAND, 150),
-    fetchEmailList(accessToken, SCAN_QUERY_GOVERNMENT, 100),
+    fetchEmailList(accessToken, q(SCAN_QUERY_SUBJECT), 250),
+    fetchEmailList(accessToken, q(SCAN_QUERY_SENDERS_1), 250),
+    fetchEmailList(accessToken, q(SCAN_QUERY_SENDERS_2), 250),
+    fetchEmailList(accessToken, q(SCAN_QUERY_SENDERS_3), 250),
+    fetchEmailList(accessToken, q(SCAN_QUERY_EXPIRATIONS), 100),
+    fetchEmailList(accessToken, q(SCAN_QUERY_PAYMENTS), 100),
+    fetchEmailList(accessToken, q(SCAN_QUERY_PRICE_CHANGES), 100),
+    fetchEmailList(accessToken, q(SCAN_QUERY_BILLS), 100),
+    fetchEmailList(accessToken, q(SCAN_QUERY_DISPUTE_RESPONSES), 50),
+    fetchEmailList(accessToken, q(SCAN_QUERY_CANCELLATIONS), 50),
+    fetchEmailList(accessToken, q(SCAN_QUERY_TRIALS), 100),
+    fetchEmailList(accessToken, q(SCAN_QUERY_INSURANCE_RENEWALS), 100),
+    fetchEmailList(accessToken, q(SCAN_QUERY_DD_NOTICES), 100),
+    fetchEmailList(accessToken, q(SCAN_QUERY_ENERGY_BROADBAND), 150),
+    fetchEmailList(accessToken, q(SCAN_QUERY_GOVERNMENT), 100),
   ]);
 
   const seen = new Set<string>();

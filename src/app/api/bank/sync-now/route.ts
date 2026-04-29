@@ -60,12 +60,36 @@ function getAdmin() {
  * Body: { connectionId?: string } — omit to sync all active connections
  */
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  // Trusted internal path: Pocket Agent (bot) calls this with the CRON_SECRET
+  // header so it can trigger syncs on behalf of a user without a browser cookie.
+  const botSecret = request.headers.get('x-bot-sync-secret');
+  const botUserId = request.headers.get('x-bot-user-id');
+  const isBotCall = botSecret && botUserId && botSecret === process.env.CRON_SECRET;
 
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  let userId: string;
+  let userEmail: string | undefined;
+
+  if (isBotCall) {
+    // Bot-authenticated path: trust the user ID from the header
+    userId = botUserId!;
+    const admin = getAdmin();
+    const { data: profile } = await admin.from('profiles').select('email').eq('id', userId).single();
+    userEmail = profile?.email;
+  } else {
+    // Standard web path: cookie-based session auth
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    userId = user.id;
+    userEmail = user.email;
   }
+
+  // Re-create the supabase client used throughout the route (original code used it)
+  const supabase = await createClient();
+  // Synthesise a user-like object so the rest of the code below still works
+  const user = { id: userId, email: userEmail };
 
   // Pro-only feature (or test user)
   const isTestUser = user.email === 'sheva.tests.2026@outlook.com';

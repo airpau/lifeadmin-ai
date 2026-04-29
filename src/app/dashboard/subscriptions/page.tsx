@@ -373,7 +373,7 @@ export default function SubscriptionsPage() {
 
   // Filter out loans, mortgages, credit cards from subscriptions view
   // These are shown in Money Hub / Spending Insights instead
-  const DEBT_KEYWORDS = ['mortgage', 'loan', 'finance', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa'];
+  const DEBT_KEYWORDS = ['mortgage', 'loan', 'finance', 'financial', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa'];
   const CREDIT_CARD_KEYWORDS = ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'virgin money', 'capital one', 'american express', 'amex', 'securepay', 'credit card'];
   const COUNCIL_TAX_KEYWORDS = ['council', 'testvalley', 'winchester city', 'hounslow', 'lbh', 'l.b.'];
 
@@ -382,7 +382,7 @@ export default function SubscriptionsPage() {
   // when the provider name doesn't match the keyword list. This ensures
   // recategorisation via Pocket Agent immediately reflects on the website.
   const isFinancePayment = (name: string, category?: string | null) => {
-    if (category && ['mortgage', 'loan', 'credit_card'].includes(category)) return true;
+    if (category && ['mortgage', 'loan', 'credit_card'].includes(category.toLowerCase())) return true;
     const lower = name.toLowerCase();
     return DEBT_KEYWORDS.some(kw => lower.includes(kw)) ||
       CREDIT_CARD_KEYWORDS.some(kw => lower.includes(kw));
@@ -472,7 +472,7 @@ export default function SubscriptionsPage() {
   const [groupAmountOverrides, setGroupAmountOverrides] = useState<Record<string, string>>({});
   const duplicateGroups = (() => {
     const groups: Record<string, Subscription[]> = {};
-    subscriptions.filter(s => !isFinancePayment(s.provider_name) && s.status === 'active').forEach(s => {
+    subscriptions.filter(s => !isFinancePayment(s.provider_name, s.category) && s.status === 'active').forEach(s => {
       const key = `${cleanMerchantName(s.provider_name).toLowerCase()}|${s.category}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);

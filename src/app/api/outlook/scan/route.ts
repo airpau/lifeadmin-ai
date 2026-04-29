@@ -85,10 +85,18 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Incremental scanning: pass last_scanned_at if it's within 60 days
+  const lastScannedAt = connection.last_scanned_at ? new Date(connection.last_scanned_at) : undefined;
+  const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+  const sinceDate = lastScannedAt && lastScannedAt > sixtyDaysAgo ? lastScannedAt : undefined;
+  if (sinceDate) {
+    console.log(`[outlook-scan] Incremental mode: scanning since ${sinceDate.toISOString()}`);
+  }
+
   try {
     // Use the comprehensive scanning function (now matches Gmail capability)
     console.log('[outlook-scan] Starting comprehensive email scan...');
-    const scanResult = await scanOutlookForOpportunities(accessToken);
+    const scanResult = await scanOutlookForOpportunities(accessToken, sinceDate);
     let opportunities = scanResult.opportunities;
 
     console.log(`[outlook-scan] Scan complete: ${scanResult.emailsFound} found, ${scanResult.emailsScanned} scanned, ${opportunities.length} opportunities`);
@@ -152,7 +160,7 @@ export async function POST(request: NextRequest) {
           await admin.from('money_hub_alerts').insert(
             newAlerts.map((o: any) => ({
               user_id: user.id,
-              type: o.type,
+              alert_type: o.type,
               title: o.title,
               description: o.description,
               value_gbp: o.amount || 0,

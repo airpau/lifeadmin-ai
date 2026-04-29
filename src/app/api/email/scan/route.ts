@@ -336,7 +336,7 @@ IMPORTANT:
           await admin.from('money_hub_alerts').insert(
             newAlerts.map((o: any) => ({
               user_id: user.id,
-              type: o.type,
+              alert_type: o.type,
               title: o.title,
               description: o.description,
               value_gbp: o.amount || 0,

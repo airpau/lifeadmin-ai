@@ -485,7 +485,7 @@ export default function MoneyHubPage() {
  const d = await res.json();
  await fetch('/api/money-hub/sync', { method: 'POST' }).catch(() => {});
  await fetch('/api/gmail/scan', { method: 'POST' }).catch(() => {});
- localStorage.setItem('pb_last_gmail_scan', Date.now().toString());
+ localStorage.setItem('pb_last_email_scan_all', Date.now().toString());
  // Wipe the Money Hub cache — data has just changed on the server
  // and stale-while-revalidate would otherwise show the pre-sync
  // numbers for a beat before the refetch lands.
@@ -572,7 +572,10 @@ export default function MoneyHubPage() {
    ? setInterval(() => setScanCaption((prev) => (prev + 1) % SCAN_CAPTIONS.length), 3000)
    : null;
  try {
-   const res = await fetch('/api/gmail/scan', { method: 'POST' });
+   // scan-all iterates every connected account (Gmail, Outlook, etc.), not just
+   // the primary Gmail. Each account is skipped if scanned within the last 6h
+   // to prevent hammering API tokens on repeated page loads.
+   const res = await fetch('/api/email/scan-all', { method: 'POST' });
    if (!res.ok) throw new Error('Scan failed');
    const payload = await res.json();
    await refreshData();
@@ -609,12 +612,12 @@ export default function MoneyHubPage() {
  // ─── Auto-scan ────────────────────────────────────────────────────────
  useEffect(() => {
  if (data && data.tier === 'pro') {
- const lastScan = localStorage.getItem('pb_last_gmail_scan');
+ const lastScan = localStorage.getItem('pb_last_email_scan_all');
  const now = Date.now();
  const alerts = data.alerts || [];
  // Trigger if: no previous scan, scan older than 24h, or alerts are empty
  if (!lastScan || now - parseInt(lastScan) > 24 * 60 * 60 * 1000 || alerts.length === 0) {
- localStorage.setItem('pb_last_gmail_scan', now.toString());
+ localStorage.setItem('pb_last_email_scan_all', now.toString());
  scanInbox(true);
  }
  }

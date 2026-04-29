@@ -26,6 +26,7 @@ const DEBT_KEYWORDS = [
   'mortgage',
   'loan',
   'finance',
+  'financial',
   'lendinvest',
   'skipton',
   'santander loan',
@@ -62,7 +63,7 @@ export function isFinanceProvider(
   name: string | null | undefined,
   category?: string | null,
 ): boolean {
-  if (category && ['mortgage', 'loan', 'credit_card'].includes(category)) return true;
+  if (category && ['mortgage', 'loan', 'credit_card'].includes(category.toLowerCase())) return true;
   if (!name) return false;
   const lower = name.toLowerCase();
   return DEBT_KEYWORDS.some((k) => lower.includes(k)) || CREDIT_KEYWORDS.some((k) => lower.includes(k));

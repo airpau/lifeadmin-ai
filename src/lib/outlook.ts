@@ -285,8 +285,16 @@ const KQL_GOVERNMENT =
   'from:hmrc.gov.uk OR from:gov.uk OR from:dvla.gov.uk OR from:nhs.uk OR subject:"self assessment" OR subject:"tax return" OR subject:"tax code" OR subject:"P60" OR subject:"P45" OR subject:"P800" OR subject:HMRC OR subject:DVLA OR subject:"council tax" OR subject:"student loan" OR subject:"MOT reminder"';
 
 export async function scanOutlookForOpportunities(
-  accessToken: string
+  accessToken: string,
+  sinceDate?: Date,
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
+  // For incremental scans, append a received: filter so the Microsoft KQL query
+  // only returns messages since the last successful scan.
+  const dateClause = sinceDate
+    ? ` received:>=${sinceDate.toISOString().split('T')[0]}`
+    : '';
+  const q = (base: string) => dateClause ? `${base}${dateClause}` : base;
+
   // Run all queries in parallel (same strategy as Gmail)
   console.log('[outlook] Starting comprehensive email scan (11 parallel queries)...');
 
@@ -295,17 +303,17 @@ export async function scanOutlookForOpportunities(
     expirationMsgs, paymentMsgs, priceChangeMsgs,
     trialMsgs, insuranceMsgs, ddMsgs, governmentMsgs,
   ] = await Promise.all([
-    fetchMessagesBySearch(accessToken, KQL_SUBJECT, 200),
-    fetchMessagesBySearch(accessToken, KQL_SENDERS_1, 200),
-    fetchMessagesBySearch(accessToken, KQL_SENDERS_2, 200),
-    fetchMessagesBySearch(accessToken, KQL_SENDERS_3, 200),
-    fetchMessagesBySearch(accessToken, KQL_EXPIRATIONS, 100),
-    fetchMessagesBySearch(accessToken, KQL_PAYMENTS, 100),
-    fetchMessagesBySearch(accessToken, KQL_PRICE_CHANGES, 100),
-    fetchMessagesBySearch(accessToken, KQL_TRIALS, 100),
-    fetchMessagesBySearch(accessToken, KQL_INSURANCE, 100),
-    fetchMessagesBySearch(accessToken, KQL_DD, 100),
-    fetchMessagesBySearch(accessToken, KQL_GOVERNMENT, 100),
+    fetchMessagesBySearch(accessToken, q(KQL_SUBJECT), 200),
+    fetchMessagesBySearch(accessToken, q(KQL_SENDERS_1), 200),
+    fetchMessagesBySearch(accessToken, q(KQL_SENDERS_2), 200),
+    fetchMessagesBySearch(accessToken, q(KQL_SENDERS_3), 200),
+    fetchMessagesBySearch(accessToken, q(KQL_EXPIRATIONS), 100),
+    fetchMessagesBySearch(accessToken, q(KQL_PAYMENTS), 100),
+    fetchMessagesBySearch(accessToken, q(KQL_PRICE_CHANGES), 100),
+    fetchMessagesBySearch(accessToken, q(KQL_TRIALS), 100),
+    fetchMessagesBySearch(accessToken, q(KQL_INSURANCE), 100),
+    fetchMessagesBySearch(accessToken, q(KQL_DD), 100),
+    fetchMessagesBySearch(accessToken, q(KQL_GOVERNMENT), 100),
   ]);
 
   // Deduplicate by message ID

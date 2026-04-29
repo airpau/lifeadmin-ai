@@ -78,11 +78,30 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Incremental scanning: if we have a last_scanned_at that is recent (< 60 days),
+  // pass it to the scan function so it only fetches emails since that date.
+  // This dramatically reduces API calls on re-scans.
+  const { data: gmailConn } = await admin
+    .from('email_connections')
+    .select('last_scanned_at')
+    .eq('user_id', user.id)
+    .eq('provider_type', 'google')
+    .eq('status', 'active')
+    .order('last_scanned_at', { ascending: false })
+    .limit(1)
+    .single();
+  const lastScannedAt = gmailConn?.last_scanned_at ? new Date(gmailConn.last_scanned_at) : undefined;
+  const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+  const sinceDate = lastScannedAt && lastScannedAt > sixtyDaysAgo ? lastScannedAt : undefined;
+  if (sinceDate) {
+    console.log(`[gmail-scan] Incremental mode: scanning since ${sinceDate.toISOString()}`);
+  }
+
   try {
     // Use the comprehensive scanning function from gmail.ts
     // This fetches full email bodies, uses targeted queries, and has a robust Claude prompt
     console.log('[gmail-scan] Starting comprehensive email scan...');
-    const scanResult = await scanEmailsForOpportunities(accessToken);
+    const scanResult = await scanEmailsForOpportunities(accessToken, sinceDate);
     let opportunities = scanResult.opportunities;
 
     console.log(`[gmail-scan] Scan complete: ${scanResult.emailsFound} found, ${scanResult.emailsScanned} scanned, ${opportunities.length} opportunities`);
@@ -330,7 +349,7 @@ export async function POST(request: NextRequest) {
           await admin.from('money_hub_alerts').insert(
             alerts.map((o: any) => ({
               user_id: user.id,
-              type: o.type,
+              alert_type: o.type,
               title: o.title,
               description: o.description,
               value_gbp: o.amount || 0,

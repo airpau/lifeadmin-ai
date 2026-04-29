@@ -4,6 +4,7 @@ import { normalizeSpendingCategoryKey, buildMoneyHubOverrideMaps, findMatchingCa
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { loadLearnedRules } from '@/lib/learning-engine';
 import { listSpaces } from '@/lib/spaces';
+import { filterActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import {
   type BotSpaceScope,
   applyTxSpaceFilter,
@@ -265,6 +266,18 @@ export async function executeToolCall(
         provider_name: toolInput.provider_name as string,
         amount: toolInput.amount as number | undefined,
         paid_date: toolInput.paid_date as string | undefined,
+      });
+    case 'trigger_bank_sync':
+      return triggerBankSync(supabase, userId, toolInput.force as boolean | undefined);
+    case 'trigger_email_scan':
+      return triggerEmailScan(supabase, userId);
+    case 'create_dispute':
+      return createDispute(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        issue_type: toolInput.issue_type as string,
+        disputed_amount: toolInput.disputed_amount as number | undefined,
+        description: toolInput.description as string | undefined,
+        priority: (toolInput.priority as string | undefined) ?? 'medium',
       });
     case 'get_loyalty_status':
       return getLoyaltyStatus(supabase, userId);
@@ -548,12 +561,14 @@ async function getSubscriptions(
   }
 
   // Match the website logic: separate finance payments (loans, mortgages, credit cards) from subscriptions
-  const FINANCE_KEYWORDS = ['mortgage', 'loan', 'finance', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa', 'barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'virgin money', 'capital one', 'american express', 'amex', 'securepay', 'credit card'];
+  // Note: 'finance' does NOT match 'financial' as a substring ('financial'.includes('finance') === false),
+  // so 'financial' is listed explicitly to catch providers like "Creation Financial".
+  const FINANCE_KEYWORDS = ['mortgage', 'loan', 'finance', 'financial', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa', 'barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'virgin money', 'capital one', 'american express', 'amex', 'securepay', 'credit card'];
 
   // Category takes precedence over name matching — if the user has explicitly
   // recategorised a provider to 'mortgage'/'loan'/'credit_card', respect it.
   const isFinance = (name: string, category?: string | null) => {
-    if (category && ['mortgage', 'loan', 'credit_card'].includes(category)) return true;
+    if (category && ['mortgage', 'loan', 'credit_card'].includes(category.toLowerCase())) return true;
     const lower = name.toLowerCase();
     return FINANCE_KEYWORDS.some(kw => lower.includes(kw));
   };
@@ -602,7 +617,9 @@ async function getSubscriptions(
   let text = `*Subscriptions (${subs.length})*\n`;
   text += `Monthly: *${fmt(subsMonthly)}* | Annual: *${fmt(subsMonthly * 12)}*\n\n`;
 
-  for (const s of subs.slice(0, 25)) {
+  // Show up to 50 items; Telegram messages cap at ~4096 chars so we page if huge
+  const DISPLAY_CAP = 50;
+  for (const s of subs.slice(0, DISPLAY_CAP)) {
     const renewal = s.next_billing_date ? `Renews ${fmtDate(s.next_billing_date)}` : '';
     const end = s.contract_end_date ? `Ends ${fmtDate(s.contract_end_date)}` : renewal;
     const cycle = s.billing_cycle ?? 'monthly';
@@ -611,6 +628,9 @@ async function getSubscriptions(
     if (end) text += ` (${end})`;
     if (s.status !== 'active') text += ` [${s.status}]`;
     text += '\n';
+  }
+  if (subs.length > DISPLAY_CAP) {
+    text += `_...and ${subs.length - DISPLAY_CAP} more. Ask for a specific category to filter._\n`;
   }
 
   if (finance.length > 0) {
@@ -1380,7 +1400,7 @@ async function getFinancialOverview(
   let topCats: [string, number][] = [];
 
   const sharedPromises = [
-    supabase.from('subscriptions').select('amount, billing_cycle, category', { count: 'exact' })
+    supabase.from('subscriptions').select('provider_name, amount, billing_cycle, status, dismissed_at, category', { count: 'exact' })
       .eq('user_id', userId).eq('status', 'active').is('dismissed_at', null),
     supabase.from('disputes').select('id', { count: 'exact', head: true })
       .eq('user_id', userId).not('status', 'in', '("resolved","dismissed")'),
@@ -1451,7 +1471,7 @@ async function getFinancialOverview(
 }
 
 function renderOverview(args: {
-  subs: { data: Array<{ amount: string | number; billing_cycle: string }> | null; count: number | null };
+  subs: { data: Array<{ provider_name?: string; amount: string | number; billing_cycle: string; status?: string; dismissed_at?: string | null; category?: string | null }> | null; count: number | null };
   disputes: { count: number | null };
   banks: { data: Array<{ id: string; bank_name: string | null; status: string }> | null };
   budgets: { data: unknown[] | null };
@@ -1464,8 +1484,13 @@ function renderOverview(args: {
 }): ToolResult {
   const { subs, disputes, banks, budgets, savings, totalIncome, totalSpending, topCats, scope, monthLabel } = args;
 
-  const subsList = subs.data ?? [];
-  const monthlySubsTotal = subsList.reduce((sum, s) => {
+  // Filter out finance providers (mortgages, loans, credit cards) so the count
+  // and monthly total match what the website shows as "Subscriptions & Bills".
+  // filterActiveSubscriptions mirrors the same dedup + finance-exclusion logic.
+  const allSubsList = subs.data ?? [];
+  const activeSubsList = filterActiveSubscriptions(allSubsList);
+  const subsCount = activeSubsList.length;
+  const monthlySubsTotal = activeSubsList.reduce((sum, s) => {
     const amt = Number(s.amount);
     if (s.billing_cycle === 'monthly') return sum + amt;
     if (s.billing_cycle === 'quarterly') return sum + amt / 3;
@@ -1494,7 +1519,7 @@ function renderOverview(args: {
   text += `• Net: *${totalIncome - totalSpending >= 0 ? '+' : ''}${fmt(totalIncome - totalSpending)}*\n\n`;
 
   text += `*Recurring Payments:*\n`;
-  text += `• ${subs.count ?? 0} active subscriptions\n`;
+  text += `• ${subsCount} active subscriptions\n`;
   text += `• Monthly total: *${fmt(monthlySubsTotal)}* (${fmt(monthlySubsTotal * 12)}/year)\n\n`;
 
   if (topCats.length > 0) {
@@ -2633,7 +2658,7 @@ async function getUpcomingPayments(
 
   const LOAN_CATEGORIES = new Set(['mortgage', 'loan', 'loans', 'credit']);
   const BILL_CATEGORIES = new Set(['utility', 'council_tax', 'water', 'broadband', 'mobile', 'bills', 'energy', 'insurance']);
-  const FINANCE_KEYWORDS = ['mortgage', 'loan', 'finance', 'credit card', 'lendinvest', 'skipton', 'novuna', 'zopa', 'barclaycard', 'mbna', 'amex', 'american express', 'securepay'];
+  const FINANCE_KEYWORDS = ['mortgage', 'loan', 'finance', 'financial', 'credit card', 'lendinvest', 'skipton', 'novuna', 'zopa', 'barclaycard', 'mbna', 'amex', 'american express', 'securepay'];
 
   const getType = (name: string, category: string | null): string => {
     const lower = name.toLowerCase();
@@ -4299,6 +4324,263 @@ async function createSupportTicket(
   text += `*Status:* Open\n\n`;
   text += `Our team will respond within 24 hours. You'll receive an email at ${userEmail ?? 'your registered email'} when we reply.\n\n`;
   text += `_Reply to the confirmation email if you need to add more details._`;
+
+  return { text };
+}
+
+// ============================================================
+// BANK SYNC TRIGGER
+// ============================================================
+
+async function triggerBankSync(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  force?: boolean,
+): Promise<ToolResult> {
+  // Check Pro plan
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('subscription_tier')
+    .eq('id', userId)
+    .single();
+
+  const tier = profile?.subscription_tier || 'free';
+  if (tier !== 'pro') {
+    return { text: `Bank sync is a Pro feature. You're currently on the ${tier} plan.\n\nUpgrade at paybacker.co.uk/pricing to unlock on-demand bank sync.` };
+  }
+
+  // Check cooldown: look at the most recently manually synced connection
+  const { data: connections } = await supabase
+    .from('bank_connections')
+    .select('bank_name, last_manual_sync_at, status')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .order('last_manual_sync_at', { ascending: false });
+
+  if (!connections || connections.length === 0) {
+    return { text: `No active bank connections found. Connect a bank at paybacker.co.uk/dashboard/money-hub.` };
+  }
+
+  const mostRecentSync = connections[0]?.last_manual_sync_at;
+  if (mostRecentSync && !force) {
+    const minsSince = Math.round((Date.now() - new Date(mostRecentSync).getTime()) / 60000);
+    const hrsSince = minsSince / 60;
+    if (hrsSince < 6) {
+      const waitMins = Math.ceil((6 * 60) - minsSince);
+      return {
+        text: `Your banks were synced ${minsSince < 60 ? `${minsSince} minutes` : `${Math.round(hrsSince * 10) / 10} hours`} ago.\n\nManual sync has a 6-hour cooldown to protect API limits. Try again in ${waitMins} minutes, or say "force sync" if it's urgent.`,
+      };
+    }
+  }
+
+  // Call the sync-now endpoint with bot auth headers
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
+  try {
+    const res = await fetch(`${appUrl}/api/bank/sync-now`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-bot-sync-secret': process.env.CRON_SECRET || '',
+        'x-bot-user-id': userId,
+      },
+      body: JSON.stringify({}),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      if (data.rateLimited || data.dailyLimitReached) {
+        return { text: `Daily sync limit reached (3 per day). Try again tomorrow or wait a few hours.` };
+      }
+      if (data.upgradeRequired) {
+        return { text: `Bank sync requires a Pro plan. Upgrade at paybacker.co.uk/pricing.` };
+      }
+      return { text: `Bank sync failed: ${data.error || 'Unknown error'}. Try again from the Money Hub.` };
+    }
+
+    const newTxCount = data.newTransactionCount ?? data.transactionCount ?? 0;
+    const bankNames = connections.map((c: any) => c.bank_name || 'Bank').filter(Boolean).join(', ');
+    let text = `*Bank Sync Complete* ✅\n\n`;
+    text += `*Accounts synced:* ${bankNames}\n`;
+    text += `*New transactions:* ${newTxCount}\n\n`;
+    if (newTxCount > 0) {
+      text += `Your spending totals and subscription detection have been updated. Ask me for a spending summary or subscription list to see the latest.`;
+    } else {
+      text += `Everything is already up to date — no new transactions since the last sync.`;
+    }
+    return { text };
+
+  } catch (err: any) {
+    console.error('[triggerBankSync] Fetch error:', err.message);
+    return { text: `Bank sync request failed. Please try from the Money Hub or check your bank connection in Profile.` };
+  }
+}
+
+// ============================================================
+// EMAIL SCAN TRIGGER
+// ============================================================
+
+async function triggerEmailScan(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  // Check plan
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('subscription_tier')
+    .eq('id', userId)
+    .single();
+
+  const tier = profile?.subscription_tier || 'free';
+  if (tier === 'free') {
+    return { text: `Email scanning is available on Essential and Pro plans.\n\nUpgrade at paybacker.co.uk/pricing to scan your inbox for hidden subscriptions, price increases, and savings.` };
+  }
+
+  // Check 6-hour cooldown across all email connections
+  const { data: emailConns } = await supabase
+    .from('email_connections')
+    .select('email_address, provider_type, last_scanned_at')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .order('last_scanned_at', { ascending: false });
+
+  if (!emailConns || emailConns.length === 0) {
+    return { text: `No email accounts connected. Connect Gmail or Outlook at paybacker.co.uk/dashboard/profile.` };
+  }
+
+  const mostRecentScan = emailConns[0]?.last_scanned_at;
+  if (mostRecentScan) {
+    const minsSince = Math.round((Date.now() - new Date(mostRecentScan).getTime()) / 60000);
+    if (minsSince < 360) { // 6 hours
+      const waitMins = Math.ceil(360 - minsSince);
+      return {
+        text: `Inbox was scanned ${minsSince < 60 ? `${minsSince} minutes` : `${Math.round(minsSince / 60 * 10) / 10} hours`} ago.\n\nThe scan has a 6-hour cooldown to protect your email API tokens. Try again in ${waitMins} minutes.\n\n_Any findings from that scan are already in your Financial Action Centre._`,
+      };
+    }
+  }
+
+  // Call the universal scan-all endpoint with bot auth
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
+  try {
+    // We need to pass the user's session — use CRON_SECRET approach by calling
+    // scan-all with a special header (same pattern as bank sync)
+    const res = await fetch(`${appUrl}/api/email/scan-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-bot-scan-secret': process.env.CRON_SECRET || '',
+        'x-bot-user-id': userId,
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data.upgradeRequired) {
+        return { text: `Email scan requires an Essential or Pro plan.` };
+      }
+      // Don't surface raw errors — fall through to manual instructions
+      console.error('[triggerEmailScan] API error:', data.error);
+      return { text: `Email scan is running in the background. Check your Financial Action Centre at paybacker.co.uk/dashboard/money-hub in a few minutes.` };
+    }
+
+    const data = await res.json().catch(() => ({}));
+    const opps = Array.isArray(data.opportunities) ? data.opportunities : [];
+    const scanned = data.emailsScanned ?? 0;
+    const accounts = (data.accountResults || []).filter((a: any) => !a.skipped).map((a: any) => a.email).join(', ');
+
+    if (opps.length === 0) {
+      return { text: `*Inbox Scan Complete* ✅\n\n*Emails scanned:* ${scanned}${accounts ? `\n*Accounts:* ${accounts}` : ''}\n\nNothing new to surface — you're all caught up. No hidden subscriptions, price increases, or action items found.` };
+    }
+
+    const byType: Record<string, number> = {};
+    for (const o of opps) { byType[o.type] = (byType[o.type] || 0) + 1; }
+
+    let text = `*Inbox Scan Complete* ✅\n\n`;
+    text += `*Emails scanned:* ${scanned}\n`;
+    if (accounts) text += `*Accounts:* ${accounts}\n`;
+    text += `*Found:* ${opps.length} new item${opps.length !== 1 ? 's' : ''}\n\n`;
+
+    const parts: string[] = [];
+    if (byType.subscription || byType.forgotten_subscription) parts.push(`${(byType.subscription || 0) + (byType.forgotten_subscription || 0)} new subscription${(byType.subscription || 0) + (byType.forgotten_subscription || 0) !== 1 ? 's' : ''}`);
+    if (byType.price_increase) parts.push(`${byType.price_increase} price alert${byType.price_increase !== 1 ? 's' : ''}`);
+    if (byType.bill) parts.push(`${byType.bill} bill${byType.bill !== 1 ? 's' : ''}`);
+    if (byType.contract) parts.push(`${byType.contract} contract update${byType.contract !== 1 ? 's' : ''}`);
+    if (byType.dispute_response) parts.push(`${byType.dispute_response} dispute repl${byType.dispute_response !== 1 ? 'ies' : 'y'}`);
+    if (byType.cancellation_confirmation) parts.push(`${byType.cancellation_confirmation} cancellation${byType.cancellation_confirmation !== 1 ? 's' : ''}`);
+    if (byType.bank_gap) parts.push(`${byType.bank_gap} subscription${byType.bank_gap !== 1 ? 's' : ''} not in your bank`);
+
+    text += parts.join(' · ') + '\n\n';
+    text += `_View the full breakdown in your Financial Action Centre at paybacker.co.uk/dashboard/money-hub_`;
+
+    return { text };
+
+  } catch (err: any) {
+    console.error('[triggerEmailScan] Error:', err.message);
+    return { text: `Email scan is queued. Check your Financial Action Centre at paybacker.co.uk/dashboard/money-hub in a few minutes for results.` };
+  }
+}
+
+// ============================================================
+// CREATE DISPUTE
+// ============================================================
+
+async function createDispute(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider_name: string;
+    issue_type: string;
+    disputed_amount?: number;
+    description?: string;
+    priority: string;
+  },
+): Promise<ToolResult> {
+  // Check if a dispute already exists for this provider
+  const { data: existing } = await supabase
+    .from('disputes')
+    .select('id, status')
+    .eq('user_id', userId)
+    .ilike('provider_name', `%${params.provider_name}%`)
+    .not('status', 'in', '(resolved,dismissed)')
+    .limit(1)
+    .single();
+
+  if (existing) {
+    return {
+      text: `A dispute against *${params.provider_name}* is already open (status: ${existing.status}).\n\nUse \`update_dispute_status\` to update it, or \`draft_dispute_letter\` to generate a new letter for it.`,
+    };
+  }
+
+  const { data: dispute, error } = await supabase
+    .from('disputes')
+    .insert({
+      user_id: userId,
+      provider_name: params.provider_name,
+      issue_type: params.issue_type,
+      disputed_amount: params.disputed_amount ?? null,
+      description: params.description ?? null,
+      status: 'open',
+      priority: params.priority,
+      source: 'pocket_agent',
+    })
+    .select('id, provider_name, issue_type, status')
+    .single();
+
+  if (error || !dispute) {
+    return { text: `Failed to create dispute: ${error?.message ?? 'Unknown error'}` };
+  }
+
+  let text = `*Dispute Created* ✅\n\n`;
+  text += `*Provider:* ${dispute.provider_name}\n`;
+  text += `*Issue type:* ${dispute.issue_type}\n`;
+  text += `*Status:* ${dispute.status}\n`;
+  if (params.disputed_amount) text += `*Amount disputed:* £${params.disputed_amount.toFixed(2)}\n`;
+  text += `\nThe dispute is now being tracked in your Paybacker dashboard.\n\n`;
+  text += `*Next steps:*\n`;
+  text += `• Say _"draft a dispute letter for ${dispute.provider_name}"_ to generate a professional complaint letter citing UK consumer law\n`;
+  text += `• Or say _"generate cancellation email for ${dispute.provider_name}"_ if you want to cancel instead\n`;
+  text += `• Track progress at paybacker.co.uk/dashboard/disputes`;
 
   return { text };
 }
