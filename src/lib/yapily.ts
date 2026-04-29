@@ -52,16 +52,32 @@ async function yapilyRequest<T>(
   });
 
   if (!res.ok) {
+    // Tracing-Id capture (Vitally Support requirement). Yapily surfaces
+    // it in two places — pluck both so however ops finds the failure
+    // (Sentry, Telegram, Vercel logs) the ID is right there in the
+    // message and there's no chasing a separate header lookup.
     let errorMessage = `Yapily API error: ${res.status} ${res.statusText}`;
+    let tracingId: string | undefined;
     try {
       const errorBody = (await res.json()) as YapilyErrorResponse;
+      tracingId = errorBody.error?.tracingId;
       if (errorBody.error?.message) {
         errorMessage = `Yapily API error: ${errorBody.error.message} (${res.status})`;
       }
     } catch {
       // Body not parseable — use default message
     }
-    throw new Error(errorMessage);
+    if (!tracingId) {
+      // Some auth + 5xx paths short-circuit before the JSON body —
+      // fall back to the response header Yapily includes on every
+      // request.
+      tracingId = res.headers.get('Tracing-Id') || res.headers.get('tracing-id') || undefined;
+    }
+    if (tracingId) errorMessage += ` [tracingId=${tracingId}]`;
+    const err = new Error(errorMessage) as Error & { status?: number; tracingId?: string };
+    err.status = res.status;
+    err.tracingId = tracingId;
+    throw err;
   }
 
   return res.json() as Promise<T>;
@@ -69,10 +85,23 @@ async function yapilyRequest<T>(
 
 // ── Institutions ──
 
+// Module-level cache of the full Yapily institution list. Sized small
+// enough to live in any Vercel function instance and refreshed at most
+// once per hour. Per-instance caching is fine for this surface — the
+// data is stable, the worst case is a few extra API calls when a fresh
+// instance boots, and Yapily's recommendation is "refresh once a week"
+// (we go more aggressive for safety).
+const FEATURE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+let _institutionsCache: { value: YapilyInstitution[]; loadedAt: number } | null = null;
+
 /**
- * Fetches all Yapily-supported institutions, filtered to UK only (country code GB).
+ * Fetches all Yapily-supported institutions, filtered to UK only
+ * (country code GB). Cached for 1 hour at the module level.
  */
 export async function getInstitutions(): Promise<YapilyInstitution[]> {
+  if (_institutionsCache && Date.now() - _institutionsCache.loadedAt < FEATURE_CACHE_TTL_MS) {
+    return _institutionsCache.value;
+  }
   const response = await yapilyRequest<YapilyApiResponse<YapilyInstitution[]>>(
     '/institutions'
   );
@@ -80,9 +109,48 @@ export async function getInstitutions(): Promise<YapilyInstitution[]> {
   const institutions = response.data || [];
 
   // Filter to UK institutions only
-  return institutions.filter((inst) =>
+  const uk = institutions.filter((inst) =>
     inst.countries?.some((c) => c.countryCode2 === 'GB')
   );
+  _institutionsCache = { value: uk, loadedAt: Date.now() };
+  return uk;
+}
+
+/**
+ * Returns the Yapily feature flags exposed by a given institution.
+ * Backed by the same cache as getInstitutions(). On a cache miss or
+ * an unknown institution returns an empty array — callers should
+ * treat absence as "feature unsupported".
+ *
+ * Source of feature names: Yapily institution metadata. Examples:
+ *   ACCOUNT_DIRECT_DEBITS, ACCOUNT_PERIODIC_PAYMENTS,
+ *   ACCOUNT_SCHEDULED_PAYMENTS, ACCOUNT_TRANSACTIONS,
+ *   INITIATE_DOMESTIC_SINGLE_PAYMENT, etc.
+ */
+export async function getInstitutionFeatures(institutionId: string): Promise<string[]> {
+  if (!institutionId) return [];
+  try {
+    const all = await getInstitutions();
+    const match = all.find((i) => i.id === institutionId);
+    return match?.features ?? [];
+  } catch (err) {
+    console.error('[yapily.getInstitutionFeatures] failed', err);
+    return [];
+  }
+}
+
+/**
+ * Returns true if `institutionId` exposes `feature`. Defaults to false
+ * on any lookup failure — Migle's spec says ~70% of UK banks support
+ * the upcoming-payments endpoints, so the safe default is to skip the
+ * call when in doubt rather than burn an API quota on a 404.
+ */
+export async function supportsFeature(
+  institutionId: string,
+  feature: string,
+): Promise<boolean> {
+  const features = await getInstitutionFeatures(institutionId);
+  return features.includes(feature);
 }
 
 // ── Account Authorisation ──
@@ -391,14 +459,20 @@ export async function deleteConsent(consentId: string): Promise<void> {
 
   if (!res.ok) {
     let errorMessage = `Yapily delete-consent error: ${res.status} ${res.statusText}`;
+    let tracingId: string | undefined;
     try {
       const errorBody = (await res.json()) as YapilyErrorResponse;
+      tracingId = errorBody.error?.tracingId;
       if (errorBody.error?.message) {
         errorMessage = `Yapily delete-consent error: ${errorBody.error.message} (${res.status})`;
       }
     } catch {
       // body not parseable — keep default message
     }
+    if (!tracingId) {
+      tracingId = res.headers.get('Tracing-Id') || res.headers.get('tracing-id') || undefined;
+    }
+    if (tracingId) errorMessage += ` [tracingId=${tracingId}]`;
     throw new Error(errorMessage);
   }
 }
