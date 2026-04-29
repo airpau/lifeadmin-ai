@@ -50,6 +50,7 @@ export interface PlanLimits {
  * Export (CSV / PDF)            —       —           ✓
  * Paybacker Assistant (MCP)     —       —           ✓
  * Pocket Agent (Telegram)       ✓       ✓           ✓
+ * Pocket Agent (WhatsApp)       —       —           ✓
  * Priority support              —       —           ✓
  *
  * Rules for the system:
@@ -131,6 +132,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
       'watchdog_telegram_instant',
       'price_alert_email',
       'price_alert_telegram',
+      'pocket_agent_whatsapp',
       'export',
       'mcp',
     ],

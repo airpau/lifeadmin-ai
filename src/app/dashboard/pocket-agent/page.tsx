@@ -237,7 +237,7 @@ export default function PocketAgentPage() {
               </div>
               <span className="text-sm font-medium text-slate-900">Complaint letters</span>
               <span className="text-xs text-slate-600">
-                Draft and approve letters citing UK consumer law, all from Telegram
+                Draft and approve letters citing UK consumer law, all from your chat app
               </span>
             </div>
           </div>
@@ -272,14 +272,14 @@ export default function PocketAgentPage() {
             textTransform:'uppercase',
             color:'#0088cc',
             marginBottom:8,
-          }}>● Pocket Agent · Telegram</span>
+          }}>● Pocket Agent · Telegram &amp; WhatsApp</span>
           <h1 className="page-title" style={{fontSize:34,lineHeight:1.1}}>
             Your money, <span style={{color:'var(--mint-deep)'}}>in a chat.</span>
           </h1>
           <p className="page-sub" style={{maxWidth:640,lineHeight:1.55,marginTop:8}}>
-            Paybacker checks your bills overnight and pings you on Telegram when
-            something needs your attention. Reply in plain English. Approve
-            disputes with one tap.
+            Paybacker checks your bills overnight and pings you when something
+            needs your attention. Reply in plain English. Approve disputes with
+            one tap. Use Telegram on any plan, or WhatsApp on Pro.
           </p>
         </div>
       </div>

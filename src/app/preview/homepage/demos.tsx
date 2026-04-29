@@ -679,7 +679,7 @@ export function DisputesDemo() {
 }
 
 // ---------------------------------------------------------------------------
-// 2 · Pocket Agent · Telegram
+// 2 · Pocket Agent · WhatsApp
 // ---------------------------------------------------------------------------
 type PAMsg =
   | { from: number; kind: 'bot-alert' }
@@ -771,7 +771,7 @@ export function PocketAgentDemo() {
             }}
           >
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--mint)', animation: 'demoPulse 1.6s infinite' }} />
-            Pocket Agent · Telegram
+            Pocket Agent · WhatsApp
           </div>
           <div
             style={{
@@ -816,14 +816,14 @@ export function PocketAgentDemo() {
           </div>
         </div>
 
-        {/* RIGHT Telegram phone */}
+        {/* RIGHT WhatsApp phone */}
         <div style={{ padding: '18px 22px 18px 0', display: 'flex', alignItems: 'center' }}>
           <div
             style={{
               width: '100%',
               height: '100%',
               maxHeight: 520,
-              background: '#17212B',
+              background: '#ECE5DD',
               borderRadius: 28,
               overflow: 'hidden',
               border: '7px solid #0D0D10',
@@ -832,14 +832,14 @@ export function PocketAgentDemo() {
               flexDirection: 'column',
             }}
           >
+            {/* WhatsApp-style header */}
             <div
               style={{
-                background: '#202B36',
+                background: '#075E54',
                 padding: '8px 12px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                borderBottom: '1px solid rgba(255,255,255,.04)',
                 flexShrink: 0,
               }}
             >
@@ -848,19 +848,19 @@ export function PocketAgentDemo() {
                   width: 28,
                   height: 28,
                   borderRadius: '50%',
-                  background: 'linear-gradient(135deg,#34D399,#059669)',
+                  background: '#25D366',
                   display: 'grid',
                   placeItems: 'center',
                   fontSize: 13,
                   fontWeight: 800,
-                  color: '#0B1220',
+                  color: '#FFFFFF',
                 }}
               >
                 P
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 11.5, fontWeight: 700, color: '#fff' }}>Paybacker</div>
-                <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,.5)' }}>assistant · online</div>
+                <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,.7)' }}>online</div>
               </div>
             </div>
 
@@ -883,20 +883,21 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-start',
-                        background: '#2E2416',
-                        color: '#FDE68A',
-                        border: '1px solid rgba(251,191,36,.35)',
+                        background: '#FFF8E1',
+                        color: '#5D4037',
+                        border: '1px solid rgba(255,160,0,.3)',
                         padding: '7px 9px',
-                        borderRadius: '10px 10px 10px 2px',
+                        borderRadius: '0px 10px 10px 10px',
                         maxWidth: '86%',
                         fontSize: 10,
                         animation: 'demoMsgIn 350ms',
+                        boxShadow: '0 1px 2px rgba(0,0,0,.1)',
                       }}
                     >
-                      <div style={{ fontWeight: 700, color: '#FCD34D', marginBottom: 3 }}>
+                      <div style={{ fontWeight: 700, color: '#E65100', marginBottom: 3 }}>
                         ⚠ Virgin Media: £38 → £50
                       </div>
-                      <div style={{ color: 'rgba(253,230,138,.9)', fontSize: 9.5 }}>
+                      <div style={{ color: 'rgba(93,64,55,.85)', fontSize: 9.5 }}>
                         Ofcom breach · reply &ldquo;fight it&rdquo; to dispute →
                       </div>
                     </div>
@@ -908,13 +909,14 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-end',
-                        background: '#2B5278',
-                        color: '#fff',
+                        background: '#DCF8C6',
+                        color: '#303030',
                         padding: '5px 9px',
-                        borderRadius: '10px 10px 2px 10px',
+                        borderRadius: '10px 0px 10px 10px',
                         maxWidth: '78%',
                         fontSize: 10,
                         animation: 'demoMsgIn 300ms',
+                        boxShadow: '0 1px 2px rgba(0,0,0,.1)',
                       }}
                     >
                       {m.text}
@@ -927,13 +929,14 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-end',
-                        background: '#2B5278',
-                        color: '#fff',
+                        background: '#DCF8C6',
+                        color: '#303030',
                         padding: '5px 9px',
-                        borderRadius: '10px 10px 2px 10px',
+                        borderRadius: '10px 0px 10px 10px',
                         maxWidth: '40%',
                         fontSize: 10,
                         animation: 'demoMsgIn 300ms',
+                        boxShadow: '0 1px 2px rgba(0,0,0,.1)',
                       }}
                     >
                       ✓ Accept
@@ -946,27 +949,28 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-start',
-                        background: '#182533',
-                        color: '#fff',
+                        background: '#FFFFFF',
+                        color: '#303030',
                         padding: '8px 10px',
-                        borderRadius: '10px 10px 10px 2px',
+                        borderRadius: '0px 10px 10px 10px',
                         maxWidth: '92%',
                         fontSize: 10,
                         animation: 'demoMsgIn 350ms',
+                        boxShadow: '0 1px 2px rgba(0,0,0,.1)',
                       }}
                     >
                       <div>
-                        You spent <b style={{ color: '#6EE7B7' }}>£312.40</b> on eating out in October — 16% up on September. Here&rsquo;s the context:
+                        You spent <b style={{ color: '#128C7E' }}>£312.40</b> on eating out in October — 16% up on September. Here&rsquo;s the context:
                       </div>
                       <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {spendCats.map((c, j) => (
                           <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9.5 }}>
-                            <span style={{ width: 68, color: c.hl ? '#6EE7B7' : 'rgba(255,255,255,.7)' }}>{c.l}</span>
+                            <span style={{ width: 68, color: c.hl ? '#128C7E' : 'rgba(0,0,0,.55)' }}>{c.l}</span>
                             <div
                               style={{
                                 flex: 1,
                                 height: 4,
-                                background: 'rgba(255,255,255,.08)',
+                                background: 'rgba(0,0,0,.08)',
                                 borderRadius: 2,
                                 overflow: 'hidden',
                               }}
@@ -975,7 +979,7 @@ export function PocketAgentDemo() {
                                 style={{
                                   width: `${c.pct}%`,
                                   height: '100%',
-                                  background: c.hl ? '#34D399' : 'rgba(255,255,255,.3)',
+                                  background: c.hl ? '#25D366' : 'rgba(0,0,0,.2)',
                                 }}
                               />
                             </div>
@@ -984,7 +988,7 @@ export function PocketAgentDemo() {
                               style={{
                                 width: 42,
                                 textAlign: 'right',
-                                color: c.hl ? '#fff' : 'rgba(255,255,255,.6)',
+                                color: c.hl ? '#128C7E' : 'rgba(0,0,0,.5)',
                                 fontSize: 9.5,
                               }}
                             >
@@ -993,7 +997,7 @@ export function PocketAgentDemo() {
                           </div>
                         ))}
                       </div>
-                      <div style={{ marginTop: 5, fontSize: 9, color: 'rgba(255,255,255,.45)' }}>
+                      <div style={{ marginTop: 5, fontSize: 9, color: 'rgba(0,0,0,.4)' }}>
                         Top merchants: Dishoom, Pret, Honest Burgers
                       </div>
                     </div>
@@ -1005,17 +1009,18 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-start',
-                        background: '#182533',
-                        color: '#fff',
+                        background: '#FFFFFF',
+                        color: '#303030',
                         padding: '8px 10px',
-                        borderRadius: '10px 10px 10px 2px',
+                        borderRadius: '0px 10px 10px 10px',
                         maxWidth: '92%',
                         fontSize: 10,
                         animation: 'demoMsgIn 350ms',
+                        boxShadow: '0 1px 2px rgba(0,0,0,.1)',
                       }}
                     >
                       <div>
-                        3 disputes won in 2026 — <b style={{ color: '#6EE7B7' }}>£804 total</b>.
+                        3 disputes won in 2026 — <b style={{ color: '#128C7E' }}>£804 total</b>.
                       </div>
                       <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
                         {wins.map((w, j) => (
@@ -1026,13 +1031,13 @@ export function PocketAgentDemo() {
                               justifyContent: 'space-between',
                               alignItems: 'center',
                               padding: '4px 7px',
-                              background: 'rgba(52,211,153,.1)',
-                              border: '1px solid rgba(52,211,153,.22)',
+                              background: 'rgba(37,211,102,.1)',
+                              border: '1px solid rgba(37,211,102,.3)',
                               borderRadius: 5,
                             }}
                           >
                             <span style={{ fontSize: 9.5 }}>{w.m}</span>
-                            <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: '#6EE7B7' }}>+{w.a}</span>
+                            <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: '#128C7E' }}>+{w.a}</span>
                           </div>
                         ))}
                       </div>
@@ -1045,17 +1050,18 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-start',
-                        background: '#182533',
-                        color: '#fff',
+                        background: '#FFFFFF',
+                        color: '#303030',
                         padding: '8px 10px',
-                        borderRadius: '10px 10px 10px 2px',
+                        borderRadius: '0px 10px 10px 10px',
                         maxWidth: '94%',
                         fontSize: 10,
                         animation: 'demoMsgIn 350ms',
+                        boxShadow: '0 1px 2px rgba(0,0,0,.1)',
                       }}
                     >
                       <div>
-                        Short answer: <b style={{ color: '#6EE7B7' }}>yes, comfortably</b> — here&rsquo;s the math:
+                        Short answer: <b style={{ color: '#128C7E' }}>yes, comfortably</b> — here&rsquo;s the math:
                       </div>
                       <div
                         style={{
@@ -1063,7 +1069,7 @@ export function PocketAgentDemo() {
                           fontFamily: 'JetBrains Mono,monospace',
                           fontSize: 9.5,
                           lineHeight: 1.55,
-                          background: 'rgba(255,255,255,.04)',
+                          background: 'rgba(0,0,0,.04)',
                           padding: '7px 9px',
                           borderRadius: 6,
                         }}
@@ -1073,17 +1079,17 @@ export function PocketAgentDemo() {
                         <div>Avg spending&nbsp;&nbsp;&nbsp;<span style={{ float: 'right' }}>−£1,114</span></div>
                         <div
                           style={{
-                            borderTop: '1px solid rgba(255,255,255,.1)',
+                            borderTop: '1px solid rgba(0,0,0,.1)',
                             marginTop: 4,
                             paddingTop: 4,
-                            color: '#6EE7B7',
+                            color: '#128C7E',
                             fontWeight: 700,
                           }}
                         >
                           Monthly slack&nbsp;<span style={{ float: 'right' }}>£859</span>
                         </div>
                       </div>
-                      <div style={{ marginTop: 5, fontSize: 9.5, color: 'rgba(255,255,255,.7)' }}>
+                      <div style={{ marginTop: 5, fontSize: 9.5, color: 'rgba(0,0,0,.5)' }}>
                         £1,599 ≈ 1.9 months slack. Waiting till payday on the 28th keeps your buffer intact.
                       </div>
                     </div>
@@ -1095,24 +1101,25 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-start',
-                        background: '#182533',
-                        color: '#fff',
+                        background: '#FFFFFF',
+                        color: '#303030',
                         padding: '7px 9px',
-                        borderRadius: '10px 10px 10px 2px',
+                        borderRadius: '0px 10px 10px 10px',
                         maxWidth: '88%',
                         fontSize: 10,
                         animation: 'demoMsgIn 350ms',
+                        boxShadow: '0 1px 2px rgba(0,0,0,.1)',
                       }}
                     >
-                      <div style={{ fontWeight: 700, marginBottom: 3, color: '#6EE7B7' }}>Letter drafted</div>
+                      <div style={{ fontWeight: 700, marginBottom: 3, color: '#128C7E' }}>Letter drafted</div>
                       <div
                         style={{
-                          background: 'rgba(255,255,255,.04)',
+                          background: 'rgba(0,0,0,.04)',
                           padding: '5px 7px',
                           borderRadius: 5,
                           fontSize: 9,
                           lineHeight: 1.4,
-                          color: 'rgba(255,255,255,.8)',
+                          color: 'rgba(0,0,0,.65)',
                           fontStyle: 'italic',
                           marginBottom: 5,
                         }}
@@ -1125,8 +1132,8 @@ export function PocketAgentDemo() {
                             flex: 1,
                             textAlign: 'center',
                             padding: '4px 0',
-                            background: t > 12.2 ? '#10B981' : '#34D399',
-                            color: '#0B1220',
+                            background: t > 12.2 ? '#128C7E' : '#25D366',
+                            color: '#FFFFFF',
                             borderRadius: 5,
                             fontSize: 9.5,
                             fontWeight: 700,
@@ -1140,8 +1147,8 @@ export function PocketAgentDemo() {
                             flex: 1,
                             textAlign: 'center',
                             padding: '4px 0',
-                            background: 'rgba(255,255,255,.08)',
-                            color: '#fff',
+                            background: 'rgba(0,0,0,.06)',
+                            color: '#303030',
                             borderRadius: 5,
                             fontSize: 9.5,
                             fontWeight: 600,
@@ -1161,10 +1168,11 @@ export function PocketAgentDemo() {
                   style={{
                     alignSelf: 'flex-start',
                     padding: '7px 11px',
-                    background: '#182533',
-                    borderRadius: '10px 10px 10px 2px',
+                    background: '#FFFFFF',
+                    borderRadius: '0px 10px 10px 10px',
                     display: 'flex',
                     gap: 3,
+                    boxShadow: '0 1px 2px rgba(0,0,0,.1)',
                   }}
                 >
                   {[0, 1, 2].map((j) => (
@@ -1174,7 +1182,7 @@ export function PocketAgentDemo() {
                         width: 4,
                         height: 4,
                         borderRadius: '50%',
-                        background: 'rgba(255,255,255,.5)',
+                        background: 'rgba(0,0,0,.4)',
                         animation: `demoDotPulse 1.2s ${j * 0.15}s infinite`,
                       }}
                     />
@@ -1183,11 +1191,12 @@ export function PocketAgentDemo() {
               )}
             </div>
 
+            {/* WhatsApp-style input bar */}
             <div
               style={{
-                background: '#17212B',
+                background: '#F0F0F0',
                 padding: '7px 9px',
-                borderTop: '1px solid rgba(255,255,255,.04)',
+                borderTop: '1px solid rgba(0,0,0,.06)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
@@ -1197,17 +1206,17 @@ export function PocketAgentDemo() {
               <div
                 style={{
                   flex: 1,
-                  background: '#242F3D',
-                  borderRadius: 12,
+                  background: '#FFFFFF',
+                  borderRadius: 20,
                   padding: '5px 9px',
                   fontSize: 9.5,
-                  color: inputText ? '#fff' : 'rgba(255,255,255,.42)',
+                  color: inputText ? '#303030' : 'rgba(0,0,0,.4)',
                   overflow: 'hidden',
                   whiteSpace: 'nowrap',
                   textOverflow: 'ellipsis',
                 }}
               >
-                {inputText || 'Ask anything…'}
+                {inputText || 'Message'}
                 {inputText && <span className="caret" />}
               </div>
               <div
@@ -1215,10 +1224,10 @@ export function PocketAgentDemo() {
                   width: 24,
                   height: 24,
                   borderRadius: '50%',
-                  background: '#34D399',
+                  background: '#25D366',
                   display: 'grid',
                   placeItems: 'center',
-                  color: '#0B1220',
+                  color: '#FFFFFF',
                   fontSize: 11,
                   fontWeight: 800,
                 }}

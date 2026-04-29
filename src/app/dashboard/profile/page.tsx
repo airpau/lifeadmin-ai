@@ -1313,7 +1313,7 @@ export default function ProfilePage() {
             Pocket Agent
           </h2>
           <p className="text-slate-600 text-sm mb-4">
-            Connect your Paybacker account to Pocket Agent for proactive alerts, spending queries, and complaint letters — all from your phone.
+            Connect your Paybacker account to Pocket Agent for proactive alerts, spending queries, and complaint letters — all from Telegram or WhatsApp.
           </p>
           <Link
             href="/dashboard/pocket-agent"

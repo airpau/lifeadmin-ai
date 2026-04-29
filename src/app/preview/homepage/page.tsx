@@ -1069,21 +1069,22 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="feature-copy">
               <h2 className="feature-title">Pocket Agent</h2>
               <p className="feature-tagline">
-                Your AI money agent, in Telegram.
+                Your AI money agent. In Telegram or WhatsApp.
               </p>
               <p>
                 Ask anything. Fix anything. &ldquo;Is my energy bill fair?&rdquo;
                 &ldquo;Cancel my gym.&rdquo; &ldquo;Dispute my parking ticket.&rdquo;
-                Done — from your phone.
+                Done — from your phone, in the chat app you already use.
               </p>
               <ul className="feature-bullets">
                 <li>Reads your transactions, emails and contracts securely</li>
                 <li>Acts for you: drafts letters, queues cancellations</li>
-                <li>Telegram today · WhatsApp &amp; SMS on the roadmap</li>
+                <li>Telegram on all plans — free forever</li>
+                <li>WhatsApp available on Pro</li>
               </ul>
               <div className="feature-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
-                  Connect Telegram →
+                  Get started free →
                 </Link>
               </div>
             </Reveal>

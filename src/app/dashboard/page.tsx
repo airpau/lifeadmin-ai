@@ -1428,7 +1428,7 @@ export default function DashboardPage() {
           <div className="card">
             <h3>Pocket Agent</h3>
             <p style={{ fontSize: 12.5, color: 'var(--text-2)', margin: '0 0 10px', lineHeight: 1.45 }}>
-              Chat on Telegram. Ask about your subs, dispute status, or start a new letter.
+              Chat on Telegram or WhatsApp. Ask about your subs, dispute status, or start a new letter.
             </p>
             <a
               className="cta-ghost"
