@@ -602,7 +602,15 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
   onClose: () => void;
   onAdded: () => void | Promise<void>;
 }) {
-  const [entryType, setEntryType] = useState('company_email');
+  // Default to "Your own note" — the failure mode of mis-tagging a
+  // user-typed thought as a supplier email is much worse than the
+  // reverse. Paul's OneStream dispute (2026-04-29) had 10 entries
+  // typed by the user but saved as company_email because the form
+  // defaulted to "Email from the company"; they then rendered as
+  // supplier replies in the pinned-reply card and the timeline.
+  // The user has to consciously pick the "Email from the company"
+  // option to opt in to that tagging now.
+  const [entryType, setEntryType] = useState('user_note');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);

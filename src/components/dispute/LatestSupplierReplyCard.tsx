@@ -67,8 +67,18 @@ export default function LatestSupplierReplyCard({
 }) {
   const [showAll, setShowAll] = useState(false);
 
+  // Only show ACTUAL watchdog-imported supplier replies — not
+  // user-typed entries that happened to get saved with
+  // entry_type='company_email' via the Add Update modal. Paul
+  // reported (2026-04-29) the OneStream dispute had 10 user-typed
+  // notes mis-tagged as company_email which all rendered as
+  // "supplier replies" at the top of the dispute page, making it
+  // look like a wall of supplier comms when only 6 of those were
+  // real. Real watchdog imports always have detected_from_email=true
+  // (set in src/lib/dispute-sync/sync-runner.ts:419) — manual paste
+  // entries don't, so this filter cleanly separates them.
   const supplierReplies = (correspondence ?? [])
-    .filter((c) => SUPPLIER_TYPES.has(c.entry_type))
+    .filter((c) => SUPPLIER_TYPES.has(c.entry_type) && c.detected_from_email === true)
     .sort((a, b) => {
       const ad = new Date(a.entry_date).getTime();
       const bd = new Date(b.entry_date).getTime();

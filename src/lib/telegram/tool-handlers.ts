@@ -1978,15 +1978,56 @@ async function getDisputeDetail(
   userId: string,
   provider: string,
 ): Promise<ToolResult> {
-  const { data: dispute } = await supabase
+  // Pull every matching dispute, not just the most-recently-opened.
+  // Paul reported (2026-04-29) that asking the WhatsApp bot about
+  // his OneStream dispute returned the wrong one — he had a 21-Apr
+  // resolved_won dispute AND a 26-Mar still-active "tree fall"
+  // dispute. The previous ORDER BY created_at DESC LIMIT 1 picked
+  // the resolved one (more recent created_at) and hid the active
+  // one with a fresh 28-Apr supplier reply.
+  //
+  // New selection rule: prefer ACTIVE over resolved, and within
+  // active prefer the one with the most recent activity. When more
+  // than one active dispute matches, list them all so Claude can
+  // ask the user which one they meant — never silently pick.
+  const RESOLVED_STATUSES = new Set(['resolved_won', 'resolved_partial', 'resolved_lost', 'closed']);
+  const { data: matches } = await supabase
     .from('disputes')
-    .select('id, provider_name, issue_type, issue_summary, desired_outcome, status, disputed_amount, money_recovered, created_at, updated_at')
+    .select('id, provider_name, issue_type, issue_summary, desired_outcome, status, disputed_amount, money_recovered, created_at, updated_at, last_reply_received_at')
     .eq('user_id', userId)
     .ilike('provider_name', `%${provider}%`)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+    .order('created_at', { ascending: false });
 
+  if (!matches || matches.length === 0) {
+    return { text: `No dispute found matching "${provider}".` };
+  }
+
+  type DisputeRow = typeof matches[number];
+  const active = matches.filter((m: DisputeRow) => !RESOLVED_STATUSES.has(m.status));
+  const resolved = matches.filter((m: DisputeRow) => RESOLVED_STATUSES.has(m.status));
+
+  // Multiple active matches — disambiguate, don't guess. Claude
+  // surfaces this list to the user and asks which one they meant.
+  if (active.length > 1) {
+    let text = `You have ${active.length} active disputes matching "${provider}". Tell me which one you mean:\n`;
+    for (const m of active) {
+      const opened = fmtDate(m.created_at);
+      const lastReply = m.last_reply_received_at ? fmtDate(m.last_reply_received_at) : 'no replies yet';
+      const summary = (m.issue_summary || '').slice(0, 100);
+      text += `\n• *${m.provider_name}* — ${m.status} · opened ${opened} · last reply ${lastReply}\n  _${summary}${(m.issue_summary || '').length > 100 ? '…' : ''}_\n`;
+    }
+    if (resolved.length > 0) {
+      text += `\n(Also ${resolved.length} resolved match${resolved.length === 1 ? '' : 'es'} — let me know if you want one of those instead.)`;
+    }
+    return { text };
+  }
+
+  // Pick the active one if there's exactly one, else fall back to
+  // the most-recent resolved (with an explicit note that it's
+  // closed so the bot doesn't accidentally describe a closed case
+  // as the current state).
+  const dispute: DisputeRow = active[0] ?? resolved[0];
+  const isResolvedOnly = active.length === 0;
   if (!dispute) {
     return { text: `No dispute found matching "${provider}".` };
   }
@@ -1999,6 +2040,13 @@ async function getDisputeDetail(
     .order('entry_date', { ascending: true });
 
   let text = `*Dispute: ${dispute.provider_name}*\n`;
+  if (isResolvedOnly) {
+    // No active dispute — be explicit so Claude doesn't describe a
+    // closed case as the current state. Mentions sibling-active
+    // disputes if the user has any (impossible here by definition,
+    // but keeps the language honest).
+    text += `(This dispute is CLOSED — no active disputes match "${provider}". The user may want to open a new dispute or check a different provider name.)\n`;
+  }
   text += `Status: ${dispute.status} · Type: ${dispute.issue_type?.replace(/_/g, ' ') ?? 'complaint'}\n`;
   text += `Opened: ${fmtDate(dispute.created_at)}`;
   if (dispute.disputed_amount) text += ` · Amount: ${fmt(dispute.disputed_amount)}`;
