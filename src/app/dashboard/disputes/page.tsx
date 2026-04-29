@@ -20,6 +20,7 @@ import EmailDisputeFinder from '@/components/dispute/EmailDisputeFinder';
 import DisputeOverviewCard from '@/components/dispute/DisputeOverviewCard';
 import EditDisputeDetailsModal from '@/components/dispute/EditDisputeDetailsModal';
 import EmailCorrespondenceBody from '@/components/dispute/EmailCorrespondenceBody';
+import LatestSupplierReplyCard from '@/components/dispute/LatestSupplierReplyCard';
 import WatchdogCard from '@/components/dispute/WatchdogCard';
 
 // ============================================================
@@ -1155,6 +1156,13 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
     }
   };
 
+  // Mark unread replies as read on first view so the disputes-list
+  // "NEW REPLY · N" badge clears. Fire-and-forget — it's purely a
+  // counter reset; failure mode is just the badge sticking around.
+  useEffect(() => {
+    fetch(`/api/disputes/${disputeId}/mark-read`, { method: 'POST' }).catch(() => {});
+  }, [disputeId]);
+
   const FOLLOWUP_CAPTIONS = [
     { icon: '👀', text: 'Reading their response...' },
     { icon: '🧠', text: 'Analysing the conversation thread...' },
@@ -1482,6 +1490,18 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           Renders above the progress tracker so the user knows where
           they stand before touching anything else. */}
       <DisputeOverviewCard disputeId={dispute.id} />
+
+      {/* Latest reply from the supplier — pinned at the top so it's
+          never hidden behind "Show full history" when the user's
+          most-recent letter sorts above it by created_at tiebreak.
+          Renders nothing when there are no supplier replies yet. */}
+      <LatestSupplierReplyCard
+        correspondence={dispute.correspondence ?? []}
+        providerName={dispute.provider_name}
+        userHasGmail={(dispute as any).user_has_gmail}
+        userHasOutlook={(dispute as any).user_has_outlook}
+        onDraftReply={generateFollowUp}
+      />
 
       {/* Progress Tracker */}
       <DisputeProgressTracker dispute={dispute} providerInfo={providerInfo} />
@@ -2925,7 +2945,16 @@ function ComplaintsPageInner() {
   // chooser. URL parameters that include a company / type / alertId
   // (legacy direct entry from price-alert links) skip straight to the
   // existing scratch form so deep links keep working unchanged.
+  // ?dispute=<uuid> deep-links straight to the detail view (used by
+  // WhatsApp/Telegram Pocket Agent alerts). Validate UUID shape so we
+  // don't crash on a bad query string.
   useEffect(() => {
+    const disputeParam = searchParams.get('dispute');
+    if (disputeParam && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(disputeParam)) {
+      setSelectedDisputeId(disputeParam);
+      setView('detail');
+      return;
+    }
     const hasDirectLink = searchParams.get('company') || searchParams.get('type') || searchParams.get('alertId') || searchParams.get('category');
     if (searchParams.get('new') === '1') {
       if (hasDirectLink) setView('new');

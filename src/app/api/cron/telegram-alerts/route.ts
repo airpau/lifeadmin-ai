@@ -413,6 +413,14 @@ export async function GET(request: NextRequest) {
       // uses the dispute_reply template which carries merchant + summary.
       // The provider name is in issue.title (formatted as "<provider> — …").
       const provider = String(issue.title).split(' — ')[0] || 'your provider';
+      // Deep-link to the specific dispute — issue.source_id is the
+      // dispute UUID for dispute_no_response rows (set by
+      // /api/cron/dispute-reminders). Fall back to the list page if
+      // for some reason it's missing.
+      const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+      const disputeUrl = issue.source_id
+        ? `${origin}/dashboard/disputes?dispute=${issue.source_id}`
+        : `${origin}/dashboard/disputes`;
       const { ok, messageId } = await dispatchPocketAgentAlert({
         session,
         alertType: 'dispute_followup',
@@ -425,7 +433,7 @@ export async function GET(request: NextRequest) {
         whatsappVars: {
           merchant: provider,
           summary: followUpText.detail.slice(0, 200),
-          thread_url: `https://paybacker.co.uk/dashboard/disputes`,
+          thread_url: disputeUrl,
         },
       });
 
