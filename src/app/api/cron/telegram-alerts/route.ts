@@ -21,8 +21,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendProactiveAlert } from '@/lib/telegram/user-bot';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
+import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import {
+  dispatchPocketAgentAlert,
+  listActivePocketAgentSessions,
+} from '@/lib/pocket-agent/dispatch';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -55,41 +59,38 @@ export async function GET(request: NextRequest) {
   const supabase = getAdmin();
   const results: Array<{ userId: string; type: string; sent: boolean; reason?: string }> = [];
 
-  // Get all active linked Pro users
-  const { data: sessions, error: sessErr } = await supabase
-    .from('telegram_sessions')
-    .select('user_id, telegram_chat_id')
-    .eq('is_active', true);
-
-  if (sessErr || !sessions || sessions.length === 0) {
+  // 2026-04-28 — was telegram-only, now channel-agnostic. WhatsApp
+  // users were getting nothing because the WhatsApp alerts cron was
+  // a stub. Pull every active Pocket Agent session across both
+  // channels (the mutex guarantees no user is double-counted).
+  const sessions = await listActivePocketAgentSessions(supabase);
+  if (sessions.length === 0) {
     return NextResponse.json({ ok: true, message: 'No active sessions', sent: 0 });
   }
 
-  // Verify each user is still on Pro
+  // Verify each user is still entitled to Pro Pocket Agent alerts.
+  // Eligibility helper handles past_due / unpaid / incomplete (Stripe
+  // retry window) so users in the 7d grace period keep getting alerts.
   const userIds = sessions.map((s) => s.user_id);
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, subscription_tier, subscription_status, stripe_subscription_id')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
     .in('id', userIds);
 
   const proUserIds = new Set(
     (profiles ?? [])
-      .filter((p) => {
-        const tier = p.subscription_tier;
-        const status = p.subscription_status;
-        const hasStripe = !!p.stripe_subscription_id;
-        return (
-          tier === 'pro' &&
-          (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing')
-        );
-      })
+      .filter((p) => isProPocketAgentEligible(p))
       .map((p) => p.id),
   );
 
   const proSessions = sessions.filter((s) => proUserIds.has(s.user_id));
 
   for (const session of proSessions) {
-    const { user_id: userId, telegram_chat_id: chatId } = session;
+    const { user_id: userId } = session;
+    // Telegram chat_id retained for backwards-compat with detected_issues
+    // rows that store telegram_chat_id. WhatsApp sessions populate this
+    // as null — those rows already use telegram_chat_id loosely.
+    const chatId = session.channel === 'telegram' ? Number(session.destination) : null;
 
     // Check for existing active detected_issues to avoid duplicates
     const { data: existingIssues } = await supabase
@@ -144,15 +145,33 @@ export async function GET(request: NextRequest) {
       if (issue) {
         const annualImpact = Number(alert.annual_impact);
         if (annualImpact > 240) {
-          // > £20/mo: send immediately
-          const { ok, messageId } = await sendProactiveAlert({
-            chatId: Number(chatId),
-            issue: { id: issue.id, title, detail, recommendation, amount_impact: annualImpact, issue_type: 'price_increase' },
+          // > £20/mo: send immediately via the user's active channel
+          const { ok, messageId } = await dispatchPocketAgentAlert({
+            session,
+            alertType: 'price_increase',
+            detectedIssueId: issue.id,
+            // Pass supabase so the WhatsApp branch can apply the
+            // service-window fallback + marketing gate. Without it,
+            // every send would burn a marketing-rate template even
+            // when the user is actively chatting (£0 alternative).
+            supabase,
+            telegram: { title, detail, recommendation, amount_impact: annualImpact },
+            whatsappVars: {
+              merchant: alert.merchant_name ?? 'A provider',
+              old_price: fmt(Number(alert.old_amount)),
+              new_price: fmt(Number(alert.new_amount)),
+              effective_date: 'this month',
+            },
           });
-          if (ok && messageId) {
+          if (ok && messageId && session.channel === 'telegram') {
             await supabase
               .from('detected_issues')
               .update({ telegram_message_id: messageId, delivered_at: new Date().toISOString() })
+              .eq('id', issue.id);
+          } else if (ok) {
+            await supabase
+              .from('detected_issues')
+              .update({ delivered_at: new Date().toISOString() })
               .eq('id', issue.id);
           }
           results.push({ userId, type: 'price_increase', sent: ok });
@@ -235,15 +254,33 @@ export async function GET(request: NextRequest) {
 
       if (issue) {
         if (daysLeft <= 3) {
-          // Expiring very soon: send immediately
-          const { ok, messageId } = await sendProactiveAlert({
-            chatId: Number(chatId),
-            issue: { id: issue.id, title, detail, recommendation, amount_impact: annualCost, issue_type: 'contract_expiring' },
+          // Expiring very soon: send immediately via active channel
+          const monthlyCost = cycle === 'monthly'
+            ? Number(contract.amount)
+            : cycle === 'quarterly'
+              ? Number(contract.amount) / 3
+              : Number(contract.amount) / 12;
+          const { ok, messageId } = await dispatchPocketAgentAlert({
+            session,
+            alertType: 'contract_expiring',
+            detectedIssueId: issue.id,
+            supabase,
+            telegram: { title, detail, recommendation, amount_impact: annualCost },
+            whatsappVars: {
+              service: contract.provider_name,
+              days_left: daysLeft,
+              monthly_cost: fmt(monthlyCost),
+            },
           });
-          if (ok && messageId) {
+          if (ok && messageId && session.channel === 'telegram') {
             await supabase
               .from('detected_issues')
               .update({ telegram_message_id: messageId, delivered_at: new Date().toISOString() })
+              .eq('id', issue.id);
+          } else if (ok) {
+            await supabase
+              .from('detected_issues')
+              .update({ delivered_at: new Date().toISOString() })
               .eq('id', issue.id);
           }
           results.push({ userId, type: 'contract_expiring', sent: ok });
@@ -378,25 +415,87 @@ export async function GET(request: NextRequest) {
         recommendation: null,
       };
 
-      const { ok, messageId } = await sendProactiveAlert({
-        chatId: Number(chatId),
-        issue: {
-          id: issue.id,
+      // Dispute follow-ups: Telegram path keeps inline buttons; WhatsApp
+      // uses the dispute_reply template which carries merchant + summary.
+      // The provider name is in issue.title (formatted as "<provider> — …").
+      const provider = String(issue.title).split(' — ')[0] || 'your provider';
+      // Deep-link to the specific dispute — issue.source_id is the
+      // dispute UUID for dispute_no_response rows (set by
+      // /api/cron/dispute-reminders). Fall back to the list page if
+      // for some reason it's missing.
+      const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+      const disputeUrl = issue.source_id
+        ? `${origin}/dashboard/disputes?dispute=${issue.source_id}`
+        : `${origin}/dashboard/disputes`;
+      const { ok, messageId } = await dispatchPocketAgentAlert({
+        session,
+        alertType: 'dispute_followup',
+        detectedIssueId: issue.id,
+        supabase,
+        telegram: {
           title: followUpText.title,
           detail: followUpText.detail,
           recommendation: followUpText.recommendation,
-          amount_impact: null,
-          issue_type: issue.issue_type,
         },
-        showFollowUpButtons: true,
+        whatsappVars: {
+          merchant: provider,
+          summary: followUpText.detail.slice(0, 200),
+          thread_url: disputeUrl,
+        },
       });
 
       if (ok) {
         await supabase
           .from('detected_issues')
-          .update({ follow_up_sent_at: new Date().toISOString(), ...(messageId ? { telegram_message_id: messageId } : {}) })
+          .update({
+            follow_up_sent_at: new Date().toISOString(),
+            ...(messageId && session.channel === 'telegram' ? { telegram_message_id: messageId } : {}),
+          })
           .eq('id', issue.id);
         results.push({ userId, type: 'dispute_follow_up', sent: true });
+
+        // Stamp the session's last-alert pointer so the bot can
+        // resolve unqualified keyword replies (ACCEPT / REJECT /
+        // ESCALATE / "give me their update") to this dispute.
+        // Mirrors the watchdog Watchdog reply alert path; without it,
+        // the user replying to a follow-up alert leaves the bot with
+        // no context.
+        if (issue.source_id) {
+          const sessionTable = session.channel === 'telegram'
+            ? 'telegram_sessions'
+            : 'whatsapp_sessions';
+          const sessionFilterCol = session.channel === 'telegram'
+            ? 'telegram_chat_id'
+            : 'whatsapp_phone';
+          await supabase
+            .from(sessionTable)
+            .update({
+              last_alert_dispute_id: issue.source_id,
+              last_alert_at: new Date().toISOString(),
+            })
+            .eq(sessionFilterCol, session.destination)
+            .then(() => undefined, (err) => console.warn('[telegram-alerts] last_alert update failed:', err));
+
+          // Log the outbound template (WhatsApp path only — Telegram
+          // already writes to telegram_message_log via sendProactiveAlert).
+          if (session.channel === 'whatsapp') {
+            await supabase
+              .from('whatsapp_message_log')
+              .insert({
+                user_id: userId,
+                whatsapp_phone: String(session.destination),
+                direction: 'outbound',
+                message_type: 'template',
+                template_name: 'paybacker_dispute_reply',
+                message_text:
+                  `[Pocket Agent alert] ${followUpText.title}. ${followUpText.detail}`,
+                provider: 'twilio',
+                provider_message_id: messageId,
+                dispute_id: issue.source_id,
+              })
+              .then(() => undefined, (err) => console.warn('[telegram-alerts] whatsapp_message_log insert failed:', err));
+          }
+        }
       }
     }
 
@@ -447,15 +546,33 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (issue) {
-        const { ok, messageId } = await sendProactiveAlert({
-          chatId: Number(chatId),
-          issue: { id: issue.id, title, detail, recommendation, amount_impact: null, issue_type: 'renewal_imminent' },
+        const monthlyCost = cycle === 'monthly'
+          ? Number(sub.amount)
+          : cycle === 'quarterly'
+            ? Number(sub.amount) / 3
+            : Number(sub.amount) / 12;
+        const { ok, messageId } = await dispatchPocketAgentAlert({
+          session,
+          alertType: 'subscription_renewing',
+          detectedIssueId: issue.id,
+          supabase,
+          telegram: { title, detail, recommendation },
+          whatsappVars: {
+            service: sub.provider_name,
+            days_left: daysLeft,
+            monthly_cost: fmt(monthlyCost),
+          },
         });
 
-        if (ok && messageId) {
+        if (ok && messageId && session.channel === 'telegram') {
           await supabase
             .from('detected_issues')
             .update({ telegram_message_id: messageId, delivered_at: new Date().toISOString() })
+            .eq('id', issue.id);
+        } else if (ok) {
+          await supabase
+            .from('detected_issues')
+            .update({ delivered_at: new Date().toISOString() })
             .eq('id', issue.id);
         }
         results.push({ userId, type: 'renewal_imminent', sent: ok });
