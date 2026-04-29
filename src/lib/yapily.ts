@@ -5,6 +5,8 @@ import type {
   YapilyApiResponse,
   YapilyAuthResponse,
   YapilyErrorResponse,
+  YapilyHostedConsentRequest,
+  YapilyHostedConsentResponse,
 } from '@/types/yapily';
 
 const YAPILY_BASE_URL = 'https://api.yapily.com';
@@ -50,16 +52,32 @@ async function yapilyRequest<T>(
   });
 
   if (!res.ok) {
+    // Tracing-Id capture (Vitally Support requirement). Yapily surfaces
+    // it in two places — pluck both so however ops finds the failure
+    // (Sentry, Telegram, Vercel logs) the ID is right there in the
+    // message and there's no chasing a separate header lookup.
     let errorMessage = `Yapily API error: ${res.status} ${res.statusText}`;
+    let tracingId: string | undefined;
     try {
       const errorBody = (await res.json()) as YapilyErrorResponse;
+      tracingId = errorBody.error?.tracingId;
       if (errorBody.error?.message) {
         errorMessage = `Yapily API error: ${errorBody.error.message} (${res.status})`;
       }
     } catch {
       // Body not parseable — use default message
     }
-    throw new Error(errorMessage);
+    if (!tracingId) {
+      // Some auth + 5xx paths short-circuit before the JSON body —
+      // fall back to the response header Yapily includes on every
+      // request.
+      tracingId = res.headers.get('Tracing-Id') || res.headers.get('tracing-id') || undefined;
+    }
+    if (tracingId) errorMessage += ` [tracingId=${tracingId}]`;
+    const err = new Error(errorMessage) as Error & { status?: number; tracingId?: string };
+    err.status = res.status;
+    err.tracingId = tracingId;
+    throw err;
   }
 
   return res.json() as Promise<T>;
@@ -67,10 +85,23 @@ async function yapilyRequest<T>(
 
 // ── Institutions ──
 
+// Module-level cache of the full Yapily institution list. Sized small
+// enough to live in any Vercel function instance and refreshed at most
+// once per hour. Per-instance caching is fine for this surface — the
+// data is stable, the worst case is a few extra API calls when a fresh
+// instance boots, and Yapily's recommendation is "refresh once a week"
+// (we go more aggressive for safety).
+const FEATURE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+let _institutionsCache: { value: YapilyInstitution[]; loadedAt: number } | null = null;
+
 /**
- * Fetches all Yapily-supported institutions, filtered to UK only (country code GB).
+ * Fetches all Yapily-supported institutions, filtered to UK only
+ * (country code GB). Cached for 1 hour at the module level.
  */
 export async function getInstitutions(): Promise<YapilyInstitution[]> {
+  if (_institutionsCache && Date.now() - _institutionsCache.loadedAt < FEATURE_CACHE_TTL_MS) {
+    return _institutionsCache.value;
+  }
   const response = await yapilyRequest<YapilyApiResponse<YapilyInstitution[]>>(
     '/institutions'
   );
@@ -78,9 +109,48 @@ export async function getInstitutions(): Promise<YapilyInstitution[]> {
   const institutions = response.data || [];
 
   // Filter to UK institutions only
-  return institutions.filter((inst) =>
+  const uk = institutions.filter((inst) =>
     inst.countries?.some((c) => c.countryCode2 === 'GB')
   );
+  _institutionsCache = { value: uk, loadedAt: Date.now() };
+  return uk;
+}
+
+/**
+ * Returns the Yapily feature flags exposed by a given institution.
+ * Backed by the same cache as getInstitutions(). On a cache miss or
+ * an unknown institution returns an empty array — callers should
+ * treat absence as "feature unsupported".
+ *
+ * Source of feature names: Yapily institution metadata. Examples:
+ *   ACCOUNT_DIRECT_DEBITS, ACCOUNT_PERIODIC_PAYMENTS,
+ *   ACCOUNT_SCHEDULED_PAYMENTS, ACCOUNT_TRANSACTIONS,
+ *   INITIATE_DOMESTIC_SINGLE_PAYMENT, etc.
+ */
+export async function getInstitutionFeatures(institutionId: string): Promise<string[]> {
+  if (!institutionId) return [];
+  try {
+    const all = await getInstitutions();
+    const match = all.find((i) => i.id === institutionId);
+    return match?.features ?? [];
+  } catch (err) {
+    console.error('[yapily.getInstitutionFeatures] failed', err);
+    return [];
+  }
+}
+
+/**
+ * Returns true if `institutionId` exposes `feature`. Defaults to false
+ * on any lookup failure — Migle's spec says ~70% of UK banks support
+ * the upcoming-payments endpoints, so the safe default is to skip the
+ * call when in doubt rather than burn an API quota on a 404.
+ */
+export async function supportsFeature(
+  institutionId: string,
+  feature: string,
+): Promise<boolean> {
+  const features = await getInstitutionFeatures(institutionId);
+  return features.includes(feature);
 }
 
 // ── Account Authorisation ──
@@ -210,6 +280,201 @@ export async function getConsent(
     `/account-auth-requests/${consentId}`,
   );
   return response.data;
+}
+
+// ── Hosted Pages (Beta) ──
+//
+// Migle's onboarding plan (29 Apr 2026) requires the Hosted Pages flow
+// for build sign-off. Tutorial:
+//   https://docs.yapily.com/tools-and-services/hosted-pages/payment-tutorial-hosted-data
+//
+// Flow:
+//   1. POST /hosted/consent-requests → { hostedUrl, consentRequestId }
+//   2. Redirect user to hostedUrl (top-level, no iframe)
+//   3. User completes journey → Yapily redirects to redirectUrl with
+//      consentRequestId in query
+//   4. GET /hosted/consent-requests/{consentRequestId} → consentToken + status
+//   5. Use consentToken on /accounts and /transactions as before
+//
+// Both helpers below are guarded behind YAPILY_HOSTED_PAGES_ENABLED at
+// the call-site (src/app/api/auth/yapily/route.ts) — keeping the helpers
+// importable even when the flag is off so unit tests can exercise them.
+
+export interface CreateHostedConsentRequestInput {
+  /**
+   * The user's stable application id. We pass profile.id so Yapily can
+   * group multiple consents under the same end-user.
+   */
+  applicationUserId: string;
+  /**
+   * Where Yapily should send the user after the consent journey
+   * completes. Must include any state-bearing query params we care
+   * about — Yapily appends consentRequestId on top.
+   */
+  redirectUrl: string;
+  /**
+   * Two-letter country code for institutions allowed in this consent
+   * (Vitally checklist C1: must be set correctly per market).
+   */
+  institutionCountryCode: string;
+  /**
+   * Pre-select a specific institution so Yapily skips its own
+   * bank-picker UI. We render our own institution list, so we always
+   * pass this when the user has chosen.
+   */
+  institutionId?: string;
+  /**
+   * Two-letter language code for the hosted UI (default 'EN').
+   */
+  language?: string;
+  /**
+   * Two-letter location code for the hosted UI (default 'GB').
+   */
+  location?: string;
+  /**
+   * Yapily AccountRequest scopes — passed via the `accountRequest`
+   * field per the OpenAPI spec (mirrored back as `accountRequestDetails`
+   * on the response). Use to request ACCOUNT_SCHEDULED_PAYMENTS /
+   * ACCOUNT_PERIODIC_PAYMENTS / ACCOUNT_DIRECT_DEBITS etc. Omitted by
+   * default — Yapily applies sensible AIS defaults.
+   */
+  featureScope?: readonly string[];
+  /**
+   * Earliest transaction date to make available on this consent.
+   * Optional; useful for retrieving older history on banks that
+   * support it.
+   */
+  transactionFrom?: string;
+  /**
+   * Latest transaction date to make available on this consent.
+   * Optional.
+   */
+  transactionTo?: string;
+}
+
+/**
+ * Creates a hosted consent request. Returns the hostedUrl (short-lived,
+ * ~10min) the user must be redirected to plus the consentRequestId
+ * we'll use to look up status after the user completes the flow.
+ *
+ * NOTE on the response shape: per the Yapily OpenAPI 12.3.4, the POST
+ * response carries `consentRequestId` + `hostedUrl` but does NOT carry
+ * `consentId` or `consentToken` — those are only populated on the GET
+ * once the user has completed the bank-side journey. Don't try to
+ * persist them from this call.
+ */
+export async function createHostedConsentRequest(
+  input: CreateHostedConsentRequestInput,
+): Promise<YapilyHostedConsentRequest> {
+  const body: Record<string, unknown> = {
+    redirectUrl: input.redirectUrl,
+    institutionIdentifiers: {
+      institutionCountryCode: input.institutionCountryCode,
+      ...(input.institutionId ? { institutionId: input.institutionId } : {}),
+    },
+    applicationUserId: input.applicationUserId,
+    userSettings: {
+      language: input.language ?? 'EN',
+      location: input.location ?? 'GB',
+    },
+  };
+
+  // accountRequest (request side) ↔ accountRequestDetails (response
+  // side). Only emit it when at least one nested field is set so the
+  // serialised body stays minimal.
+  const accountRequest: Record<string, unknown> = {};
+  if (input.featureScope && input.featureScope.length) {
+    accountRequest.featureScope = Array.from(input.featureScope);
+  }
+  if (input.transactionFrom) accountRequest.transactionFrom = input.transactionFrom;
+  if (input.transactionTo) accountRequest.transactionTo = input.transactionTo;
+  if (Object.keys(accountRequest).length) body.accountRequest = accountRequest;
+
+  const response = await yapilyRequest<YapilyHostedConsentResponse>(
+    '/hosted/consent-requests',
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
+
+  if (!response.data?.hostedUrl) {
+    throw new Error('Yapily did not return a hostedUrl for the consent request');
+  }
+  if (!response.data.consentRequestId) {
+    throw new Error('Yapily did not return a consentRequestId');
+  }
+  return response.data;
+}
+
+/**
+ * Reads the current state of a hosted consent request. After Yapily
+ * redirects back to our app we call this to confirm status before
+ * proceeding (recommended by the tutorial). Also used by the
+ * abandonment poller for users who don't return to the callback URL.
+ */
+export async function getHostedConsentRequest(
+  consentRequestId: string,
+): Promise<YapilyHostedConsentRequest> {
+  const response = await yapilyRequest<YapilyHostedConsentResponse>(
+    `/hosted/consent-requests/${consentRequestId}`,
+  );
+  return response.data;
+}
+
+/**
+ * Single source of truth for whether the Hosted Pages flow is on. Read
+ * once per request — the flag is meant to be flipped via env, not
+ * mid-process. Defaults to false so existing /account-auth-requests
+ * code stays the canonical path until we cut over.
+ */
+export function isHostedPagesEnabled(): boolean {
+  return process.env.YAPILY_HOSTED_PAGES_ENABLED?.toLowerCase() === 'true';
+}
+
+// ── Consent Deletion ──
+
+/**
+ * Revokes a consent on Yapily's side. Required by Migle for the
+ * compliance build review — the user-facing disconnect button must
+ * actually call Yapily, not just flip a local flag.
+ *
+ * Idempotent on Yapily's side: a 404 means the consent is already
+ * gone, which is what we wanted anyway. Callers should treat 404 as
+ * success and only surface other failures.
+ */
+export async function deleteConsent(consentId: string): Promise<void> {
+  const url = `${YAPILY_BASE_URL}/account-auth-requests/${consentId}`;
+
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      Authorization: getAuthHeader(),
+      'Content-Type': 'application/json',
+    },
+  });
+
+  // 404 = already revoked → success.
+  if (res.status === 404) return;
+
+  if (!res.ok) {
+    let errorMessage = `Yapily delete-consent error: ${res.status} ${res.statusText}`;
+    let tracingId: string | undefined;
+    try {
+      const errorBody = (await res.json()) as YapilyErrorResponse;
+      tracingId = errorBody.error?.tracingId;
+      if (errorBody.error?.message) {
+        errorMessage = `Yapily delete-consent error: ${errorBody.error.message} (${res.status})`;
+      }
+    } catch {
+      // body not parseable — keep default message
+    }
+    if (!tracingId) {
+      tracingId = res.headers.get('Tracing-Id') || res.headers.get('tracing-id') || undefined;
+    }
+    if (tracingId) errorMessage += ` [tracingId=${tracingId}]`;
+    throw new Error(errorMessage);
+  }
 }
 
 // ── Account-identity helpers ──

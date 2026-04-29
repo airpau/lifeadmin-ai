@@ -50,22 +50,55 @@ export async function POST(request: NextRequest) {
 
   const supabase = getAdmin();
 
-  const twelveMonthsAgo = new Date();
-  twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
-  const fromDate = twelveMonthsAgo.toISOString().split('T')[0];
+  // Yapily's 5-minute deadline (Migle, 29 Apr): if historical
+  // transactions older than 90 days aren't pulled within 5 minutes
+  // of consent grant, some banks return 403 and force a fresh
+  // consent. Our maxDuration matches that ceiling, but a multi-
+  // account bank with 12 months of paginated data can easily
+  // overflow.
+  //
+  // Two-pass strategy:
+  //   PASS 1 — last 90 days for every account first. Always within
+  //   the 5-min window, always succeeds, gives the user the bulk
+  //   of useful data immediately.
+  //
+  //   PASS 2 — 91-365 days for each account. Best-effort, gated
+  //   by elapsed time. Stops at 4m30s (270s) so we exit cleanly
+  //   before the function's 5-min ceiling AND before Yapily's
+  //   server-side deadline. Accounts that didn't get older history
+  //   are logged loudly so we can backfill via consent renewal or
+  //   a follow-up sync.
+  const HISTORICAL_BUDGET_MS = 270 * 1000; // 4m30s — safety margin under Yapily's 5min
+  const startedAt = Date.now();
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const toDate = tomorrow.toISOString().split('T')[0];
 
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const ninetyDaysAgoIso = ninetyDaysAgo.toISOString().split('T')[0];
+
+  const twelveMonthsAgo = new Date();
+  twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+  const twelveMonthsAgoIso = twelveMonthsAgo.toISOString().split('T')[0];
+
   let totalInserted = 0;
   let totalDuplicateSkipped = 0;
   let totalNoHashSkipped = 0;
   let apiCallsMade = 0;
+  let historicalSkipped = 0;
 
+  // PASS 1 — last 90 days for every account. Sequential per
+  // Migle's "wait for response before next request" rule.
   for (const account of accountSnapshots) {
     try {
-      const transactions = await getTransactions(account.yapilyAccountId, consentToken, fromDate, toDate);
+      const transactions = await getTransactions(
+        account.yapilyAccountId,
+        consentToken,
+        ninetyDaysAgoIso,
+        toDate,
+      );
       apiCallsMade++;
       if (transactions.length === 0) continue;
 
@@ -79,7 +112,43 @@ export async function POST(request: NextRequest) {
       totalDuplicateSkipped += result.skippedAsDuplicate;
       totalNoHashSkipped += result.skippedNoHash;
     } catch (err) {
-      console.error(`[yapily.initial-sync] account ${account.yapilyAccountId} failed:`, err);
+      console.error(`[yapily.initial-sync] pass1 account ${account.yapilyAccountId} failed:`, err);
+    }
+  }
+
+  // PASS 2 — older history (-91d to -365d). Time-budget gated so
+  // we never blow Yapily's 5-min historical window. The day-90
+  // boundary is exclusive on the older side (bank's day -90 is
+  // already in pass 1) and inclusive on the older side at -365.
+  for (const account of accountSnapshots) {
+    if (Date.now() - startedAt > HISTORICAL_BUDGET_MS) {
+      historicalSkipped++;
+      console.warn(
+        `[yapily.initial-sync] pass2 budget exhausted — skipping older history for account=${account.yapilyAccountId}`,
+      );
+      continue;
+    }
+    try {
+      const transactions = await getTransactions(
+        account.yapilyAccountId,
+        consentToken,
+        twelveMonthsAgoIso,
+        ninetyDaysAgoIso,
+      );
+      apiCallsMade++;
+      if (transactions.length === 0) continue;
+
+      const result = await upsertYapilyTransactions({
+        userId,
+        connectionId,
+        account,
+        transactions,
+      });
+      totalInserted += result.inserted;
+      totalDuplicateSkipped += result.skippedAsDuplicate;
+      totalNoHashSkipped += result.skippedNoHash;
+    } catch (err) {
+      console.error(`[yapily.initial-sync] pass2 account ${account.yapilyAccountId} failed:`, err);
     }
   }
 
@@ -125,7 +194,8 @@ export async function POST(request: NextRequest) {
 
   console.log(
     `[yapily.initial-sync] complete: inserted=${totalInserted}, dup_skipped=${totalDuplicateSkipped}, ` +
-    `no_hash_skipped=${totalNoHashSkipped}, accounts=${accountSnapshots.length}, api_calls=${apiCallsMade}`,
+    `no_hash_skipped=${totalNoHashSkipped}, accounts=${accountSnapshots.length}, api_calls=${apiCallsMade}, ` +
+    `historical_skipped=${historicalSkipped}, elapsed_ms=${Date.now() - startedAt}`,
   );
 
   // Push newly-synced transactions to the user's connected Google Sheet (if any).
@@ -137,5 +207,7 @@ export async function POST(request: NextRequest) {
     duplicatesSkipped: totalDuplicateSkipped,
     noHashSkipped: totalNoHashSkipped,
     apiCalls: apiCallsMade,
+    historicalSkipped,
+    elapsedMs: Date.now() - startedAt,
   });
 }

@@ -110,6 +110,73 @@ export interface YapilyAuthResponse {
   };
 }
 
+// ── Hosted Pages (Beta) ──
+//
+// Schema source: Yapily OpenAPI 12.3.4 — verified against
+// docs.yapily.com/api-reference/hosted-consent-pages on 29 Apr 2026.
+// Distinct from the /account-auth-requests path: Yapily renders the
+// bank-picker, the post-consent page, and any QR/decoupled-auth flows
+// itself, then redirects back to our redirectUrl with consentRequestId
+// in the query string.
+//
+// Two important nuances baked into the type:
+//
+//   1. POST /hosted/consent-requests creates the request. Its response
+//      contains consentRequestId + hostedUrl but does NOT contain
+//      consentId or consentToken — those don't exist until the user
+//      completes the flow and a Consent is created at the bank side.
+//      So consentId and consentToken are optional on this type.
+//
+//   2. GET /hosted/consent-requests/{consentRequestId} returns the
+//      same envelope but, once status is AUTHORIZED, also surfaces
+//      consentId (the underlying /account-auth-requests/{id} handle
+//      used by renew + delete) and consentToken (the credential we
+//      attach to data calls). The callback uses the GET to extract
+//      both before persisting the connection.
+//
+// hostedUrl is short-lived (~10 minutes per Migle's call notes).
+
+export interface YapilyHostedInstitutionIdentifiers {
+  institutionId?: string;
+  institutionCountryCode: string;
+}
+
+export interface YapilyHostedUserSettings {
+  language?: string;
+  location?: string;
+}
+
+export interface YapilyHostedAccountRequestDetails {
+  featureScope?: string[];
+  transactionFrom?: string;
+  transactionTo?: string;
+  expiresAt?: string;
+}
+
+export interface YapilyHostedConsentRequest {
+  consentRequestId: string;
+  userId?: string;
+  applicationUserId?: string;
+  applicationId?: string;
+  institutionIdentifiers?: YapilyHostedInstitutionIdentifiers;
+  userSettings?: YapilyHostedUserSettings;
+  redirectUrl?: string;
+  accountRequestDetails?: YapilyHostedAccountRequestDetails;
+  hostedUrl?: string;
+  createdAt?: string;
+  authorisationExpiresAt?: string;
+  // GET-only fields, present once the user completes the journey:
+  status?: string;
+  consentId?: string;
+  consentToken?: string;
+  phases?: Array<{ phaseName: string; phaseCreatedAt: string }>;
+}
+
+export interface YapilyHostedConsentResponse {
+  meta?: { tracingId?: string };
+  data: YapilyHostedConsentRequest;
+}
+
 export interface YapilyErrorResponse {
   error: {
     code: number;
