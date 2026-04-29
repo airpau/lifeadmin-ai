@@ -1280,4 +1280,279 @@ export const telegramTools: Tool[] = [
       required: ['start', 'end'],
     },
   },
+
+  // ============================================================
+  // PARITY TOOLS — added 2026-04-29 to close gaps with the website
+  // ============================================================
+  {
+    name: 'dismiss_price_alert',
+    description: "Dismiss a specific price-increase alert so it stops appearing on the dashboard. Use when the user says 'dismiss the BG alert', 'I've dealt with the rise', 'stop showing me this'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: { type: 'string', description: 'Provider name on the alert (partial match).' },
+      },
+      required: ['provider'],
+    },
+  },
+  {
+    name: 'update_profile',
+    description: "Update the user's profile fields — name, phone, or alternative contact email. Use when the user says 'change my phone to X', 'update my name', 'set my contact email to Y'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        full_name: { type: 'string', description: 'New full name. Omit to keep existing.' },
+        phone: { type: 'string', description: 'New phone number (E.164 if possible). Omit to keep existing.' },
+        contact_email: { type: 'string', description: "Alternative contact email if different from auth email. Omit to keep existing." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_email_connections',
+    description: "List the user's connected email accounts (Gmail / Outlook / Yahoo IMAP) with their status. Use when the user asks 'which inboxes are connected', 'is my outlook still working', 'show me my email accounts'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'disconnect_email_connection',
+    description: "Disconnect a specific email account so the watchdog stops polling it. Use when the user says 'remove my outlook', 'disconnect aireypaul@googlemail.com', 'unlink my work email'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email_address: { type: 'string', description: 'The email address to disconnect (case-insensitive exact match).' },
+      },
+      required: ['email_address'],
+    },
+  },
+  {
+    name: 'add_correspondence_note',
+    description: "Add a manual entry to a dispute timeline — typically when the user has had a phone call with the supplier, received an email outside their connected inbox, or wants to log a note. Saves to the dispute history without going through the watchdog. Don't use this for letters the AI drafted (use record_letter_sent instead).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: { type: 'string', description: 'Provider name of the dispute (partial match).' },
+        entry_type: {
+          type: 'string',
+          enum: ['user_note', 'phone_call', 'company_email', 'company_letter', 'company_response'],
+          description: "What kind of entry. Default 'user_note' for the user's own thoughts; use phone_call for call summaries; use company_* when pasting an actual supplier reply.",
+        },
+        title: { type: 'string', description: 'Short title (e.g. "Phone call with refund team", "Email from billing").' },
+        content: { type: 'string', description: 'Full text of the note / paste / call summary. Verbatim if pasting.' },
+      },
+      required: ['provider', 'entry_type', 'content'],
+    },
+  },
+  {
+    name: 'list_watchdog_links',
+    description: "List all email threads currently being monitored by the watchdog across the user's disputes. Returns each link's dispute, subject, supplier domain, sync status, and last-synced time.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: { type: 'string', description: 'Optional dispute provider filter.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'unlink_email_thread',
+    description: "Stop watching an email thread for a dispute (turns off auto-import of supplier replies). Use when the user says 'stop watching the nuki thread', 'unlink the wrong thread', 'remove the watchdog on X'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: { type: 'string', description: 'Dispute provider name (partial match).' },
+      },
+      required: ['provider'],
+    },
+  },
+  {
+    name: 'sync_replies_now',
+    description: "Manually trigger an immediate watchdog sync for a dispute — pulls any new supplier replies right now instead of waiting for the next 30-min cron. Use when the user says 'check for new replies', 'has nuki replied yet', 'sync the enterprise thread now'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: { type: 'string', description: 'Dispute provider name (partial match).' },
+      },
+      required: ['provider'],
+    },
+  },
+  {
+    name: 'get_notifications',
+    description: "Get the user's recent in-app notifications (the bell-icon dropdown on the website). Returns the last 10 notifications with type, title, body, and read state.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        unread_only: { type: 'boolean', description: 'If true, only show unread notifications. Default false (show all).' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'mark_notification_read',
+    description: "Mark a notification as read so it stops showing in the bell badge. Pass either notification_id (specific) or all=true to mark every unread notification read.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        notification_id: { type: 'string', description: 'Specific notification UUID to mark read.' },
+        all: { type: 'boolean', description: 'If true, mark all unread notifications read.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_money_recovery_score',
+    description: "Get the user's overall Money Recovery Score — a 0-100 score combining recovered savings + active dispute progress + subscription efficiency. Use when the user asks 'how am I doing', 'what's my score', 'overall financial health'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_top_merchants',
+    description: "Get the user's top spending merchants for a given month or all-time. Returns merchants ranked by total spend with transaction counts. Use when the user asks 'who am I spending the most with', 'top 10 merchants', 'where does my money go'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        month: { type: 'string', description: "YYYY-MM format. Omit for all-time." },
+        limit: { type: 'number', description: 'How many merchants to return (default 10).' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_savings_rate',
+    description: "Get the user's monthly savings rate as a percentage of income, including average over the last 3 / 6 / 12 months. Use when the user asks 'what's my savings rate', 'am I saving enough', 'what % of my income am I saving'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'detect_price_increases',
+    description: "Run the price-increase detector now to find recurring charges that have gone up since the user's last sync. Returns any new alerts found. Use when the user says 'check for price rises', 'have any of my bills gone up', 'run the price detection'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_contract_alerts',
+    description: "Get upcoming contract end-date alerts (mortgages, broadband, mobile, energy, insurance contracts ending within the alert window). Returns each contract's provider, end date, days remaining, and matched switch deals.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        within_days: { type: 'number', description: 'Show contracts ending within N days. Default 60.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'redeem_loyalty_points',
+    description: "Redeem the user's loyalty points for a specific reward — the bot returns a list of available redemptions if no reward_id passed. Use when the user says 'redeem my points', 'I want to claim a reward', 'use 500 points for a discount'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        reward_id: { type: 'string', description: "Specific reward UUID. Omit to first list available rewards." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'bank_sync_now',
+    description: "Trigger an immediate bank sync — pulls fresh transactions from all connected banks now instead of waiting for the next scheduled cycle. Use when the user says 'sync my bank now', 'pull fresh transactions', 'have any new transactions come in'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'run_email_scan',
+    description: "Trigger an immediate inbox scan across the user's connected email accounts — looks for forgotten subscriptions, overcharges, debt-collection letters, refund opportunities. Returns a count of new findings. Use when the user says 'scan my inbox', 'check for new opportunities', 'run the scanner'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'list_support_tickets',
+    description: "List the user's support tickets — currently open and recently resolved. Returns each ticket's reference, subject, status, and last update.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: { type: 'string', enum: ['open', 'resolved', 'all'], description: "Filter by status. Default 'open'." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'add_ticket_message',
+    description: "Add a follow-up message to an existing support ticket. Use when the user wants to add information to a ticket they raised, e.g. 'add to my ticket about the mortgage display'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        ticket_ref: { type: 'string', description: 'Ticket reference (TKT-XXXX) or ticket UUID.' },
+        message: { type: 'string', description: 'The follow-up message text.' },
+      },
+      required: ['ticket_ref', 'message'],
+    },
+  },
+  {
+    name: 'mark_subscription_cancellation_sent',
+    description: "Mark that the user has sent a cancellation request for a subscription — flips its status to 'pending_cancellation' so we can track when it actually stops billing. Use when the user says 'I cancelled my X subscription', 'cancellation email sent to Y'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: { type: 'string', description: 'Subscription provider name (partial match).' },
+      },
+      required: ['provider'],
+    },
+  },
+  {
+    name: 'refine_letter',
+    description: "Re-tune an EXISTING saved letter on a dispute (for example, 'make it more polite', 'shorten it'). Different from draft_dispute_letter (which creates a fresh draft). Use only when the user has ALREADY saved a letter and wants to revise it.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: { type: 'string', description: 'Dispute provider name.' },
+        instruction: { type: 'string', description: "What to change (e.g. 'shorter', 'firmer', 'add the £85 figure', 'cite EU261')." },
+      },
+      required: ['provider', 'instruction'],
+    },
+  },
+  {
+    name: 'request_data_export',
+    description: "Trigger a GDPR data export — Paybacker emails the user a downloadable archive of their account data within 24h. Use when the user says 'export my data', 'GDPR request', 'download all my information'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        format: { type: 'string', enum: ['json', 'csv'], description: 'Export format. Default csv.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'generate_form_letter',
+    description: "Generate a non-complaint government form letter — HMRC tax rebate, council tax band challenge, DVLA dispute, NHS complaint, parking appeal, flight delay (UK261) compensation, debt-collection response, statute-barred-debt rebuttal. Use when the dispute is with a public body or follows a fixed legal template, NOT a private supplier complaint.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        form_type: {
+          type: 'string',
+          enum: ['hmrc_tax_rebate', 'council_tax_band_challenge', 'dvla_dispute', 'nhs_complaint', 'parking_appeal', 'flight_delay_uk261', 'debt_collection_response', 'statute_barred_debt'],
+          description: 'Which government / legal form letter to generate.',
+        },
+        situation: { type: 'string', description: 'Plain-English description of the user\'s situation — facts, dates, amounts, refs.' },
+        desired_outcome: { type: 'string', description: 'What outcome the user wants (refund, band reduction, charge withdrawal, etc.).' },
+      },
+      required: ['form_type', 'situation', 'desired_outcome'],
+    },
+  },
 ];

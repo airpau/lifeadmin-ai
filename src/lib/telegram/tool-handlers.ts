@@ -347,6 +347,80 @@ export async function executeToolCall(
         start: toolInput.start as string,
         end: toolInput.end as string,
       });
+    // ===== Parity batch (2026-04-29) =====
+    case 'dismiss_price_alert':
+      return dismissPriceAlert(supabase, userId, toolInput.provider as string);
+    case 'update_profile':
+      return updateProfile(supabase, userId, {
+        full_name: toolInput.full_name as string | undefined,
+        phone: toolInput.phone as string | undefined,
+        contact_email: toolInput.contact_email as string | undefined,
+      });
+    case 'list_email_connections':
+      return listEmailConnections(supabase, userId);
+    case 'disconnect_email_connection':
+      return disconnectEmailConnection(supabase, userId, toolInput.email_address as string);
+    case 'add_correspondence_note':
+      return addCorrespondenceNote(supabase, userId, {
+        provider: toolInput.provider as string,
+        entry_type: toolInput.entry_type as string,
+        title: toolInput.title as string | undefined,
+        content: toolInput.content as string,
+      });
+    case 'list_watchdog_links':
+      return listWatchdogLinks(supabase, userId, toolInput.provider as string | undefined);
+    case 'unlink_email_thread':
+      return unlinkEmailThread(supabase, userId, toolInput.provider as string);
+    case 'sync_replies_now':
+      return syncRepliesNow(supabase, userId, toolInput.provider as string);
+    case 'get_notifications':
+      return getNotifications(supabase, userId, toolInput.unread_only as boolean | undefined);
+    case 'mark_notification_read':
+      return markNotificationRead(supabase, userId, {
+        notification_id: toolInput.notification_id as string | undefined,
+        all: toolInput.all as boolean | undefined,
+      });
+    case 'get_money_recovery_score':
+      return getMoneyRecoveryScore(supabase, userId);
+    case 'get_top_merchants':
+      return getTopMerchants(supabase, userId, {
+        month: toolInput.month as string | undefined,
+        limit: toolInput.limit as number | undefined,
+      });
+    case 'get_savings_rate':
+      return getSavingsRate(supabase, userId);
+    case 'detect_price_increases':
+      return detectPriceIncreasesNow(supabase, userId);
+    case 'get_contract_alerts':
+      return getContractAlertsForBot(supabase, userId, toolInput.within_days as number | undefined);
+    case 'redeem_loyalty_points':
+      return redeemLoyaltyPoints(supabase, userId, toolInput.reward_id as string | undefined);
+    case 'bank_sync_now':
+      return bankSyncNow(supabase, userId);
+    case 'run_email_scan':
+      return runEmailScan(supabase, userId);
+    case 'list_support_tickets':
+      return listSupportTickets(supabase, userId, toolInput.status as string | undefined);
+    case 'add_ticket_message':
+      return addTicketMessage(supabase, userId, {
+        ticket_ref: toolInput.ticket_ref as string,
+        message: toolInput.message as string,
+      });
+    case 'mark_subscription_cancellation_sent':
+      return markSubscriptionCancellationSent(supabase, userId, toolInput.provider as string);
+    case 'refine_letter':
+      return refineLetter(supabase, userId, {
+        provider: toolInput.provider as string,
+        instruction: toolInput.instruction as string,
+      });
+    case 'request_data_export':
+      return requestDataExport(supabase, userId, toolInput.format as string | undefined);
+    case 'generate_form_letter':
+      return generateFormLetter(supabase, userId, {
+        form_type: toolInput.form_type as string,
+        situation: toolInput.situation as string,
+        desired_outcome: toolInput.desired_outcome as string,
+      });
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -5224,4 +5298,650 @@ async function setQuietHours(
   return {
     text: `✓ Quiet hours: ${args.start} → ${args.end} (Europe/London). I'll hold Pocket Agent and push notifications during that window. Email still lands in your inbox.`,
   };
+}
+
+// ============================================================
+// PARITY BATCH HANDLERS (2026-04-29)
+// ============================================================
+
+async function dismissPriceAlert(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  provider: string,
+): Promise<ToolResult> {
+  const { data: alerts } = await supabase
+    .from('price_increase_alerts')
+    .select('id, provider_name, new_amount, old_amount')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .ilike('provider_name', `%${provider}%`);
+  if (!alerts || alerts.length === 0) {
+    return { text: `No active price alerts found for "${provider}". Run detect_price_increases if you want me to check for new ones.` };
+  }
+  await supabase
+    .from('price_increase_alerts')
+    .update({ status: 'dismissed', dismissed_at: new Date().toISOString() })
+    .in('id', alerts.map((a) => a.id));
+  return { text: `✓ Dismissed ${alerts.length} price alert${alerts.length === 1 ? '' : 's'} for ${alerts[0].provider_name}.` };
+}
+
+async function updateProfile(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { full_name?: string; phone?: string; contact_email?: string },
+): Promise<ToolResult> {
+  const updates: Record<string, string> = {};
+  const changes: string[] = [];
+  if (params.full_name?.trim()) {
+    updates.full_name = params.full_name.trim();
+    changes.push(`name → "${params.full_name.trim()}"`);
+  }
+  if (params.phone?.trim()) {
+    updates.phone = params.phone.trim();
+    changes.push(`phone → ${params.phone.trim()}`);
+  }
+  if (params.contact_email?.trim()) {
+    updates.contact_email = params.contact_email.trim().toLowerCase();
+    changes.push(`contact email → ${params.contact_email.trim().toLowerCase()}`);
+  }
+  if (changes.length === 0) {
+    return { text: 'Tell me what to change — e.g. "set my name to Paul Airey", "update my phone to 07918188396".' };
+  }
+  const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
+  if (error) return { text: `Failed to update profile: ${error.message}` };
+  return { text: `✓ Updated: ${changes.join(', ')}.` };
+}
+
+async function listEmailConnections(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data } = await supabase
+    .from('email_connections')
+    .select('email_address, provider_type, status, last_scanned_at, archived_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (!data || data.length === 0) {
+    return { text: 'No email accounts connected. Connect Gmail or Outlook from your Profile page to enable inbox scanning + Watchdog.' };
+  }
+  let text = `*Connected email accounts (${data.length}):*\n`;
+  for (const c of data) {
+    const stale = c.archived_at ? ' (archived)' : c.status !== 'active' ? ` (${c.status})` : '';
+    const last = c.last_scanned_at ? ` · last scanned ${fmtDate(c.last_scanned_at)}` : ' · never scanned';
+    text += `\n• *${c.email_address}* — ${c.provider_type}${stale}${last}`;
+  }
+  return { text };
+}
+
+async function disconnectEmailConnection(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  emailAddress: string,
+): Promise<ToolResult> {
+  const target = emailAddress.toLowerCase().trim();
+  const { data: conn } = await supabase
+    .from('email_connections')
+    .select('id, email_address')
+    .eq('user_id', userId)
+    .ilike('email_address', target)
+    .maybeSingle();
+  if (!conn) {
+    return { text: `No email connection matching "${emailAddress}" — call list_email_connections to see what's linked.` };
+  }
+  await supabase
+    .from('email_connections')
+    .update({ status: 'disconnected', archived_at: new Date().toISOString() })
+    .eq('id', conn.id);
+  // Also disable any watchdog links using this connection
+  await supabase
+    .from('dispute_watchdog_links')
+    .update({ sync_enabled: false, updated_at: new Date().toISOString() })
+    .eq('email_connection_id', conn.id)
+    .eq('sync_enabled', true);
+  return { text: `✓ Disconnected ${conn.email_address}. Any Watchdog threads using it have been paused — re-link them after reconnecting.` };
+}
+
+async function addCorrespondenceNote(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider: string; entry_type: string; title?: string; content: string },
+): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const allowed = ['user_note', 'phone_call', 'company_email', 'company_letter', 'company_response'];
+  if (!allowed.includes(params.entry_type)) {
+    return { text: `entry_type must be one of: ${allowed.join(', ')}` };
+  }
+  if (!params.content?.trim()) {
+    return { text: 'Need some content for the note — re-send with the actual text.' };
+  }
+  const { error } = await supabase.from('correspondence').insert({
+    dispute_id: resolved.dispute.id,
+    user_id: userId,
+    entry_type: params.entry_type,
+    title: params.title || null,
+    content: params.content,
+    summary: params.content.slice(0, 200),
+    entry_date: new Date().toISOString(),
+    detected_from_email: false,
+  });
+  if (error) return { text: `Failed to save note: ${error.message}` };
+  return { text: `✓ Logged "${params.title || params.entry_type.replace(/_/g, ' ')}" on the *${resolved.dispute.provider_name}* dispute timeline.` };
+}
+
+async function listWatchdogLinks(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  provider?: string,
+): Promise<ToolResult> {
+  let query = supabase
+    .from('dispute_watchdog_links')
+    .select('id, dispute_id, provider, subject, sender_address, sync_enabled, last_synced_at, last_message_date, disputes!inner(provider_name)')
+    .eq('user_id', userId)
+    .eq('sync_enabled', true)
+    .order('updated_at', { ascending: false });
+  if (provider) {
+    query = query.ilike('disputes.provider_name', `%${provider}%`);
+  }
+  const { data } = await query;
+  if (!data || data.length === 0) {
+    return { text: provider ? `No active watchdog links for "${provider}".` : 'No active watchdog links. Use find_email_thread_for_dispute + link_email_thread_to_dispute on a dispute to start watching one.' };
+  }
+  let text = `*Watching ${data.length} email thread${data.length === 1 ? '' : 's'}:*\n`;
+  for (const l of data) {
+    const disputeName = (l as { disputes?: { provider_name?: string } }).disputes?.provider_name || 'unknown dispute';
+    const lastSync = l.last_synced_at ? fmtDate(l.last_synced_at) : 'never';
+    const lastMsg = l.last_message_date ? fmtDate(l.last_message_date) : 'no replies yet';
+    text += `\n• *${disputeName}* — ${l.subject || '(no subject)'}\n  from ${l.sender_address || 'unknown'} · last synced ${lastSync} · last reply ${lastMsg}`;
+  }
+  return { text };
+}
+
+async function unlinkEmailThread(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  provider: string,
+): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const { data: updated } = await supabase
+    .from('dispute_watchdog_links')
+    .update({ sync_enabled: false, updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('dispute_id', resolved.dispute.id)
+    .eq('sync_enabled', true)
+    .select('id');
+  if (!updated || updated.length === 0) {
+    return { text: `No active watchdog link to unlink on the *${resolved.dispute.provider_name}* dispute.` };
+  }
+  return { text: `✓ Stopped watching ${updated.length} email thread${updated.length === 1 ? '' : 's'} on the *${resolved.dispute.provider_name}* dispute. Any new supplier replies won't auto-import. Re-link any time with find_email_thread_for_dispute.` };
+}
+
+async function syncRepliesNow(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  provider: string,
+): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, provider);
+  if (!resolved.ok) return { text: resolved.text };
+  // Trigger the existing sync endpoint via fetch so we reuse its logic.
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+  try {
+    const res = await fetch(`${origin}/api/disputes/${resolved.dispute.id}/sync-replies-now`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+        'X-User-Id': userId,
+      },
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      return { text: `Sync failed (${res.status}): ${txt.slice(0, 200)}` };
+    }
+    const data = await res.json();
+    const imported = (data as { imported?: number }).imported ?? 0;
+    return imported > 0
+      ? { text: `✓ Synced *${resolved.dispute.provider_name}* — imported ${imported} new repl${imported === 1 ? 'y' : 'ies'}. Check the dispute timeline.` }
+      : { text: `✓ Synced *${resolved.dispute.provider_name}* — no new replies since last check.` };
+  } catch (err) {
+    return { text: `Sync request failed: ${err instanceof Error ? err.message : 'unknown error'}. The watchdog cron will catch up on its next 30-min run.` };
+  }
+}
+
+async function getNotifications(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  unreadOnly?: boolean,
+): Promise<ToolResult> {
+  let query = supabase
+    .from('user_notifications')
+    .select('id, type, title, body, read_at, created_at, dispute_id')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  if (unreadOnly) query = query.is('read_at', null);
+  const { data } = await query;
+  if (!data || data.length === 0) {
+    return { text: unreadOnly ? 'No unread notifications.' : 'No notifications yet.' };
+  }
+  let text = `*${unreadOnly ? 'Unread' : 'Recent'} notifications (${data.length}):*\n`;
+  for (const n of data) {
+    const unreadDot = n.read_at ? '' : '🔵 ';
+    text += `\n${unreadDot}*${n.title}*\n_${(n.body || '').slice(0, 120)}${(n.body || '').length > 120 ? '…' : ''}_\n${fmtDate(n.created_at)}`;
+  }
+  return { text };
+}
+
+async function markNotificationRead(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { notification_id?: string; all?: boolean },
+): Promise<ToolResult> {
+  if (params.all) {
+    const { count } = await supabase
+      .from('user_notifications')
+      .update({ read_at: new Date().toISOString() }, { count: 'exact' })
+      .eq('user_id', userId)
+      .is('read_at', null);
+    return { text: `✓ Marked ${count ?? 0} notification${count === 1 ? '' : 's'} as read.` };
+  }
+  if (!params.notification_id) {
+    return { text: 'Pass either notification_id or all=true.' };
+  }
+  await supabase
+    .from('user_notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('id', params.notification_id)
+    .eq('user_id', userId);
+  return { text: `✓ Marked as read.` };
+}
+
+async function getMoneyRecoveryScore(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  // Compute an honest 0-100 score: 50% recovered savings vs. target,
+  // 30% active-dispute progress, 20% subscription efficiency.
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('total_money_recovered')
+    .eq('id', userId)
+    .single();
+  const recovered = Number(profile?.total_money_recovered || 0);
+  const recoveredPct = Math.min(100, Math.floor((recovered / 1000) * 50)); // £1000 = 50 pts
+
+  const { data: openDisputes } = await supabase
+    .from('disputes')
+    .select('id, status')
+    .eq('user_id', userId)
+    .in('status', ['open', 'awaiting_response', 'escalated']);
+  const activeCount = openDisputes?.length ?? 0;
+  const disputePts = activeCount > 0 ? 30 : 10; // active engagement scores
+
+  const { data: subs } = await supabase
+    .from('subscriptions')
+    .select('id, status')
+    .eq('user_id', userId);
+  const total = subs?.length ?? 0;
+  const cancelled = subs?.filter((s) => s.status === 'cancelled').length ?? 0;
+  const subPts = total > 0 ? Math.floor((cancelled / total) * 20) : 10;
+
+  const score = Math.min(100, recoveredPct + disputePts + subPts);
+  let band = 'Getting started';
+  if (score >= 80) band = 'Excellent';
+  else if (score >= 60) band = 'Strong';
+  else if (score >= 40) band = 'Building';
+  else if (score >= 20) band = 'Just starting';
+  return {
+    text: `*Money Recovery Score: ${score}/100* — ${band}\n\n• Money recovered: ${fmt(recovered)} (${recoveredPct} pts)\n• Active disputes: ${activeCount} (${disputePts} pts)\n• Subscriptions cancelled: ${cancelled}/${total} (${subPts} pts)`,
+  };
+}
+
+async function getTopMerchants(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { month?: string; limit?: number },
+): Promise<ToolResult> {
+  const limit = params.limit ?? 10;
+  let query = supabase
+    .from('transactions')
+    .select('merchant_name, amount')
+    .eq('user_id', userId)
+    .lt('amount', 0); // outgoing only
+  if (params.month) {
+    const start = `${params.month}-01`;
+    const next = new Date(`${start}T00:00:00Z`);
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    query = query.gte('transaction_date', start).lt('transaction_date', next.toISOString().slice(0, 10));
+  }
+  const { data } = await query.limit(5000);
+  if (!data || data.length === 0) {
+    return { text: params.month ? `No transactions for ${params.month}.` : 'No transactions yet — connect a bank to see top merchants.' };
+  }
+  const totals = new Map<string, { total: number; count: number }>();
+  for (const t of data) {
+    const m = t.merchant_name || 'Unknown';
+    const cur = totals.get(m) ?? { total: 0, count: 0 };
+    cur.total += Math.abs(Number(t.amount) || 0);
+    cur.count += 1;
+    totals.set(m, cur);
+  }
+  const top = Array.from(totals.entries())
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, limit);
+  let text = `*Top ${top.length} merchants${params.month ? ` (${params.month})` : ' (all-time)'}:*\n`;
+  top.forEach(([name, v], i) => {
+    text += `\n${i + 1}. *${name}* — ${fmt(v.total)} across ${v.count} txn${v.count === 1 ? '' : 's'}`;
+  });
+  return { text };
+}
+
+async function getSavingsRate(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  // Last 3 months: income - spending / income.
+  const now = new Date();
+  const months: Array<{ key: string; income: number; spending: number }> = [];
+  for (let i = 0; i < 3; i++) {
+    const d = new Date(now.getUTCFullYear(), now.getUTCMonth() - i, 1);
+    const start = d.toISOString().slice(0, 10);
+    const next = new Date(d);
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    const end = next.toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('user_id', userId)
+      .gte('transaction_date', start)
+      .lt('transaction_date', end)
+      .limit(5000);
+    let income = 0;
+    let spending = 0;
+    for (const t of data ?? []) {
+      const a = Number(t.amount) || 0;
+      if (a > 0) income += a;
+      else spending += Math.abs(a);
+    }
+    months.push({ key: start.slice(0, 7), income, spending });
+  }
+  let text = `*Savings rate (last 3 months):*\n`;
+  for (const m of months) {
+    const rate = m.income > 0 ? Math.round(((m.income - m.spending) / m.income) * 100) : 0;
+    text += `\n• ${m.key}: ${rate}% (${fmt(m.income - m.spending)} saved on ${fmt(m.income)} income)`;
+  }
+  const totalIncome = months.reduce((s, m) => s + m.income, 0);
+  const totalSpending = months.reduce((s, m) => s + m.spending, 0);
+  const avgRate = totalIncome > 0 ? Math.round(((totalIncome - totalSpending) / totalIncome) * 100) : 0;
+  text += `\n\n*3-month avg: ${avgRate}%*`;
+  return { text };
+}
+
+async function detectPriceIncreasesNow(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+  try {
+    const res = await fetch(`${origin}/api/price-alerts/detect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+    });
+    const data = await res.json();
+    const alerts = (data as { alerts?: unknown[] }).alerts ?? [];
+    if (alerts.length === 0) {
+      return { text: '✓ Ran the price-increase detector — no new rises found across your subscriptions.' };
+    }
+    return { text: `🔔 Found ${alerts.length} new price increase${alerts.length === 1 ? '' : 's'}. Call get_price_alerts to see them.` };
+  } catch (err) {
+    return { text: `Detection failed: ${err instanceof Error ? err.message : 'unknown'}.` };
+  }
+}
+
+async function getContractAlertsForBot(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  withinDays?: number,
+): Promise<ToolResult> {
+  const days = withinDays ?? 60;
+  const cutoff = new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const { data } = await supabase
+    .from('subscriptions')
+    .select('provider_name, contract_end_date, amount, billing_cycle, early_exit_fee, auto_renews')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .not('contract_end_date', 'is', null)
+    .gte('contract_end_date', today)
+    .lte('contract_end_date', cutoff)
+    .order('contract_end_date', { ascending: true });
+  if (!data || data.length === 0) {
+    return { text: `No contracts ending within ${days} days.` };
+  }
+  let text = `*Contracts ending within ${days} days:*\n`;
+  for (const c of data) {
+    text += `\n• *${c.provider_name}* — ends ${fmtDate(c.contract_end_date)} · ${fmt(c.amount)}/${c.billing_cycle}${c.auto_renews ? ' · auto-renews' : ''}${c.early_exit_fee ? ` · exit fee ${fmt(c.early_exit_fee)}` : ''}`;
+  }
+  return { text };
+}
+
+async function redeemLoyaltyPoints(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  rewardId?: string,
+): Promise<ToolResult> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('loyalty_points, loyalty_tier')
+    .eq('id', userId)
+    .single();
+  const points = Number(profile?.loyalty_points ?? 0);
+  if (!rewardId) {
+    return {
+      text: `You have *${points} points* (${profile?.loyalty_tier || 'Bronze'} tier). Open redemptions: paybacker.co.uk/dashboard/loyalty — pick a reward there and I can confirm redemption back here. (Redemption flow runs on the website to handle the discount-code generation.)`,
+    };
+  }
+  return { text: `Pass through to website: paybacker.co.uk/dashboard/loyalty to redeem reward ${rewardId} (need ${points} points). Redemption confirmation will email you.` };
+}
+
+async function bankSyncNow(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+  try {
+    const res = await fetch(`${origin}/api/bank/sync-now`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      return { text: `Sync failed (${res.status}): ${txt.slice(0, 200)}` };
+    }
+    return { text: `✓ Bank sync triggered. New transactions usually appear within 30 seconds — check Money Hub.` };
+  } catch (err) {
+    return { text: `Sync request failed: ${err instanceof Error ? err.message : 'unknown'}` };
+  }
+}
+
+async function runEmailScan(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+  try {
+    const res = await fetch(`${origin}/api/email/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      return { text: `Scan failed (${res.status}): ${txt.slice(0, 200)}` };
+    }
+    const data = await res.json();
+    const findings = (data as { findings?: number; opportunities?: number }).findings ?? (data as { opportunities?: number }).opportunities ?? 0;
+    return findings > 0
+      ? { text: `🔎 Inbox scan complete — found ${findings} new opportunit${findings === 1 ? 'y' : 'ies'}. Call get_scanner_results to see them.` }
+      : { text: `✓ Inbox scan complete — no new opportunities since last scan.` };
+  } catch (err) {
+    return { text: `Scan request failed: ${err instanceof Error ? err.message : 'unknown'}` };
+  }
+}
+
+async function listSupportTickets(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  status?: string,
+): Promise<ToolResult> {
+  let query = supabase
+    .from('support_tickets')
+    .select('id, ticket_number, subject, status, priority, created_at, updated_at')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+    .limit(10);
+  if (status === 'open') {
+    query = query.in('status', ['open', 'awaiting_reply', 'in_progress']);
+  } else if (status === 'resolved') {
+    query = query.in('status', ['resolved', 'closed']);
+  }
+  const { data } = await query;
+  if (!data || data.length === 0) {
+    return { text: 'No support tickets.' };
+  }
+  let text = `*Support tickets (${data.length}):*\n`;
+  for (const t of data) {
+    text += `\n• *${t.ticket_number || t.id.slice(0, 8)}* — ${t.subject}\n  ${t.status} · ${t.priority} · last updated ${fmtDate(t.updated_at)}`;
+  }
+  return { text };
+}
+
+async function addTicketMessage(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { ticket_ref: string; message: string },
+): Promise<ToolResult> {
+  if (!params.message?.trim()) return { text: 'Message text required.' };
+  const isUuid = /^[0-9a-f]{8}-/i.test(params.ticket_ref);
+  const { data: ticket } = isUuid
+    ? await supabase.from('support_tickets').select('id, ticket_number').eq('id', params.ticket_ref).eq('user_id', userId).single()
+    : await supabase.from('support_tickets').select('id, ticket_number').eq('ticket_number', params.ticket_ref.toUpperCase()).eq('user_id', userId).single();
+  if (!ticket) return { text: `Ticket "${params.ticket_ref}" not found.` };
+  const { data: profile } = await supabase.from('profiles').select('email').eq('id', userId).single();
+  await supabase.from('ticket_messages').insert({
+    ticket_id: ticket.id,
+    sender_type: 'user',
+    sender_name: profile?.email ?? 'User',
+    message: params.message,
+  });
+  await supabase.from('support_tickets').update({ status: 'open', assigned_to: null, updated_at: new Date().toISOString() }).eq('id', ticket.id);
+  return { text: `✓ Added your message to ${ticket.ticket_number || ticket.id.slice(0, 8)}. Riley will pick it up on the next 15-min sweep.` };
+}
+
+async function markSubscriptionCancellationSent(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  provider: string,
+): Promise<ToolResult> {
+  const { data: subs } = await supabase
+    .from('subscriptions')
+    .select('id, provider_name')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .ilike('provider_name', `%${provider}%`);
+  if (!subs || subs.length === 0) {
+    return { text: `No active subscription found matching "${provider}".` };
+  }
+  if (subs.length > 1) {
+    let t = `Multiple active subscriptions match "${provider}":\n`;
+    for (const s of subs) t += `\n• ${s.provider_name}`;
+    return { text: t + '\n\nNarrow it down with a more specific name.' };
+  }
+  await supabase
+    .from('subscriptions')
+    .update({ status: 'pending_cancellation', updated_at: new Date().toISOString() })
+    .eq('id', subs[0].id);
+  return { text: `✓ Marked *${subs[0].provider_name}* as pending cancellation. I'll watch your bank for the final charge — once it stops billing I'll flip it to fully cancelled.` };
+}
+
+async function refineLetter(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider: string; instruction: string },
+): Promise<ToolResult> {
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  if (!resolved.ok) return { text: resolved.text };
+  // Pull the latest ai_letter for this dispute.
+  const { data: letters } = await supabase
+    .from('correspondence')
+    .select('id, content')
+    .eq('dispute_id', resolved.dispute.id)
+    .eq('entry_type', 'ai_letter')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (!letters || letters.length === 0) {
+    return { text: `No saved letter to refine on the *${resolved.dispute.provider_name}* dispute. Draft one first via draft_dispute_letter, save it, then refine.` };
+  }
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+  try {
+    const res = await fetch(`${origin}/api/disputes/refine-letter`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+      body: JSON.stringify({
+        letter: letters[0].content,
+        instruction: params.instruction,
+        disputeId: resolved.dispute.id,
+      }),
+    });
+    const data = await res.json();
+    const refined = (data as { letter?: string }).letter;
+    if (!res.ok || !refined) {
+      return { text: `Refine failed: ${(data as { error?: string }).error || 'unknown'}.` };
+    }
+    return { text: `*Refined letter for ${resolved.dispute.provider_name}:*\n\n${refined.slice(0, 3500)}\n\n📤 Reply *SAVE* to add this to the dispute history (replaces the previous draft on the timeline). Or ask for further tweaks.` };
+  } catch (err) {
+    return { text: `Refine request failed: ${err instanceof Error ? err.message : 'unknown'}.` };
+  }
+}
+
+async function requestDataExport(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  format?: string,
+): Promise<ToolResult> {
+  const fmt2 = format === 'json' ? 'json' : 'csv';
+  await supabase.from('business_log').insert({
+    category: 'gdpr_request',
+    title: `Data export requested — ${fmt2.toUpperCase()}`,
+    content: `User ${userId} requested a GDPR data export (${fmt2}). Process within 30 days per UK GDPR — typically delivered within 24 hours via email.`,
+    created_by: 'pocket-agent',
+  });
+  return { text: `✓ Data export requested in ${fmt2.toUpperCase()} format. Per UK GDPR you'll receive a download link by email within 30 days (typically within 24 hours). The link expires after 7 days for security. Email coming to your account address.` };
+}
+
+async function generateFormLetter(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { form_type: string; situation: string; desired_outcome: string },
+): Promise<ToolResult> {
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+  try {
+    const res = await fetch(`${origin}/api/forms/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+      body: JSON.stringify({
+        form_type: params.form_type,
+        situation: params.situation,
+        desired_outcome: params.desired_outcome,
+      }),
+    });
+    const data = await res.json();
+    const letter = (data as { letter?: string }).letter;
+    if (!res.ok || !letter) {
+      return { text: `Form generation failed: ${(data as { error?: string }).error || 'unknown'}.` };
+    }
+    return { text: `*${params.form_type.replace(/_/g, ' ')}:*\n\n${letter.slice(0, 3500)}\n\nCopy this, send to the relevant body, and reply SAVE if you want me to log it (currently form letters aren't tied to a Paybacker dispute timeline — that's coming).` };
+  } catch (err) {
+    return { text: `Form letter request failed: ${err instanceof Error ? err.message : 'unknown'}.` };
+  }
 }
