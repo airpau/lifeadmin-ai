@@ -7,6 +7,7 @@ import { trackLetterGenerated } from '@/lib/meta-conversions';
 import { awardPoints } from '@/lib/loyalty';
 import { getProviderTerms } from '@/lib/provider-match';
 import { checkRefFreshness, refreshSingleRef, findFreshSubstitute, freshnessOf, postFlightSanitise } from '@/lib/legal-refs-guardrail';
+import { CITATION_PERMISSIVE_STATUSES } from '@/lib/legal-refs-statuses';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
 // 120s — the engine's worst-case path is two Claude calls (citation
@@ -284,7 +285,7 @@ export async function POST(request: NextRequest) {
       .from('legal_references')
       .select('id, category, law_name, section, summary, source_url, escalation_body, strength, applies_to, verification_status')
       .in('category', categories)
-      .in('verification_status', ['current', 'updated', 'needs_review']);
+      .in('verification_status', CITATION_PERMISSIVE_STATUSES as unknown as string[]);
 
     // Filter out 'general' refs that have a sector-specific applies_to array which doesn't
     // overlap with the current dispute's categories. This prevents gym/fitness legal refs

@@ -28,6 +28,7 @@ import {
   planSubstitutions,
   sanitiseLetter,
 } from '@/lib/legal-refs-guardrail';
+import { CITATION_ELIGIBLE_STATUSES } from '@/lib/legal-refs-statuses';
 
 function getAdmin() {
   return createClient(
@@ -423,7 +424,7 @@ async function fetchVerifiedRefs(scenario: string): Promise<any[]> {
   const { data } = await supabase
     .from('legal_references')
     .select('law_name, section, summary, full_text, source_url, category')
-    .in('verification_status', ['current', 'updated'])
+    .in('verification_status', CITATION_ELIGIBLE_STATUSES as unknown as string[])
     .limit(500);
   if (!data || data.length === 0) return [];
 

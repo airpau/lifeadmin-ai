@@ -9,6 +9,8 @@ import {
   Loader2, ChevronLeft, ArrowLeft, Search, Filter,
 } from 'lucide-react';
 import Link from 'next/link';
+import { AutoAppliedPanel } from './AutoAppliedPanel';
+import PendingCorrectionsSection from './PendingCorrectionsSection';
 
 const ADMIN_EMAIL = 'aireypaul@googlemail.com';
 
@@ -62,10 +64,28 @@ function isReviewable(r: LegalRef): boolean {
 
 const STATUS_CONFIG: Record<string, { label: string; icon: typeof CheckCircle; className: string }> = {
   current: { label: 'Current', icon: CheckCircle, className: 'text-green-400 bg-green-500/10' },
+  verified: { label: 'Verified', icon: CheckCircle, className: 'text-green-500 bg-green-500/10' },
   updated: { label: 'Auto-updated', icon: RefreshCw, className: 'text-emerald-600 bg-emerald-500/10' },
   needs_review: { label: 'Needs review', icon: AlertTriangle, className: 'text-amber-600 bg-amber-100' },
   outdated: { label: 'Outdated', icon: AlertTriangle, className: 'text-red-400 bg-red-500/10' },
+  broken: { label: 'Broken', icon: AlertTriangle, className: 'text-red-500 bg-red-500/10' },
+  stale: { label: 'Stale', icon: Clock, className: 'text-amber-500 bg-amber-500/10' },
+  error: { label: 'Error', icon: AlertTriangle, className: 'text-red-400 bg-red-500/10' },
+  superseded: { label: 'Superseded', icon: RefreshCw, className: 'text-slate-500 bg-slate-100' },
+  url_dead: { label: 'URL dead', icon: AlertTriangle, className: 'text-red-500 bg-red-500/10' },
 };
+
+// A row "needs review" if its verification_status is in this set OR last_verified
+// is null OR older than 60 days. Mirrors PR #373's review-list predicate so the
+// summary stats and the list view always agree.
+const NEEDS_REVIEW_STATUSES = new Set(['needs_review', 'broken', 'stale', 'error', 'outdated', 'url_dead']);
+const STALE_AFTER_DAYS = 60;
+function needsReview(ref: LegalRef): boolean {
+  if (NEEDS_REVIEW_STATUSES.has(ref.verification_status)) return true;
+  if (!ref.last_verified) return true;
+  const ageMs = Date.now() - new Date(ref.last_verified).getTime();
+  return ageMs > STALE_AFTER_DAYS * 24 * 60 * 60 * 1000;
+}
 
 const STRENGTH_CONFIG: Record<string, string> = {
   strong: 'text-green-400',
@@ -92,9 +112,28 @@ function formatDate(d: string | null) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+interface Candidate {
+  id: string;
+  title: string;
+  source_url: string | null;
+  source_type: string | null;
+  summary: string | null;
+  category: string | null;
+  jurisdiction: string | null;
+  confidence: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'duplicate';
+  discovered_at: string;
+  notes: string | null;
+}
+
 export default function LegalRefsAdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [refs, setRefs] = useState<LegalRef[]>([]);
+  const [dbTotal, setDbTotal] = useState<number | null>(null);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [pendingCandCount, setPendingCandCount] = useState(0);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverResult, setDiscoverResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<string | null>(null);
@@ -121,21 +160,93 @@ export default function LegalRefsAdminPage() {
         return;
       }
       setAuthorized(true);
-      await fetchRefs();
+      await Promise.all([fetchRefs(), fetchCandidates()]);
     };
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchRefs = async () => {
-    const { data, error } = await supabase
+    // Page rows in batches of 1000 — PostgREST default range cap is 1000 and
+    // the founder reported the count widget showed 78 / 112. We need every
+    // row regardless of status to surface the true table size.
+    const PAGE = 1000;
+    const all: LegalRef[] = [];
+    let from = 0;
+    // Best-effort exact count — separate head:true query so we can compare
+    // .length vs server count and detect range truncation.
+    const { count } = await supabase
       .from('legal_references')
-      .select('*')
-      .order('category')
-      .order('law_name');
-
-    if (!error && data) setRefs(data);
+      .select('*', { count: 'exact', head: true });
+    setDbTotal(typeof count === 'number' ? count : null);
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data, error } = await supabase
+        .from('legal_references')
+        .select('*')
+        .order('category')
+        .order('law_name')
+        .range(from, from + PAGE - 1);
+      if (error || !data || data.length === 0) break;
+      all.push(...(data as LegalRef[]));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    setRefs(all);
     setLoading(false);
+  };
+
+  const fetchCandidates = async () => {
+    const { data: pendingData } = await supabase
+      .from('legal_ref_candidates')
+      .select('*')
+      .eq('status', 'pending')
+      .order('discovered_at', { ascending: false })
+      .limit(200);
+    const list = (pendingData as Candidate[] | null) ?? [];
+    setCandidates(list);
+    setPendingCandCount(list.length);
+  };
+
+  const decideCandidate = async (
+    id: string,
+    action: 'approve' | 'reject' | 'duplicate',
+    notes?: string,
+    duplicate_of?: string,
+  ) => {
+    const res = await fetch(`/api/admin/legal-ref-candidates/${id}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ action, notes, duplicate_of }),
+    });
+    if (res.ok) {
+      await Promise.all([fetchRefs(), fetchCandidates()]);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Decision failed: ${err.error ?? res.status}`);
+    }
+  };
+
+  const triggerDiscovery = async (leg: 'recent' | 'category') => {
+    setDiscovering(true);
+    setDiscoverResult(null);
+    try {
+      const res = await fetch(`/api/cron/discover-legal-refs?leg=${leg}`, { credentials: 'include' });
+      const data = await res.json();
+      if (data.ok) {
+        setDiscoverResult(
+          `Done. ${data.candidates_found ?? 0} found, ${data.candidates_added ?? 0} new, ${data.candidates_skipped_duplicate ?? 0} duplicates.${data.notes ? ' ' + data.notes : ''}`,
+        );
+        await fetchCandidates();
+      } else {
+        setDiscoverResult(`Error: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      setDiscoverResult(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDiscovering(false);
+    }
   };
 
   const runVerification = async () => {
@@ -248,7 +359,9 @@ export default function LegalRefsAdminPage() {
   };
 
   const filtered = refs.filter(r => {
-    if (filterStatus !== 'all' && r.verification_status !== filterStatus) return false;
+    if (filterStatus === 'needs_review_any') {
+      if (!needsReview(r)) return false;
+    } else if (filterStatus !== 'all' && r.verification_status !== filterStatus) return false;
     if (filterCategory !== 'all' && r.category !== filterCategory) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -263,12 +376,18 @@ export default function LegalRefsAdminPage() {
   });
 
   const categories = [...new Set(refs.map(r => r.category))].sort();
+  // Stats now share the same predicate as the review list (PR #373) so the
+  // "Needs review" count equals the rows the founder actually sees.
+  const reviewList = refs.filter(needsReview);
+  const staleAfter = Date.now() - STALE_AFTER_DAYS * 24 * 60 * 60 * 1000;
   const counts = {
     total: refs.length,
-    current: refs.filter(r => r.verification_status === 'current').length,
+    dbTotal: dbTotal ?? refs.length,
+    current: refs.filter(r => r.verification_status === 'current' || r.verification_status === 'verified').length,
     updated: refs.filter(r => r.verification_status === 'updated').length,
-    needs_review: refs.filter(r => r.verification_status === 'needs_review').length,
-    outdated: refs.filter(r => r.verification_status === 'outdated').length,
+    needs_review: reviewList.length,
+    stale: refs.filter(r => r.last_verified && new Date(r.last_verified).getTime() < staleAfter).length,
+    outdated: refs.filter(r => r.verification_status === 'outdated' || r.verification_status === 'broken' || r.verification_status === 'url_dead').length,
   };
 
   if (loading) {
@@ -308,16 +427,32 @@ export default function LegalRefsAdminPage() {
               <Shield className="h-9 w-9 text-emerald-600" />
               Legal References
             </h1>
-            <p className="text-slate-600">{counts.total} references across {categories.length} categories</p>
+            <p className="text-slate-600">
+              {counts.dbTotal} references across {categories.length} categories
+              {counts.dbTotal !== counts.total && (
+                <span className="text-amber-600"> · {counts.total} loaded</span>
+              )}
+            </p>
           </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => triggerDiscovery('recent')}
+              disabled={discovering}
+              className="flex items-center gap-2 bg-white border border-slate-200 hover:border-emerald-500 disabled:opacity-50 text-slate-900 font-semibold px-4 py-2.5 rounded-lg transition-all text-sm"
+              title="Run Perplexity discovery for recent UK consumer-law updates"
+            >
+              {discovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Discover now
+            </button>
           <button
             onClick={runVerification}
             disabled={verifying}
-            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm shrink-0"
+            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
           >
             {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {verifying ? 'Verifying...' : 'Run Verification'}
           </button>
+          </div>
         </div>
       </div>
 
@@ -329,18 +464,107 @@ export default function LegalRefsAdminPage() {
           {verifyResult}
         </div>
       )}
+      {discoverResult && (
+        <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium border ${
+          discoverResult.startsWith('Done') ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700' : 'bg-red-500/10 border-red-500/20 text-red-400'
+        }`}>
+          {discoverResult}
+        </div>
+      )}
+
+      {/* Discovery candidates queue */}
+      {pendingCandCount > 0 && (
+        <div className="mb-6 bg-white border border-emerald-200 rounded-2xl overflow-hidden">
+          <div className="px-5 py-3 bg-emerald-50 border-b border-emerald-200 flex items-center justify-between">
+            <p className="font-semibold text-emerald-800 text-sm">
+              Discovery candidates ({pendingCandCount} pending)
+            </p>
+            <p className="text-xs text-emerald-700">Founder review only — never auto-approved.</p>
+          </div>
+          <div className="divide-y divide-slate-200">
+            {candidates.map(c => (
+              <div key={c.id} className="p-4 flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-slate-900 text-sm">{c.title}</p>
+                    {c.category && (
+                      <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">
+                        {CATEGORY_LABELS[c.category] || c.category}
+                      </span>
+                    )}
+                    {c.source_type && (
+                      <span className="text-xs text-slate-500">{c.source_type}</span>
+                    )}
+                  </div>
+                  {c.summary && <p className="text-xs text-slate-600 mt-1 line-clamp-2">{c.summary}</p>}
+                  <div className="flex items-center gap-3 mt-1.5">
+                    {c.source_url && (
+                      <a
+                        href={c.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:underline"
+                      >
+                        <ExternalLink className="h-3 w-3" /> source
+                      </a>
+                    )}
+                    <span className="text-[11px] text-slate-500">{formatDate(c.discovered_at)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => decideCandidate(c.id, 'approve')}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-medium"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => {
+                      const notes = window.prompt('Notes (optional)') ?? undefined;
+                      void decideCandidate(c.id, 'reject', notes);
+                    }}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-red-400 text-slate-700"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={() => {
+                      const dup = window.prompt('Existing legal_references.id (UUID) this duplicates') ?? undefined;
+                      void decideCandidate(c.id, 'duplicate', undefined, dup);
+                    }}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-amber-400 text-slate-700"
+                  >
+                    Duplicate
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* η — Auto-applied (last 7 days) panel */}
+      <AutoAppliedPanel />
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         {[
+          { label: 'Total in DB', count: counts.dbTotal, className: 'border-slate-200 bg-slate-50', textClass: 'text-slate-900' },
           { label: 'Current', count: counts.current, className: 'border-green-500/20 bg-green-500/5', textClass: 'text-green-400' },
           { label: 'Auto-updated', count: counts.updated, className: 'border-emerald-500/20 bg-emerald-500/5', textClass: 'text-emerald-600' },
           { label: 'Needs review', count: counts.needs_review, className: 'border-amber-200 bg-amber-50', textClass: 'text-amber-600' },
-          { label: 'Outdated', count: counts.outdated, className: 'border-red-500/20 bg-red-500/5', textClass: 'text-red-400' },
+          { label: 'Stale (>60d)', count: counts.stale, className: 'border-amber-300 bg-amber-50/50', textClass: 'text-amber-700' },
         ].map(card => (
           <button
             key={card.label}
-            onClick={() => setFilterStatus(filterStatus === card.label.toLowerCase().replace(' ', '_') ? 'all' : card.label.toLowerCase().replace(' ', '_'))}
+            onClick={() => {
+              const target = card.label === 'Needs review'
+                ? 'needs_review_any'
+                : card.label === 'Total in DB' || card.label === 'Stale (>60d)'
+                  ? 'all'
+                  : card.label.toLowerCase().replace(' ', '_').replace('auto-updated', 'updated');
+              setFilterStatus(filterStatus === target ? 'all' : target);
+            }}
             className={`border rounded-2xl p-5 text-left transition-all hover:opacity-80 ${card.className}`}
           >
             <p className={`text-3xl font-bold ${card.textClass}`}>{card.count}</p>
@@ -348,6 +572,9 @@ export default function LegalRefsAdminPage() {
           </button>
         ))}
       </div>
+
+      {/* Pending corrections (PR ε — human-in-loop gate) */}
+      <PendingCorrectionsSection />
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-4">
@@ -367,6 +594,7 @@ export default function LegalRefsAdminPage() {
           className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-emerald-500"
         >
           <option value="all">All statuses</option>
+          <option value="needs_review_any">Needs review (any)</option>
           <option value="current">Current</option>
           <option value="updated">Auto-updated</option>
           <option value="needs_review">Needs review</option>
@@ -416,6 +644,7 @@ export default function LegalRefsAdminPage() {
                 return (
                   <tr
                     key={ref.id}
+                    id={`ref-${ref.id}`}
                     className={`border-b border-slate-200 hover:bg-slate-100/50 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-100/30'}`}
                   >
                     <td className="px-5 py-4">
