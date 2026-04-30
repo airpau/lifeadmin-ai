@@ -780,6 +780,28 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
   if (complianceWarnings.length > 0) {
     response._compliance_warnings = complianceWarnings;
   }
+
+  // PR γ — fire-and-forget reverse-lookup audit. One row per cited ref
+  // so the admin "Where used" drawer + the daily re-verify cron can
+  // prioritise refs that high-traffic B2B customers depend on. Never
+  // blocks the response.
+  try {
+    const cited = sanitisedLegalRefs.map((s: string) => s.toLowerCase());
+    const matched = (verifiedRefs as any[])
+      .filter((r) => r?.id && cited.some((c) => c.includes((r.law_name || '').toLowerCase()) || (r.law_name || '').toLowerCase().includes(c.split(',')[0].trim())))
+      .map((r) => ({
+        ref_id: r.id,
+        product: 'b2b-dispute',
+        artefact_kind: 'dispute_response',
+        cited_text: sanitisedLegalRefs.find((c: string) => c.toLowerCase().includes((r.law_name || '').toLowerCase())) || r.law_name,
+      }));
+    if (matched.length > 0) {
+      void supabase.from('legal_ref_usages').insert(matched);
+    }
+  } catch (e) {
+    console.warn('[legal_ref_usages] B2B insert failed (non-fatal):', e);
+  }
+
   return response;
 }
 

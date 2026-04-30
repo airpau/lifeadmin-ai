@@ -614,6 +614,31 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // PR γ — reverse-lookup audit. Fire-and-forget one row per cited
+    // ref into legal_ref_usages so the admin "Where used" drawer and
+    // the daily re-verify cron can prioritise high-traffic refs. Never
+    // blocks the user — wrapped in `void` and best-effort.
+    try {
+      if (relevantRefs.length > 0 && result.legalReferences && result.legalReferences.length > 0) {
+        const citedLower = result.legalReferences.map((r: string) => r.toLowerCase());
+        const usageRows = relevantRefs
+          .filter((r: any) => citedLower.some((c: string) => c.includes(r.law_name.toLowerCase()) || r.law_name.toLowerCase().includes(c.split(',')[0].trim())))
+          .map((r: any) => ({
+            ref_id: r.id,
+            product: 'b2c-complaint',
+            artefact_id: task?.id ?? null,
+            artefact_kind: 'complaint_letter',
+            user_id: user.id,
+            cited_text: result.legalReferences.find((c: string) => c.toLowerCase().includes(r.law_name.toLowerCase())) || r.law_name,
+          }));
+        if (usageRows.length > 0) {
+          void supabase.from('legal_ref_usages').insert(usageRows);
+        }
+      }
+    } catch (e) {
+      console.warn('[legal_ref_usages] insert failed (non-fatal):', e);
+    }
+
     // If part of a dispute, add to correspondence thread
     if (body.disputeId && task) {
       await supabase.from('correspondence').insert({
