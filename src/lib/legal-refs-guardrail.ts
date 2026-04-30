@@ -358,13 +358,20 @@ export function freshnessTier(ref: LegalRef, now: Date = new Date()): FreshnessT
   const ageMs = now.getTime() - verifiedAt;
   if (ageMs < 0) return { tier: 1, ageDays: 0 };
   const ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
-  const tier1Cap = tier1MaxDays();
-  // Tier 1 follows operator configuration; tiers 2-4 are product-fixed.
+  // 90-day ceiling is a non-negotiable contract — anything older is
+  // unusable regardless of how the operator configured tier 1. Apply
+  // it FIRST so a misconfigured `LEGAL_REF_MAX_AGE_DAYS=180` (or
+  // similar) can't accidentally promote 91-day-old refs to tier 1.
+  if (ageDays > 90) return null;
+  // Tier 1 follows operator configuration but is also clamped to the
+  // tier-2 boundary (30d) so a configuration above 30 doesn't swallow
+  // tier-2 warnings either — operators can only TIGHTEN tier 1, not
+  // widen it past the next tier. Default 14 stays well within bounds.
+  const tier1Cap = Math.min(tier1MaxDays(), 30);
   if (ageDays <= tier1Cap) return { tier: 1, ageDays };
   if (ageDays <= 30) return { tier: 2, ageDays };
   if (ageDays <= 60) return { tier: 3, ageDays };
-  if (ageDays <= 90) return { tier: 4, ageDays };
-  return null;
+  return { tier: 4, ageDays };
 }
 
 /**
