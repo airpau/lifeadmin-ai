@@ -368,6 +368,33 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 
 ---
 
+## Compliance citation principle (refined 2026-04-30)
+
+Citation correctness is non-negotiable. We achieve it by tiering by risk:
+
+- LOW-risk mechanical changes (URL redirects within the same domain,
+  capitalisation, punctuation, canonical-URL canonicalisation) MAY be
+  auto-applied if AND ONLY IF all three corroboration gates in
+  `evaluateCorrection` pass: risk_score='low', source-text corroborates
+  the proposed name AND URL, and no semantic change is detected.
+
+- MEDIUM and HIGH-risk changes (section numbers, year changes, act
+  renames, supersessions, jurisdiction changes) MUST pass through
+  `legal_ref_corrections.status='approved'` via founder click.
+
+- DISCOVERY of new refs ALWAYS goes to `legal_ref_candidates.status='pending'`
+  and requires founder approval — discovery is never auto-applied.
+
+The auto-apply audit trail (`legal_ref_verifications` rows with
+verifier='auto-apply-low-risk') and the admin "Auto-applied (last 7
+days)" panel give the founder full visibility + one-click revert.
+
+If you're tempted to widen auto-apply beyond the three gates in
+`evaluateCorrection` — don't. The rule "100% correct" depends on
+those gates being conservative.
+
+---
+
 ## CORE FEATURES
 
 ### 1. AI Complaint and Form Letters
