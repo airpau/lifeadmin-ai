@@ -45,6 +45,7 @@
     { "path": "/api/cron/agent-digest",              "schedule": "0 19 * * *" },
     { "path": "/api/cron/support-chase",             "schedule": "0 9 * * *" },
     { "path": "/api/cron/builder-pickup",            "schedule": "*/30 * * * *" },
-    { "path": "/api/cron/builder-verify",            "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/builder-verify",            "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/refresh-cancellation-info", "schedule": "0 3 * * 1" }
   ]
 }

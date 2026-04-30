@@ -520,5 +520,79 @@ urgency values:
     console.error(`[outlook] Claude API error: ${claudeErr.message}`);
   }
 
+  // £ body-fallback pass (mirrors Gmail). Outlook bodies are already inlined
+  // by the Graph API, so we don't need a second fetch — regex first, then
+  // haiku as a last resort.
+  await runOutlookPriceFallback(allOpportunities, emails, anthropic);
+
   return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: emails.length };
+}
+
+const PRICEY_CONTEXT_RE = /(total|amount|charged|due|pay|renews|renewal|subscription|premium|bill|invoice|cost|price)/i;
+
+export function extractPriceFromBody(body: string): number | null {
+  if (!body) return null;
+  const re = /£\s?(\d{1,4}(?:[.,]\d{2})?)/g;
+  let best: number | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const start = Math.max(0, m.index - 80);
+    const end = Math.min(body.length, m.index + m[0].length + 80);
+    const window = body.slice(start, end);
+    if (!PRICEY_CONTEXT_RE.test(window)) continue;
+    const num = parseFloat(m[1].replace(',', '.'));
+    if (!isFinite(num)) continue;
+    if (best === null || num > best) best = num;
+  }
+  return best;
+}
+
+async function runOutlookPriceFallback(
+  opportunities: Opportunity[],
+  emails: EmailData[],
+  anthropic: any,
+): Promise<void> {
+  const targets = opportunities.filter(
+    (o: any) => (o.paymentAmount === null || o.paymentAmount === undefined) && (o.confidence ?? 0) >= 70 && o.emailId,
+  );
+  if (!targets.length) return;
+  const emailById = new Map(emails.map((e) => [e.id, e]));
+
+  for (const opp of targets.slice(0, 20) as any[]) {
+    const cached = emailById.get(opp.emailId);
+    const body = cached?.body || '';
+    if (!body) continue;
+    const regexHit = extractPriceFromBody(body);
+    if (regexHit !== null) {
+      opp.paymentAmount = regexHit;
+      if (!opp.amount) opp.amount = regexHit;
+      continue;
+    }
+    try {
+      const resp = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 120,
+        system: 'You extract recurring subscription prices from UK emails. Return STRICT JSON only.',
+        messages: [{
+          role: 'user',
+          content: `Extract the recurring subscription amount in GBP from this email. Return JSON {amount: number|null, frequency: 'monthly'|'yearly'|'weekly'|null}.\n\nEmail body (first 4000 chars):\n${body.slice(0, 4000)}`,
+        }],
+      });
+      const txt = resp.content?.[0];
+      if (txt?.type === 'text') {
+        const cleaned = txt.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]);
+          if (typeof parsed.amount === 'number') {
+            opp.paymentAmount = parsed.amount;
+            if (!opp.amount) opp.amount = parsed.amount;
+          }
+          if (parsed.frequency && !opp.paymentFrequency) opp.paymentFrequency = parsed.frequency;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[outlook] body-fallback haiku failed:', err?.message || err);
+    }
+  }
 }

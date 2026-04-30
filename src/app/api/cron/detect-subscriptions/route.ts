@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { deriveRecurringGroup } from '@/lib/subscription-key';
 
 export const maxDuration = 120;
 
@@ -111,10 +112,12 @@ export async function GET(request: NextRequest) {
       groups.get(tx.merchant_name!)!.push(tx);
     }
 
-    // Get existing subscriptions for this user (all statuses — including dismissed)
+    // Get existing subscriptions for this user (all statuses — including dismissed).
+    // Pull recurring_group too so we can short-circuit duplicates on the canonical
+    // key rather than a loose lowercase-provider-name compare.
     const { data: existingSubs } = await supabase
       .from('subscriptions')
-      .select('provider_name')
+      .select('provider_name, recurring_group')
       .eq('user_id', userId);
 
     // Build two sets: exact lowercase names AND normalised names for fuzzy dedup
@@ -124,14 +127,22 @@ export async function GET(request: NextRequest) {
     const existingNormalised = new Set(
       (existingSubs || []).map(s => normaliseProviderName(s.provider_name || ''))
     );
+    const existingKeys = new Set(
+      (existingSubs || [])
+        .map(s => s.recurring_group)
+        .filter((k): k is string => !!k)
+    );
 
     for (const [merchant, merchantTxs] of groups) {
       // Skip council tax / local authority payments — they belong in Expected Bills
       if (isCouncilTaxMerchant(merchant)) continue;
 
-      // Skip if already tracked (exact match or normalised match)
+      // Skip if already tracked (exact match, normalised match, or canonical
+      // recurring_group key from post-20260422020000 migration).
       if (existingExact.has(merchant.toLowerCase())) continue;
       if (existingNormalised.has(normaliseProviderName(merchant))) continue;
+      const merchantKey = deriveRecurringGroup(merchant);
+      if (merchantKey && existingKeys.has(merchantKey)) continue;
 
       // Need at least 2 payments
       if (merchantTxs.length < 2) continue;
@@ -183,6 +194,7 @@ export async function GET(request: NextRequest) {
           status: 'active',
           source: 'bank_auto',
           detected_at: new Date().toISOString(),
+          recurring_group: merchantKey,
         });
 
         if (!insertErr) {

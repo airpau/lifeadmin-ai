@@ -570,5 +570,117 @@ Look for: emails from gov.uk, hmrc.gov.uk, dvla.gov.uk, nhs.uk, student finance,
     console.error(`[gmail] Claude API error: ${claudeErr.message}`);
   }
 
+  // ---- £ body-fallback pass ----
+  // For high-confidence opportunities where Claude returned no paymentAmount,
+  // fetch the full message body and try regex first, then fall back to a
+  // cheap targeted Claude call.
+  await runPriceFallback(allOpportunities, emails, accessToken, anthropic);
+
   return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: emails.length };
+}
+
+const PRICEY_CONTEXT_RE = /(total|amount|charged|due|pay|renews|renewal|subscription|premium|bill|invoice|cost|price)/i;
+
+/** Pulls the largest GBP amount in a "price-y" context (within 80 chars). */
+export function extractPriceFromBody(body: string): number | null {
+  if (!body) return null;
+  const re = /£\s?(\d{1,4}(?:[.,]\d{2})?)/g;
+  let best: number | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const start = Math.max(0, m.index - 80);
+    const end = Math.min(body.length, m.index + m[0].length + 80);
+    const window = body.slice(start, end);
+    if (!PRICEY_CONTEXT_RE.test(window)) continue;
+    const num = parseFloat(m[1].replace(',', '.'));
+    if (!isFinite(num)) continue;
+    if (best === null || num > best) best = num;
+  }
+  return best;
+}
+
+async function runPriceFallback(
+  opportunities: Opportunity[],
+  emails: EmailData[],
+  accessToken: string,
+  anthropic: any,
+): Promise<void> {
+  const targets = opportunities.filter(
+    (o) => (o.paymentAmount === null || o.paymentAmount === undefined) && (o.confidence ?? 0) >= 70 && o.emailId,
+  );
+  if (!targets.length) return;
+
+  const emailById = new Map(emails.map((e) => [e.id, e]));
+
+  for (const opp of targets.slice(0, 20)) {
+    const cached = emailById.get(opp.emailId!);
+    let body = cached?.body || '';
+
+    // The cached body is truncated to 1500 chars. For the fallback, fetch the
+    // full message body from Gmail.
+    try {
+      const res = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${opp.emailId}?format=full`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (res.ok) {
+        const msg = await res.json();
+        const extract = (part: any): string => {
+          if (part.mimeType === 'text/plain' && part.body?.data) {
+            return Buffer.from(part.body.data, 'base64').toString('utf-8');
+          }
+          if (part.parts) {
+            for (const p of part.parts) {
+              const t = extract(p);
+              if (t) return t;
+            }
+          }
+          return '';
+        };
+        const full = extract(msg.payload || {});
+        if (full) body = full.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+    } catch {
+      // ignore — fall through with whatever body we have
+    }
+
+    if (!body) continue;
+
+    const regexHit = extractPriceFromBody(body);
+    if (regexHit !== null) {
+      opp.paymentAmount = regexHit;
+      if (!opp.amount) opp.amount = regexHit;
+      continue;
+    }
+
+    // Final attempt: ask Claude haiku one targeted question.
+    try {
+      const resp = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 120,
+        system: 'You extract recurring subscription prices from UK emails. Return STRICT JSON only.',
+        messages: [{
+          role: 'user',
+          content: `Extract the recurring subscription amount in GBP from this email. Return JSON {amount: number|null, frequency: 'monthly'|'yearly'|'weekly'|null}.\n\nEmail body (first 4000 chars):\n${body.slice(0, 4000)}`,
+        }],
+      });
+      const txt = resp.content?.[0];
+      if (txt?.type === 'text') {
+        const cleaned = txt.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]);
+          if (typeof parsed.amount === 'number') {
+            opp.paymentAmount = parsed.amount;
+            if (!opp.amount) opp.amount = parsed.amount;
+          }
+          if (parsed.frequency && !opp.paymentFrequency) {
+            opp.paymentFrequency = parsed.frequency;
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('[gmail] body-fallback haiku failed:', err?.message || err);
+    }
+  }
 }
