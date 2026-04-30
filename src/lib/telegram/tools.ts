@@ -284,6 +284,33 @@ export const telegramTools: Tool[] = [
   },
 
   {
+    name: 'quote_email_from_thread',
+    description:
+      "Read the actual body text of the user's correspondence on a dispute — the linked email thread plus AI-drafted letters they've sent. ALWAYS call this tool when the user asks about content, amounts, dates, deadlines, demands, requests, or specific words from any email or letter on a dispute (e.g. 'what did I write', 'what amount did I demand', 'what was in my last letter', 'what did they offer', 'what date did they say', 'confirm the figure I quoted'). NEVER infer email content from summaries, dispute metadata, offer figures, or earlier conversation context — always call this tool first and quote verbatim from the returned `body` field. Returns the most recent N entries with FULL body text (not snippets), ordered most-recent first, with structured fields {date, sender, recipient, subject, body, direction, message_index_in_thread}.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description:
+            'Provider/dispute name (case-insensitive partial match — e.g. "OneStream" matches "Onestream"). Used to find the active dispute whose correspondence we read.',
+        },
+        direction: {
+          type: 'string',
+          enum: ['sent', 'received', 'all'],
+          description:
+            "Filter which messages to return. 'sent' = only the user's outbound letters/notes (ai_letter, user_note). 'received' = only the company's replies (company_email, company_letter, company_response). 'all' = both directions interleaved by date. Defaults to 'all'.",
+        },
+        limit: {
+          type: 'number',
+          description: 'Max number of correspondence entries to return. Defaults to 5. Capped at 20.',
+        },
+      },
+      required: ['provider'],
+    },
+  },
+
+  {
     name: 'find_email_thread_for_dispute',
     description:
       "Search the user's connected inboxes (Gmail / Outlook) for email threads that could be linked to one of their disputes. Use when the user says 'link an email', 'connect a thread', 'find the email about X', or 'attach the response from Y'. Returns up to 5 candidate threads with subject + sender + date + the connection_id and thread_id needed for link_email_thread_to_dispute. Always present the list to the user and ask them to pick before linking — never auto-link the top result.",
