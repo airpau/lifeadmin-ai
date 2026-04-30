@@ -163,6 +163,10 @@
     {
       "path": "/api/cron/google-sheets-sync",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-cancellation-info",
+      "schedule": "0 3 * * 1"
     }
   ]
 }
