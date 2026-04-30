@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
+import { computeMrrGbp, getActiveBankConnectionCount } from '@/lib/admin-metrics';
 
 export const runtime = 'nodejs';
 
@@ -26,24 +27,30 @@ export async function GET(request: NextRequest) {
     subscriptionsResult,
     tiersResult,
     complaintsResult,
-    bankConnectionsResult,
+    bankConnectionsCount,
     agentRunsResult,
     recentSignupsResult,
     transactionsResult,
     merchantRulesResult,
     socialPostsResult,
+    mrrSummary,
   ] = await Promise.all([
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
     supabase.from('waitlist_signups').select('id', { count: 'exact', head: true }),
     supabase.from('subscriptions').select('id', { count: 'exact', head: true }).is('dismissed_at', null),
     supabase.from('profiles').select('subscription_tier'),
     supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('type', 'complaint_letter'),
-    supabase.from('bank_connections').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+    // See src/lib/admin-metrics.ts — counts every non-deleted, non-revoked
+    // connection across providers (TrueLayer + Yapily). Previously filtered
+    // status='active' only, which silently hid every TrueLayer row after
+    // the Yapily migration bulk-flipped them to 'expired_legacy'.
+    getActiveBankConnectionCount(supabase),
     supabase.from('agent_runs').select('id', { count: 'exact', head: true }),
     supabase.from('profiles').select('id, email, full_name, subscription_tier, subscription_status, created_at').order('created_at', { ascending: false }).limit(20),
     supabase.from('bank_transactions').select('id', { count: 'exact', head: true }),
     supabase.from('merchant_rules').select('id', { count: 'exact', head: true }),
     supabase.from('social_posts').select('id', { count: 'exact', head: true }),
+    computeMrrGbp(supabase),
   ]);
 
   // Calculate tier breakdown
@@ -53,16 +60,13 @@ export async function GET(request: NextRequest) {
     tierBreakdown[tier] = (tierBreakdown[tier] || 0) + 1;
   }
 
-  // Calculate MRR
-  const mrr = (tierBreakdown.essential || 0) * 9.99 + (tierBreakdown.pro || 0) * 19.99;
-
   return NextResponse.json({
     generated: new Date().toISOString(),
     overview: {
       total_users: usersResult.count || 0,
       waitlist_signups: waitlistResult.count || 0,
       active_subscriptions: subscriptionsResult.count || 0,
-      bank_connections: bankConnectionsResult.count || 0,
+      bank_connections: bankConnectionsCount,
       bank_transactions: transactionsResult.count || 0,
       complaints_generated: complaintsResult.count || 0,
       agent_runs: agentRunsResult.count || 0,
@@ -70,11 +74,12 @@ export async function GET(request: NextRequest) {
       social_posts: socialPostsResult.count || 0,
     },
     revenue: {
-      mrr: parseFloat(mrr.toFixed(2)),
-      arr: parseFloat((mrr * 12).toFixed(2)),
+      mrr: mrrSummary.mrr,
+      arr: mrrSummary.arr,
       paying_customers: (tierBreakdown.essential || 0) + (tierBreakdown.pro || 0),
       free_users: tierBreakdown.free || 0,
     },
+    mrr_breakdown: mrrSummary.breakdown,
     tier_breakdown: tierBreakdown,
     recent_signups: (recentSignupsResult.data || []).map((u: any) => ({
       id: u.id,

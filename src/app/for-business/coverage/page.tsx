@@ -12,6 +12,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
+import { CITATION_ELIGIBLE_STATUSES } from '@/lib/legal-refs-statuses';
 
 export const dynamic = 'force-dynamic';
 
@@ -173,7 +174,7 @@ async function fetchCoverage(): Promise<Ref[]> {
     const { data } = await supabase
       .from('legal_references')
       .select('law_name, section, summary, category')
-      .in('verification_status', ['current', 'updated'])
+      .in('verification_status', CITATION_ELIGIBLE_STATUSES as unknown as string[])
       .order('law_name');
     return (data ?? []) as Ref[];
   } catch {
