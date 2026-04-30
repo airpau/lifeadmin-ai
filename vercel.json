@@ -53,6 +53,7 @@
     { "path": "/api/cron/enrich-compliance-pending", "schedule": "0 4 * * *" },
     { "path": "/api/cron/discover-legal-refs?leg=recent",   "schedule": "0 3 * * 0" },
     { "path": "/api/cron/discover-legal-refs?leg=category", "schedule": "30 4 * * *" },
-    { "path": "/api/cron/reverify-all-legal-refs",   "schedule": "30 3 * * *" }
+    { "path": "/api/cron/reverify-all-legal-refs",   "schedule": "30 3 * * *" },
+    { "path": "/api/cron/consumer-nurture",          "schedule": "0 10 * * *" }
   ]
 }

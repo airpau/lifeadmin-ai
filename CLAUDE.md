@@ -517,6 +517,20 @@ phase the cron chains must follow the same pattern.
 ### 10. Loyalty Rewards
 - Points for every action. Tiers: Bronze, Silver, Gold, Platinum. Redeem for subscription discounts.
 
+### 11a. Consumer abandonment nurture CRM (B2C only)
+- B2C-only abandoned-checkout / pricing-page nurture funnel. **Does not touch the B2B path** — B2B keeps its founder-direct Telegram + email alerts.
+- Tables: `consumer_leads` (funnel state) + `consumer_lead_email_log` (ICO audit). Migration: `supabase/migrations/20260430170000_consumer_leads_nurture.sql`.
+- Capture points: (1) Stripe `checkout.session.expired` (consumer branch only — B2B `metadata.product='b2b_api'` early-returns), (2) `POST /api/leads/capture` from pricing-page subscribe clicks (logged-out users).
+- Conversion: `checkout.session.completed` (consumer branch) flips matching `consumer_leads` rows to `converted_paid`.
+- 4-email sequence via daily cron `/api/cron/consumer-nurture` at 10:00 UTC: T+1h soft reminder → T+24h value nudge → T+72h 10% discount + Stripe coupon → T+7d final.
+- Discount via `src/lib/stripe/coupons.ts → createOneOffDiscountCoupon()` — Stripe Coupon (one-off, max_redemptions=1, redeem_by=+7d) + Promotion Code `WELCOME10-XXXXXX` (6 friendly chars).
+- Email templates: `src/lib/email/consumer-nurture.ts` — same wrap pattern as `dispute-reminders.ts`. RFC 8058 one-click List-Unsubscribe header.
+- Public unsubscribe: `GET/POST /api/unsubscribe?token=…` → success page at `/unsubscribe`. Honoured immediately.
+- Admin dashboard: `/dashboard/admin/consumer-leads` — funnel bar + filterable table + drill-in drawer with timeline, notes, manual actions (mark converted/unsubscribed, generate fresh code, manual email, move to manual_handling).
+- Lawful basis: PECR reg. 22(3) "soft opt-in" — recipient gave details during sale-negotiation, marketing relates to similar products, one-click unsubscribe in every send. Documented in `docs/consumer-abandonment-system-design.md`.
+- PostHog events: `lead_captured`, `nurture_email_sent`, `discount_code_issued`, `lead_converted`, `lead_unsubscribed` — distinct id `consumer_lead:<id>`.
+- Research + design: `docs/consumer-abandonment-research.md`, `docs/consumer-abandonment-system-design.md`.
+
 ### 11. Money Hub Financial Intelligence Centre
 - Complete financial dashboard with income tracking, spending intelligence, and net worth
 - AI-powered transaction categorisation with user recategorisation
