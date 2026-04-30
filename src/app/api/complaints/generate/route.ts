@@ -6,6 +6,7 @@ import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/cla
 import { trackLetterGenerated } from '@/lib/meta-conversions';
 import { awardPoints } from '@/lib/loyalty';
 import { getProviderTerms } from '@/lib/provider-match';
+import { checkRefFreshness, refreshSingleRef, findFreshSubstitute, freshnessOf, postFlightSanitise } from '@/lib/legal-refs-guardrail';
 import { CITATION_PERMISSIVE_STATUSES } from '@/lib/legal-refs-statuses';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
@@ -324,6 +325,55 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // PR β — pre-send freshness guardrail. Check the refs we INTEND to
+    // feed into the prompt; for any stale/broken row, attempt a
+    // synchronous Perplexity refresh (5s cap), then if still stale find
+    // a fresh substitute in the same category. If no substitute exists
+    // we strip the row and add a footer note in the letter. Never
+    // blocks the user — degrade gracefully.
+    let guardrailFooterNote: string | null = null;
+    if (relevantRefs.length > 0) {
+      const freshness = await checkRefFreshness(supabase, refIds);
+      if (!freshness.ok && freshness.stale.length > 0) {
+        const usedIds = new Set(refIds);
+        for (const { id: staleId, reason } of freshness.stale) {
+          // Attempt synchronous refresh first.
+          const refreshed = await refreshSingleRef(supabase, staleId);
+          if (refreshed && freshnessOf(refreshed) === 'fresh') {
+            // Replace the row in-place so the prompt block sees the fresh copy.
+            const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
+            if (idx >= 0) {
+              relevantRefs[idx] = { ...relevantRefs[idx], ...refreshed };
+            }
+            continue;
+          }
+          // Refresh failed or still stale. Try a substitute in the same category.
+          const original = relevantRefs.find((r: any) => r.id === staleId);
+          const category = original?.category;
+          if (category) {
+            const sub = await findFreshSubstitute(supabase, category, [...usedIds]);
+            if (sub) {
+              const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
+              if (idx >= 0) {
+                relevantRefs[idx] = { ...sub, applies_to: original?.applies_to || [] } as any;
+                usedIds.add(sub.id);
+              }
+              continue;
+            }
+          }
+          // No substitute — strip the row and flag a footer note.
+          const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
+          if (idx >= 0) relevantRefs.splice(idx, 1);
+          guardrailFooterNote = "We couldn't verify the current statute reference for this point. Please confirm before sending.";
+          void supabase.from('business_log').insert({
+            category: 'legal_intelligence',
+            action: 'guardrail_stripped_stale_ref',
+            details: { user_id: user.id, ref_id: staleId, reason, company: body.companyName },
+          });
+        }
+      }
+    }
+
     let verifiedLegalRefs = '';
     if (relevantRefs.length > 0) {
       verifiedLegalRefs = relevantRefs.map((r) => {
@@ -440,6 +490,52 @@ export async function POST(request: NextRequest) {
         .replace(/\[YOUR ADDRESS\]/gi, fullAddress || '[Address not provided]')
         .replace(/\[YOUR POSTCODE\]/gi, pc || '[Postcode not provided]')
         .replace(/\[ACCOUNT NUMBER\]/gi, body.accountNumber || '[Account number not provided]');
+    }
+
+    // PR β — POST-FLIGHT validation. The pre-flight pass only controls
+    // what we feed INTO the prompt. The model can still dredge a stale
+    // or fabricated UK statute out of training data and stamp it into
+    // the letter. Run a regex pass over the output, cross-check every
+    // detected citation against the fresh pool we fed in, and either
+    // substitute (closest fresh law_name) or strip rogues.
+    let postFlightWarnings: string[] = [];
+    if (result.letter && relevantRefs.length > 0) {
+      const t0 = Date.now();
+      const pf = postFlightSanitise(
+        result.letter,
+        relevantRefs.map((r: any) => ({ law_name: r.law_name, category: r.category }))
+      );
+      const elapsed = Date.now() - t0;
+      if (elapsed > 100) {
+        console.warn(`[guardrail] post-flight took ${elapsed}ms (>100ms budget) — non-blocking`);
+      }
+      if (pf.rogue.length > 0) {
+        result.letter = pf.sanitised;
+        postFlightWarnings = pf.warnings;
+        console.warn(`[guardrail] post-flight stripped/substituted ${pf.rogue.length} rogue citation(s): ${pf.rogue.join(', ')}`);
+        void supabase.from('business_log').insert({
+          category: 'legal_intelligence',
+          action: 'guardrail_postflight_sanitised',
+          details: {
+            user_id: user.id,
+            company: body.companyName,
+            rogue: pf.rogue,
+            warnings: pf.warnings,
+          },
+        });
+        if (!guardrailFooterNote) {
+          guardrailFooterNote = 'Some statutory references were removed during compliance review — please verify before sending.';
+        }
+      }
+    }
+
+    // PR β — guardrail footer note. If at least one stale ref had no
+    // fresh substitute and was stripped from the prompt, OR a rogue
+    // post-flight citation was removed, surface a single-line note in
+    // the letter footer so the user knows to double-check before
+    // sending.
+    if (guardrailFooterNote && result.letter) {
+      result.letter = `${result.letter}\n\n---\nNote: ${guardrailFooterNote}`;
     }
 
     // Build rights pills — start from relevantRefs (already filtered by category/sector) so that

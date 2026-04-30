@@ -247,20 +247,29 @@ export async function POST(request: NextRequest) {
 
   const result = await resolveDispute(validated as any);
   if ('code' in result) {
-    const status = result.code === 'NO_STATUTE_MATCH' ? 422 : 500;
+    const status = result.code === 'NO_STATUTE_MATCH'
+      ? 422
+      : result.code === 'STALE_CITATION'
+        ? 503
+        : 500;
     await logUsage(key.id, '/v1/disputes', status, Date.now() - t0, {
       error_code: result.code,
     });
-    const errBody = { error: result.message, code: result.code };
+    const errBody: Record<string, unknown> = { error: result.message, code: result.code };
+    if (result.code === 'STALE_CITATION') {
+      errBody.ref_ids = result.ref_ids ?? [];
+      errBody.retry_after = result.retry_after ?? 60;
+    }
     // 422 is a stable engine verdict — caching is correct (replay
-    // returns the same NO_STATUTE_MATCH). 500 is a transient engine
-    // failure; we DON'T cache those, so the caller's retry actually
-    // retries the engine.
+    // returns the same NO_STATUTE_MATCH). 500 / 503 are transient
+    // failures; we DON'T cache those, so the caller's retry actually
+    // re-runs the engine (and re-checks freshness).
     if (idemKey && status === 422) await writeIdempotencyCache(key.id, idemKey, status, errBody);
-    return NextResponse.json(errBody, {
-      status,
-      headers: { 'X-Request-Id': requestId },
-    });
+    const headers: Record<string, string> = { 'X-Request-Id': requestId };
+    if (result.code === 'STALE_CITATION') {
+      headers['Retry-After'] = String(result.retry_after ?? 60);
+    }
+    return NextResponse.json(errBody, { status, headers });
   }
 
   await logUsage(key.id, '/v1/disputes', 200, Date.now() - t0, {

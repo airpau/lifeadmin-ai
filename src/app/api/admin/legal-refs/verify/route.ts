@@ -187,6 +187,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
     update.verified_url = verdict.current_url;
   }
 
+
   const { error: updateError } = await admin
     .from('legal_references')
     .update(update)
