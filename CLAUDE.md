@@ -236,6 +236,20 @@ separate marketing opt-in before send).
 
 **API cost tracking:** every paid third-party API call (Anthropic, Perplexity, Resend, Stripe, TrueLayer) should fire-and-forget a row into `api_cost_ledger` via the helpers in `src/lib/cost-ledger.ts` (`logAnthropicCall`, `logPerplexityCall`, `logResendCall`). The founder-only billing dashboard at `/dashboard/admin/billing` reads from that table — its accuracy depends on every call site being instrumented.
 
+## Compliance citation principle (non-negotiable)
+
+No code path may directly mutate a citation's `law_name`, `source_url`,
+`source_type` or `verification_status` to a non-pending value without
+passing through `legal_ref_corrections` and a founder approval click.
+
+Automated verifiers (Perplexity, Haiku) propose corrections to that
+table — they never overwrite canonical fields. The pre-send guardrail
+in `src/lib/legal-refs-guardrail.ts` enforces this at the engine level
+for both B2C complaints and B2B disputes.
+
+If you're tempted to add a "trust the AI, just write through" path
+because it would be more elegant, don't. Compliance correctness wins.
+
 ---
 
 ## CRITICAL ARCHITECTURE RULES — NEVER VIOLATE THESE
