@@ -168,6 +168,12 @@ export async function executeToolCall(
       return getIncomeBreakdown(supabase, userId, toolInput.month as string | undefined);
     case 'get_dispute_detail':
       return getDisputeDetail(supabase, userId, toolInput.provider as string);
+    case 'quote_email_from_thread':
+      return quoteEmailFromThread(supabase, userId, {
+        provider: toolInput.provider as string,
+        direction: (toolInput.direction as 'sent' | 'received' | 'all' | undefined) ?? 'all',
+        limit: typeof toolInput.limit === 'number' ? (toolInput.limit as number) : 5,
+      });
     case 'find_email_thread_for_dispute':
       return findEmailThreadForDispute(supabase, userId, {
         provider: toolInput.provider as string,
@@ -2277,6 +2283,175 @@ async function getDisputeDetail(
   }
 
   return { text };
+}
+
+/**
+ * Read the user's actual correspondence body text on a dispute, with full
+ * body content (not summaries or snippets) and structured fields.
+ *
+ * Built 2026-04-30 after a real WhatsApp Pocket Agent regression: the
+ * agent answered "what amount did I demand in my 16th letter to OneStream?"
+ * by inferring ~£74 pro-rata from the company's offer numbers, when the
+ * user's actual letter demanded ~£500+ driven by Ofcom Automatic
+ * Compensation Scheme day rates. The agent had access to the linked
+ * email thread but composed an answer from in-context summary instead
+ * of reading the body.
+ *
+ * The fix: a dedicated tool whose description tells Claude "ALWAYS call
+ * this when the user asks about content/amounts/dates from their own
+ * email or letter — never infer". The system prompts (Telegram +
+ * WhatsApp) carry a matching citation rule so Claude reaches for this
+ * tool before composing.
+ *
+ * Direction maps:
+ *  - 'sent'     → entry_type IN ('ai_letter', 'user_note')   (user → company)
+ *  - 'received' → entry_type IN ('company_email', 'company_letter', 'company_response')
+ *  - 'all'      → both, interleaved by entry_date
+ *
+ * Body cap: 8000 chars per message — generous enough to keep the figure /
+ * deadline / cited statute, bounded to keep Claude's context manageable.
+ */
+const QUOTE_BODY_CHAR_CAP = 8000;
+const QUOTE_DEFAULT_LIMIT = 5;
+const QUOTE_MAX_LIMIT = 20;
+
+const SENT_ENTRY_TYPES = new Set(['ai_letter', 'user_note']);
+const RECEIVED_ENTRY_TYPES = new Set(['company_email', 'company_letter', 'company_response']);
+
+async function quoteEmailFromThread(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  args: {
+    provider: string;
+    direction: 'sent' | 'received' | 'all';
+    limit: number;
+  },
+): Promise<ToolResult> {
+  const { provider, direction } = args;
+  const limit = Math.min(Math.max(1, args.limit ?? QUOTE_DEFAULT_LIMIT), QUOTE_MAX_LIMIT);
+
+  // Resolve dispute the same way getDisputeDetail does (active first,
+  // disambiguate if multiple actives) so the bot reads from the same
+  // dispute the user means.
+  const RESOLVED_STATUSES = new Set(['resolved_won', 'resolved_partial', 'resolved_lost', 'closed']);
+  const { data: matches } = await supabase
+    .from('disputes')
+    .select('id, provider_name, status, created_at')
+    .eq('user_id', userId)
+    .ilike('provider_name', `%${provider}%`)
+    .order('created_at', { ascending: false });
+
+  if (!matches || matches.length === 0) {
+    return { text: `No dispute found matching "${provider}".` };
+  }
+  type DisputeRow = { id: string; provider_name: string; status: string; created_at: string };
+  const active = (matches as DisputeRow[]).filter((m) => !RESOLVED_STATUSES.has(m.status));
+  const resolved = (matches as DisputeRow[]).filter((m) => RESOLVED_STATUSES.has(m.status));
+  if (active.length > 1) {
+    let text = `You have ${active.length} active disputes matching "${provider}". Tell me which one you mean before I read the thread:\n`;
+    for (const m of active) {
+      text += `\n• ${m.provider_name} — ${m.status} · opened ${fmtDate(m.created_at)}`;
+    }
+    return { text };
+  }
+  const dispute = active[0] ?? resolved[0];
+  if (!dispute) {
+    return { text: `No dispute found matching "${provider}".` };
+  }
+
+  const { data: rows } = await supabase
+    .from('correspondence')
+    .select('entry_type, title, content, entry_date, sender_address, sender_name')
+    .eq('dispute_id', dispute.id)
+    .eq('user_id', userId)
+    .order('entry_date', { ascending: true });
+
+  type CorrRow = {
+    entry_type: string;
+    title: string | null;
+    content: string | null;
+    entry_date: string | null;
+    sender_address: string | null;
+    sender_name: string | null;
+  };
+  const all: CorrRow[] = (rows ?? []) as CorrRow[];
+  if (all.length === 0) {
+    return {
+      text: `No correspondence found on the *${dispute.provider_name}* dispute. There's no linked email thread or saved letter to quote from yet.`,
+    };
+  }
+
+  // Number every entry by chronological position in the thread (1 =
+  // first message ever sent on this dispute) so the agent can say
+  // accurately "your 16th letter" when the user references it.
+  const indexed = all.map((r, idx) => ({
+    row: r,
+    message_index_in_thread: idx + 1,
+    direction:
+      SENT_ENTRY_TYPES.has(r.entry_type)
+        ? ('sent' as const)
+        : RECEIVED_ENTRY_TYPES.has(r.entry_type)
+          ? ('received' as const)
+          : ('other' as const),
+  }));
+
+  const filtered = indexed.filter((e) => {
+    if (direction === 'all') return true;
+    if (direction === 'sent') return e.direction === 'sent';
+    if (direction === 'received') return e.direction === 'received';
+    return true;
+  });
+
+  // Most-recent first, then trim to limit.
+  const ordered = [...filtered].reverse().slice(0, limit);
+
+  if (ordered.length === 0) {
+    return {
+      text: `No ${direction} correspondence found on the *${dispute.provider_name}* dispute. The thread has ${all.length} entr${all.length === 1 ? 'y' : 'ies'} but none in the requested direction.`,
+    };
+  }
+
+  const lines: string[] = [];
+  lines.push(`*Quoting from dispute: ${dispute.provider_name}*`);
+  lines.push(
+    `Returning ${ordered.length} of ${all.length} thread entr${all.length === 1 ? 'y' : 'ies'} (direction=${direction}, most recent first).`,
+  );
+  lines.push('');
+
+  for (const e of ordered) {
+    const r = e.row;
+    const body = (r.content ?? '').slice(0, QUOTE_BODY_CHAR_CAP);
+    const truncated = (r.content ?? '').length > QUOTE_BODY_CHAR_CAP;
+    // Sender / recipient — for user-sent entries the user is the
+    // sender; for company-received entries the company is. We don't
+    // have a structured user-email field here so we leave the
+    // counterpart side as the dispute's provider_name.
+    const senderLabel =
+      e.direction === 'sent'
+        ? 'user'
+        : (r.sender_name || r.sender_address || dispute.provider_name);
+    const recipientLabel =
+      e.direction === 'sent'
+        ? dispute.provider_name
+        : 'user';
+    lines.push(
+      `[entry ${e.message_index_in_thread}/${all.length}] ${fmtDate(r.entry_date)} — direction=${e.direction} — type=${r.entry_type}`,
+    );
+    lines.push(`subject: ${r.title ?? '(no subject)'}`);
+    lines.push(`sender: ${senderLabel}`);
+    lines.push(`recipient: ${recipientLabel}`);
+    lines.push('body:');
+    lines.push(body);
+    if (truncated) {
+      lines.push(`… [truncated at ${QUOTE_BODY_CHAR_CAP} chars]`);
+    }
+    lines.push('');
+  }
+  lines.push(
+    'Quote VERBATIM from the body field above when answering the user. Do not infer figures, dates, or demands from offer numbers, dispute metadata, or summaries — read the body.',
+  );
+
+  return { text: lines.join('\n') };
 }
 
 // ============================================================
