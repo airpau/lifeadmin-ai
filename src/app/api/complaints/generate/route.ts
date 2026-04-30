@@ -7,7 +7,17 @@ import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/cla
 import { trackLetterGenerated } from '@/lib/meta-conversions';
 import { awardPoints } from '@/lib/loyalty';
 import { getProviderTerms } from '@/lib/provider-match';
-import { checkRefFreshness, refreshSingleRef, findFreshSubstitute, freshnessOf, postFlightSanitise } from '@/lib/legal-refs-guardrail';
+import {
+  checkRefFreshness,
+  refreshSingleRef,
+  findFreshSubstitute,
+  freshnessOf,
+  freshnessTier,
+  tierWarning,
+  findTieredSubstitute,
+  findChainSubstitute,
+  postFlightSanitise,
+} from '@/lib/legal-refs-guardrail';
 import { CITATION_PERMISSIVE_STATUSES } from '@/lib/legal-refs-statuses';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
@@ -333,36 +343,64 @@ export async function POST(request: NextRequest) {
     // we strip the row and add a footer note in the letter. Never
     // blocks the user — degrade gracefully.
     let guardrailFooterNote: string | null = null;
+    // Tier 2-4 + chain fallback warnings collected here — appended to
+    // the letter footer at the end so the user sees the same "verified
+    // X days ago" caveat the B2B response surfaces in _compliance_warnings.
+    // B2C never blocks: even a tier-4 ref or chain fallback is preferable
+    // to stripping the citation entirely.
+    const guardrailTierWarnings: string[] = [];
     if (relevantRefs.length > 0) {
       const freshness = await checkRefFreshness(supabase, refIds);
       if (!freshness.ok && freshness.stale.length > 0) {
-        const usedIds = new Set(refIds);
+        const usedIds = new Set<string>((refIds as unknown[]).filter((x: unknown): x is string => typeof x === 'string'));
         for (const { id: staleId, reason } of freshness.stale) {
-          // Attempt synchronous refresh first.
+          // Attempt synchronous refresh first. Tier-aware: tier 1 → use
+          // silently; tier 2-4 → use + warning; null → fall through.
           const refreshed = await refreshSingleRef(supabase, staleId);
-          if (refreshed && freshnessOf(refreshed) === 'fresh') {
-            // Replace the row in-place so the prompt block sees the fresh copy.
-            const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
-            if (idx >= 0) {
-              relevantRefs[idx] = { ...relevantRefs[idx], ...refreshed };
-            }
-            continue;
-          }
-          // Refresh failed or still stale. Try a substitute in the same category.
-          const original = relevantRefs.find((r: any) => r.id === staleId);
-          const category = original?.category;
-          if (category) {
-            const sub = await findFreshSubstitute(supabase, category, [...usedIds]);
-            if (sub) {
+          if (refreshed) {
+            const t = freshnessTier(refreshed);
+            if (t) {
               const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
               if (idx >= 0) {
-                relevantRefs[idx] = { ...sub, applies_to: original?.applies_to || [] } as any;
-                usedIds.add(sub.id);
+                relevantRefs[idx] = { ...relevantRefs[idx], ...refreshed };
               }
+              const w = tierWarning(refreshed, t);
+              if (w) guardrailTierWarnings.push(w);
               continue;
             }
           }
-          // No substitute — strip the row and flag a footer note.
+          // Same-category tiered substitute (tier 1 → 4).
+          const original = relevantRefs.find((r: any) => r.id === staleId);
+          const category = original?.category;
+          if (category) {
+            const sub = await findTieredSubstitute(supabase, category, [...usedIds]);
+            if (sub) {
+              const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
+              if (idx >= 0) {
+                relevantRefs[idx] = { ...sub.ref, applies_to: original?.applies_to || [] } as any;
+                usedIds.add(sub.ref.id);
+              }
+              const w = tierWarning(sub.ref, sub.tier);
+              if (w) guardrailTierWarnings.push(w);
+              continue;
+            }
+            // Category fallback chain (energy → utilities → general etc.).
+            const chained = await findChainSubstitute(supabase, category, [...usedIds]);
+            if (chained) {
+              const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
+              if (idx >= 0) {
+                relevantRefs[idx] = { ...chained.ref, applies_to: original?.applies_to || [] } as any;
+                usedIds.add(chained.ref.id);
+              }
+              guardrailTierWarnings.push(
+                `No fresh ref for '${category}' — substituted with '${chained.fallbackCategory}' (${chained.ref.law_name})`,
+              );
+              const w = tierWarning(chained.ref, chained.tier);
+              if (w) guardrailTierWarnings.push(w);
+              continue;
+            }
+          }
+          // No substitute even via the chain — strip the row and flag a footer note.
           const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
           if (idx >= 0) relevantRefs.splice(idx, 1);
           guardrailFooterNote = "We couldn't verify the current statute reference for this point. Please confirm before sending.";
@@ -373,6 +411,14 @@ export async function POST(request: NextRequest) {
           });
         }
       }
+    }
+    // Promote tier 2-4 warnings into the footer note. Multiple warnings
+    // are joined; if the strip-fallback note also fired we keep both.
+    if (guardrailTierWarnings.length > 0) {
+      const tierFooter = guardrailTierWarnings.join(' · ');
+      guardrailFooterNote = guardrailFooterNote
+        ? `${guardrailFooterNote} ${tierFooter}`
+        : tierFooter;
     }
 
     let verifiedLegalRefs = '';
