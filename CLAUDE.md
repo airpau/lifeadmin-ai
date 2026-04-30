@@ -236,6 +236,20 @@ separate marketing opt-in before send).
 
 **API cost tracking:** every paid third-party API call (Anthropic, Perplexity, Resend, Stripe, TrueLayer) should fire-and-forget a row into `api_cost_ledger` via the helpers in `src/lib/cost-ledger.ts` (`logAnthropicCall`, `logPerplexityCall`, `logResendCall`). The founder-only billing dashboard at `/dashboard/admin/billing` reads from that table — its accuracy depends on every call site being instrumented.
 
+## Compliance citation principle (non-negotiable)
+
+No code path may directly mutate a citation's `law_name`, `source_url`,
+`source_type` or `verification_status` to a non-pending value without
+passing through `legal_ref_corrections` and a founder approval click.
+
+Automated verifiers (Perplexity, Haiku) propose corrections to that
+table — they never overwrite canonical fields. The pre-send guardrail
+in `src/lib/legal-refs-guardrail.ts` enforces this at the engine level
+for both B2C complaints and B2B disputes.
+
+If you're tempted to add a "trust the AI, just write through" path
+because it would be more elegant, don't. Compliance correctness wins.
+
 ---
 
 ## CRITICAL ARCHITECTURE RULES — NEVER VIOLATE THESE
@@ -365,6 +379,33 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 5. **Database migrations are additive only** — never DROP columns/tables in production, only ADD
 6. **Test API routes locally before deploying** — especially agent changes
 7. **The AI proposal system must NEVER auto-execute code changes** — only config/prompt/schedule changes can auto-execute; code changes create GitHub issues for human review
+
+---
+
+## Compliance citation principle (refined 2026-04-30)
+
+Citation correctness is non-negotiable. We achieve it by tiering by risk:
+
+- LOW-risk mechanical changes (URL redirects within the same domain,
+  capitalisation, punctuation, canonical-URL canonicalisation) MAY be
+  auto-applied if AND ONLY IF all three corroboration gates in
+  `evaluateCorrection` pass: risk_score='low', source-text corroborates
+  the proposed name AND URL, and no semantic change is detected.
+
+- MEDIUM and HIGH-risk changes (section numbers, year changes, act
+  renames, supersessions, jurisdiction changes) MUST pass through
+  `legal_ref_corrections.status='approved'` via founder click.
+
+- DISCOVERY of new refs ALWAYS goes to `legal_ref_candidates.status='pending'`
+  and requires founder approval — discovery is never auto-applied.
+
+The auto-apply audit trail (`legal_ref_verifications` rows with
+verifier='auto-apply-low-risk') and the admin "Auto-applied (last 7
+days)" panel give the founder full visibility + one-click revert.
+
+If you're tempted to widen auto-apply beyond the three gates in
+`evaluateCorrection` — don't. The rule "100% correct" depends on
+those gates being conservative.
 
 ---
 

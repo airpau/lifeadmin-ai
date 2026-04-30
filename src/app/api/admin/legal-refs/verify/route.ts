@@ -142,25 +142,6 @@ function deriveStatus(verdict: PerplexityVerdict): string {
   return 'needs_review';
 }
 
-/**
- * Best-effort parse of a free-text supersession string into a structured
- * (law_name, section, url) tuple. Perplexity returns things like:
- *   "Consumer Rights Act 2015, s.20 (https://...)" — extract the URL,
- *   strip it from the title, and use what remains as the new law_name.
- * If we can't pull a URL out, return only the trimmed title.
- */
-function parseSuperseded(s: string): { law_name: string; url: string | null } {
-  const urlMatch = s.match(/https?:\/\/\S+/);
-  const url = urlMatch ? urlMatch[0].replace(/[)\].,;]+$/, '') : null;
-  const title = s
-    .replace(urlMatch?.[0] ?? '', '')
-    .replace(/\(\s*\)/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^[—–\-:]\s*/, '');
-  return { law_name: title || s.trim(), url };
-}
-
 async function verifyOne(id: string, userId: string | null): Promise<VerifyResult> {
   const admin = getAdmin();
   const { data: ref, error } = await admin
@@ -206,12 +187,13 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
     metadata: { legal_reference_id: id },
   });
 
-  let status = deriveStatus(verdict);
+  const status = deriveStatus(verdict);
   const notes = verdict.superseded_by
     ? `Superseded by: ${verdict.superseded_by}. ${verdict.notes}`.trim()
     : verdict.notes;
 
   const update: Record<string, unknown> = {
+    verification_status: status,
     last_verified: new Date().toISOString(),
     verification_notes: notes || null,
   };
@@ -219,38 +201,6 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
     update.verified_url = verdict.current_url;
   }
 
-  // Auto-overwrite logic (PR α). High-confidence corrections rewrite the
-  // canonical fields so a single "Verify all" run establishes a clean
-  // baseline. Medium / low confidence never touches the canonical row —
-  // founder reviews via the "auto_corrected" badge before relying on it.
-  let autoCorrected = false;
-  if (verdict.confidence === 'high' && verdict.superseded_by) {
-    const parsed = parseSuperseded(verdict.superseded_by);
-    update.law_name = parsed.law_name;
-    if (parsed.url) update.source_url = parsed.url;
-    else if (verdict.current_url) update.source_url = verdict.current_url;
-    status = 'superseded';
-    autoCorrected = true;
-  } else if (
-    verdict.confidence === 'high' &&
-    verdict.valid === false &&
-    verdict.current_url
-  ) {
-    update.source_url = verdict.current_url;
-    status = 'updated';
-    autoCorrected = true;
-  } else if (verdict.confidence === 'medium') {
-    // Never overwrite canonical on medium — keep status as needs_review
-    // regardless of what deriveStatus returned. Only verified_url +
-    // notes are written above.
-    status = 'needs_review';
-  } else if (verdict.confidence === 'low') {
-    // Leave canonical untouched. Mark broken so the founder sees it.
-    status = 'broken';
-  }
-
-  update.verification_status = status;
-  if (autoCorrected) update.auto_corrected = true;
 
   const { error: updateError } = await admin
     .from('legal_references')
@@ -275,11 +225,11 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
     before_status: (ref as any).verification_status ?? null,
     after_status: status,
     before_url: (ref as any).source_url ?? null,
-    after_url: (update.source_url as string | undefined) ?? (verdict.current_url ?? null),
+    after_url: verdict.current_url ?? null,
     changes: {
-      auto_corrected: autoCorrected,
-      law_name_changed: !!update.law_name,
-      url_changed: !!update.source_url,
+      auto_corrected: false,
+      law_name_changed: false,
+      url_changed: false,
     },
     cost_gbp: 0.005 * 0.79,
     perplexity_response: verdict as any,

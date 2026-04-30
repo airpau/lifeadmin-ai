@@ -56,6 +56,7 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
+import { CITATION_PERMISSIVE_STATUSES } from '@/lib/legal-refs-statuses';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -181,7 +182,7 @@ export async function GET(request: NextRequest) {
   const { data: allRefs } = await sb
     .from('legal_references')
     .select('category, law_name, section, summary, verification_status')
-    .in('verification_status', ['current', 'updated', 'needs_review']);
+    .in('verification_status', CITATION_PERMISSIVE_STATUSES as unknown as string[]);
 
   if (!allRefs || allRefs.length === 0) {
     return NextResponse.json({ ok: false, error: 'No refs in legal_references' }, { status: 500 });
