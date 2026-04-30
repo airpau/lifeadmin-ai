@@ -138,11 +138,18 @@ describe('postFlightSanitise (one-shot)', () => {
     assert.equal(r.warnings.length, 1);
   });
 
-  it('strips a fully-fabricated act with no fresh substitute', () => {
-    const text = 'Per the Made Up Act 2024 you owe nothing.';
-    const r = postFlightSanitise(text, FRESH_POOL);
+  it('strips a wrong-year fabrication when the pool lacks a same-name match', () => {
+    // Pool below has no "Equality Act" entry, so "Equality Act 2010" is rogue.
+    // No other entry shares a token with "equality", so substitute is null
+    // and the citation gets stripped.
+    const NARROW_POOL = [
+      { law_name: 'Consumer Credit Act 1974', category: 'finance' },
+      { law_name: 'EU 261/2004 (UK261)', category: 'travel' },
+    ];
+    const text = 'See the Equality Act 2010 for protected characteristics.';
+    const r = postFlightSanitise(text, NARROW_POOL);
     assert.equal(r.rogue.length, 1);
     assert.match(r.warnings[0], /Removed unverified citation/);
-    assert.doesNotMatch(r.sanitised, /Made Up Act/);
+    assert.doesNotMatch(r.sanitised, /Equality Act/);
   });
 });
