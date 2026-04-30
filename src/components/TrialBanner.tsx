@@ -16,7 +16,7 @@ export default function TrialBanner({ daysLeft, trialExpired }: TrialBannerProps
       <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <XCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
-          <p className="text-sm text-white">Your Pro trial has ended. Subscribe to continue using Pro features.</p>
+          <p className="text-sm text-slate-900">Your Pro trial has ended. Subscribe to continue using Pro features.</p>
         </div>
         <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold text-xs px-3 py-1.5 rounded-lg transition-all whitespace-nowrap">
           Subscribe Now
@@ -30,7 +30,7 @@ export default function TrialBanner({ daysLeft, trialExpired }: TrialBannerProps
       <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 mb-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0" />
-          <p className="text-sm text-white">Your Pro trial ends in <strong>{daysLeft}</strong> {daysLeft === 1 ? 'day' : 'days'} — subscribe now to keep your features</p>
+          <p className="text-sm text-slate-900">Your Pro trial ends in <strong>{daysLeft}</strong> {daysLeft === 1 ? 'day' : 'days'} — subscribe now to keep your features</p>
         </div>
         <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold text-xs px-3 py-1.5 rounded-lg transition-all whitespace-nowrap">
           Subscribe
@@ -43,9 +43,9 @@ export default function TrialBanner({ daysLeft, trialExpired }: TrialBannerProps
     <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl px-4 py-3 mb-6 flex items-center justify-between gap-3">
       <div className="flex items-center gap-3">
         <Clock className="h-5 w-5 text-mint-400 flex-shrink-0" />
-        <p className="text-sm text-slate-300">You&apos;re on a free Pro trial — <strong className="text-white">{daysLeft} days remaining</strong></p>
+        <p className="text-sm text-slate-700">You&apos;re on a free Pro trial — <strong className="text-slate-900">{daysLeft} days remaining</strong></p>
       </div>
-      <Link href="/pricing" className="bg-navy-800 hover:bg-navy-700 text-white text-xs px-3 py-1.5 rounded-lg transition-all whitespace-nowrap">
+      <Link href="/pricing" className="bg-slate-100 hover:bg-slate-100 text-slate-900 text-xs px-3 py-1.5 rounded-lg transition-all whitespace-nowrap">
         Subscribe to keep Pro
       </Link>
     </div>

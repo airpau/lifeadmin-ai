@@ -12,6 +12,8 @@ const NAV_LINKS = [
   { href: '/blog', label: 'Blog' },
   { href: '/deals', label: 'Deals' },
   { href: '/pricing', label: 'Pricing' },
+  { href: '/for-business', label: 'For Business' },
+  { href: '/docs/paybacker-assistant', label: 'Paybacker Assistant' },
 ];
 
 export default function PublicNavbar() {

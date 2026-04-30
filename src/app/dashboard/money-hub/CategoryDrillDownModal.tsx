@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Search, ChevronDown, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
 import { fmtNum } from '@/lib/format';
-import { cleanMerchantName } from '@/lib/merchant-utils';
+import { cleanMerchantName, isGarbageMerchantName, pickRawMerchantSource } from '@/lib/merchant-utils';
 
 interface CategoryDrillDownModalProps {
   isOpen: boolean;
@@ -39,17 +39,20 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
   const [recatDropdown, setRecatDropdown] = useState<string | null>(null);
   const [merchantRecatIdx, setMerchantRecatIdx] = useState<number | null>(null);
   const [recatLoading, setRecatLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && (category || incomeType || searchQuery)) {
       loadData();
     } else {
       setData(null);
+      setErrorMsg(null);
     }
   }, [isOpen, category, incomeType, searchQuery, selectedMonth]);
 
   const loadData = async () => {
     setLoading(true);
+    setErrorMsg(null);
     try {
       const monthParam = selectedMonth ? `&month=${selectedMonth}` : '';
       let typeParam = '';
@@ -58,10 +61,16 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
       else typeParam = `category=${encodeURIComponent(category!)}`;
 
       const res = await fetch(`/api/money-hub/transactions?${typeParam}${monthParam}`);
+      if (!res.ok) {
+        setErrorMsg('Could not load transactions — please retry.');
+        setData(null);
+        return;
+      }
       const d = await res.json();
       setData(d);
     } catch {
-      // silent
+      setErrorMsg('Could not load transactions — please retry.');
+      setData(null);
     }
     setLoading(false);
   };
@@ -75,32 +84,43 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
     mode: 'incomeType' | 'category' = 'category',
   ) => {
     setRecatLoading(true);
+    setErrorMsg(null);
     try {
       const body: Record<string, any> =
         mode === 'incomeType'
           ? { merchantPattern, newIncomeType: newValue, applyToAll: true }
           : { merchantPattern, newCategory: newValue, applyToAll: true };
 
-      await fetch('/api/money-hub/recategorise', {
+      const recatRes = await fetch('/api/money-hub/recategorise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      if (!recatRes.ok) {
+        setErrorMsg('Recategorisation failed — please retry.');
+        setRecatLoading(false);
+        return;
+      }
 
-      // Teach the learning engine with the matching signal
+      // Teach the learning engine with the matching signal. A failure here
+      // means the change applied to existing transactions but won't stick
+      // for future ones — surface that so the user can retry.
       const learnBody: Record<string, any> = { rawName: merchantPattern };
       if (mode === 'incomeType') learnBody.incomeType = newValue;
       else learnBody.category = newValue;
-      await fetch('/api/learn', {
+      const learnRes = await fetch('/api/learn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(learnBody),
       });
+      if (!learnRes.ok) {
+        setErrorMsg('Applied for now, but the rule didn\'t save — future transactions may revert.');
+      }
 
       await loadData();
       onRecategorised();
     } catch {
-      // silent
+      setErrorMsg('Recategorisation failed — please retry.');
     }
     setRecatDropdown(null);
     setMerchantRecatIdx(null);
@@ -121,8 +141,8 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
     if (isIncomeMode) {
       return (
         <>
-          <div className="p-2 border-b border-navy-700 bg-navy-900/50">
-            <p className="text-xs text-slate-400 font-medium">Change income type</p>
+          <div className="p-2 border-b border-slate-200 bg-white">
+            <p className="text-xs text-slate-500 font-medium">Change income type</p>
           </div>
           <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
             {INCOME_TYPES.map(t => (
@@ -130,14 +150,14 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                 key={`inc-${t}`}
                 onClick={() => handleRecategorise(pattern, t, 'incomeType')}
                 disabled={recatLoading}
-                className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
+                className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
               >
                 {t.replace(/_/g, ' ')}
               </button>
             ))}
           </div>
-          <div className="p-2 border-t border-b border-navy-700 bg-navy-900/50">
-            <p className="text-xs text-slate-400 font-medium">Not income — tag as</p>
+          <div className="p-2 border-t border-b border-slate-200 bg-white">
+            <p className="text-xs text-slate-500 font-medium">Not income — tag as</p>
           </div>
           <div className="max-h-32 overflow-y-auto custom-scrollbar p-1">
             {NON_INCOME_CATEGORIES.map(c => (
@@ -145,7 +165,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                 key={`nic-${c}`}
                 onClick={() => handleRecategorise(pattern, c, 'category')}
                 disabled={recatLoading}
-                className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
+                className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
               >
                 {c.replace(/_/g, ' ')}
               </button>
@@ -156,8 +176,8 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
     }
     return (
       <>
-        <div className="p-2 border-b border-navy-700 bg-navy-900/50">
-          <p className="text-xs text-slate-400 font-medium">Reassign to...</p>
+        <div className="p-2 border-b border-slate-200 bg-white">
+          <p className="text-xs text-slate-500 font-medium">Reassign to...</p>
         </div>
         <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
           {ALL_CATEGORIES.map(c => (
@@ -165,7 +185,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
               key={c}
               onClick={() => handleRecategorise(pattern, c, 'category')}
               disabled={recatLoading}
-              className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
+              className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
             >
               {c.replace(/_/g, ' ')}
             </button>
@@ -176,27 +196,40 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-navy-950/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-navy-900 border border-navy-700 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-navy-800">
-          <div>
-            <h2 className="text-xl font-bold text-white capitalize">{displayTitle}</h2>
-            <p className="text-slate-400 text-sm mt-1">{selectedMonth ? new Date(`${selectedMonth}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) : 'This month'}</p>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-white backdrop-blur-sm" onClick={onClose} />
+      <div className="relative card w-full max-w-2xl max-h-[92vh] sm:max-h-[85vh] flex flex-col shadow-2xl rounded-b-none sm:rounded-2xl">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200">
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold text-slate-900 capitalize truncate">{displayTitle}</h2>
+            <p className="text-slate-500 text-sm mt-1">{selectedMonth ? new Date(`${selectedMonth}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) : 'This month'}</p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white p-2 rounded-lg hover:bg-navy-800 transition-colors">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-slate-500 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 transition-colors"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+        {errorMsg && (
+          <div className="mx-6 mt-4 bg-red-500/10 border border-red-500/20 text-red-500 text-sm rounded-lg px-3 py-2 flex items-start justify-between gap-3">
+            <span>{errorMsg}</span>
+            <button onClick={() => setErrorMsg(null)} className="text-red-400 hover:text-red-500 shrink-0" aria-label="Dismiss error">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
             </div>
           ) : !data || data.transactions.length === 0 ? (
             <div className="text-center py-20">
-              <p className="text-slate-400">No transactions found for this category.</p>
+              <p className="text-slate-500">No transactions found for this category.</p>
             </div>
           ) : (
             <div className="space-y-8">
@@ -205,18 +238,18 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-4 font-semibold">Top Merchants</p>
                 <div className="space-y-3">
                   {data.merchants.slice(0, 5).map((m, idx) => (
-                    <div key={m.merchant} className="bg-navy-950/50 rounded-xl p-4 flex items-center justify-between group relative">
+                    <div key={m.merchant} className="bg-white rounded-xl p-4 flex items-center justify-between group relative">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-navy-800 flex items-center justify-center border border-navy-700 font-bold text-white uppercase">
+                        <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 font-bold text-slate-900 uppercase">
                           {m.merchant.substring(0, 2)}
                         </div>
                         <div>
-                          <p className="text-white font-medium capitalize">{m.merchant}</p>
+                          <p className="text-slate-900 font-medium capitalize">{m.merchant}</p>
                           <p className="text-slate-500 text-xs">{m.count} transactions</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-white font-bold">£{fmtNum(m.total)}</p>
+                        <p className="text-slate-900 font-bold">£{fmtNum(m.total)}</p>
                         <button 
                           onClick={() => setMerchantRecatIdx(merchantRecatIdx === idx ? null : idx)}
                           className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
@@ -226,7 +259,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                       </div>
                       
                       {merchantRecatIdx === idx && (
-                        <div className="absolute top-16 right-0 w-56 bg-navy-800 border border-navy-700 rounded-xl shadow-xl z-20 overflow-hidden">
+                        <div className="absolute top-16 right-0 w-56 max-w-[calc(100vw-2.5rem)] bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
                           {renderReassignOptions(m.merchant)}
                         </div>
                       )}
@@ -238,18 +271,18 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
               {/* INDIVIDUAL TRANSACTIONS */}
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-4 font-semibold">Transactions</p>
-                <div className="bg-navy-950/20 rounded-xl border border-navy-800 divide-y divide-navy-800">
+                <div className="bg-white rounded-xl border border-slate-200 divide-y divide-navy-800">
                   {data.transactions.map((txn, idx) => {
                     const dt = new Date(txn.timestamp);
                     const isRecatOpen = recatDropdown === txn.id;
                     return (
                       <div key={txn.id || idx} className="p-4 flex items-center justify-between group relative">
                         <div>
-                          <p className="text-white text-sm font-medium">{txn.merchant_name || txn.description}</p>
+                          <p className="text-slate-900 text-sm font-medium">{isGarbageMerchantName(txn.merchant_name) ? (txn.description || txn.merchant_name) : txn.merchant_name}</p>
                           <p className="text-slate-500 text-xs mt-0.5">{dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-white text-sm font-medium">£{fmtNum(Math.abs(txn.amount))}</p>
+                          <p className="text-slate-900 text-sm font-medium">£{fmtNum(Math.abs(txn.amount))}</p>
                           <button 
                             onClick={() => setRecatDropdown(isRecatOpen ? null : txn.id)}
                             className="text-[10px] text-slate-500 hover:text-purple-400 transition-colors"
@@ -259,7 +292,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                         </div>
 
                         {isRecatOpen && (
-                          <div className="absolute top-12 right-4 w-56 bg-navy-800 border border-navy-700 rounded-xl shadow-xl z-20 overflow-hidden">
+                          <div className="absolute top-12 right-4 w-56 max-w-[calc(100vw-2.5rem)] bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
                             {renderReassignOptions(cleanMerchantName(txn.description || ''))}
                           </div>
                         )}

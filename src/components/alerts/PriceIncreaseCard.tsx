@@ -46,75 +46,146 @@ export default function PriceIncreaseCard({ alert, onDismiss, onAction }: PriceI
 
   const complaintUrl = `/dashboard/complaints?new=1&company=${encodeURIComponent(cleanName)}&issue=${encodeURIComponent(`price increase from £${alert.old_amount.toFixed(2)} to £${alert.new_amount.toFixed(2)}`)}&alertId=${alert.id}`;
 
-  const dealCategory = ENERGY_KEYWORDS.some(kw => cleanName.toLowerCase().includes(kw)) ? 'energy' : 
-                       BROADBAND_MOBILE_KEYWORDS.some(kw => cleanName.toLowerCase().includes(kw)) ? 'broadband' : 
+  const dealCategory = ENERGY_KEYWORDS.some(kw => cleanName.toLowerCase().includes(kw)) ? 'energy' :
+                       BROADBAND_MOBILE_KEYWORDS.some(kw => cleanName.toLowerCase().includes(kw)) ? 'broadband' :
                        cleanName.toLowerCase().includes('card') ? 'credit' : 'all';
 
   return (
-    <div className="bg-navy-900 border border-red-500/20 rounded-xl p-5">
+    <div className="card" style={{ borderColor: '#FCA5A5' }}>
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center">
-            <TrendingUp className="h-5 w-5 text-red-400" />
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              background: 'var(--rose-wash)',
+              borderRadius: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--rose-deep)',
+              flexShrink: 0,
+            }}
+          >
+            <TrendingUp className="h-5 w-5" />
           </div>
           <div>
-            <h3 className="text-white font-semibold text-sm">{cleanName}</h3>
-            <p className="text-slate-500 text-xs">
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+              {cleanName}
+            </h3>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-3)' }}>
               {new Date(alert.old_date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
               {' '}&rarr;{' '}
               {new Date(alert.new_date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
             </p>
           </div>
         </div>
-        <span className="bg-red-500/10 text-red-400 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap">
+        <span
+          className="pill red"
+          style={{ padding: '4px 10px', fontSize: 11, whiteSpace: 'nowrap' }}
+        >
           +{alert.increase_pct}%
         </span>
       </div>
 
       {/* Price comparison */}
       <div className="flex items-center gap-3 mb-3">
-        <div className="bg-navy-800 rounded-lg px-4 py-2 text-center flex-1">
-          <p className="text-slate-500 text-xs mb-0.5">Was</p>
-          <p className="text-white font-semibold">&pound;{alert.old_amount.toFixed(2)}</p>
+        <div
+          style={{
+            background: 'var(--paper)',
+            border: '1px solid var(--divider)',
+            borderRadius: 10,
+            padding: '8px 14px',
+            textAlign: 'center',
+            flex: 1,
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-3)' }}>Was</p>
+          <p style={{ margin: '2px 0 0', fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+            &pound;{alert.old_amount.toFixed(2)}
+          </p>
         </div>
-        <ArrowRight className="h-4 w-4 text-red-400 flex-shrink-0" />
-        <div className="bg-red-500/5 border border-red-500/20 rounded-lg px-4 py-2 text-center flex-1">
-          <p className="text-slate-500 text-xs mb-0.5">Now</p>
-          <p className="text-red-400 font-bold">&pound;{alert.new_amount.toFixed(2)}</p>
+        <ArrowRight className="h-4 w-4" style={{ color: 'var(--rose-deep)', flexShrink: 0 }} />
+        <div
+          style={{
+            background: 'var(--rose-wash)',
+            border: '1px solid #FCA5A5',
+            borderRadius: 10,
+            padding: '8px 14px',
+            textAlign: 'center',
+            flex: 1,
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-3)' }}>Now</p>
+          <p style={{ margin: '2px 0 0', fontSize: 15, fontWeight: 800, color: 'var(--rose-deep)' }}>
+            &pound;{alert.new_amount.toFixed(2)}
+          </p>
         </div>
       </div>
 
       {/* Annual impact */}
-      <p className="text-sm text-slate-300 mb-3">
-        This costs you <span className="text-amber-400 font-semibold">&pound;{alert.annual_impact.toFixed(2)} more per year</span>
+      <p style={{ fontSize: 13, color: 'var(--text-2)', margin: '0 0 10px' }}>
+        This costs you{' '}
+        <span style={{ color: 'var(--orange-deep)', fontWeight: 700 }}>
+          &pound;{alert.annual_impact.toFixed(2)} more per year
+        </span>
       </p>
 
       {/* Regulation hint */}
       {regulationHint && (
-        <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg px-3 py-2 mb-4">
-          <p className="text-blue-400 text-xs">{regulationHint}</p>
+        <div
+          style={{
+            background: 'var(--blue-wash)',
+            border: '1px solid #BFDBFE',
+            borderRadius: 10,
+            padding: '8px 12px',
+            marginBottom: 12,
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--blue-deep)' }}>{regulationHint}</p>
         </div>
       )}
 
       {/* Actions */}
-      <div className="flex items-center gap-2 pt-3 border-t border-navy-700/50 flex-wrap">
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          paddingTop: 12,
+          borderTop: '1px solid var(--divider-2)',
+          flexWrap: 'wrap',
+        }}
+      >
         <Link
           href={complaintUrl}
           onClick={() => onAction(alert.id)}
-          className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
+          className="cta-danger"
+          style={{ fontSize: 12, padding: '7px 11px' }}
         >
-          <FileText className="h-3 w-3" /> Start Dispute
+          <FileText className="h-3 w-3" /> Start dispute
         </Link>
         <Link
           href={`/dashboard/deals?category=${dealCategory}`}
-          className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
+          className="cta-ghost"
+          style={{ fontSize: 12, padding: '7px 11px' }}
         >
-          <ArrowRight className="h-3 w-3" /> Find Better Deal
+          <ArrowRight className="h-3 w-3" /> Find better deal
         </Link>
-        <div className="flex-1" />
+        <div style={{ flex: 1 }} />
         <button
           onClick={() => onDismiss(alert.id)}
-          className="text-slate-500 hover:text-slate-400 text-xs transition-all px-2 py-1.5 flex items-center gap-1"
+          style={{
+            background: 'transparent',
+            border: 0,
+            color: 'var(--text-3)',
+            fontSize: 11.5,
+            cursor: 'pointer',
+            padding: '6px 8px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
         >
           <X className="h-3 w-3" /> Dismiss
         </button>

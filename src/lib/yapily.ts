@@ -12,12 +12,18 @@ const YAPILY_BASE_URL = 'https://api.yapily.com';
 // ── Auth Helper ──
 
 function getAuthHeader(): string {
-  const uuid = process.env.YAPILY_APPLICATION_UUID;
-  const secret = process.env.YAPILY_APPLICATION_SECRET;
+  // Trim defensively. Vercel's env-store can preserve trailing
+  // whitespace / newlines that the dashboard's "paste value" UI
+  // sometimes adds, and we hit a "Basic <base64-of-uuid:>" 401 on
+  // 2026-04-28 because an env-add via piped echo wrote an empty
+  // string. Trimming makes both classes of bug fail loudly here
+  // rather than silently producing a malformed Authorization header.
+  const uuid = process.env.YAPILY_APPLICATION_UUID?.trim();
+  const secret = process.env.YAPILY_APPLICATION_SECRET?.trim();
 
   if (!uuid || !secret) {
     throw new Error(
-      'YAPILY_APPLICATION_UUID and YAPILY_APPLICATION_SECRET must be set'
+      'YAPILY_APPLICATION_UUID and YAPILY_APPLICATION_SECRET must be set (and non-empty after trim)'
     );
   }
 
@@ -82,21 +88,33 @@ export async function getInstitutions(): Promise<YapilyInstitution[]> {
 /**
  * Creates an account authorisation request.
  * Returns the authorisation URL the user must be redirected to.
+ *
+ * Optional `featureScope` lists the Yapily feature scopes we want
+ * included in the consent — used by the Upcoming Payments feature
+ * to request ACCOUNT_SCHEDULED_PAYMENTS / ACCOUNT_PERIODIC_PAYMENTS /
+ * ACCOUNT_DIRECT_DEBITS alongside the default account + transactions.
+ * Omitted for existing bank links so their consent shape doesn't
+ * change on rerun.
  */
 export async function createAccountAuthorisation(
   institutionId: string,
   callbackUrl: string,
-  userUuid: string
+  userUuid: string,
+  featureScope?: readonly string[]
 ): Promise<YapilyAuthResponse['data']> {
+  const body: Record<string, unknown> = {
+    applicationUserId: userUuid,
+    institutionId,
+    callback: callbackUrl,
+  };
+  if (featureScope && featureScope.length) {
+    body.featureScope = Array.from(featureScope);
+  }
   const response = await yapilyRequest<YapilyAuthResponse>(
     '/account-auth-requests',
     {
       method: 'POST',
-      body: JSON.stringify({
-        applicationUserId: userUuid,
-        institutionId,
-        callback: callbackUrl,
-      }),
+      body: JSON.stringify(body),
     }
   );
 
@@ -162,7 +180,9 @@ export async function getTransactions(
 
 /**
  * Reconfirms (extends) an existing consent for the UK 90-day renewal cycle.
- * Uses PUT /account-auth-requests/{consentId}.
+ * Uses PUT /account-auth-requests/{consentId}. Preserves the consent-id
+ * and consent-token — no new connection row should be created on our
+ * side after a successful reconfirm.
  */
 export async function reconfirmConsent(
   consentId: string
@@ -175,4 +195,41 @@ export async function reconfirmConsent(
   );
 
   return response.data;
+}
+
+/**
+ * Returns the metadata for an account-auth-request (consent), including
+ * its current status. Used during reconnect flows to decide whether to
+ * call reconfirmConsent (status AWAITING_RE_AUTHORIZATION) or to start
+ * a fresh authorisation (status REVOKED / EXPIRED / failed).
+ */
+export async function getConsent(
+  consentId: string
+): Promise<YapilyAuthResponse['data']> {
+  const response = await yapilyRequest<YapilyAuthResponse>(
+    `/account-auth-requests/${consentId}`,
+  );
+  return response.data;
+}
+
+// ── Account-identity helpers ──
+
+/**
+ * Build a stable display name from a Yapily account. Prefers the
+ * account-holder name (e.g. "PREMIER REWARD BLACK"), falls back to
+ * nickname, then to the account type, then to a generic label.
+ *
+ * Splitting this out so the callback and the initial-sync — both of
+ * which need a human-readable label per account — produce identical
+ * strings; if these drift the user sees the same account named two
+ * different things across the UI.
+ */
+export function buildYapilyAccountDisplayName(account: import('@/types/yapily').YapilyAccount): string {
+  return (
+    account.accountNames?.[0]?.name ||
+    account.nickname ||
+    account.accountType ||
+    account.type ||
+    'Account'
+  );
 }

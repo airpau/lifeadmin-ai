@@ -16,6 +16,16 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // Savings goals are part of the Essential+ Budgets/Goals bundle.
+  const { getEffectiveTier } = await import('@/lib/plan-limits');
+  const tier = await getEffectiveTier(user.id);
+  if (tier === 'free') {
+    return NextResponse.json(
+      { error: 'Savings goals are available on the Essential plan.', upgradeRequired: true, tier },
+      { status: 403 },
+    );
+  }
+
   const body = await request.json();
   const { data, error } = await supabase.from('money_hub_savings_goals').insert({
     user_id: user.id, goal_name: body.goal_name,

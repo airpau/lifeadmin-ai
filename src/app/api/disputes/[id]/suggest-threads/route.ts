@@ -60,14 +60,18 @@ export async function GET(
     });
   }
 
-  const allCandidates: Array<{ candidate: Awaited<ReturnType<typeof findThreadCandidates>>[number]; connectionId: string }> = [];
+  const allCandidates: Array<{
+    candidate: Awaited<ReturnType<typeof findThreadCandidates>>[number];
+    connectionId: string;
+    inboxEmail: string;
+  }> = [];
   const errors: Array<{ connectionId: string; message: string }> = [];
 
   for (const conn of connections as EmailConnection[]) {
     try {
       const cands = await findThreadCandidates(conn, dispute, 5);
       for (const c of cands) {
-        allCandidates.push({ candidate: c, connectionId: conn.id });
+        allCandidates.push({ candidate: c, connectionId: conn.id, inboxEmail: conn.email_address });
       }
     } catch (err) {
       errors.push({
@@ -77,27 +81,88 @@ export async function GET(
     }
   }
 
-  // Sort across connections and take top 3
+  // Sort across connections by confidence then recency.
   allCandidates.sort(
     (a, b) =>
       b.candidate.confidence - a.candidate.confidence ||
       b.candidate.latestDate.getTime() - a.candidate.latestDate.getTime(),
   );
 
+  // Dedupe identical emails surfacing in multiple inboxes — same root
+  // cause as /api/email/browse-disputable. Gmail filter-forwarding can
+  // copy a reply between two Workspace inboxes; without this dedupe
+  // the picker shows confusing duplicate rows. Collapse by sender +
+  // subject + minute-rounded latestDate; keep the highest-confidence /
+  // most-message version, and merge the inboxes-list so the UI can
+  // tell the user which inboxes hold a copy.
+  type Out = {
+    connectionId: string;
+    inboxEmail: string;
+    inInboxes: string[];
+    provider: string;
+    threadId: string;
+    subject: string;
+    senderAddress: string;
+    senderDomain: string;
+    latestDate: string;
+    messageCount: number;
+    snippet: string;
+    confidence: number;
+    reason?: string;
+  };
+  const merged = new Map<string, Out>();
+  for (const a of allCandidates) {
+    const key = [
+      (a.candidate.senderAddress || '').toLowerCase(),
+      (a.candidate.subject || '').toLowerCase().trim(),
+      Math.floor(a.candidate.latestDate.getTime() / 60_000),
+    ].join('|');
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, {
+        connectionId: a.connectionId,
+        inboxEmail: a.inboxEmail,
+        inInboxes: [a.inboxEmail],
+        provider: a.candidate.provider,
+        threadId: a.candidate.threadId,
+        subject: a.candidate.subject,
+        senderAddress: a.candidate.senderAddress,
+        senderDomain: a.candidate.senderDomain,
+        latestDate: a.candidate.latestDate.toISOString(),
+        messageCount: a.candidate.messageCount,
+        snippet: a.candidate.snippet,
+        confidence: a.candidate.confidence,
+        reason: a.candidate.reason,
+      });
+    } else {
+      if (!existing.inInboxes.includes(a.inboxEmail)) {
+        existing.inInboxes.push(a.inboxEmail);
+      }
+      // Promote if this copy has more messages OR higher confidence.
+      if (
+        a.candidate.messageCount > existing.messageCount ||
+        a.candidate.confidence > existing.confidence
+      ) {
+        existing.connectionId = a.connectionId;
+        existing.inboxEmail = a.inboxEmail;
+        existing.threadId = a.candidate.threadId;
+        existing.messageCount = a.candidate.messageCount;
+        existing.confidence = a.candidate.confidence;
+        existing.snippet = a.candidate.snippet;
+        existing.reason = a.candidate.reason;
+      }
+    }
+  }
+
+  const candidates = Array.from(merged.values())
+    .sort((a, b) =>
+      b.confidence - a.confidence ||
+      new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime(),
+    )
+    .slice(0, 5);
+
   return NextResponse.json({
-    candidates: allCandidates.slice(0, 3).map((a) => ({
-      connectionId: a.connectionId,
-      provider: a.candidate.provider,
-      threadId: a.candidate.threadId,
-      subject: a.candidate.subject,
-      senderAddress: a.candidate.senderAddress,
-      senderDomain: a.candidate.senderDomain,
-      latestDate: a.candidate.latestDate.toISOString(),
-      messageCount: a.candidate.messageCount,
-      snippet: a.candidate.snippet,
-      confidence: a.candidate.confidence,
-      reason: a.candidate.reason,
-    })),
+    candidates,
     errors: errors.length ? errors : undefined,
   });
 }

@@ -155,10 +155,24 @@ async function supabaseContextQuery(
   return null;
 }
 
-// Read-only Supabase access for business_log (separate function, explicit)
+// Read-only Supabase access for allowlisted tables. Strictly read-only — any SELECT
+// query against an allowlisted table is permitted; writes go through dedicated
+// per-table insert helpers below.
+const READ_ALLOWED_TABLES = [
+  "business_log",
+  "profiles",
+  "plan_downgrade_events",
+  "subscriptions_expiring_soon",
+  "upcoming_payments",
+  // New (added 2026-04-25 to give agents real signal):
+  "support_tickets",     // support-triager
+  "nps_responses",       // ux-auditor + support-triager
+  "tasks",               // feature-tester (compliance check on complaint letters)
+  "content_drafts",      // email-marketer (read existing drafts)
+];
+
 async function supabaseReadOnly(table: string, query: string): Promise<unknown> {
-  const allowedTables = ["business_log"];
-  if (!allowedTables.includes(table)) {
+  if (!READ_ALLOWED_TABLES.includes(table)) {
     throw new Error(`SECURITY: Read-only access denied for table: ${table}`);
   }
 
@@ -176,6 +190,136 @@ async function supabaseReadOnly(table: string, query: string): Promise<unknown> 
     throw new Error(`Supabase error: ${res.status} ${text}`);
   }
   return res.json();
+}
+
+// Append-only writes to business_log. No update, no delete. Sanitises inputs.
+async function supabaseInsertBusinessLog(row: {
+  category: string;
+  title: string;
+  content: string;
+  created_by: string;
+}): Promise<unknown> {
+  const { url, key } = getSupabaseCredentials();
+  const res = await fetch(`${url}/rest/v1/business_log`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(row),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase error: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+// Append-only writes to content_drafts. Only allows status='pending' (draft, not posted).
+// email-marketer uses this to queue drafts for founder approval. The agent CANNOT post,
+// approve, or modify existing drafts via this helper.
+async function supabaseInsertContentDraft(row: {
+  audience: string;
+  channel: string;
+  subject_line: string;
+  body_markdown: string;
+  cta_url: string | null;
+  cta_label: string | null;
+  recommended_send_window: string | null;
+  rationale: string;
+  created_by: string;
+}): Promise<unknown> {
+  const { url, key } = getSupabaseCredentials();
+  const res = await fetch(`${url}/rest/v1/content_drafts`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({
+      ...row,
+      status: "pending", // ALWAYS pending — never approved, never posted.
+      // Map our friendly fields onto the actual content_drafts schema. The schema uses
+      // {platform, content_type, caption, hashtags, asset_url} per the migration in
+      // CLAUDE.md, so we adapt here.
+      platform: row.channel,
+      content_type: "email",
+      caption: row.subject_line + "\n\n" + row.body_markdown,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase content_drafts error: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// External-service env vars (each tool fetches its own; never leak in errors)
+// ---------------------------------------------------------------------------
+
+function getGithubToken(): string {
+  const t = process.env.GITHUB_TOKEN || process.env.PAYBACKER_GITHUB_TOKEN;
+  if (!t) throw new Error("GITHUB_TOKEN env var not configured on Vercel");
+  return t;
+}
+const GITHUB_REPO = process.env.GITHUB_REPO || "airpau/lifeadmin-ai";
+
+function getPosthogCreds(): { apiKey: string; host: string; projectId: string } {
+  // Prefer POSTHOG_PERSONAL_API_KEY (capability: full read API) over project keys.
+  const apiKey =
+    process.env.POSTHOG_PERSONAL_API_KEY ||
+    process.env.POSTHOG_API_KEY ||
+    process.env.POSTHOG_PROJECT_API_KEY ||
+    "";
+  // PostHog API host. EU instance for Paybacker (per .env.local).
+  const host =
+    process.env.POSTHOG_HOST ||
+    process.env.NEXT_PUBLIC_POSTHOG_HOST ||
+    "https://eu.posthog.com";
+  // Project id is numeric (looked up via /api/projects/). Hardcoded fallback for ours.
+  const projectId = process.env.POSTHOG_PROJECT_ID || "145782";
+  if (!apiKey) throw new Error("POSTHOG_PERSONAL_API_KEY env var not configured");
+  return { apiKey, host, projectId };
+}
+
+function getVercelCreds(): { token: string; projectId: string; teamId: string | null } {
+  const token = process.env.VERCEL_TOKEN || "";
+  // Hardcoded defaults from .vercel/project.json so the only required env var is VERCEL_TOKEN.
+  const projectId = process.env.VERCEL_PROJECT_ID || "prj_BXE0Vi66KEwNqisNRnGjRtl35yXT";
+  const teamId = process.env.VERCEL_TEAM_ID || "team_SJyVnrkwVgA4RigQCvYWDOua";
+  if (!token) throw new Error("VERCEL_TOKEN env var not configured (create at vercel.com/account/tokens)");
+  return { token, projectId, teamId };
+}
+
+function getStripeKey(): string {
+  const k = process.env.STRIPE_SECRET_KEY || "";
+  if (!k) throw new Error("STRIPE_SECRET_KEY env var not configured");
+  return k;
+}
+
+// ---------------------------------------------------------------------------
+// Telegram-admin rate limit (separate from request rate limit)
+// Stricter — a leaked token mustn't be able to spam the founder.
+// ---------------------------------------------------------------------------
+
+const telegramAdminLimit = { count: 0, windowStart: 0 };
+const TELEGRAM_ADMIN_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const TELEGRAM_ADMIN_MAX = 10; // 10 admin pings per hour
+
+function checkTelegramAdminLimit(): boolean {
+  const now = Date.now();
+  if (now - telegramAdminLimit.windowStart > TELEGRAM_ADMIN_WINDOW_MS) {
+    telegramAdminLimit.windowStart = now;
+    telegramAdminLimit.count = 0;
+  }
+  if (telegramAdminLimit.count >= TELEGRAM_ADMIN_MAX) return false;
+  telegramAdminLimit.count++;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -499,6 +643,891 @@ function createPaybackerMcpServer(): McpServer {
     }
   );
 
+  // === STRUCTURED BUSINESS_LOG WRITES (append-only, drives the digest cron) ===
+
+  const ALLOWED_BUSINESS_LOG_CATEGORIES = [
+    "clean",
+    "info",
+    "finding",
+    "recommendation",
+    "alert",
+    "warn",
+    "critical",
+    "escalation",
+    "agent_governance",
+  ] as const;
+
+  server.tool(
+    "append_business_log",
+    "Insert a structured row into the business_log table. Used by managed agents at the end of every session — drives the agent-digest cron (07:00/12:30/19:00 UTC).",
+    {
+      category: z.enum(ALLOWED_BUSINESS_LOG_CATEGORIES),
+      title: z.string().min(1).max(200),
+      content: z.string().min(1).max(4000),
+      created_by: z.string().min(1).max(100),
+    },
+    async ({ category, title, content, created_by }) => {
+      // Sanitise created_by to alphanumeric+hyphens (no SQL/HTML/markdown injection vectors).
+      const safeCreatedBy = created_by.replace(/[^a-zA-Z0-9\-_ ]/g, "").slice(0, 100);
+      const row = await supabaseInsertBusinessLog({
+        category,
+        title: title.slice(0, 200),
+        content: content.slice(0, 4000),
+        created_by: safeCreatedBy || "unknown-agent",
+      });
+      const id = (Array.isArray(row) ? row[0] : row) as { id?: string } | null;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Inserted business_log row ${id?.id ?? "?"} (category=${category}).`,
+          },
+        ],
+      };
+    }
+  );
+
+  // === FINANCE SNAPSHOT (read-only aggregates, used by finance-analyst) ===
+
+  server.tool(
+    "get_finance_snapshot",
+    "Returns a structured snapshot of Paybacker financial state: paying users by tier, MRR/ARR, signups (7d/30d), active trials, conversions/expiries, plan downgrade events, expiring subscriptions, upcoming payments. Aggregates only — no per-user PII. Test accounts (test+%, googletest%, %@example.com) excluded.",
+    {
+      tier_prices_gbp: z
+        .object({
+          free: z.number().default(0),
+          plus: z.number().default(4.99),
+          pro: z.number().default(9.99),
+        })
+        .partial()
+        .optional()
+        .describe("Optional override for tier monthly prices in GBP. Defaults to canonical {free:0, plus:4.99, pro:9.99}."),
+    },
+    async ({ tier_prices_gbp }) => {
+      const tierPrices: Record<string, number> = {
+        free: 0,
+        plus: 4.99,
+        pro: 9.99,
+        ...(tier_prices_gbp ?? {}),
+      };
+
+      // Fetch only the columns we aggregate. No raw email returned in output.
+      const profilesRaw = (await supabaseReadOnly(
+        "profiles",
+        "select=email,subscription_tier,trial_ends_at,trial_converted_at,trial_expired_at,stripe_subscription_id,created_at&limit=10000"
+      )) as Array<{
+        email: string | null;
+        subscription_tier: string | null;
+        trial_ends_at: string | null;
+        trial_converted_at: string | null;
+        trial_expired_at: string | null;
+        stripe_subscription_id: string | null;
+        created_at: string | null;
+      }>;
+
+      function isTestEmail(email: string | null): boolean {
+        if (!email) return false;
+        const e = email.toLowerCase();
+        return e.startsWith("test+") || e.endsWith("@example.com") || e.startsWith("googletest");
+      }
+
+      const real = profilesRaw.filter((p) => !isTestEmail(p.email));
+      const now = Date.now();
+      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+      const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+      const tierCounts: Record<string, number> = {};
+      const unknownTiers: Record<string, number> = {};
+      let payingUsers = 0;
+      let mrrPence = 0;
+      let signups7d = 0;
+      let signups30d = 0;
+      let activeTrials = 0;
+      let conv7d = 0;
+      let conv30d = 0;
+      let exp7d = 0;
+      let exp30d = 0;
+
+      for (const p of real) {
+        const tier = (p.subscription_tier ?? "free").toLowerCase();
+        tierCounts[tier] = (tierCounts[tier] ?? 0) + 1;
+        if (!(tier in tierPrices)) unknownTiers[tier] = (unknownTiers[tier] ?? 0) + 1;
+        if (tier !== "free" && p.stripe_subscription_id) {
+          payingUsers += 1;
+          mrrPence += Math.round((tierPrices[tier] ?? 0) * 100);
+        }
+        if (p.created_at) {
+          const t = new Date(p.created_at).getTime();
+          if (t >= sevenDaysAgo) signups7d += 1;
+          if (t >= thirtyDaysAgo) signups30d += 1;
+        }
+        if (
+          p.trial_ends_at &&
+          new Date(p.trial_ends_at).getTime() > now &&
+          !p.trial_converted_at &&
+          !p.trial_expired_at
+        ) {
+          activeTrials += 1;
+        }
+        if (p.trial_converted_at) {
+          const t = new Date(p.trial_converted_at).getTime();
+          if (t >= sevenDaysAgo) conv7d += 1;
+          if (t >= thirtyDaysAgo) conv30d += 1;
+        }
+        if (p.trial_expired_at) {
+          const t = new Date(p.trial_expired_at).getTime();
+          if (t >= sevenDaysAgo) exp7d += 1;
+          if (t >= thirtyDaysAgo) exp30d += 1;
+        }
+      }
+
+      // Optional aggregate count tables — tolerant if a table doesn't exist on a branch.
+      let downgrades7d: number | string = "unavailable";
+      try {
+        const sevenIso = new Date(sevenDaysAgo).toISOString();
+        const rows = (await supabaseReadOnly(
+          "plan_downgrade_events",
+          `select=id&created_at=gte.${encodeURIComponent(sevenIso)}`
+        )) as unknown[];
+        downgrades7d = rows.length;
+      } catch {
+        // leave as 'unavailable'
+      }
+
+      let expiringSoon: number | string = "unavailable";
+      try {
+        const rows = (await supabaseReadOnly(
+          "subscriptions_expiring_soon",
+          "select=id"
+        )) as unknown[];
+        expiringSoon = rows.length;
+      } catch {
+        // leave as 'unavailable'
+      }
+
+      let upcoming7d: number | string = "unavailable";
+      try {
+        const sevenAhead = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const rows = (await supabaseReadOnly(
+          "upcoming_payments",
+          `select=id&due_date=lte.${encodeURIComponent(sevenAhead)}`
+        )) as unknown[];
+        upcoming7d = rows.length;
+      } catch {
+        // leave as 'unavailable'
+      }
+
+      const mrr = mrrPence / 100;
+      const arr = mrr * 12;
+
+      const snapshot = {
+        generated_at: new Date().toISOString(),
+        users: {
+          total_real: real.length,
+          test_users_excluded: profilesRaw.length - real.length,
+          tier_counts: tierCounts,
+          unknown_tiers_seen: unknownTiers,
+          paying_users: payingUsers,
+        },
+        revenue: {
+          mrr_gbp: Number(mrr.toFixed(2)),
+          arr_gbp: Number(arr.toFixed(2)),
+          tier_prices_gbp_used: tierPrices,
+        },
+        growth: {
+          signups_last_7d: signups7d,
+          signups_last_30d: signups30d,
+        },
+        trials: {
+          active: activeTrials,
+          conversions_7d: conv7d,
+          conversions_30d: conv30d,
+          expiries_7d: exp7d,
+          expiries_30d: exp30d,
+          conversion_rate_30d:
+            conv30d + exp30d === 0 ? null : Number((conv30d / (conv30d + exp30d)).toFixed(3)),
+        },
+        churn: { plan_downgrade_events_7d: downgrades7d },
+        contracts: {
+          subscriptions_expiring_soon: expiringSoon,
+          upcoming_payments_next_7d: upcoming7d,
+        },
+        notes: {
+          test_email_filter:
+            "Excluded emails matching: test+%, %@example.com, googletest%",
+          mrr_method:
+            "tier × stripe_subscription_id NOT NULL × tier_prices_gbp[tier]; unknown tiers contribute 0 until acknowledged.",
+        },
+      };
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(snapshot, null, 2) }],
+      };
+    }
+  );
+
+  // === GITHUB (read-only) ===
+
+  server.tool(
+    "list_github_issues",
+    `List open or recently-updated issues on the ${GITHUB_REPO} repo. Used by bug-triager to triage and reviewer to cross-reference. Returns up to 50 issues.`,
+    {
+      state: z.enum(["open", "closed", "all"]).default("open"),
+      limit: z.number().min(1).max(50).default(20),
+    },
+    async ({ state, limit }) => {
+      const t = getGithubToken();
+      const r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/issues?state=${state}&per_page=${limit}&sort=updated&direction=desc`,
+        { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github+json" } }
+      );
+      if (!r.ok) return { content: [{ type: "text" as const, text: `GitHub error: ${r.status}` }] };
+      const issues = (await r.json()) as Array<{
+        number: number; title: string; state: string; labels: Array<{ name: string }>;
+        user: { login: string }; updated_at: string; body: string | null; pull_request?: object;
+      }>;
+      // Filter out pull requests (GitHub returns PRs in /issues unless we filter)
+      const trimmed = issues
+        .filter((i) => !i.pull_request)
+        .map((i) => ({
+          number: i.number,
+          title: i.title,
+          state: i.state,
+          labels: i.labels.map((l) => l.name),
+          author: i.user.login,
+          updated_at: i.updated_at,
+          body_excerpt: (i.body || "").slice(0, 400),
+        }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(trimmed, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "list_open_prs",
+    `List open pull requests on ${GITHUB_REPO}. Used by reviewer to know what needs review.`,
+    { limit: z.number().min(1).max(30).default(10) },
+    async ({ limit }) => {
+      const t = getGithubToken();
+      const r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/pulls?state=open&per_page=${limit}&sort=updated&direction=desc`,
+        { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github+json" } }
+      );
+      if (!r.ok) return { content: [{ type: "text" as const, text: `GitHub error: ${r.status}` }] };
+      const prs = (await r.json()) as Array<{
+        number: number; title: string; user: { login: string }; updated_at: string;
+        draft: boolean; body: string | null;
+        head: { ref: string }; base: { ref: string };
+        labels: Array<{ name: string }>;
+        requested_reviewers: Array<{ login: string }>;
+      }>;
+      const trimmed = prs.map((p) => ({
+        number: p.number,
+        title: p.title,
+        author: p.user.login,
+        draft: p.draft,
+        head: p.head.ref,
+        base: p.base.ref,
+        labels: p.labels.map((l) => l.name),
+        reviewers_requested: p.requested_reviewers.map((r) => r.login),
+        updated_at: p.updated_at,
+        body_excerpt: (p.body || "").slice(0, 400),
+      }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(trimmed, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "get_pr_diff",
+    `Fetch the diff for a specific PR on ${GITHUB_REPO}. Capped at 50KB to avoid blowing the agent context. Used by reviewer to check for NEVER-VIOLATE rule violations (DROP TABLE, banned integrations, etc.).`,
+    { number: z.number().min(1).max(99999) },
+    async ({ number }) => {
+      const t = getGithubToken();
+      const r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/pulls/${number}`,
+        { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github.v3.diff" } }
+      );
+      if (!r.ok) return { content: [{ type: "text" as const, text: `GitHub error: ${r.status}` }] };
+      const diff = await r.text();
+      const truncated = diff.length > 50_000;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: diff.slice(0, 50_000) + (truncated ? `\n\n[…truncated; full diff is ${diff.length} chars]` : ""),
+          },
+        ],
+      };
+    }
+  );
+
+  // === SUPPORT TICKETS (read-only) ===
+
+  server.tool(
+    "list_open_support_tickets",
+    "List open/unresolved support tickets, sorted by created_at desc. Used by support-triager to categorise the queue and flag SLA risk.",
+    {
+      severity: z.enum(["low", "medium", "high", "urgent", "any"]).default("any"),
+      limit: z.number().min(1).max(50).default(20),
+    },
+    async ({ severity, limit }) => {
+      let q = `select=id,ticket_number,priority,status,subject,created_at,updated_at&status=neq.resolved&order=created_at.desc&limit=${limit}`;
+      if (severity !== "any") q += `&priority=eq.${severity}`;
+      const data = await supabaseReadOnly("support_tickets", q);
+      return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // === NPS (read-only) ===
+
+  server.tool(
+    "read_nps_responses",
+    "Read NPS responses (score + free-text feedback) from the last N days. Used by ux-auditor to surface recurring friction patterns and by support-triager to spot churn-risk users.",
+    { days: z.number().min(1).max(90).default(14), limit: z.number().min(1).max(100).default(30) },
+    async ({ days, limit }) => {
+      const since = new Date(Date.now() - days * 86400_000).toISOString();
+      const q = `select=id,user_id,score,feedback,created_at&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc&limit=${limit}`;
+      const data = await supabaseReadOnly("nps_responses", q);
+      return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // === COMPLAINT LETTERS (read-only — for compliance audit) ===
+
+  server.tool(
+    "inspect_recent_complaint_letters",
+    "Returns the most recent complaint letters generated by complaint_writer (last N rows from `tasks` where type='complaint_letter'). Used by feature-tester to verify each letter cites UK legislation (Consumer Rights Act 2015, etc.) — a critical compliance check.",
+    { limit: z.number().min(1).max(20).default(5) },
+    async ({ limit }) => {
+      const q = `select=id,user_id,output,created_at&type=eq.complaint_letter&order=created_at.desc&limit=${limit}`;
+      const data = await supabaseReadOnly("tasks", q);
+      // Truncate each output to 2KB to keep payload reasonable
+      const trimmed = (data as Array<{ output: string }>).map((row) => ({
+        ...row,
+        output: typeof row.output === "string" ? row.output.slice(0, 2000) : row.output,
+      }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(trimmed, null, 2) }] };
+    }
+  );
+
+  // === POSTHOG (read-only funnel data) ===
+
+  server.tool(
+    "get_posthog_funnel",
+    "Query a saved PostHog funnel by ID and return conversion stats for the last N days. Used by ux-auditor to find drop-off cliffs and by email-marketer to detect cohort opportunities.",
+    {
+      funnel_id: z.union([z.string(), z.number()]).describe("The PostHog funnel insight ID (numeric)."),
+      days: z.number().min(1).max(90).default(7),
+    },
+    async ({ funnel_id, days }) => {
+      const { apiKey, host, projectId } = getPosthogCreds();
+      const dateFrom = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+      const r = await fetch(
+        `${host}/api/projects/${projectId}/insights/${funnel_id}?date_from=${dateFrom}`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }
+      );
+      if (!r.ok) {
+        return { content: [{ type: "text" as const, text: `PostHog error: ${r.status} ${(await r.text()).slice(0, 200)}` }] };
+      }
+      const data = (await r.json()) as { result?: unknown; name?: string };
+      // Trim to summary — full funnel result can be huge
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ name: data.name, summary: data.result }, null, 2).slice(0, 8000),
+          },
+        ],
+      };
+    }
+  );
+
+  // === VERCEL (read-only deployment status) ===
+
+  server.tool(
+    "get_vercel_deployment_status",
+    "Returns the latest Vercel deployment for the project (state: READY/BUILDING/ERROR/CANCELED, target: production/preview, source: github sha). Used by alert-tester to flag failed builds and stale deployments.",
+    { limit: z.number().min(1).max(10).default(5) },
+    async ({ limit }) => {
+      const { token, projectId, teamId } = getVercelCreds();
+      const teamParam = teamId ? `&teamId=${teamId}` : "";
+      const r = await fetch(
+        `https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=${limit}${teamParam}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!r.ok) {
+        return { content: [{ type: "text" as const, text: `Vercel error: ${r.status}` }] };
+      }
+      const data = (await r.json()) as {
+        deployments: Array<{
+          uid: string; state: string; target: string | null; created: number;
+          url: string; meta?: { githubCommitSha?: string; githubCommitRef?: string };
+        }>;
+      };
+      const trimmed = data.deployments.map((d) => ({
+        uid: d.uid,
+        state: d.state,
+        target: d.target,
+        url: d.url,
+        commit_sha: d.meta?.githubCommitSha?.slice(0, 7),
+        commit_ref: d.meta?.githubCommitRef,
+        created_at: new Date(d.created).toISOString(),
+      }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(trimmed, null, 2) }] };
+    }
+  );
+
+  // === STRIPE (read-only webhook health) ===
+
+  server.tool(
+    "get_stripe_webhook_health",
+    "Returns recent Stripe webhook delivery events: success/failure counts and the last failed delivery (if any) over the past N hours. Used by alert-tester and finance-analyst to detect billing-pipeline breakage.",
+    { hours: z.number().min(1).max(168).default(24) },
+    async ({ hours }) => {
+      const k = getStripeKey();
+      const since = Math.floor((Date.now() - hours * 3600_000) / 1000);
+      const r = await fetch(
+        `https://api.stripe.com/v1/events?created[gte]=${since}&limit=100`,
+        { headers: { Authorization: `Bearer ${k}` } }
+      );
+      if (!r.ok) {
+        return { content: [{ type: "text" as const, text: `Stripe error: ${r.status}` }] };
+      }
+      const data = (await r.json()) as {
+        data: Array<{ id: string; type: string; created: number; pending_webhooks: number }>;
+      };
+      const total = data.data.length;
+      const stillPending = data.data.filter((e) => e.pending_webhooks > 0);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                window_hours: hours,
+                total_events: total,
+                events_with_pending_webhook: stillPending.length,
+                pending_examples: stillPending.slice(0, 5).map((e) => ({
+                  id: e.id, type: e.type, created: new Date(e.created * 1000).toISOString(),
+                })),
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  // === REPO READS (so Builder can read source before proposing a fix) ===
+
+  server.tool(
+    "read_repo_file",
+    `Read a file from ${GITHUB_REPO} at a specific git ref (branch/sha). Returns the file content (capped at 200KB). Used by Builder to inspect existing code before proposing a fix.`,
+    {
+      path: z.string().min(1).max(500).describe("Path within the repo, e.g. 'src/app/api/cron/support-agent/route.ts'."),
+      ref: z.string().max(100).default("master").describe("Branch or commit SHA. Defaults to 'master'."),
+    },
+    async ({ path, ref }) => {
+      const t = getGithubToken();
+      const r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`,
+        { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github.raw" } }
+      );
+      if (!r.ok) {
+        return { content: [{ type: "text" as const, text: `GitHub error reading ${path}@${ref}: ${r.status}` }] };
+      }
+      const text = await r.text();
+      const truncated = text.length > 200_000;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: text.slice(0, 200_000) + (truncated ? `\n\n[…truncated; full file is ${text.length} chars]` : ""),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "read_repo_dir",
+    `List files in a directory of ${GITHUB_REPO} at a specific git ref. Returns array of {name, type, path, size}. Used by Builder to discover related files before proposing a fix.`,
+    {
+      path: z.string().max(500).default("").describe("Directory path. Empty string = repo root."),
+      ref: z.string().max(100).default("master"),
+    },
+    async ({ path, ref }) => {
+      const t = getGithubToken();
+      const r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`,
+        { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github+json" } }
+      );
+      if (!r.ok) {
+        return { content: [{ type: "text" as const, text: `GitHub error listing ${path}@${ref}: ${r.status}` }] };
+      }
+      const items = (await r.json()) as Array<{ name: string; type: string; path: string; size: number }>;
+      const trimmed = items.map((i) => ({ name: i.name, type: i.type, path: i.path, size: i.size }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(trimmed, null, 2) }] };
+    }
+  );
+
+  // === BUILDER PROPOSAL (gated by founder approval before any code is written) ===
+
+  server.tool(
+    "propose_code_fix",
+    "Submit a code/database fix proposal for founder approval. Inserts a row in builder_proposals with the file changes, generates a one-time approval token, sends approve/reject URLs to the founder via email + Telegram. NO CODE IS WRITTEN until the founder clicks Approve. Returns the proposal_id and approval URL. Builder MUST use this — it cannot directly modify code, push commits, or open PRs without an approved proposal.",
+    {
+      ticket_id: z.string().uuid().nullable().optional().describe("UUID of the support_tickets row that triggered this fix (if any)."),
+      ticket_number: z.string().max(50).nullable().optional().describe("e.g. 'TKT-0042'."),
+      fix_type: z
+        .enum(["code_fix", "database_fix", "config_fix", "migration", "dependency_update", "docs_update", "other"])
+        .describe("What kind of fix."),
+      summary: z.string().min(10).max(500).describe("One-line summary of what the fix does. Becomes the PR title."),
+      rationale: z.string().max(4000).describe("Why this fix is correct. Reference the ticket / business_log row."),
+      proposed_files: z
+        .array(
+          z.object({
+            path: z.string().min(1).max(500).describe("Path within the repo, e.g. 'src/app/api/cron/support-agent/route.ts'."),
+            new_content: z.string().min(1).max(200_000).describe("Full new file content (NOT a diff). Use read_repo_file first to read the original."),
+          })
+        )
+        .min(1)
+        .max(10)
+        .describe("Array of files to write. Up to 10 files per proposal. NEVER include complaint_writer or riley-support-agent paths — those are CLAUDE.md hard-rule untouchable."),
+    },
+    async ({ ticket_id, ticket_number, fix_type, summary, rationale, proposed_files }) => {
+      // HARD RULE: refuse to propose changes to forbidden files.
+      const FORBIDDEN_PATHS = [
+        "src/lib/agents/complaints-agent.ts",
+        "src/app/api/complaints/generate/route.ts",
+      ];
+      const forbidden = proposed_files.find((f) =>
+        FORBIDDEN_PATHS.some((bad) => f.path.includes(bad)) || f.path.includes("complaints-agent.ts")
+      );
+      if (forbidden) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Refused: proposed file '${forbidden.path}' is on the CLAUDE.md never-modify list (complaint_writer / Riley source). Surface this as a recommendation in business_log instead — the founder must implement these manually.`,
+            },
+          ],
+        };
+      }
+
+      // Generate a 32-byte hex approval token.
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      const { url, key } = getSupabaseCredentials();
+
+      // Auto-compute iteration: previous proposals for this ticket + 1.
+      let iteration = 1;
+      if (ticket_id) {
+        try {
+          const priorRes = await fetch(
+            `${url}/rest/v1/builder_proposals?ticket_id=eq.${ticket_id}&select=iteration&order=iteration.desc&limit=1`,
+            { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+          );
+          if (priorRes.ok) {
+            const priors = (await priorRes.json()) as Array<{ iteration: number }>;
+            if (priors.length > 0) iteration = (priors[0].iteration ?? 0) + 1;
+          }
+        } catch {
+          // best-effort — default iteration=1 is safe
+        }
+      }
+
+      const insertRes = await fetch(`${url}/rest/v1/builder_proposals`, {
+        method: "POST",
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({
+          ticket_id: ticket_id ?? null,
+          ticket_number: ticket_number ?? null,
+          fix_type,
+          summary: summary.slice(0, 500),
+          rationale: rationale.slice(0, 4000),
+          proposed_files,
+          approval_token: token,
+          status: "pending_review",
+          iteration,
+        }),
+      });
+      if (!insertRes.ok) {
+        const t = await insertRes.text();
+        return { content: [{ type: "text" as const, text: `Failed to insert proposal: ${insertRes.status} ${t.slice(0, 200)}` }] };
+      }
+      const inserted = (await insertRes.json()) as Array<{ id: string }>;
+      const proposalId = inserted[0]?.id;
+
+      // Build approval URLs.
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://paybacker.co.uk";
+      const approveUrl = `${baseUrl}/api/builder/approve?token=${token}`;
+      const rejectUrl = `${baseUrl}/api/builder/reject?token=${token}`;
+
+      // Notify via Telegram (rate-limit-protected via the existing tool).
+      const tgToken = process.env.TELEGRAM_BOT_TOKEN;
+      const tgChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+      if (tgToken && tgChatId) {
+        const fileList = proposed_files.map((f) => `• ${f.path}`).join("\n");
+        const body = [
+          `🛠️ <b>Builder fix proposal — ${fix_type}</b>`,
+          `<i>Ticket: ${ticket_number ?? "(none)"}</i>`,
+          ``,
+          `<b>Summary:</b> ${summary}`,
+          ``,
+          `<b>Files to change (${proposed_files.length}):</b>`,
+          fileList,
+          ``,
+          `<b>Why:</b> ${rationale.slice(0, 500)}`,
+          ``,
+          `Expires in 24h. Choose:`,
+        ].join("\n").slice(0, 3500);
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: Number(tgChatId),
+            text: body,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: "✅ Approve & Open PR", url: approveUrl },
+                  { text: "❌ Reject", url: rejectUrl },
+                ],
+              ],
+            },
+          }),
+        }).catch(() => {});
+      }
+
+      // Notify via email if RESEND_API_KEY configured.
+      const resendKey = process.env.RESEND_API_KEY;
+      const founderEmail = process.env.FOUNDER_EMAIL || "aireypaul@googlemail.com";
+      if (resendKey && founderEmail) {
+        const filesHtml = proposed_files
+          .map((f) => `<li><code>${f.path}</code></li>`)
+          .join("");
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: process.env.RESEND_FROM_EMAIL || "Paybacker <noreply@paybacker.co.uk>",
+            to: [founderEmail],
+            subject: `🛠️ Builder fix proposal: ${summary.slice(0, 80)}`,
+            html: `<!doctype html><html><body style="font-family:system-ui,-apple-system,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#0B1220;line-height:1.55;">
+<h2 style="margin:0 0 12px;">Builder fix proposal — ${fix_type}</h2>
+<p><strong>Ticket:</strong> ${ticket_number ?? "(none)"}</p>
+<p><strong>Summary:</strong> ${summary}</p>
+<p><strong>Why:</strong></p>
+<blockquote style="border-left:3px solid #e5e7eb;padding-left:12px;margin:0 0 16px;color:#475569;">${rationale.slice(0, 1500).replace(/</g, "&lt;")}</blockquote>
+<p><strong>Files to change (${proposed_files.length}):</strong></p>
+<ul>${filesHtml}</ul>
+<p style="margin-top:24px;">
+  <a href="${approveUrl}" style="display:inline-block;padding:12px 20px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;margin-right:8px;">✅ Approve &amp; Open PR</a>
+  <a href="${rejectUrl}" style="display:inline-block;padding:12px 20px;background:#dc2626;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">❌ Reject</a>
+</p>
+<p style="font-size:12px;color:#6B7280;margin-top:24px;">Token expires in 24h. One-time use.</p>
+</body></html>`,
+          }),
+        }).catch(() => {});
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Proposal ${proposalId} submitted (status=pending_review). Founder notified via email + Telegram with one-click approve/reject. Token expires in 24h. Approve URL: ${approveUrl}`,
+          },
+        ],
+      };
+    }
+  );
+
+  // === EMAIL DRAFTS (read existing + insert new pending drafts) ===
+
+  server.tool(
+    "list_pending_content_drafts",
+    "Read pending content_drafts that are awaiting founder approval. Used by email-marketer to avoid drafting duplicates / when the queue is full.",
+    { limit: z.number().min(1).max(50).default(20) },
+    async ({ limit }) => {
+      const q = `select=id,platform,content_type,caption,status,scheduled_time,created_at&status=eq.pending&order=created_at.desc&limit=${limit}`;
+      const data = await supabaseReadOnly("content_drafts", q);
+      return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "insert_email_draft",
+    "Inserts a new lifecycle email draft into content_drafts with status='pending'. THE AGENT CANNOT POST OR APPROVE — only the founder approves drafts via the admin UI. All sends go through Resend after explicit founder approval. This tool is the email-marketer agent's ONLY write capability.",
+    {
+      audience: z.string().min(1).max(200).describe("Cohort filter, e.g. 'Free, signed up >30 days, 0 letters generated'"),
+      channel: z.enum(["email", "telegram", "in_app"]).default("email"),
+      subject_line: z.string().min(1).max(150),
+      body_markdown: z.string().min(20).max(8000),
+      cta_url: z.string().url().nullable().optional(),
+      cta_label: z.string().max(80).nullable().optional(),
+      recommended_send_window: z.string().max(120).nullable().optional().describe("ISO datetime range or human window like 'Tue-Thu 07:30 UTC'"),
+      rationale: z.string().min(10).max(500).describe("One-sentence why-this-now."),
+      created_by: z.string().min(1).max(100).default("email-marketer"),
+    },
+    async (args) => {
+      // Sanitise created_by to alphanumeric+hyphens
+      const safeCreatedBy = args.created_by.replace(/[^a-zA-Z0-9\-_ ]/g, "").slice(0, 100) || "email-marketer";
+      const inserted = await supabaseInsertContentDraft({
+        audience: args.audience,
+        channel: args.channel,
+        subject_line: args.subject_line,
+        body_markdown: args.body_markdown,
+        cta_url: args.cta_url ?? null,
+        cta_label: args.cta_label ?? null,
+        recommended_send_window: args.recommended_send_window ?? null,
+        rationale: args.rationale,
+        created_by: safeCreatedBy,
+      });
+      const id = (Array.isArray(inserted) ? inserted[0] : inserted) as { id?: string } | null;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Inserted draft ${id?.id ?? "?"} (status=pending). Founder approves via admin UI; this agent cannot send.`,
+          },
+        ],
+      };
+    }
+  );
+
+  // === TELEGRAM ADMIN PING (rate-limited, append-only mirror) ===
+
+  server.tool(
+    "post_to_telegram_admin",
+    "Sends a Telegram message to the founder admin chat. Reserved for things needing the founder's decision BEFORE the next digest cycle, or critical-severity events. Routine reporting goes to append_business_log. Hard-capped at 10 admin pings per hour.",
+    {
+      agent_name: z.string().min(1).max(100),
+      severity: z.enum(["info", "notice", "recommend", "warn", "critical"]),
+      title: z.string().min(1).max(200),
+      body: z.string().min(1).max(2000),
+      ask: z.string().max(500).optional(),
+    },
+    async ({ agent_name, severity, title, body, ask }) => {
+      // Hard rule: severity recommend/warn/critical require an explicit 'ask'.
+      if (["recommend", "warn", "critical"].includes(severity) && !ask?.trim()) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Refused: severity=${severity} requires a non-empty 'ask' field. Tell me what decision the founder needs to make.`,
+            },
+          ],
+        };
+      }
+
+      // Hard rate limit so a leaked bearer token can't spam the founder.
+      if (!checkTelegramAdminLimit()) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Refused: Telegram admin rate limit hit (${TELEGRAM_ADMIN_MAX}/hour). Write to business_log instead.`,
+            },
+          ],
+        };
+      }
+
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+      const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+      if (!token || !chatId) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Refused: TELEGRAM_BOT_TOKEN or TELEGRAM_FOUNDER_CHAT_ID env var not configured.",
+            },
+          ],
+        };
+      }
+
+      // Sanitise inputs for Telegram HTML mode.
+      function escapeHtml(input: string): string {
+        return input
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      const safeAgent = agent_name.replace(/[^a-zA-Z0-9\-_ ]/g, "").slice(0, 100);
+
+      const sevPrefix: Record<string, string> = {
+        info: "🟢",
+        notice: "🔵",
+        recommend: "🟡",
+        warn: "🟠",
+        critical: "🔴",
+      };
+      const lines = [
+        `${sevPrefix[severity] ?? "•"} <b>${escapeHtml(title)}</b>`,
+        `<i>${escapeHtml(safeAgent)} · ${severity} · ${timestamp()} UTC</i>`,
+        "",
+        escapeHtml(body),
+      ];
+      if (ask?.trim()) {
+        lines.push("");
+        lines.push(`<b>Ask:</b> ${escapeHtml(ask)}`);
+      }
+      const text = lines.join("\n").slice(0, 3800);
+
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: Number(chatId),
+          text,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }),
+      });
+      if (!tgRes.ok) {
+        const errText = await tgRes.text();
+        return {
+          content: [
+            { type: "text" as const, text: `Error sending Telegram: ${errText.slice(0, 200)}` },
+          ],
+        };
+      }
+
+      // Mirror to business_log so the digest still has a record.
+      try {
+        await supabaseInsertBusinessLog({
+          category: severity === "critical" || severity === "warn" ? severity : "escalation",
+          title: `[telegram-admin] ${title}`.slice(0, 200),
+          content: `${body}${ask ? `\n\nAsk: ${ask}` : ""}`.slice(0, 4000),
+          created_by: safeAgent,
+        });
+      } catch {
+        // Mirror failure shouldn't fail the Telegram send.
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Sent Telegram admin message (severity=${severity}) and mirrored to business_log.`,
+          },
+        ],
+      };
+    }
+  );
+
   return server;
 }
 
@@ -560,9 +1589,9 @@ export async function GET(req: NextRequest) {
       {
         status: "ok",
         server: "paybacker-mcp-server",
-        version: "2.0.0",
-        tools: 13,
-        note: "Social media tools disabled on public endpoint. Use local stdio server for posting.",
+        version: "2.2.0",
+        tools: 27,
+        note: "Real agent tools: GitHub (issues/PRs/diff), Vercel (deployments), Stripe (webhook health), PostHog (funnels), support_tickets/nps_responses/tasks reads, content_drafts insert (pending only). Social media tools disabled. post_to_telegram_admin rate-limited at 10/hour.",
       },
       {
         headers: {

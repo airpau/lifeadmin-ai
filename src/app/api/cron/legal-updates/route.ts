@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { authorizeAdminOrCron } from '@/lib/admin-auth';
 
 export const maxDuration = 300;
 
@@ -27,8 +28,15 @@ const KEY_STATUTES = [
   { name: 'Gas Act 1986', path: 'ukpga/1986/44' },
 ];
 
-// Regulator news/guidance pages to scan for recent changes
+// Regulator news/guidance pages to scan for recent changes.
+//
+// The full list of UK consumer-facing regulators that affect statutes
+// the engine cites. Coverage expansion landed 2026-04-28 to add FOS,
+// ICO, CMA, CAA, ORR, MaPS — previously only 4 of the 10 were monitored
+// and the docs/marketing claim "every UK statute, regulation, and
+// regulator code" wasn't structurally backed.
 const REGULATOR_SOURCES = [
+  // Existing four — kept verbatim.
   {
     name: 'Ofgem',
     category: 'energy',
@@ -52,6 +60,64 @@ const REGULATOR_SOURCES = [
     category: 'general',
     newsUrl: 'https://www.citizensadvice.org.uk/consumer/somethings-gone-wrong-with-a-purchase/making-a-complaint/',
     guidanceUrl: 'https://www.citizensadvice.org.uk/debt-and-money/',
+  },
+  // Added 2026-04-28 — coverage expansion.
+  {
+    // Financial Ombudsman Service: every FOS final decision creates a
+    // precedent that affects how regulated firms (insurers, banks,
+    // BNPL, motor finance) should treat similar disputes. The decision
+    // database is the upstream source of truth for sectors the FCA
+    // doesn't separately rule on.
+    name: 'Financial Ombudsman Service',
+    category: 'finance',
+    newsUrl: 'https://www.financial-ombudsman.org.uk/news-events/news',
+    guidanceUrl: 'https://www.financial-ombudsman.org.uk/decisions-database',
+  },
+  {
+    // ICO: UK GDPR / DPA 2018 enforcement. Subject Access Requests,
+    // data-breach claims, ICO fines on data controllers — all cited
+    // by the engine for general / data-handling disputes.
+    name: 'ICO',
+    category: 'general',
+    newsUrl: 'https://ico.org.uk/about-the-ico/media-centre/news-and-blogs/',
+    guidanceUrl: 'https://ico.org.uk/your-data-matters/',
+  },
+  {
+    // CMA: Competition and Markets Authority. DMCCA 2024 subscription-
+    // traps regime, drip pricing, fake reviews, mergers affecting
+    // consumer choice. Direct hits on the subscription / e-commerce
+    // sectors named in the strategy doc.
+    name: 'CMA',
+    category: 'general',
+    newsUrl: 'https://www.gov.uk/government/news?departments%5B%5D=competition-and-markets-authority',
+    guidanceUrl: 'https://www.gov.uk/government/collections/digital-markets-competition-and-consumers-act-2024',
+  },
+  {
+    // CAA: UK261 enforcement, package travel, ATOL. Travel sector
+    // grounding for the worked-example flight-delay use cases (Bott,
+    // AirHelp, Flightright).
+    name: 'CAA',
+    category: 'travel',
+    newsUrl: 'https://www.caa.co.uk/news/',
+    guidanceUrl: 'https://www.caa.co.uk/passengers/',
+  },
+  {
+    // ORR: Office of Rail and Road. Delay Repay (DR15), NRCoT,
+    // Conditions of Travel. Rail sector grounding (LNER, Avanti,
+    // GWR, Trainline).
+    name: 'ORR',
+    category: 'rail',
+    newsUrl: 'https://www.orr.gov.uk/about/news',
+    guidanceUrl: 'https://www.orr.gov.uk/rail/consumers',
+  },
+  {
+    // MaPS / Money & Pensions Service: government-backed money guidance,
+    // National Debtline. Debt sector grounding for StepChange / PayPlan
+    // / Tully use cases.
+    name: 'MaPS',
+    category: 'debt',
+    newsUrl: 'https://maps.org.uk/en/about-us/news',
+    guidanceUrl: 'https://www.moneyhelper.org.uk/en/money-troubles',
   },
 ];
 
@@ -90,9 +156,9 @@ interface Change {
  * 6. Sends Telegram summary to founder
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorizeAdminOrCron(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason ?? 'Unauthorized' }, { status: auth.status });
   }
 
   const supabase = getAdmin();
@@ -264,10 +330,11 @@ export async function GET(request: NextRequest) {
 
   await supabase.from('business_log').insert(logEntry);
 
-  // ── 5. Telegram alert ────────────────────────────────────────────────────────
+  // ── 5. Telegram + email alert ───────────────────────────────────────────────
   if (summary.changesDetected > 0 || summary.errors > 0) {
     const telegramMsg = buildTelegramMessage(summary, detectedChanges);
     await sendTelegram(telegramMsg);
+    await sendFounderEmailDigest(summary, detectedChanges);
   }
 
   console.log('[legal-updates] Scan complete:', summary);
@@ -363,6 +430,24 @@ Return ONLY valid JSON:
             updated_at: new Date().toISOString(),
           })
           .eq('id', ref.id);
+
+        // Fan out the statute.updated B2B webhook event. Best-effort
+        // (delivery outcome lands in b2b_webhook_deliveries; failures
+        // never block the cron). The /for-business/docs §7 webhook
+        // contract documents this firing.
+        try {
+          const { publishStatuteUpdated } = await import('@/lib/b2b/webhook-publisher');
+          await publishStatuteUpdated({
+            category: ref.category ?? 'general',
+            law_name: ref.law_name,
+            change_summary: result.change_explanation,
+            effective_date: null,
+            source_url: change.sourceUrl,
+            ref_id: ref.id,
+          });
+        } catch (whErr) {
+          console.warn('[legal-updates] statute.updated webhook publish failed', whErr instanceof Error ? whErr.message : whErr);
+        }
 
         await supabase.from('legal_update_queue').insert({
           legal_reference_id: ref.id,
@@ -528,6 +613,21 @@ If you cannot identify specific material changes to any stored reference, set fo
             updated_at: new Date().toISOString(),
           })
           .eq('id', ref.id);
+
+        // Fan out statute.updated to B2B webhook subscribers.
+        try {
+          const { publishStatuteUpdated } = await import('@/lib/b2b/webhook-publisher');
+          await publishStatuteUpdated({
+            category: ref.category ?? 'general',
+            law_name: ref.law_name,
+            change_summary: result.change_summary,
+            effective_date: null,
+            source_url: sourceUrl,
+            ref_id: ref.id,
+          });
+        } catch (whErr) {
+          console.warn('[legal-updates] statute.updated webhook publish failed', whErr instanceof Error ? whErr.message : whErr);
+        }
 
         summary.autoApplied++;
         detectedChanges.push({
@@ -717,4 +817,60 @@ async function sendTelegram(text: string) {
 
 function delay(ms: number) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+async function sendFounderEmailDigest(
+  summary: { statutesChecked: number; regulatorsChecked: number; changesDetected: number; autoApplied: number; queued: number; errors: number },
+  changes: Array<{ law: string; change: string; confidence: string; action: string }>,
+) {
+  try {
+    if (!process.env.RESEND_API_KEY) return;
+    const { resend, FROM_EMAIL } = await import('@/lib/resend');
+    const founder = process.env.FOUNDER_EMAIL || 'aireypaul@googlemail.com';
+    const date = new Date().toISOString().slice(0, 10);
+    const items = changes
+      .map(
+        c => `<li style="margin-bottom:6px;"><strong>${escapeHtmlSafe(c.law)}</strong> — ${escapeHtmlSafe(c.change)} <em style="color:#64748b;">(${escapeHtmlSafe(c.confidence)} · ${escapeHtmlSafe(c.action)})</em></li>`,
+      )
+      .join('');
+    const errorBadge = summary.errors > 0
+      ? `<p style="background:#fef2f2;border-left:3px solid #b91c1c;padding:10px 14px;color:#991b1b;border-radius:6px;">${summary.errors} check(s) failed — investigate in /dashboard/admin/legal-refs.</p>`
+      : '';
+    const queuedBadge = summary.queued > 0
+      ? `<p style="background:#fefce8;border-left:3px solid #ca8a04;padding:10px 14px;color:#854d0e;border-radius:6px;"><strong>${summary.queued}</strong> change(s) queued for your review at <a href="https://paybacker.co.uk/dashboard/admin/legal-updates">/dashboard/admin/legal-updates</a>.</p>`
+      : '';
+    const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:640px;margin:auto;color:#0f172a;">
+        <h2 style="margin:0 0 6px;">Legal updates digest · ${date}</h2>
+        <p style="color:#475569;margin:0 0 18px;">Daily scan of UK statutes + regulator pages.</p>
+        <table style="border-collapse:collapse;font-size:14px;margin:0 0 18px;">
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Statutes checked</td><td><strong>${summary.statutesChecked}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Regulators checked</td><td><strong>${summary.regulatorsChecked}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Changes detected</td><td><strong>${summary.changesDetected}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Auto-applied</td><td><strong>${summary.autoApplied}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Queued for review</td><td><strong>${summary.queued}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Errors</td><td><strong>${summary.errors}</strong></td></tr>
+        </table>
+        ${queuedBadge}
+        ${errorBadge}
+        ${items ? `<h3 style="margin:18px 0 8px;">What changed</h3><ul style="margin:0 0 18px;padding-left:20px;">${items}</ul>` : ''}
+        <p style="font-size:13px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:12px;">paybacker.co.uk · automated digest from /api/cron/legal-updates</p>
+      </div>`;
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: founder,
+      subject: `📚 Legal digest · ${summary.changesDetected} changes${summary.errors > 0 ? ` · ${summary.errors} errors` : ''}`,
+      html,
+    });
+  } catch (e: any) {
+    console.error('[legal-updates] founder email failed:', e?.message);
+  }
+}
+
+function escapeHtmlSafe(s: string): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

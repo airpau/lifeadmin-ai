@@ -70,14 +70,27 @@ export async function GET(request: NextRequest) {
 
       if (alreadySent) continue;
 
-      // Get user info
+      // Get user info + tier in one round trip — renewal reminders are
+      // an Essential+ feature (Free users see "upgrade to get reminded"
+      // on the subscriptions page, they don't get the email itself).
       const { data: user } = await supabase
         .from('profiles')
-        .select('email, full_name, first_name')
+        .select('email, full_name, first_name, subscription_tier, subscription_status, trial_ends_at, trial_converted_at, trial_expired_at')
         .eq('id', userId)
         .single();
 
       if (!user?.email) continue;
+
+      // Tier gate. Mirrors getEffectiveTier in plan-limits.ts so a user
+      // on Free with no active onboarding trial gets skipped. Trusts
+      // subscription_tier directly per the "demotion is webhook-driven"
+      // rule (CLAUDE.md).
+      const trialActive = !!user.trial_ends_at
+        && new Date(user.trial_ends_at) > new Date()
+        && !user.trial_converted_at
+        && !user.trial_expired_at;
+      const effectiveTier = trialActive ? 'pro' : (user.subscription_tier || 'free');
+      if (effectiveTier === 'free') continue;
 
       // Global daily email rate limit
       const rateCheck = await canSendEmail(supabase, userId, 'renewal_reminder');

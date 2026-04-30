@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AI_LETTER_DISCLAIMER } from '@/lib/legal-disclaimer';
+import { checkCitations, type CitationCheckResult } from './citation-guarantee';
 
 // Lazy singleton — defer construction to first call so Next.js build-time
 // page-data collection doesn't throw when ANTHROPIC_API_KEY is absent in
@@ -56,7 +57,7 @@ IMPORTANT: Only cite legislation that is DIRECTLY relevant to the specific indus
 - DO NOT use section headings, bold headers, or CAPS LOCK headings like "WHY THIS IS INADEQUATE" or "MY LEGAL RIGHTS". These make the letter feel robotic and AI-generated. Instead, use natural paragraph transitions
 - DO NOT use bullet points or numbered lists in the letter body. Write in continuous prose with clear paragraphs
 - The letter should feel like a well-written personal email or formal letter, not a legal brief
-- Formal UK letter format: date, addressee, subject line (the subject line can be bold/caps, but nothing else)
+- Formal UK letter format: sender details (top-right), then date, then addressee, then subject line, THEN the salutation, THEN body. The subject line uses "Re:" prefix (NOT "Subject:") and is placed BEFORE "Dear …" — never after. Keep subject lines under 12 words. Do NOT include the subject line as a separate paragraph after "Dear Sir or Madam," — that breaks UK letter convention.
 - State facts chronologically in natural paragraphs
 - Weave legal references naturally into sentences (e.g. "Under the Consumer Rights Act 2015, I am entitled to..." NOT a separate "LEGAL BASIS" section)
 - State the specific remedy required and set a 14-day deadline
@@ -66,13 +67,92 @@ IMPORTANT: Only cite legislation that is DIRECTLY relevant to the specific indus
 - Only use [YOUR NAME], [YOUR ADDRESS], [YOUR PHONE NUMBER], [YOUR EMAIL], [YOUR ACCOUNT NUMBER] as placeholders if the user has NOT provided those details
 - IMPORTANT: When the user provides feedback or revisions, replace ALL matching placeholder text with the real details. Never leave a [PLACEHOLDER] if the user has given you that information.
 
+## VOICE DIRECTION (overrides the writing rules above when set)
+
+The user prompt may include a "VOICE" instruction. There are two:
+
+### voice = consumer_to_merchant (default)
+Write a formal complaint LETTER FROM THE CONSUMER TO THE MERCHANT.
+Use first-person from the consumer's perspective: "I am writing to dispute…",
+"Under the Consumer Rights Act 2015 I am entitled to…". Address it to the
+merchant. Set a deadline. Name the regulator as the consumer's next step.
+This is the existing Paybacker consumer-app behaviour. All consumer
+call-sites get this voice; do NOT switch unless the user prompt says
+otherwise.
+
+### voice = business_to_customer
+Write the RESPONSE A REGULATED UK BUSINESS SENDS TO A CUSTOMER who
+has raised a dispute with them. Critical rules:
+- ADDRESSED TO THE CUSTOMER. Open "Dear <customerName>" or "Hi
+  <customerName>" depending on tone.
+- SECOND PERSON. Refer to the customer as "you" and "your". Refer to the
+  business as "we" and "our team". NEVER first-person from the customer
+  ("I am writing to dispute…").
+- ACKNOWLEDGE the dispute the customer has raised. Thank them for getting
+  in touch. Take it seriously.
+- EXPLAIN the UK consumer-law position calmly, citing the statute that
+  applies. Do not lecture; just lay out how the law sees the situation.
+- STATE WHAT THE BUSINESS WILL DO. If the customer is entitled to a
+  remedy under UK law, say the business will provide it (refund, repair,
+  rebooking, escalation to a senior handler, investigation timeline).
+  If the position is more nuanced, say what the business will investigate
+  and by when.
+- NAME THE REGULATOR AS THE CUSTOMER'S ESCALATION OPTION ("If you remain
+  unhappy after our final response, you can refer this to the Financial
+  Ombudsman Service / Ofgem's Energy Ombudsman / Ofcom / CISAS / etc.").
+  NOT as a threat — as a Consumer-Duty-compliant disclosure.
+- TIMELINES. FCA-regulated firms have an 8-week final-response window;
+  state that explicitly. Energy: SLC requires a deadlock letter or 8-week
+  position before Ombudsman referral. Mention the relevant clock.
+- NO COMPLAINT-LETTER OPENERS. Do not write "I am writing to dispute…"
+  — that's the wrong voice direction.
+- NO "[YOUR NAME]" / "[YOUR ADDRESS]" placeholders. The customer doesn't
+  fill those in; the business signs off as the team handling the case.
+- SIGN-OFF: "Kind regards, <Team Name>" or similar business sign-off,
+  NOT a personal name. The caller's CRM substitutes the actual team
+  name and contact details before sending.
+- The "letter" output field still contains the prose. The
+  agent_talking_points and customer_facing_response fields the B2B
+  layer extracts will reflect this voice automatically.
+
 ## JSON output format:
 Return ONLY a JSON object with these exact keys:
 - letter: the complete formal complaint letter as a string
 - legalReferences: array of specific act/section strings cited
 - estimatedSuccess: integer 0-100 based on strength of legal case (be honest — weak cases score 40-55, strong cases 70-85)
 - nextSteps: array of 3-4 concrete action strings if no response
-- escalationPath: string naming the specific ombudsman/regulator for this case`;
+- escalationPath: string naming the specific ombudsman/regulator for this case
+
+## CITATION COMPLETENESS — non-negotiable
+For unauthorised payments / subscription auto-renewals: cite Payment Services Regulations 2017 reg 76 AND Consumer Contracts Regs 2013 AND CRA 2015 s.62 AND CPRs 2008 reg 6.
+For Section 75 / credit-card disputes: cite CCA 1974 s.75.
+For energy back-billing: cite Ofgem SLC 21BA.
+For flight delay/cancellation: cite UK261.
+For broadband mid-contract rises: cite Ofcom GC C1.
+For statute-barred debt: cite Limitation Act 1980 s.5 AND CCA 1974 s.77/78.
+A single-citation letter on a multi-ground scenario is incorrect output. Use every applicable citation from the verified-refs list — do not pick "the strongest" and drop the others.
+
+## NON-LEGAL-ADVICE DISCLAIMER
+Paybacker assists consumers in drafting their own correspondence; we are not solicitors and the letter is not legal advice. Do NOT add a disclaimer paragraph inside the letter (the UI shows it separately). But your tone must remain that of a layperson asserting their own rights, not of a lawyer giving formal advice.`;
+
+/**
+ * Letter voice direction.
+ *
+ * - `consumer_to_merchant` (default): the consumer engine. Output is a
+ *   formal complaint letter written from the consumer to the merchant
+ *   they're disputing — the shape the Paybacker consumer app has used
+ *   in production for over a year. All existing call-sites get this
+ *   voice unchanged.
+ *
+ * - `business_to_customer`: the B2B engine path. Output is the response
+ *   a regulated UK business sends back to a customer who has raised a
+ *   dispute. Addressed to the customer (second person), names the
+ *   relevant statute and remedy, names the regulator only as the
+ *   customer's escalation option, signs off in business voice ("we /
+ *   our team") not personal voice. The B2B /v1/disputes route passes
+ *   this voice; nothing else should.
+ */
+export type LetterVoice = 'consumer_to_merchant' | 'business_to_customer';
 
 export interface ComplaintInput {
   companyName: string;
@@ -88,6 +168,34 @@ export interface ComplaintInput {
   billContext?: string;
   threadContext?: string; // full correspondence thread for ongoing disputes
   verifiedLegalRefs?: string; // injected from legal_references table
+  /**
+   * Voice direction. Defaults to 'consumer_to_merchant' — the consumer
+   * engine. B2B callers (src/lib/b2b/disputes.ts) pass
+   * 'business_to_customer' to get a response addressed to the customer.
+   */
+  voice?: LetterVoice;
+  /**
+   * Customer's display name when voice='business_to_customer'.
+   * Used in the salutation ("Dear <customerName>"). Ignored for
+   * 'consumer_to_merchant' voice (the consumer flow uses companyName
+   * as the addressee).
+   */
+  customerName?: string;
+}
+
+export interface CitationGuaranteeOutcome {
+  /** All required citations were present in the first pass. */
+  passed_first_pass: boolean;
+  /** Triggered scenario rule ids — for audit logs and weekly review. */
+  triggered_rule_ids: string[];
+  /** Required citations the FIRST pass missed (empty if first-pass passed). */
+  missing_after_first_pass: string[];
+  /** Required citations the RETRY also missed; we forced these into the output. */
+  forced_after_retry: string[];
+  /** True when the engine retried at least once. */
+  retried: boolean;
+  /** True when the final output had ALL required citations naturally (no forcing). */
+  final_passed: boolean;
 }
 
 export interface ComplaintOutput {
@@ -97,6 +205,13 @@ export interface ComplaintOutput {
   nextSteps: string[];
   escalationPath: string;
   usage?: { input_tokens: number; output_tokens: number };
+  /**
+   * Citation-guarantee audit. Persisted on agent_runs so we can
+   * surface a UI badge ("All required citations present" vs "We
+   * auto-added X citations — please verify before sending") and
+   * spot scenarios where the engine repeatedly needs forcing.
+   */
+  citationGuarantee?: CitationGuaranteeOutcome;
 }
 
 const COMPLAINT_MODEL = 'claude-sonnet-4-6';
@@ -128,12 +243,22 @@ export async function generateComplaintLetter(
 
   const letterTypeContext = input.letterType ? LETTER_TYPE_CONTEXT[input.letterType] || '' : '';
 
-  const userPrompt = `Generate a formal ${input.letterType === 'hmrc_tax_rebate' ? 'letter' : input.letterType === 'council_tax_band' ? 'challenge letter' : 'complaint letter'} for the following situation:
+  const voice: LetterVoice = input.voice ?? 'consumer_to_merchant';
+
+  const voiceBlock = voice === 'business_to_customer'
+    ? `VOICE: business_to_customer
+You are writing as a regulated UK business RESPONDING TO a customer who has raised a dispute with us. Address the response TO ${input.customerName ?? 'the customer'} (second person — "you", "your"). Refer to the business as "we" / "our team". The dispute concerns a transaction or interaction with ${input.companyName}. Do NOT write a complaint letter from the customer to ${input.companyName}; write the business's response back to the customer. Apply the business_to_customer voice rules from the system prompt.`
+    : `VOICE: consumer_to_merchant
+Write a formal complaint letter from the consumer to ${input.companyName}. Apply the standard consumer letter rules.`;
+
+  const userPrompt = `Generate a formal ${input.letterType === 'hmrc_tax_rebate' ? 'letter' : input.letterType === 'council_tax_band' ? 'challenge letter' : voice === 'business_to_customer' ? 'business response to a customer' : 'complaint letter'} for the following situation:
+
+${voiceBlock}
 
 ${letterTypeContext ? `LETTER TYPE CONTEXT: ${letterTypeContext}\n` : ''}
 Today's date (use this as the letter date): ${today}
-${input.letterType === 'hmrc_tax_rebate' ? 'Addressed to' : 'Company'}: ${input.companyName}
-Issue: ${issueDescription}
+${voice === 'business_to_customer' ? 'Customer raising the dispute' : input.letterType === 'hmrc_tax_rebate' ? 'Addressed to' : 'Company'}: ${voice === 'business_to_customer' ? (input.customerName ?? 'the customer') : input.companyName}
+${voice === 'business_to_customer' ? `Subject of the dispute (third party — not the addressee): ${input.companyName}\n` : ''}Issue: ${issueDescription}
 Desired Outcome: ${input.desiredOutcome}
 ${input.amount ? `Amount Involved: £${input.amount}` : ''}
 ${input.accountNumber ? `Account Number: ${input.accountNumber}` : ''}
@@ -153,45 +278,180 @@ CRITICAL INSTRUCTION — You MUST ONLY cite the legal references provided above.
 
 Return a JSON object only — no prose, no markdown fences. Keys: letter, legalReferences, estimatedSuccess, nextSteps, escalationPath.`;
 
-  const message = await anthropic.messages.create({
-    model: COMPLAINT_MODEL,
-    max_tokens: 4096,
-    system: COMPLAINTS_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: userPrompt,
-      },
-    ],
-  });
+  // First-pass generation.
+  let result = await runEngineCall(userPrompt);
+  let totalInputTokens = result.usage?.input_tokens ?? 0;
+  let totalOutputTokens = result.usage?.output_tokens ?? 0;
 
-  const content = message.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response type from Claude');
+  // Citation guarantee — deterministic post-validation. If the model
+  // missed any required citation for this scenario type, re-prompt
+  // ONCE with explicit instructions to add the missing references.
+  // See src/lib/agents/citation-guarantee.ts for the rule library.
+  const scenarioCtx = {
+    text: `${input.issueDescription} ${input.companyName} ${input.desiredOutcome}`.toLowerCase(),
+    letterType: input.letterType,
+  };
+  // Pass the letter body too — verification now requires the citation
+  // to appear in the prose, not just the legalReferences array. A
+  // statute that's only in metadata is a false-pass.
+  const firstCheck: CitationCheckResult = checkCitations(scenarioCtx, result.legalReferences, result.letter);
+
+  const guarantee: CitationGuaranteeOutcome = {
+    passed_first_pass: firstCheck.passed,
+    triggered_rule_ids: firstCheck.triggeredRuleIds,
+    missing_after_first_pass: firstCheck.missing.map((m) => m.label),
+    forced_after_retry: [],
+    retried: false,
+    final_passed: firstCheck.passed,
+  };
+
+  if (!firstCheck.passed && firstCheck.retryInstruction) {
+    console.log(
+      `[claude] citation-guarantee triggered retry — missing: ${firstCheck.missing.map((m) => m.label).join(', ')}`,
+    );
+    guarantee.retried = true;
+    // Append the explicit re-prompt and the previous draft so the
+    // model can rewrite rather than start from scratch.
+    const retryPrompt = `${userPrompt}${firstCheck.retryInstruction}\n\nYour previous draft (rewrite this, not from scratch):\n${result.letter}`;
+    const retried = await runEngineCall(retryPrompt);
+    totalInputTokens += retried.usage?.input_tokens ?? 0;
+    totalOutputTokens += retried.usage?.output_tokens ?? 0;
+
+    const recheck = checkCitations(scenarioCtx, retried.legalReferences, retried.letter);
+    if (recheck.passed) {
+      // Retry succeeded — use it.
+      result = retried;
+      guarantee.final_passed = true;
+    } else {
+      // Retry STILL missing required citations. Keep the retried draft
+      // (often improved even if not perfect) and force the missing
+      // citations into the legalReferences array so downstream consumers
+      // (audit logs, UI badges, B2B agent_talking_points) reflect them.
+      // Better to over-cite than under-cite — a missed CCR 2013 cite
+      // costs the user money; an over-cited one is harmless.
+      const forced = [...retried.legalReferences];
+      const forcedLabels: string[] = [];
+      for (const m of recheck.missing) {
+        if (!forced.some((c) => c.toLowerCase().includes(m.label.toLowerCase().split(' ')[0]))) {
+          forced.push(m.label);
+          forcedLabels.push(m.label);
+        }
+      }
+      result = { ...retried, legalReferences: forced };
+      guarantee.forced_after_retry = forcedLabels;
+      // We still consider final passed if forcing covered everything
+      // (which it does by construction). UI shows the banner because
+      // forced > 0 indicates user should verify the prose names them.
+      guarantee.final_passed = true;
+      console.warn(
+        `[claude] citation-guarantee retry STILL missing — forced citations: ${forcedLabels.join(', ')}`,
+      );
+    }
   }
-
-  // Parse JSON — strip markdown code fences if present
-  let raw = content.text.trim();
-  raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('Could not parse JSON from Claude response');
-  }
-
-  const result = JSON.parse(jsonMatch[0]);
-
-  // Disclaimer is shown on the web page UI only — not embedded in the letter text
-  // See complaints/page.tsx for the UI disclaimer display
 
   return {
-    letter: result.letter,
-    legalReferences: result.legalReferences || [],
-    estimatedSuccess: result.estimatedSuccess || 70,
-    nextSteps: result.nextSteps || [],
-    escalationPath: result.escalationPath || 'Contact relevant ombudsman',
-    usage: {
-      input_tokens: message.usage?.input_tokens || 0,
-      output_tokens: message.usage?.output_tokens || 0,
-    },
+    ...result,
+    usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens },
+    citationGuarantee: guarantee,
   };
+
+  /** Single Claude call → parsed engine output. */
+  async function runEngineCall(prompt: string): Promise<ComplaintOutput> {
+    const message = await anthropic.messages.create({
+      model: COMPLAINT_MODEL,
+      max_tokens: 4096,
+      system: COMPLAINTS_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = message.content[0];
+    if (content.type !== 'text') throw new Error('Unexpected response type from Claude');
+    let raw = content.text.trim();
+    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Could not parse JSON from Claude response');
+    const parsed = parseLenientJson(jsonMatch[0]);
+    return {
+      letter: parsed.letter,
+      legalReferences: parsed.legalReferences || [],
+      estimatedSuccess: parsed.estimatedSuccess || 70,
+      nextSteps: parsed.nextSteps || [],
+      escalationPath: parsed.escalationPath || 'Contact relevant ombudsman',
+      usage: {
+        input_tokens: message.usage?.input_tokens || 0,
+        output_tokens: message.usage?.output_tokens || 0,
+      },
+    };
+  }
+}
+
+/**
+ * Tolerant JSON.parse for Claude output.
+ *
+ * Claude routinely returns JSON where the `letter` string spans
+ * multiple lines with literal newlines (and the occasional unescaped
+ * tab or carriage return). Strict JSON.parse rejects those with
+ * "Expected ',' or '}' after property value..." — the exact error
+ * Paul hit clicking Draft reply on 2026-04-29.
+ *
+ * Fix: try strict parse first; on failure, walk the string and
+ * escape control characters that fall inside a string literal, then
+ * retry. Cheap, deterministic, no extra dependency.
+ */
+function parseLenientJson(raw: string): any {
+  try {
+    return JSON.parse(raw);
+  } catch (firstErr) {
+    try {
+      return JSON.parse(escapeControlCharsInStrings(raw));
+    } catch {
+      // Re-throw the original error — same message the caller has been
+      // logging in production, so existing alerts/logs still triage.
+      throw firstErr;
+    }
+  }
+}
+
+/**
+ * Escape \n, \r, \t and other ASCII control chars (<0x20) when they
+ * appear inside a string literal (i.e. between unescaped double
+ * quotes). Leaves whitespace OUTSIDE strings untouched so structural
+ * formatting stays valid.
+ */
+function escapeControlCharsInStrings(input: string): string {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (!inString) {
+      if (ch === '"') inString = true;
+      out += ch;
+      continue;
+    }
+    if (escaped) {
+      out += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      out += ch;
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = false;
+      out += ch;
+      continue;
+    }
+    const code = ch.charCodeAt(0);
+    if (ch === '\n') { out += '\\n'; continue; }
+    if (ch === '\r') { out += '\\r'; continue; }
+    if (ch === '\t') { out += '\\t'; continue; }
+    if (code < 0x20) {
+      out += '\\u' + code.toString(16).padStart(4, '0');
+      continue;
+    }
+    out += ch;
+  }
+  return out;
 }

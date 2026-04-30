@@ -71,17 +71,17 @@ export default function ChallengeCard({ challenge, mode, onStart, onAbandon, onC
     challenge.progressInfo?.message?.includes('mark as complete');
 
   return (
-    <div className={`bg-navy-900 border rounded-2xl p-5 transition-all ${
+    <div className={`bg-white border rounded-2xl p-5 transition-all ${
       mode === 'active' ? 'border-mint-400/30' :
       mode === 'completed' ? 'border-green-500/20' :
-      'border-navy-700/50 hover:border-navy-600/50'
+      'border-slate-200 hover:border-navy-600/50'
     }`}>
       {/* Header: icon + name + badge */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <span className="text-2xl">{challenge.icon || '🎯'}</span>
           <div>
-            <h3 className="text-white font-semibold text-sm leading-tight">{challenge.name}</h3>
+            <h3 className="text-slate-900 font-semibold text-sm leading-tight">{challenge.name}</h3>
             {challenge.difficulty && mode === 'available' && (
               <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded border mt-1 ${difficultyColors[challenge.difficulty]}`}>
                 {challenge.difficulty}
@@ -94,7 +94,7 @@ export default function ChallengeCard({ challenge, mode, onStart, onAbandon, onC
 
       {/* Description */}
       {challenge.description && (
-        <p className="text-slate-400 text-xs mb-3 leading-relaxed">{challenge.description}</p>
+        <p className="text-slate-500 text-xs mb-3 leading-relaxed">{challenge.description}</p>
       )}
 
       {/* Active spending challenge: progress bar */}
@@ -109,7 +109,7 @@ export default function ChallengeCard({ challenge, mode, onStart, onAbandon, onC
               </span>
             )}
           </div>
-          <div className="h-1.5 bg-navy-800 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 challenge.progressInfo?.status === 'failed' ? 'bg-red-400' : 'bg-mint-400'
@@ -165,7 +165,7 @@ export default function ChallengeCard({ challenge, mode, onStart, onAbandon, onC
           <button
             onClick={() => handleAction(() => onComplete(challenge.id))}
             disabled={loading}
-            className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-semibold px-4 py-2 rounded-lg text-xs transition-all flex items-center justify-center gap-1"
+            className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-slate-900 font-semibold px-4 py-2 rounded-lg text-xs transition-all flex items-center justify-center gap-1"
           >
             {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Check className="h-3 w-3" /> Mark Complete</>}
           </button>

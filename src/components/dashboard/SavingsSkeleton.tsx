@@ -16,10 +16,10 @@ export default function SavingsSkeleton() {
 
       <div className="space-y-2 mb-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="flex items-center justify-between bg-navy-950/30 rounded-lg px-4 py-3">
+          <div key={i} className="flex items-center justify-between bg-white rounded-lg px-4 py-3">
             <div className="min-w-0 flex-1 space-y-2">
               <div className="h-4 bg-slate-700 rounded w-1/3"></div>
-              <div className="h-3 bg-slate-800 rounded w-1/2"></div>
+              <div className="h-3 bg-slate-100 rounded w-1/2"></div>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0 ml-3">
               <div className="h-4 bg-green-500/20 rounded w-24"></div>

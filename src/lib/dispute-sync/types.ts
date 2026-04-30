@@ -30,6 +30,9 @@ export interface FetchedMessage {
   snippet: string;
   /** Plain-text body, HTML stripped, capped to 8000 chars. */
   body: string;
+  /** Deep-link to the message in the provider's web UI. Outlook/Graph
+   *  populates this; Gmail/IMAP leave it undefined. */
+  webLink?: string;
 }
 
 /**

@@ -5,6 +5,12 @@ export type PlanTier = 'free' | 'essential' | 'pro';
 export interface PlanLimits {
   complaintsPerMonth: number | null; // null = unlimited
   scanRunsPerMonth: number | null;
+  // null = unlimited. Enforced at the connect endpoints (truelayer/yapily/google/microsoft).
+  maxBanks: number | null;
+  maxEmails: number | null;
+  // Custom Account Spaces. Default "Everything" Space is always free; this
+  // caps user-created Spaces. Pro-only feature — free/essential get 1.
+  maxSpaces: number | null;
   /**
    * Max number of active dispute→email-thread links (Watchdog feature).
    * null = unlimited. A "link" is one row in dispute_watchdog_links with
@@ -16,30 +22,81 @@ export interface PlanLimits {
    * Free tier has no background sync (manual only) — represented by null.
    */
   watchdogSyncIntervalMinutes: number | null;
+  /**
+   * WhatsApp Pocket Agent — outbound + interactive WhatsApp via Twilio/Meta.
+   *
+   * Pro-only because every outbound template costs us £0.003-0.06 in Meta
+   * fees, while Telegram (still available on every tier) is free for us.
+   * Confirmed with Paul 2026-04-27.
+   *
+   * Trial Pro users (active onboarding trial) inherit this via getEffectiveTier.
+   */
+  whatsappPocketAgent: boolean;
   features: string[];
 }
 
+/**
+ * TIER MATRIX — confirmed with founder 2026-04-22.
+ *
+ *                               Free    Essential   Pro
+ * Bank connections              2       3           ∞
+ * Email connections             1       3           ∞
+ * AI letters / month            3       ∞           ∞
+ * Dispute-reply watchdog        30m auto (all tiers)
+ * Dispute thread links          ∞       ∞           ∞
+ * Renewal reminders             —       ✓           ✓
+ * AI cancellation emails        —       ✓           ✓
+ * Money Hub full categories     top 5   full        full
+ * Money Hub budgets / goals     —       ✓           ✓
+ * Money Hub top merchants       —       —           ✓
+ * Price-increase alerts         in-app  in-app+     in-app + email +
+ *                                       email       Telegram instant
+ * Export (CSV / PDF)            —       —           ✓
+ * Paybacker Assistant (MCP)     —       —           ✓
+ * Pocket Agent (Telegram)       ✓       ✓           ✓
+ * Priority support              —       —           ✓
+ *
+ * Rules for the system:
+ * 1. Paid tiers are NEVER auto-demoted. `/api/stripe/sync` promotes only.
+ *    Demotion is webhook-driven (customer.subscription.deleted).
+ * 2. No 14-day free Pro trial — the silent downgrade it caused was
+ *    producing worse UX than having no trial at all.
+ * 3. getEffectiveTier trusts `profile.subscription_tier` as source of truth.
+ *    Onboarding-trial override kept only where `trial_ends_at > now()`.
+ */
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
     complaintsPerMonth: 3,
     scanRunsPerMonth: 1, // one-time bank scan, email scan, opportunity scan
+    maxBanks: 2,
+    maxEmails: 1,
+    maxSpaces: 1,
     disputeThreadLinks: 1,
     watchdogSyncIntervalMinutes: null, // manual only
+    whatsappPocketAgent: false,
     features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan', 'watchdog_manual'],
   },
   essential: {
     complaintsPerMonth: null,
     scanRunsPerMonth: 4, // monthly re-scans (bank daily auto, email/opportunity monthly)
+    maxBanks: 3,
+    maxEmails: 3,
+    maxSpaces: 1,
     disputeThreadLinks: 5,
     watchdogSyncIntervalMinutes: 60,
-    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'watchdog_auto'],
+    whatsappPocketAgent: false,
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'budgets_goals', 'watchdog_auto'],
   },
   pro: {
     complaintsPerMonth: null,
     scanRunsPerMonth: null, // unlimited everything
+    maxBanks: null,
+    maxEmails: null,
+    maxSpaces: null,
     disputeThreadLinks: null,
     watchdogSyncIntervalMinutes: 30,
-    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support', 'pocket_agent', 'watchdog_auto', 'watchdog_telegram_instant'],
+    whatsappPocketAgent: true,
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'budgets_goals', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support', 'pocket_agent', 'watchdog_auto', 'watchdog_telegram_instant', 'top_merchants', 'export', 'mcp', 'price_alert_telegram', 'whatsapp_pocket_agent'],
   },
 };
 
@@ -69,29 +126,24 @@ export async function checkUsageLimit(
 ): Promise<UsageCheckResult> {
   const admin = getAdmin();
 
-  // Fetch user's current tier and Stripe subscription info
+  // Fetch user's current tier (and any active onboarding trial window).
+  // getEffectiveTier handles the trial override so we use the same source
+  // of truth here without duplicating logic.
   const { data: profile } = await admin
     .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
+    .select('subscription_tier, trial_ends_at, trial_converted_at, trial_expired_at')
     .eq('id', userId)
     .single();
 
-  const tier = (profile?.subscription_tier as PlanTier) ?? 'free';
+  const storedTier = (profile?.subscription_tier as PlanTier) ?? 'free';
+  const onboardingTrialActive = !!profile?.trial_ends_at
+    && new Date(profile.trial_ends_at) > new Date()
+    && !profile?.trial_converted_at
+    && !profile?.trial_expired_at;
 
-  // Verify paid tier has an active Stripe subscription or founding member trial
-  const isPaid = tier !== 'free';
-  const hasActiveStripe = profile?.stripe_subscription_id &&
-    ['active', 'trialing'].includes(profile?.subscription_status ?? '');
-
-  // Founding member trial: tier != free, status = trialing, no Stripe, valid trial_ends_at
-  const isFoundingTrial = isPaid && !profile?.stripe_subscription_id &&
-    profile?.subscription_status === 'trialing' &&
-    profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
-
-  const effectiveTier: PlanTier = (isPaid && !hasActiveStripe && !isFoundingTrial) ? 'free' : tier;
-  if (isPaid && !hasActiveStripe && !isFoundingTrial) {
-    console.warn(`[plan-limits] User ${userId} has tier=${tier} but no active Stripe subscription. Treating as free.`);
-  }
+  // Trial grants pro. Otherwise trust the stored tier verbatim —
+  // demotion is webhook-driven (see /api/stripe/webhooks).
+  const effectiveTier: PlanTier = onboardingTrialActive ? 'pro' : storedTier;
 
   const limits = PLAN_LIMITS[effectiveTier];
 
@@ -141,26 +193,58 @@ export async function incrementUsage(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the user's effective plan tier, applying the same
- * Stripe/founding-member logic as checkUsageLimit().
+ * Resolve the user's effective plan tier.
+ *
+ * Per CLAUDE.md (TIER MATRIX rule 1): paid tiers are NEVER auto-demoted.
+ * Demotion is webhook-driven — `customer.subscription.deleted` clears
+ * `subscription_tier` to 'free'. Until that webhook fires, the stored
+ * tier is the source of truth, matching how `checkUsageLimit()` treats it.
+ *
+ * The previous version silently downgraded any paid user without an
+ * active Stripe subscription_id back to 'free', which produced the
+ * contradictory dashboard state where the sidebar (reading
+ * profile.subscription_tier directly) showed "Pro Plan" while every
+ * banner / quota check via getEffectiveTier() showed "free tier
+ * allows X". Now both paths agree.
+ *
+ * Single override: an active onboarding trial flips the user to 'pro'
+ * for the trial window — same logic as checkUsageLimit().
  */
 export async function getEffectiveTier(userId: string): Promise<PlanTier> {
   const admin = getAdmin();
   const { data: profile } = await admin
     .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
+    .select('subscription_tier, trial_ends_at, trial_converted_at, trial_expired_at')
     .eq('id', userId)
     .single();
 
-  const tier = (profile?.subscription_tier as PlanTier) ?? 'free';
-  const isPaid = tier !== 'free';
-  const hasActiveStripe = profile?.stripe_subscription_id &&
-    ['active', 'trialing'].includes(profile?.subscription_status ?? '');
-  const isFoundingTrial = isPaid && !profile?.stripe_subscription_id &&
-    profile?.subscription_status === 'trialing' &&
-    profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
+  const storedTier = (profile?.subscription_tier as PlanTier) ?? 'free';
 
-  return (isPaid && !hasActiveStripe && !isFoundingTrial) ? 'free' : tier;
+  const onboardingTrialActive = !!profile?.trial_ends_at
+    && new Date(profile.trial_ends_at) > new Date()
+    && !profile?.trial_converted_at
+    && !profile?.trial_expired_at;
+
+  return onboardingTrialActive ? 'pro' : storedTier;
+}
+
+/**
+ * Whether this user can use the WhatsApp Pocket Agent right now.
+ *
+ * Reads `getEffectiveTier` (Stripe + onboarding-trial aware) and returns
+ * true when the resulting tier has `whatsappPocketAgent: true`. Used by:
+ *   - /api/whatsapp/opt-in       (block link-up for non-Pro)
+ *   - /api/whatsapp/webhook      (auto-reply non-Pro inbound with upgrade)
+ *   - /api/cron/whatsapp-alerts  (filter outbound recipients)
+ *
+ * (Two PRs landed this function back-to-back — once via the prior
+ *  WhatsApp gating commit and again via #340. The duplicate broke the
+ *  Turbopack build with "the name `canUseWhatsApp` is defined multiple
+ *  times". This is the surviving definition.)
+ */
+export async function canUseWhatsApp(userId: string): Promise<boolean> {
+  const tier = await getEffectiveTier(userId);
+  return PLAN_LIMITS[tier].whatsappPocketAgent === true;
 }
 
 /**

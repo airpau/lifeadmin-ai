@@ -14,16 +14,22 @@ const INCOME_LABELS: Record<string, { label: string; icon: string; color: string
   rental_direct: { label: 'Rental Income', icon: '🏠', color: '#f59e0b' },
   investment: { label: 'Investments', icon: '📈', color: '#06b6d4' },
   refund: { label: 'Refunds', icon: '💸', color: '#10b981' },
-  loan_repayment: { label: 'Loan Repayment', icon: '🏦', color: '#ef4444' },
+  // Both loan-shaped income types render with the clearer "Loan Credit" label
+  // — the underlying types stay distinct in the database so we can analyse
+  // drawdowns vs third-party repayments later, but the user-facing copy is
+  // unambiguous that this is money coming INTO the account from a loan.
+  loan_repayment: { label: 'Loan Credit', icon: '🏦', color: '#ef4444' },
   gift: { label: 'Gifts', icon: '🎁', color: '#ec4899' },
-  credit_loan: { label: 'Credit / Loan', icon: '🏦', color: '#ef4444' },
+  credit_loan: { label: 'Loan Credit', icon: '🏦', color: '#ef4444' },
   other: { label: 'Other', icon: '📋', color: '#475569' },
 };
 
 const SPEND_LABELS: Record<string, { label: string; icon: string; color: string }> = {
   mortgage: { label: 'Mortgage', icon: '🏠', color: '#8b5cf6' },
+  loan: { label: 'Loans', icon: '🏦', color: '#ef4444' },
   loans: { label: 'Loans', icon: '🏦', color: '#ef4444' },
   council_tax: { label: 'Council Tax', icon: '🏛️', color: '#6366f1' },
+  business_rates: { label: 'Business Rates', icon: '🏢', color: '#6366f1' },
   energy: { label: 'Energy', icon: '⚡', color: '#f59e0b' },
   water: { label: 'Water', icon: '💧', color: '#06b6d4' },
   broadband: { label: 'Broadband', icon: '📡', color: '#3b82f6' },
@@ -34,11 +40,53 @@ const SPEND_LABELS: Record<string, { label: string; icon: string; color: string 
   shopping: { label: 'Shopping', icon: '🛍️', color: '#a855f7' },
   eating_out: { label: 'Eating Out', icon: '🍽️', color: '#f97316' },
   transport: { label: 'Transport', icon: '🚗', color: '#0ea5e9' },
+  bills: { label: 'Bills', icon: '📄', color: '#64748b' },
+  tax: { label: 'Tax', icon: '🏛️', color: '#6366f1' },
+  insurance: { label: 'Insurance', icon: '🛡️', color: '#06b6d4' },
+  software: { label: 'Software', icon: '💻', color: '#3b82f6' },
+  professional: { label: 'Professional', icon: '💼', color: '#8b5cf6' },
+  professional_services: { label: 'Professional', icon: '💼', color: '#8b5cf6' },
+  fee: { label: 'Fees', icon: '💳', color: '#64748b' },
+  fees: { label: 'Fees', icon: '💳', color: '#64748b' },
+  credit: { label: 'Credit', icon: '💳', color: '#ef4444' },
+  credit_card: { label: 'Credit Card', icon: '💳', color: '#ef4444' },
+  credit_monitoring: { label: 'Credit Monitoring', icon: '📊', color: '#64748b' },
+  healthcare: { label: 'Healthcare', icon: '⚕️', color: '#10b981' },
+  education: { label: 'Education', icon: '🎓', color: '#8b5cf6' },
+  charity: { label: 'Charity', icon: '❤️', color: '#ec4899' },
+  pets: { label: 'Pets', icon: '🐾', color: '#f59e0b' },
+  parking: { label: 'Parking', icon: '🅿️', color: '#6366f1' },
+  travel: { label: 'Travel', icon: '✈️', color: '#0ea5e9' },
+  gambling: { label: 'Gambling', icon: '🎰', color: '#ef4444' },
+  rent: { label: 'Rent', icon: '🏠', color: '#8b5cf6' },
+  food: { label: 'Food & Drink', icon: '🍽️', color: '#f97316' },
+  fuel: { label: 'Fuel', icon: '⛽', color: '#0ea5e9' },
+  motoring: { label: 'Motoring', icon: '🚗', color: '#0ea5e9' },
+  property_management: { label: 'Property Management', icon: '🏢', color: '#8b5cf6' },
+  storage: { label: 'Cloud Storage', icon: '☁️', color: '#3b82f6' },
+  music: { label: 'Music', icon: '🎵', color: '#ec4899' },
+  gaming: { label: 'Gaming', icon: '🎮', color: '#8b5cf6' },
+  security: { label: 'Security', icon: '🔒', color: '#64748b' },
+  utility: { label: 'Utilities', icon: '💡', color: '#f59e0b' },
+  utilities: { label: 'Utilities', icon: '💡', color: '#f59e0b' },
+  childcare: { label: 'Childcare', icon: '👶', color: '#ec4899' },
+  transfers: { label: 'Transfers', icon: '🔄', color: '#64748b' },
   other: { label: 'Other', icon: '📋', color: '#475569' },
 };
 
+/** Title-case a raw category key (e.g. "council_tax" -> "Council Tax") so the
+ *  fallback never shows lowercase, ugly labels when the map misses. */
+function titleCaseLabel(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 function getSpendMeta(key: string) {
-  return SPEND_LABELS[key] || { label: key.replace(/_/g, ' '), icon: '📋', color: '#475569' };
+  return SPEND_LABELS[key] || { label: titleCaseLabel(key), icon: '📋', color: '#475569' };
 }
 
 export default function OverviewPanel({ data, refreshData, selectedMonth }: { data: any, refreshData?: () => void, selectedMonth?: string }) {
@@ -64,7 +112,7 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
   const totalIncomeFromBreakdown = incomeEntries.reduce((s, e) => s + e.amount, 0);
 
   const spendingCategories = spending?.categories || [];
-  const totalSpentFromBreakdown = spendingCategories.reduce((s: number, c: any) => s + c.total, 0);
+  const totalSpentFromBreakdown = spending?.totalSpent || spendingCategories.reduce((s: number, c: any) => s + c.total, 0);
 
   const VISIBLE_ROWS = 6;
   const visibleIncomeEntries = showAllIncome ? incomeEntries : incomeEntries.slice(0, VISIBLE_ROWS);
@@ -79,46 +127,106 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
     <div className="space-y-4">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <TrendingUp className="h-4 w-4 text-green-400" />
-            <span className="text-slate-400 text-xs">Income this month</span>
+            <span className="text-slate-500 text-xs">Income this month</span>
           </div>
           <p className="text-2xl md:text-3xl font-bold text-green-400">£{fmtNum(monthlyIncome)}</p>
         </div>
 
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <TrendingDown className="h-4 w-4 text-amber-400" />
-            <span className="text-slate-400 text-xs">Spent this month</span>
+            <span className="text-slate-500 text-xs">Spent this month</span>
           </div>
           <p className="text-2xl md:text-3xl font-bold text-amber-400">£{fmtNum(monthlyOutgoings)}</p>
+          {/* Canonical bucket split — surfaced when the API returns a breakdown.
+              Hidden gracefully on accounts where the RPC hasn't been built yet
+              (the field is undefined). */}
+          {spending?.breakdown && (spending.breakdown.fixedCost > 0 || spending.breakdown.variableCost > 0 || spending.breakdown.discretionary > 0) && (
+            // Light-mode-correct colours. Earlier version used text-slate-300
+            // and border-slate-800 (dark-mode tokens) which made the whole
+            // breakdown invisible against the white card background — user
+            // reported "money hub hasn't changed".
+            <div className="mt-3 pt-3 border-t border-slate-200 space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Fixed</span>
+                <span className="text-slate-900 font-semibold">£{fmtNum(spending.breakdown.fixedCost)}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Variable</span>
+                <span className="text-slate-900 font-semibold">£{fmtNum(spending.breakdown.variableCost)}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Discretionary</span>
+                <span className="text-slate-900 font-semibold">£{fmtNum(spending.breakdown.discretionary)}</span>
+              </div>
+              {spending.breakdown.internalTransfer > 0 && (
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100 mt-1">
+                  <span className="text-slate-400">Transfers (excluded)</span>
+                  <span className="text-slate-500">£{fmtNum(spending.breakdown.internalTransfer)}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <Wallet className="h-4 w-4 text-mint-400" />
-            <span className="text-slate-400 text-xs">Savings Rate</span>
+            <span className="text-slate-500 text-xs">Savings Rate</span>
           </div>
           <p className={`text-2xl md:text-3xl font-bold ${(savingsRate || 0) >= 0 ? 'text-mint-400' : 'text-red-400'}`}>
             {(savingsRate || 0).toFixed(1)}%
           </p>
         </div>
 
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 relative overflow-hidden group">
+        <div className="card p-5 relative overflow-hidden group">
           <div className="flex items-center gap-2 mb-2">
             <Target className="h-4 w-4 text-purple-400" />
-            <span className="text-slate-400 text-xs">Health Score</span>
+            <span className="text-slate-500 text-xs">Health Score</span>
+            {/* Discoverable explainer — keyboard-focusable + hover-tooltip
+                describing what the four pillars actually measure. The
+                hover-overlay below shows the live numbers; this tooltip
+                explains the methodology so a first-time user knows what
+                a "good" score even means (Paul, 2026-04-28). */}
+            <span className="relative group/tip">
+              <button
+                type="button"
+                aria-label="How is the Health Score calculated?"
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-semibold text-slate-500 hover:bg-slate-200 hover:text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                tabIndex={0}
+              >
+                ?
+              </button>
+              <div
+                role="tooltip"
+                className="invisible absolute left-1/2 top-5 z-30 w-64 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-3 text-[11px] leading-snug text-slate-700 opacity-0 shadow-xl transition-opacity group-hover/tip:visible group-hover/tip:opacity-100 group-focus-within/tip:visible group-focus-within/tip:opacity-100"
+              >
+                <p className="mb-1.5 font-semibold text-slate-900">Score out of 100</p>
+                <p className="mb-2 text-slate-600">Average of four equal-weighted pillars over the last 90 days:</p>
+                <ul className="space-y-1">
+                  <li><strong className="text-slate-900">Spend</strong> — % of income going on essentials. Rewards spending below 70% of income.</li>
+                  <li><strong className="text-slate-900">Save</strong> — savings rate + balance trend. Rewards positive monthly save and growing balances.</li>
+                  <li><strong className="text-slate-900">Borrow</strong> — debt-to-income ratio + minimum-payment ratio on credit. Lower is better.</li>
+                  <li><strong className="text-slate-900">Plan</strong> — recurring-payment coverage + budget adherence. Rewards predictability.</li>
+                </ul>
+                <p className="mt-2 text-slate-500">≥80 strong · 40-79 fair · &lt;40 needs work. Hover the score for live pillar values.</p>
+              </div>
+            </span>
           </div>
           <p className={`text-2xl md:text-3xl font-bold ${data.score >= 80 ? 'text-green-400' : data.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
             {data.score}
           </p>
-          {/* Hover detail */}
-          <div className="absolute inset-0 bg-navy-800/95 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center px-4 text-xs rounded-2xl">
-            <div className="flex justify-between mb-1"><span className="text-slate-400">Spend</span><span className="text-white">{healthScore?.pillars?.spend?.score || 0}%</span></div>
-            <div className="flex justify-between mb-1"><span className="text-slate-400">Save</span><span className="text-white">{healthScore?.pillars?.save?.score || 0}%</span></div>
-            <div className="flex justify-between mb-1"><span className="text-slate-400">Borrow</span><span className="text-white">{healthScore?.pillars?.borrow?.score || 0}%</span></div>
-            <div className="flex justify-between"><span className="text-slate-400">Plan</span><span className="text-white">{healthScore?.pillars?.plan?.score || 0}%</span></div>
+          {/* Hover detail — live pillar scores. Kept as the primary
+              hover surface so the explainer tooltip and the live
+              numbers don't compete for the same space. */}
+          <div className="absolute inset-0 bg-slate-100 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center px-4 text-xs rounded-2xl pointer-events-none">
+            <div className="flex justify-between mb-1"><span className="text-slate-500">Spend</span><span className="text-slate-900">{healthScore?.pillars?.spend?.score || 0}%</span></div>
+            <div className="flex justify-between mb-1"><span className="text-slate-500">Save</span><span className="text-slate-900">{healthScore?.pillars?.save?.score || 0}%</span></div>
+            <div className="flex justify-between mb-1"><span className="text-slate-500">Borrow</span><span className="text-slate-900">{healthScore?.pillars?.borrow?.score || 0}%</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Plan</span><span className="text-slate-900">{healthScore?.pillars?.plan?.score || 0}%</span></div>
           </div>
         </div>
       </div>
@@ -127,9 +235,9 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
       {(incomeEntries.length > 0 || spendingCategories.length > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Income Breakdown */}
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold flex items-center gap-2">
+              <h3 className="text-slate-900 font-semibold flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-green-400" />
                 Income
               </h3>
@@ -143,18 +251,18 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
                   return (
                     <div
                       key={entry.type}
-                      className="group cursor-pointer hover:bg-navy-800/50 p-2 -mx-2 rounded-lg transition-colors"
+                      className="group cursor-pointer hover:bg-slate-100 active:bg-slate-200 p-2 -mx-2 rounded-lg transition-colors"
                       onClick={() => setDrillIncomeType(entry.type)}
                     >
                       <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-slate-300 flex items-center gap-2 group-hover:text-green-400 transition-colors">
+                        <span className="text-slate-700 flex items-center gap-2 group-hover:text-green-400 transition-colors">
                           <span>{entry.icon}</span>
                           {entry.label}
                           <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
                         </span>
                         <span className="text-green-400 font-semibold">£{fmtNum(entry.amount)}</span>
                       </div>
-                      <div className="w-full bg-navy-800 rounded-full h-1.5">
+                      <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: entry.color }} />
                       </div>
                     </div>
@@ -174,17 +282,17 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
             )}
 
             {totalIncomeFromBreakdown > 0 && (
-              <div className="mt-3 pt-3 border-t border-navy-800 flex justify-between text-sm">
-                <span className="text-slate-400">Total</span>
+              <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between text-sm">
+                <span className="text-slate-500">Total</span>
                 <span className="text-green-400 font-bold">£{fmtNum(totalIncomeFromBreakdown)}</span>
               </div>
             )}
           </div>
 
           {/* Spending Breakdown */}
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold flex items-center gap-2">
+              <h3 className="text-slate-900 font-semibold flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-amber-400" />
                 Spending
               </h3>
@@ -199,18 +307,18 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
                   return (
                     <div
                       key={c.category}
-                      className="group cursor-pointer hover:bg-navy-800/50 p-2 -mx-2 rounded-lg transition-colors"
+                      className="group cursor-pointer hover:bg-slate-100 active:bg-slate-200 p-2 -mx-2 rounded-lg transition-colors"
                       onClick={() => setDrillSpendingCategory(c.category)}
                     >
                       <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-slate-300 flex items-center gap-2 group-hover:text-amber-400 transition-colors">
+                        <span className="text-slate-700 flex items-center gap-2 group-hover:text-amber-400 transition-colors">
                           <span>{meta.icon}</span>
                           {meta.label}
                           <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
                         </span>
                         <span className="text-amber-400 font-semibold">£{fmtNum(c.total)}</span>
                       </div>
-                      <div className="w-full bg-navy-800 rounded-full h-1.5">
+                      <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: meta.color }} />
                       </div>
                     </div>
@@ -230,8 +338,8 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
             )}
 
             {totalSpentFromBreakdown > 0 && (
-              <div className="mt-3 pt-3 border-t border-navy-800 flex justify-between text-sm">
-                <span className="text-slate-400">Total</span>
+              <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between text-sm">
+                <span className="text-slate-500">Total</span>
                 <span className="text-amber-400 font-bold">£{fmtNum(totalSpentFromBreakdown)}</span>
               </div>
             )}
@@ -241,8 +349,8 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
 
       {/* Monthly Trends */}
       {monthlyTrends.length >= 2 && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
+        <div className="card p-5">
+          <h3 className="text-slate-900 font-semibold text-lg mb-4 flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-blue-400" />
             Monthly Trends
           </h3>
@@ -259,10 +367,10 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
                   </div>
                   <span className="text-[10px] text-slate-500">{monthLabel}</span>
                   {/* Hover tooltip */}
-                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-navy-950 border border-navy-700 rounded-lg p-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap pointer-events-none">
+                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg p-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap pointer-events-none">
                     <p className="text-green-400">In: £{fmtNum(t.income)}</p>
                     <p className="text-amber-400">Out: £{fmtNum(t.outgoings)}</p>
-                    <p className="text-slate-300">Net: £{fmtNum(t.income - t.outgoings)}</p>
+                    <p className="text-slate-700">Net: £{fmtNum(t.income - t.outgoings)}</p>
                   </div>
                 </div>
               );

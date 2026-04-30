@@ -103,6 +103,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing providerName' }, { status: 400 });
     }
 
+    // Tier gate — AI cancellation emails are an Essential+ feature
+    // (PLAN_LIMITS in src/lib/plan-limits.ts marks Free with
+    // ai_cancellation_email=false). Free users get the upgrade prompt;
+    // their cap on dispute letters still applies via the checkUsage
+    // path on /api/complaints/generate.
+    const { getEffectiveTier } = await import('@/lib/plan-limits');
+    const effectiveTier = await getEffectiveTier(user.id);
+    if (effectiveTier === 'free') {
+      return NextResponse.json(
+        { error: 'AI cancellation emails are available on the Essential plan. Upgrade at paybacker.co.uk/pricing.', upgradeRequired: true, tier: effectiveTier },
+        { status: 403 },
+      );
+    }
+
     // Check Claude rate limit
     const tier = await getUserTier(user.id);
     const rateLimit = await checkClaudeRateLimit(user.id, tier);

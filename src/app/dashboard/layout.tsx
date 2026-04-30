@@ -1,58 +1,24 @@
 'use client';
 
 import { createClient } from '@/lib/supabase/client';
-import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
-import Image from 'next/image';
-import TrialBanner from '@/components/TrialBanner';
-import NotificationBell from '@/components/NotificationBell';
-import {
-  LayoutDashboard,
-  ScanSearch,
-  FileText,
-  CreditCard,
-  Tag,
-  User,
-  LogOut,
-  Menu,
-  ArrowRight,
-  X,
-  ShieldAlert,
-  Shield,
-  BarChart3,
-  Gift,
-  Building2,
-  Wallet,
-  BookOpen,
-  FolderLock,
-  MessageCircle,
-  Download,
-  Loader2,
-} from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import TrialBanner from '@/components/TrialBanner';
+import ConnectionHealthBanner from '@/components/ConnectionHealthBanner';
+import DashboardShell, { type UserSummary } from '@/components/dashboard/DashboardShell';
+import './shell-v2.css';
+import './dashboard.css';
 
-const navItems = [
-  { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
-  { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
-  { name: 'Disputes', href: '/dashboard/disputes', icon: FileText },
-  { name: 'Contract Vault', href: '/dashboard/contract-vault', icon: FolderLock },
-  { name: 'Deals', href: '/dashboard/deals', icon: Tag },
-  { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
-  { name: 'Pocket Agent', href: '/dashboard/pocket-agent', icon: MessageCircle },
-  { name: 'Export', href: '/dashboard/export', icon: Download },
-  { name: 'Profile', href: '/dashboard/profile', icon: User },
-];
+type Tier = 'free' | 'essential' | 'pro';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
   const supabase = createClient();
   const [authChecked, setAuthChecked] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
-  const [userTier, setUserTier] = useState<string>('free');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [userTier, setUserTier] = useState<Tier>('free');
   const [isTrial, setIsTrial] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
@@ -66,57 +32,152 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
       setUserEmail(user.email || null);
       setAuthChecked(true);
-      if (user) {
-        const { data } = await supabase.from('profiles').select('first_name, full_name, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at').eq('id', user.id).single();
-        const name = data?.first_name || user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || null;
-        setFirstName(name);
-        const profileTier = data?.subscription_tier || 'free';
-        setUserTier(profileTier);
 
-        // Detect founding member trial
-        let isFoundingTrial = false;
-        if (data?.subscription_status === 'trialing' && !data?.stripe_subscription_id && data?.subscription_tier !== 'free') {
-          isFoundingTrial = true;
-          const trialEnd = data?.trial_ends_at ? new Date(data.trial_ends_at) : null;
-          if (trialEnd) {
-            const days = Math.ceil((trialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-            if (days > 0) {
-              setIsTrial(true);
-              setTrialDaysLeft(days);
-            } else {
-              setTrialExpired(true);
-              setUserTier('free');
-              isFoundingTrial = false;
+      // OAuth signup path leaves Terms/marketing consent in sessionStorage
+      // (the signup page can't write to user_metadata before the OAuth
+      // redirect). Drain it here for Google-signup users. Guardrails:
+      //   1. sessionStorage is tab-scoped — can't leak to other users
+      //      who later sign in from the same browser profile.
+      //   2. The payload carries `created_at`; we reject > 15 min old
+      //      blobs as stale (e.g. abandoned OAuth flows).
+      //   3. The CURRENT user must themselves be newly created
+      //      (auth.users.created_at within 15 min). This prevents the
+      //      same-tab hand-off a legacy account would need to inherit
+      //      someone else's abandoned consent blob.
+      //   4. The key is only removed AFTER a confirmed write (or when
+      //      it's stale / already applied) — transient network errors
+      //      leave the blob in place so a retry can still recover it.
+      const CONSENT_TTL_MS = 15 * 60 * 1000;
+      try {
+        const raw = sessionStorage.getItem('pb_pending_consent');
+        if (raw && !user.user_metadata?.terms_accepted_at) {
+          const pending = JSON.parse(raw) as {
+            terms_accepted_at?: string;
+            marketing_opt_in?: boolean;
+            created_at?: number;
+          };
+          const now = Date.now();
+          const isFreshPayload =
+            typeof pending?.created_at === 'number' &&
+            now - pending.created_at < CONSENT_TTL_MS;
+          const userCreatedMs = user.created_at ? Date.parse(user.created_at) : NaN;
+          const isFreshUser =
+            Number.isFinite(userCreatedMs) && now - userCreatedMs < CONSENT_TTL_MS;
+
+          if (!isFreshPayload) {
+            sessionStorage.removeItem('pb_pending_consent');
+          } else if (!isFreshUser) {
+            // Don't apply a stashed consent blob to a pre-existing user
+            // — the pending blob belongs to an abandoned OAuth signup.
+            // Leave the blob in place; it'll expire on TTL above.
+          } else if (pending.terms_accepted_at) {
+            const { error: updateError } = await supabase.auth.updateUser({
+              data: {
+                terms_accepted_at: pending.terms_accepted_at,
+                marketing_opt_in: !!pending.marketing_opt_in,
+              },
+            });
+            if (!updateError) {
+              sessionStorage.removeItem('pb_pending_consent');
             }
-          } else {
-            setIsTrial(true);
+            // If updateError (transient 5xx, network), keep the blob so
+            // the next dashboard hit can retry.
           }
+        } else if (raw && user.user_metadata?.terms_accepted_at) {
+          // User already has consent recorded — safe to clear.
+          sessionStorage.removeItem('pb_pending_consent');
         }
+      } catch {
+        // JSON.parse error → payload is corrupt, safe to remove.
+        sessionStorage.removeItem('pb_pending_consent');
+      }
 
-        // Sync from Stripe to ensure tier is current.
-        // Only apply the Stripe tier if it's an upgrade or a real downgrade
-        // (not when user is on a founding member trial without a Stripe subscription).
-        try {
-          const syncRes = await fetch('/api/stripe/sync', { method: 'POST' });
-          const syncData = await syncRes.json();
-          if (syncData.tier && syncData.tier !== 'free') {
-            // Stripe confirms a paid tier — always apply
-            setUserTier(syncData.tier);
-          } else if (syncData.tier === 'free' && syncData.synced && !isFoundingTrial) {
-            // Only downgrade to free if NOT on a founding member trial
+      const { data } = await supabase
+        .from('profiles')
+        .select('first_name, full_name, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
+        .eq('id', user.id)
+        .single();
+      const name =
+        data?.first_name ||
+        user.user_metadata?.first_name ||
+        user.user_metadata?.full_name?.split(' ')[0] ||
+        null;
+      setFirstName(name);
+      const profileTier: Tier = (data?.subscription_tier as Tier) || 'free';
+      setUserTier(profileTier);
+
+      let isFoundingTrial = false;
+      if (
+        data?.subscription_status === 'trialing' &&
+        !data?.stripe_subscription_id &&
+        data?.subscription_tier !== 'free'
+      ) {
+        isFoundingTrial = true;
+        const trialEnd = data?.trial_ends_at ? new Date(data.trial_ends_at) : null;
+        if (trialEnd) {
+          const days = Math.ceil((trialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          if (days > 0) {
+            setIsTrial(true);
+            setTrialDaysLeft(days);
+          } else {
+            setTrialExpired(true);
             setUserTier('free');
+            isFoundingTrial = false;
           }
-          // If on founding member trial, keep the profile tier (don't let Stripe override)
-        } catch {
-          // Stripe sync failed — keep profile tier
+        } else {
+          setIsTrial(true);
         }
+      }
+
+      // Fire Stripe sync in the BACKGROUND — don't block render.
+      // This route hits Stripe's REST API server-side which routinely
+      // takes 2-10 seconds; on Vercel cold starts it can hit 15s.
+      // Awaiting it here was forcing every dashboard navigation to wait
+      // for Stripe before the sidebar even rendered the tier badge.
+      //
+      // The 5-minute sessionStorage cache keeps a successful sync sticky
+      // across navigations within the same tab — only re-call Stripe
+      // when the cached result expires or doesn't exist. profile tier
+      // (set above at line 107) is the source of truth and renders
+      // immediately; this background refresh just upgrades it if Stripe
+      // has newer data.
+      const SYNC_CACHE_KEY = `pb_stripe_sync_${user.id}`;
+      const SYNC_TTL_MS = 5 * 60 * 1000; // 5 minutes
+      try {
+        const cached = sessionStorage.getItem(SYNC_CACHE_KEY);
+        const parsed = cached ? JSON.parse(cached) as { at: number; tier: Tier } : null;
+        const fresh = parsed && Date.now() - parsed.at < SYNC_TTL_MS;
+        if (fresh && parsed) {
+          if (parsed.tier !== 'free') setUserTier(parsed.tier);
+          else if (!isFoundingTrial) setUserTier('free');
+          // Skip the network call — cache is fresh.
+        } else {
+          // Background refresh; UI does not await.
+          fetch('/api/stripe/sync', { method: 'POST' })
+            .then((r) => r.ok ? r.json() : null)
+            .then((syncData) => {
+              if (!syncData?.tier) return;
+              if (syncData.tier !== 'free') {
+                setUserTier(syncData.tier);
+              } else if (syncData.synced && !isFoundingTrial) {
+                setUserTier('free');
+              }
+              try {
+                sessionStorage.setItem(
+                  SYNC_CACHE_KEY,
+                  JSON.stringify({ at: Date.now(), tier: syncData.tier as Tier }),
+                );
+              } catch { /* private mode etc. */ }
+            })
+            .catch(() => { /* silent — keep profile tier */ });
+        }
+      } catch {
+        /* sessionStorage unavailable — fall through, profile tier renders */
       }
     };
     loadUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Close sidebar on route change
-  useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -124,207 +185,61 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.refresh();
   };
 
-  const NavContent = () => (
-    <>
-      <Link href="/dashboard" className="flex items-center gap-2 mb-2">
-        <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
-        <span className="text-xl font-bold text-white">
-          Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span>
-        </span>
-      </Link>
-
-      {/* User info below logo */}
-      <div className="mb-6 pb-6 border-b border-navy-700/50">
-        {firstName && (
-          <p className="text-sm font-medium text-white truncate" title={firstName}>{firstName}</p>
-        )}
-        <p className="text-xs text-slate-500 truncate">{userEmail || ''}</p>
-        {isTrial ? (
-          <span className="inline-block mt-1.5 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-amber-400 bg-amber-400/10">
-            Pro Trial{trialDaysLeft ? ` · ${trialDaysLeft}d left` : ''}
-          </span>
-        ) : userTier === 'free' ? (
-          <Link href="/pricing" className={`inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-slate-400 bg-slate-400/10 hover:bg-mint-400/10 hover:text-mint-400 transition-all`}>
-            Free Plan <ArrowRight className="h-2.5 w-2.5" />
-          </Link>
-        ) : (
-          <span className={`inline-block mt-1.5 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full ${
-            userTier === 'pro' ? 'text-brand-400 bg-brand-400/10' : 'text-mint-400 bg-mint-400/10'
-          }`}>
-            {userTier === 'pro' ? 'Pro Plan' : 'Essential Plan'}
-          </span>
-        )}
-        {userTier === 'free' && (
-          <div className="mt-2">
-            <p className="text-[10px] text-slate-500 mb-1.5">Unlock Pocket Agent, unlimited letters &amp; more</p>
-            <Link href="/pricing" className="block text-center text-[11px] font-semibold bg-mint-400 hover:bg-mint-500 text-navy-950 px-3 py-1.5 rounded-lg transition-all">
-              Upgrade Now
-            </Link>
-          </div>
-        )}
-      </div>
-
-      <nav className="space-y-0.5 flex-1">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = item.href === '/dashboard' || item.href === '/blog'
-            ? pathname === item.href
-            : pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-4 py-2.5 rounded-r-lg transition-all duration-200 min-h-[44px] ${
-                isActive
-                  ? 'bg-mint-400/10 text-mint-400 border-l-2 border-mint-400 font-semibold'
-                  : 'text-slate-400 hover:text-white hover:bg-navy-800/50 border-l-2 border-transparent'
-              }`}
-            >
-              <Icon className="h-5 w-5 flex-shrink-0" />
-              <span className="text-sm">{item.name}</span>
-              {item.name === 'Pocket Agent' && (
-                <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full ml-auto">NEW</span>
-              )}
-              {(item as any).comingSoon && (
-                <span className="text-[9px] bg-navy-700 text-slate-400 px-1.5 py-0.5 rounded-full ml-auto">Soon</span>
-              )}
-            </Link>
-          );
-        })}
-        {(process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'aireypaul@googlemail.com').split(',').includes(userEmail || '') && (
-          <Link
-            href="/dashboard/admin"
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-r-lg transition-all duration-200 min-h-[44px] mt-4 border-t border-navy-700/50 pt-4 ${
-              pathname === '/dashboard/admin'
-                ? 'bg-red-500/10 text-red-400 border-l-2 border-red-400 font-semibold'
-                : 'text-red-400/70 hover:text-red-400 hover:bg-red-500/10 border-l-2 border-transparent'
-            }`}
-          >
-            <ShieldAlert className="h-5 w-5 flex-shrink-0" />
-            <span className="text-sm">Admin</span>
-          </Link>
-        )}
-      </nav>
-
-      <div className="pt-6 border-t border-navy-700/50 mt-auto">
-        <button
-          onClick={handleSignOut}
-          className="flex items-center gap-2 text-slate-500 hover:text-red-400 transition-all duration-200 w-full min-h-[44px]"
-        >
-          <LogOut className="h-4 w-4" />
-          <span className="text-sm">Sign out</span>
-        </button>
-      </div>
-    </>
-  );
-
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
+      <div className="shell-v2">
+        <div
+          style={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Loader2
+            aria-label="Loading"
+            style={{ width: 28, height: 28, animation: 'spin 1s linear infinite' }}
+          />
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-navy-950 overflow-x-hidden">
-      {/* Mobile header */}
-      <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-navy-900 border-b border-navy-700/50 sticky top-0 z-40">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <Image src="/logo.png" alt="Paybacker" width={28} height={28} className="rounded-lg" />
-          <span className="text-lg font-bold text-white">
-            Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span>
-          </span>
-        </Link>
-        <div className="flex items-center gap-1">
-          <NotificationBell />
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 text-slate-400 hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-        </div>
-      </header>
+  const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'aireypaul@googlemail.com')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  const isAdmin = !!userEmail && adminEmails.includes(userEmail.toLowerCase());
 
-      {/* Mobile sidebar overlay */}
-      {sidebarOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/70" onClick={() => setSidebarOpen(false)} />
-          <aside className="relative w-[260px] h-full overflow-y-auto bg-navy-900 border-r border-navy-700/50 p-6 flex flex-col">
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-2"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <NavContent />
-          </aside>
-        </div>
+  const user: UserSummary = {
+    firstName,
+    email: userEmail,
+    tier: userTier,
+    isTrial,
+    trialDaysLeft,
+  };
+
+  // Stacked banners — trial status (when active) then the connection
+  // health banner (only renders if any email connection is broken).
+  // Order matters: billing/trial is the more urgent signal so it sits
+  // above any sync-health nagging.
+  const topBanner = (
+    <>
+      {(isTrial || trialExpired) && (
+        <TrialBanner daysLeft={trialDaysLeft} trialExpired={trialExpired} />
       )}
+      <ConnectionHealthBanner />
+    </>
+  );
 
-      <div className="flex">
-        {/* Desktop sidebar */}
-        <aside className="hidden lg:flex w-[260px] min-h-screen bg-navy-900 border-r border-navy-700/50 p-6 flex-col flex-shrink-0">
-          <NavContent />
-        </aside>
-
-        {/* Main content */}
-        <main className="flex-1 p-4 md:p-6 lg:p-8 min-w-0 bg-navy-950 pb-20 lg:pb-8 flex flex-col min-h-screen">
-          {/* Desktop top-right bell */}
-          <div className="hidden lg:flex justify-end mb-2">
-            <NotificationBell />
-          </div>
-          <div className="flex-1">
-            {(isTrial || trialExpired) && <TrialBanner daysLeft={trialDaysLeft} trialExpired={trialExpired} />}
-            {children}
-          </div>
-
-          {/* Dashboard Footer */}
-          <footer className="mt-12 pt-6 border-t border-navy-800 flex flex-wrap justify-center gap-4 text-xs text-slate-500">
-            <Link href="/blog" className="hover:text-mint-400 transition-colors">Blog</Link>
-            <span>&middot;</span>
-            <Link href="/dashboard/deals" className="hover:text-mint-400 transition-colors">Deals</Link>
-            <span>&middot;</span>
-            <Link href="/about" className="hover:text-mint-400 transition-colors">About</Link>
-            <span>&middot;</span>
-            <Link href="/pricing" className="hover:text-mint-400 transition-colors">Pricing</Link>
-            <span>&middot;</span>
-            <Link href="mailto:hello@paybacker.co.uk" className="hover:text-mint-400 transition-colors">Help</Link>
-          </footer>
-        </main>
-      </div>
-
-      {/* Mobile bottom nav - show 5 key items only */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-navy-900/95 backdrop-blur-sm border-t border-navy-700/50 flex z-40">
-        {[
-          { name: 'Home', href: '/dashboard', icon: LayoutDashboard },
-          { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
-          { name: 'Disputes', href: '/dashboard/disputes', icon: FileText },
-          { name: 'Deals', href: '/dashboard/deals', icon: Tag },
-          { name: 'Subs', href: '/dashboard/subscriptions', icon: CreditCard },
-        ].map((item) => {
-          const Icon = item.icon;
-          const isActive = item.href === '/dashboard' || item.href === '/blog'
-            ? pathname === item.href
-            : pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] transition-all duration-200 ${
-                isActive ? 'text-mint-400' : 'text-slate-500'
-              }`}
-            >
-              <Icon className="h-5 w-5 mb-1" />
-              <span className="text-[10px]">{item.name}</span>
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Bottom padding on mobile so content isn't behind nav */}
-      <div className="h-16 lg:hidden" />
-    </div>
+  return (
+    <DashboardShell
+      user={user}
+      isAdmin={isAdmin}
+      onSignOut={handleSignOut}
+      topBanner={topBanner}
+    >
+      {children}
+    </DashboardShell>
   );
 }

@@ -11,7 +11,10 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 
 // Constants
-const PROJECT_DIR = "/Users/paul-ops/.openclaw/workspace/lifeadmin-ai";
+// PROJECT_DIR can be overridden via env var so this MCP works on any machine
+// (previously hard-coded to a stale ~/.openclaw path that no longer exists).
+const PROJECT_DIR =
+  process.env.PAYBACKER_PROJECT_DIR || "/Users/paul-ops/lifeadmin-ai";
 const CONTEXT_DIR = join(PROJECT_DIR, "shared-context");
 const FACEBOOK_PAGE_ID = "1056645287525328";
 const INSTAGRAM_ID = "17841440175351137";
@@ -69,8 +72,55 @@ function getSupabaseCredentials(): { url: string; key: string } {
   return { url, key };
 }
 
+function getTelegramAdminCredentials(): { token: string; chatId: string } {
+  const token = process.env.PAYBACKER_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  const chatId =
+    process.env.PAYBACKER_TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_FOUNDER_CHAT_ID;
+  if (!token || !chatId) {
+    throw new Error(
+      "PAYBACKER_TELEGRAM_BOT_TOKEN (or TELEGRAM_BOT_TOKEN) and PAYBACKER_TELEGRAM_ADMIN_CHAT_ID (or TELEGRAM_FOUNDER_CHAT_ID) env vars required",
+    );
+  }
+  return { token, chatId };
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+const TELEGRAM_SEVERITY_PREFIX: Record<string, string> = {
+  info: "🟢",
+  notice: "🔵",
+  recommend: "🟡",
+  warn: "🟠",
+  critical: "🔴",
+};
+
 // Tool definitions
 const TOOLS = [
+  // --- Session bootstrap (call this FIRST in any new Paybacker chat) ---
+  {
+    name: "get_project_briefing",
+    description:
+      "Returns a single consolidated briefing for the Paybacker project: all shared-context files, current git status, open PRs, and recent business_log entries. Call this at the START of any new chat to pick up where the last session left off. Replaces having to call read_context 9 times + get_git_status + read_business_log separately.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        business_log_limit: {
+          type: "number",
+          description: "How many recent business_log rows to include (default 10)",
+        },
+        include_git: {
+          type: "boolean",
+          description: "Include git status + recent commits + open PRs (default true)",
+        },
+      },
+    },
+  },
   // Shared Context Tools
   {
     name: "read_context",
@@ -277,6 +327,108 @@ const TOOLS = [
       required: ["type", "with", "summary"],
     },
   },
+  {
+    name: "get_finance_snapshot",
+    description:
+      "Returns a structured snapshot of Paybacker's financial state from Supabase: user counts by tier (free/plus/pro), active paying users, estimated MRR + ARR, signups (last 7d/30d), active onboarding trials, trial conversions / expiries (7d/30d), recent plan downgrade events, subscriptions expiring soon, and upcoming payments. Read-only. Use this on every finance-analyst session before reasoning about revenue health.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        tier_prices_gbp: {
+          type: "object",
+          description: "Optional override for tier monthly prices in GBP. Defaults to the canonical {free:0, plus:4.99, pro:9.99} from src/lib/plan-limits.ts. Use only if the live pricing config has changed and you want the agent to compute MRR with new prices.",
+        },
+      },
+    },
+  },
+  {
+    name: "append_business_log",
+    description:
+      "Inserts a structured row into the Supabase `business_log` table so the agent-digest cron can surface it to the founder. Use this on EVERY managed-agent session to record what you did and what you found, even on clean runs (use category='clean'). Categories that drive escalation in the digest: alert, critical, warn, finding, recommendation, escalation. Routine reporting categories: clean, info, agent_governance.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        category: {
+          type: "string",
+          enum: [
+            "clean",
+            "info",
+            "finding",
+            "recommendation",
+            "alert",
+            "warn",
+            "critical",
+            "escalation",
+            "agent_governance",
+          ],
+          description: "Severity bucket. 'clean' = nothing to report. 'finding' = pattern noted. 'recommendation' = proposed action, founder decides. 'alert/warn/critical' = degraded → broken. 'escalation' = needs immediate decision.",
+        },
+        title: {
+          type: "string",
+          description: "Short headline (max ~80 chars). Verb-led, specific.",
+        },
+        content: {
+          type: "string",
+          description: "1–4 sentences. Include evidence pointer (table+row id, log signature). Do NOT paste raw PII or secrets.",
+        },
+        created_by: {
+          type: "string",
+          description: "Agent identifier (e.g. 'alert-tester', 'feature-tester', 'digest-compiler').",
+        },
+      },
+      required: ["category", "title", "content", "created_by"],
+    },
+  },
+  {
+    name: "post_to_telegram_admin",
+    description:
+      "Sends a Telegram message to the founder (Paul) admin chat. Reserved for things needing the founder's decision BEFORE the next digest cycle (07:00 / 12:30 / 19:00 UTC), or for critical-severity events. Routine reporting goes to business_log; the digest cron handles routine Telegram surfacing. If unsure: do not use this tool — write to business_log via append_context instead.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_name: {
+          type: "string",
+          description:
+            "Identifier of the agent sending the message (e.g. 'alert-tester', 'feature-tester'). Used in the message header so the founder can see source at a glance.",
+        },
+        severity: {
+          type: "string",
+          enum: ["info", "notice", "recommend", "warn", "critical"],
+          description:
+            "Severity level. info = routine (rarely use). notice = pattern worth noting. recommend = proposed action, founder decides. warn = degraded, founder should know. critical = production impact, immediate.",
+        },
+        title: {
+          type: "string",
+          description: "Short headline (max ~80 chars). Verb-led, specific. e.g. 'Riley silent for 3h' or 'Stripe webhook returning 500'.",
+        },
+        body: {
+          type: "string",
+          description:
+            "1–3 sentence detail with evidence pointer (table+row id, log signature, or shared-context filename). Do NOT paste raw user data or secrets.",
+        },
+        ask: {
+          type: "string",
+          description:
+            "Single-sentence ask: what decision or action you need from the founder. Required for severity in {recommend, warn, critical}.",
+        },
+      },
+      required: ["agent_name", "severity", "title", "body"],
+    },
+  },
+  {
+    name: "get_project_briefing",
+    description:
+      "Returns a single consolidated briefing for the Paybacker project: all shared-context files, current git status, open PRs, and recent business_log entries. Call this at the START of any new chat to pick up where the last session left off — one call replaces reading 9 context files individually.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        business_log_limit: {
+          type: "number",
+          description: "How many recent business_log rows to include (default 10)",
+        },
+      },
+    },
+  },
 ];
 
 // Tool handlers
@@ -284,9 +436,173 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
   ensureContextDir();
 
   switch (name) {
+    // --- Session bootstrap ---
+    case "get_project_briefing": {
+      const includeGit = args.include_git !== false;
+      const logLimit = (args.business_log_limit as number) || 10;
+      const sections: string[] = [];
+
+      sections.push("# Paybacker project briefing");
+      sections.push(`_Generated: ${timestamp()}_`);
+      sections.push(`_Project dir: ${PROJECT_DIR}_`);
+      sections.push("");
+
+      // 1. All shared-context files
+      sections.push("## Shared context");
+      for (const file of VALID_CONTEXT_FILES) {
+        const path = join(CONTEXT_DIR, file);
+        sections.push(`\n### ${file}`);
+        if (existsSync(path)) {
+          const body = readFileSync(path, "utf-8").trim();
+          sections.push(body || "_(empty)_");
+        } else {
+          sections.push("_(file does not exist yet)_");
+        }
+      }
+
+      // 2. Git status
+      if (includeGit) {
+        sections.push("\n## Git status");
+        try {
+          const branch = execSync("git branch --show-current", {
+            cwd: PROJECT_DIR,
+            encoding: "utf-8",
+          }).trim();
+          const status =
+            execSync("git status --short", { cwd: PROJECT_DIR, encoding: "utf-8" }).trim() ||
+            "(clean working tree)";
+          const log = execSync("git log --oneline -10", {
+            cwd: PROJECT_DIR,
+            encoding: "utf-8",
+          }).trim();
+          let prs = "";
+          try {
+            prs = execSync("gh pr list --limit 5 2>/dev/null || echo '(gh CLI unavailable)'", {
+              cwd: PROJECT_DIR,
+              encoding: "utf-8",
+            }).trim();
+          } catch {
+            prs = "(could not fetch PRs)";
+          }
+          sections.push(`**Branch:** ${branch}`);
+          sections.push("\n**Working tree:**\n```\n" + status + "\n```");
+          sections.push("\n**Recent commits:**\n```\n" + log + "\n```");
+          sections.push("\n**Open PRs:**\n```\n" + prs + "\n```");
+        } catch (e) {
+          sections.push(`_(git status failed: ${(e as Error).message})_`);
+        }
+      }
+
+      // 3. Recent business_log rows
+      sections.push("\n## Recent business_log rows");
+      try {
+        const { url, key } = getSupabaseCredentials();
+        const res = await fetch(
+          `${url}/rest/v1/business_log?select=created_at,category,title,content,created_by&order=created_at.desc&limit=${logLimit}`,
+          {
+            headers: {
+              apikey: key,
+              Authorization: `Bearer ${key}`,
+            },
+          },
+        );
+        const data = (await res.json()) as unknown;
+        if (!res.ok) {
+          sections.push(`_(business_log fetch failed: ${JSON.stringify(data)})_`);
+        } else if (Array.isArray(data) && data.length === 0) {
+          sections.push("_(no recent rows)_");
+        } else {
+          sections.push("```json\n" + JSON.stringify(data, null, 2) + "\n```");
+        }
+      } catch (e) {
+        sections.push(`_(business_log unavailable: ${(e as Error).message})_`);
+      }
+
+      sections.push(
+        "\n---\nTip: end of session? call `log_session` and `log_handoff` so the next chat inherits the context.",
+      );
+      return sections.join("\n");
+    }
+
     // --- Shared Context ---
     case "read_context": {
       return readContextFile(args.file as string);
+    }
+
+    case "get_project_briefing": {
+      const limit = (args.business_log_limit as number) || 10;
+      const parts: string[] = [];
+      parts.push(`# Paybacker project briefing (generated ${timestamp()})`);
+      parts.push("");
+
+      // Shared context files
+      parts.push("## Shared context files");
+      for (const file of VALID_CONTEXT_FILES) {
+        const content = readContextFile(file);
+        parts.push(`\n### ${file}\n`);
+        parts.push(content);
+      }
+
+      // Git status
+      parts.push("\n## Git status\n");
+      try {
+        const branch = execSync("git rev-parse --abbrev-ref HEAD", {
+          cwd: PROJECT_DIR,
+          encoding: "utf-8",
+        }).trim();
+        const status = execSync("git status --short", {
+          cwd: PROJECT_DIR,
+          encoding: "utf-8",
+        });
+        const log = execSync("git log --oneline -10", {
+          cwd: PROJECT_DIR,
+          encoding: "utf-8",
+        });
+        parts.push(`Branch: ${branch}`);
+        parts.push("\nWorking tree:");
+        parts.push(status || "(clean)");
+        parts.push("\nRecent commits:");
+        parts.push(log);
+      } catch (e) {
+        parts.push(`(git status unavailable: ${(e as Error).message})`);
+      }
+
+      // Open PRs
+      parts.push("\n## Open PRs\n");
+      try {
+        const prs = execSync(
+          "gh pr list -R airpau/lifeadmin-ai --state open --json number,title,headRefName,author",
+          { cwd: PROJECT_DIR, encoding: "utf-8" },
+        );
+        parts.push(prs || "(none)");
+      } catch (e) {
+        parts.push(`(gh pr list unavailable: ${(e as Error).message})`);
+      }
+
+      // Recent business_log
+      parts.push(`\n## Recent business_log (last ${limit})\n`);
+      try {
+        const { url, key } = getSupabaseCredentials();
+        const res = await fetch(
+          `${url}/rest/v1/business_log?select=*&order=created_at.desc&limit=${limit}`,
+          {
+            headers: {
+              apikey: key,
+              Authorization: `Bearer ${key}`,
+            },
+          },
+        );
+        if (res.ok) {
+          const rows = (await res.json()) as Array<Record<string, unknown>>;
+          parts.push(JSON.stringify(rows, null, 2));
+        } else {
+          parts.push(`(business_log fetch failed: ${res.status})`);
+        }
+      } catch (e) {
+        parts.push(`(business_log unavailable: ${(e as Error).message})`);
+      }
+
+      return parts.join("\n");
     }
 
     case "write_context": {
@@ -392,6 +708,304 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
     }
 
     // --- Social Media ---
+    case "get_finance_snapshot": {
+      const { url, key } = getSupabaseCredentials();
+      const tierPricesArg = args.tier_prices_gbp as Record<string, number> | undefined;
+      const tierPrices: Record<string, number> = tierPricesArg ?? {
+        free: 0,
+        plus: 4.99,
+        pro: 9.99,
+      };
+
+      const headers = {
+        apikey: key,
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      };
+
+      // Filter out test/demo accounts so MRR reflects real users.
+      // Test pattern: email ILIKE 'test+%' OR ILIKE '%@example.com' OR ILIKE 'googletest%'
+      const testEmailFilter =
+        "or=(email.ilike.test+%25,email.ilike.%25@example.com,email.ilike.googletest%25)";
+
+      // We do two queries: one with the test filter to subtract, one without.
+      // Supabase REST doesn't support NOT(or=…) cleanly, so we fetch all profiles' tier
+      // + email and aggregate locally — fast for our size and trivial to filter.
+      const profilesUrl = `${url}/rest/v1/profiles?select=id,email,subscription_tier,trial_ends_at,trial_converted_at,trial_expired_at,stripe_subscription_id,onboarded_at,created_at&limit=10000`;
+      const profilesRes = await fetch(profilesUrl, { headers });
+      if (!profilesRes.ok) {
+        return `Error fetching profiles: ${await profilesRes.text()}`;
+      }
+      const allProfiles = (await profilesRes.json()) as Array<{
+        id: string;
+        email: string | null;
+        subscription_tier: string | null;
+        trial_ends_at: string | null;
+        trial_converted_at: string | null;
+        trial_expired_at: string | null;
+        stripe_subscription_id: string | null;
+        onboarded_at: string | null;
+        created_at: string | null;
+      }>;
+
+      function isTestEmail(email: string | null): boolean {
+        if (!email) return false;
+        const e = email.toLowerCase();
+        return (
+          e.startsWith("test+") ||
+          e.endsWith("@example.com") ||
+          e.startsWith("googletest")
+        );
+      }
+
+      const realProfiles = allProfiles.filter((p) => !isTestEmail(p.email));
+      const now = Date.now();
+      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+      const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+      const tierCounts: Record<string, number> = {};
+      const unknownTiers: Record<string, number> = {};
+      let payingUsers = 0;
+      let mrrPence = 0;
+      let signups7d = 0;
+      let signups30d = 0;
+      let activeTrials = 0;
+      let trialConversions7d = 0;
+      let trialConversions30d = 0;
+      let trialExpiries7d = 0;
+      let trialExpiries30d = 0;
+
+      for (const p of realProfiles) {
+        const tier = (p.subscription_tier ?? "free").toLowerCase();
+        tierCounts[tier] = (tierCounts[tier] ?? 0) + 1;
+        if (!(tier in tierPrices)) {
+          unknownTiers[tier] = (unknownTiers[tier] ?? 0) + 1;
+        }
+        if (tier !== "free" && p.stripe_subscription_id) {
+          payingUsers += 1;
+          const price = tierPrices[tier] ?? 0;
+          mrrPence += Math.round(price * 100);
+        }
+        if (p.created_at) {
+          const t = new Date(p.created_at).getTime();
+          if (t >= sevenDaysAgo) signups7d += 1;
+          if (t >= thirtyDaysAgo) signups30d += 1;
+        }
+        if (
+          p.trial_ends_at &&
+          new Date(p.trial_ends_at).getTime() > now &&
+          !p.trial_converted_at &&
+          !p.trial_expired_at
+        ) {
+          activeTrials += 1;
+        }
+        if (p.trial_converted_at) {
+          const t = new Date(p.trial_converted_at).getTime();
+          if (t >= sevenDaysAgo) trialConversions7d += 1;
+          if (t >= thirtyDaysAgo) trialConversions30d += 1;
+        }
+        if (p.trial_expired_at) {
+          const t = new Date(p.trial_expired_at).getTime();
+          if (t >= sevenDaysAgo) trialExpiries7d += 1;
+          if (t >= thirtyDaysAgo) trialExpiries30d += 1;
+        }
+      }
+
+      const mrr = mrrPence / 100;
+      const arr = mrr * 12;
+
+      // Plan downgrade events (last 7d) — keep tolerant if table doesn't exist on a branch.
+      let planDowngradeEvents7d: number | string = "unavailable";
+      try {
+        const sevenDaysIso = new Date(sevenDaysAgo).toISOString();
+        const ddRes = await fetch(
+          `${url}/rest/v1/plan_downgrade_events?select=id&created_at=gte.${encodeURIComponent(sevenDaysIso)}`,
+          { headers: { ...headers, prefer: "count=exact" } },
+        );
+        if (ddRes.ok) {
+          const cr = ddRes.headers.get("content-range");
+          // content-range looks like "0-9/42" — last segment is the total count.
+          const total = cr ? parseInt(cr.split("/")[1] ?? "0", 10) : (await ddRes.json() as unknown[]).length;
+          planDowngradeEvents7d = Number.isFinite(total) ? total : 0;
+        }
+      } catch {
+        // leave as 'unavailable'
+      }
+
+      let expiringSoon: number | string = "unavailable";
+      try {
+        const exRes = await fetch(
+          `${url}/rest/v1/subscriptions_expiring_soon?select=id`,
+          { headers: { ...headers, prefer: "count=exact" } },
+        );
+        if (exRes.ok) {
+          const cr = exRes.headers.get("content-range");
+          expiringSoon = cr ? parseInt(cr.split("/")[1] ?? "0", 10) : 0;
+        }
+      } catch {
+        // leave as 'unavailable'
+      }
+
+      let upcomingPayments7d: number | string = "unavailable";
+      try {
+        const sevenDaysAhead = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const upRes = await fetch(
+          `${url}/rest/v1/upcoming_payments?select=id&due_date=lte.${encodeURIComponent(sevenDaysAhead)}`,
+          { headers: { ...headers, prefer: "count=exact" } },
+        );
+        if (upRes.ok) {
+          const cr = upRes.headers.get("content-range");
+          upcomingPayments7d = cr ? parseInt(cr.split("/")[1] ?? "0", 10) : 0;
+        }
+      } catch {
+        // leave as 'unavailable'
+      }
+
+      const snapshot = {
+        generated_at: new Date().toISOString(),
+        users: {
+          total_real: realProfiles.length,
+          test_users_excluded: allProfiles.length - realProfiles.length,
+          tier_counts: tierCounts,
+          unknown_tiers_seen: unknownTiers,
+          paying_users: payingUsers,
+        },
+        revenue: {
+          mrr_gbp: Number(mrr.toFixed(2)),
+          arr_gbp: Number(arr.toFixed(2)),
+          tier_prices_gbp_used: tierPrices,
+        },
+        growth: {
+          signups_last_7d: signups7d,
+          signups_last_30d: signups30d,
+        },
+        trials: {
+          active: activeTrials,
+          conversions_7d: trialConversions7d,
+          conversions_30d: trialConversions30d,
+          expiries_7d: trialExpiries7d,
+          expiries_30d: trialExpiries30d,
+          conversion_rate_30d:
+            trialConversions30d + trialExpiries30d === 0
+              ? null
+              : Number(
+                  (
+                    trialConversions30d /
+                    (trialConversions30d + trialExpiries30d)
+                  ).toFixed(3),
+                ),
+        },
+        churn: {
+          plan_downgrade_events_7d: planDowngradeEvents7d,
+        },
+        contracts: {
+          subscriptions_expiring_soon: expiringSoon,
+          upcoming_payments_next_7d: upcomingPayments7d,
+        },
+        notes: {
+          test_email_filter:
+            "Excluded emails matching: test+%, %@example.com, googletest%",
+          mrr_method:
+            "tier × stripe_subscription_id NOT NULL × tier_prices_gbp[tier]; unknown tiers are listed but contribute 0 to MRR until acknowledged.",
+        },
+      };
+
+      return JSON.stringify(snapshot, null, 2);
+    }
+
+    case "append_business_log": {
+      const { url, key } = getSupabaseCredentials();
+      const category = String(args.category || "info");
+      const title = String(args.title || "(no title)").slice(0, 200);
+      const content = String(args.content || "").slice(0, 4000);
+      const createdBy = String(args.created_by || "unknown");
+
+      const insertRes = await fetch(`${url}/rest/v1/business_log`, {
+        method: "POST",
+        headers: {
+          apikey: key,
+          authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+          prefer: "return=representation",
+        },
+        body: JSON.stringify({
+          category,
+          title,
+          content,
+          created_by: createdBy,
+        }),
+      });
+      const insertData = (await insertRes.json()) as unknown;
+      if (!insertRes.ok) {
+        return `Error inserting business_log row: ${JSON.stringify(insertData)}`;
+      }
+      const inserted = Array.isArray(insertData) ? insertData[0] : insertData;
+      const id = (inserted as Record<string, unknown> | null)?.id ?? "?";
+      return `Inserted business_log row ${id} (category=${category}).`;
+    }
+
+    case "post_to_telegram_admin": {
+      const { token, chatId } = getTelegramAdminCredentials();
+      const agentName = String(args.agent_name || "unknown-agent");
+      const severity = String(args.severity || "info");
+      const title = String(args.title || "(no title)");
+      const body = String(args.body || "");
+      const ask = args.ask ? String(args.ask) : "";
+
+      if (
+        ["recommend", "warn", "critical"].includes(severity) &&
+        !ask.trim()
+      ) {
+        return `Refused: severity=${severity} requires a non-empty 'ask' field. Tell me what decision the founder needs to make.`;
+      }
+
+      const prefix = TELEGRAM_SEVERITY_PREFIX[severity] ?? "•";
+      // Telegram MarkdownV2 is fussy about escaping; stick to plain HTML mode for safety.
+      const lines: string[] = [];
+      lines.push(`${prefix} <b>${escapeHtml(title)}</b>`);
+      lines.push(`<i>${escapeHtml(agentName)} · ${severity} · ${timestamp()} UTC</i>`);
+      if (body.trim()) {
+        lines.push("");
+        lines.push(escapeHtml(body));
+      }
+      if (ask.trim()) {
+        lines.push("");
+        lines.push(`<b>Ask:</b> ${escapeHtml(ask)}`);
+      }
+      const text = lines.join("\n").slice(0, 3800);
+
+      const tgRes = await fetch(
+        `https://api.telegram.org/bot${token}/sendMessage`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          }),
+        },
+      );
+      const tgData = (await tgRes.json()) as Record<string, unknown>;
+      if (!tgRes.ok || tgData.ok === false) {
+        return `Error sending Telegram admin message: ${JSON.stringify(tgData)}`;
+      }
+
+      // Mirror to business-ops.md so the digest still has a record.
+      try {
+        appendFileSync(
+          resolveContextFile("business-ops.md"),
+          `\n\n## [telegram-admin] ${timestamp()} UTC — ${agentName} · ${severity}\n**${title}**\n\n${body}${ask ? `\n\n_Ask:_ ${ask}` : ""}\n`,
+        );
+      } catch (err) {
+        // Mirror failure shouldn't fail the Telegram send — log to stdout for the host.
+        console.error("[post_to_telegram_admin] mirror to business-ops.md failed:", err);
+      }
+
+      return `Sent Telegram admin message (severity=${severity}) and mirrored to business-ops.md.`;
+    }
+
     case "post_to_facebook": {
       const systemToken = getMetaToken();
 

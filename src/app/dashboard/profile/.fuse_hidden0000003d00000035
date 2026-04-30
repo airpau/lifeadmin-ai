@@ -1,0 +1,1318 @@
+'use client';
+
+
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download, Lock, X, Eye, EyeOff } from 'lucide-react';
+import Link from 'next/link';
+import { formatGBP } from '@/lib/format';
+import FinancialReport from '@/components/reports/FinancialReport';
+import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
+
+interface Profile {
+  email: string;
+  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  address: string | null;
+  postcode: string | null;
+  subscription_status: string | null;
+  subscription_tier: string | null;
+  stripe_subscription_id: string | null;
+  total_money_recovered: number;
+  total_tasks_completed: number;
+  total_agents_run: number;
+  created_at: string;
+  trial_ends_at: string | null;
+  founding_member: boolean;
+}
+
+function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: ReturnType<typeof createClient>; fallbackRecovered: number }) {
+  const [lettersWritten, setLettersWritten] = useState(0);
+  const [moneyRecovered, setMoneyRecovered] = useState(fallbackRecovered);
+  const [activeDisputes, setActiveDisputes] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoaded(true); return; }
+      const [letters, resolved, disputes] = await Promise.all([
+        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
+        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'open'),
+      ]);
+      setLettersWritten(letters.count || 0);
+      const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
+      setMoneyRecovered(Math.max(totalRecovered, fallbackRecovered));
+      setActiveDisputes(disputes.count || 0);
+      setLoaded(true);
+    };
+    load();
+  }, [supabase, fallbackRecovered]);
+
+  return (
+    <div className="grid md:grid-cols-2 gap-6 mb-6">
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6">
+        <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+          <CheckCircle2 className="h-6 w-6 text-blue-500" />
+        </div>
+        <h3 className="text-3xl font-bold text-slate-900 mb-1">
+          {lettersWritten}
+        </h3>
+        <p className="text-slate-600 text-sm">Letters written</p>
+      </div>
+
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6">
+        <div className="bg-purple-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+          <Clock className="h-6 w-6 text-purple-500" />
+        </div>
+        <h3 className="text-3xl font-bold text-slate-900 mb-1">
+          {activeDisputes}
+        </h3>
+        <p className="text-slate-600 text-sm">Active disputes</p>
+      </div>
+    </div>
+  );
+}
+
+function ConnectedAccountsSection({ supabase, searchParams }: { supabase: ReturnType<typeof createClient>, searchParams: URLSearchParams }) {
+  const [bankConns, setBankConns] = useState<Array<{ id: string; bank_name: string | null; status: string; connected_at: string; account_display_names: string[] | null }>>([]);
+  const [emailConns, setEmailConns] = useState<Array<{ id: string; email_address: string; provider_type: string; status: string }>>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [connectEmail, setConnectEmail] = useState('');
+  const [connectPassword, setConnectPassword] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [imapMode, setImapMode] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get('connect_email') === 'true') {
+      setShowConnectModal(true);
+      // clean up URL
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoaded(true); return; }
+      const [banks, emails] = await Promise.all([
+        supabase.from('bank_connections').select('id, bank_name, status, connected_at, account_display_names').eq('user_id', user.id),
+        supabase.from('email_connections').select('id, email_address, provider_type, status').eq('user_id', user.id),
+      ]);
+      setBankConns(banks.data || []);
+      setEmailConns(emails.data || []);
+      setLoaded(true);
+    };
+    load();
+  }, [supabase, searchParams]);
+
+  const activeBanks = bankConns.filter(b => b.status === 'active');
+  const activeEmails = emailConns.filter(e => e.status === 'active');
+
+  const detectProvider = (email: string): { name: string; note?: string } => {
+    const domain = email.split('@')[1]?.toLowerCase();
+    const providers: Record<string, { name: string; note?: string }> = {
+      'gmail.com': { name: 'Gmail', note: 'Requires an App Password if 2FA is enabled. Go to myaccount.google.com > Security > App Passwords.' },
+      'googlemail.com': { name: 'Gmail', note: 'Requires an App Password if 2FA is enabled.' },
+      'outlook.com': { name: 'Outlook' },
+      'hotmail.com': { name: 'Outlook' },
+      'hotmail.co.uk': { name: 'Outlook' },
+      'live.com': { name: 'Outlook' },
+      'live.co.uk': { name: 'Outlook' },
+      'yahoo.com': { name: 'Yahoo', note: 'Yahoo requires an App Password (not your normal password). To generate one: go to login.yahoo.com → Account Security → Generate App Password → select "Other App" → copy the password and paste it here.' },
+      'yahoo.co.uk': { name: 'Yahoo', note: 'Yahoo requires an App Password (not your normal password). To generate one: go to login.yahoo.com → Account Security → Generate App Password → select "Other App" → copy the password and paste it here.' },
+      'icloud.com': { name: 'iCloud', note: 'iCloud requires an App-Specific Password. Go to appleid.apple.com → Sign-In and Security → App-Specific Passwords → Generate.' },
+      'me.com': { name: 'iCloud', note: 'iCloud requires an App-Specific Password. Go to appleid.apple.com → Sign-In and Security → App-Specific Passwords → Generate.' },
+      'btinternet.com': { name: 'BT' },
+      'sky.com': { name: 'Sky' },
+      'virginmedia.com': { name: 'Virgin Media' },
+      'aol.com': { name: 'AOL' },
+      'protonmail.com': { name: 'ProtonMail', note: 'Requires ProtonMail Bridge.' },
+      'proton.me': { name: 'ProtonMail', note: 'Requires ProtonMail Bridge.' },
+    };
+    if (!domain) return { name: 'Email' };
+    return providers[domain] || { name: domain };
+  };
+
+  const detectedProvider = connectEmail ? detectProvider(connectEmail) : null;
+
+  const handleConnectEmail = async () => {
+    if (!connectEmail || !connectPassword) return;
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const res = await fetch('/api/email/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: connectEmail, password: connectPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setConnectError(data.error || 'Connection failed');
+        return;
+      }
+      setShowConnectModal(false);
+      setConnectEmail('');
+      setConnectPassword('');
+      setImapMode(false);
+      // Reload emails
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: emails } = await supabase.from('email_connections').select('id, email_address, provider_type, status').eq('user_id', user.id);
+        setEmailConns(emails || []);
+      }
+    } catch (err: any) {
+      setConnectError(err.message || 'Connection failed');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnectEmail = async (id: string) => {
+    try {
+      await fetch(`/api/email/connections?id=${id}`, { method: 'DELETE' });
+      setEmailConns((prev) => prev.filter((c) => c.id !== id));
+    } catch {}
+  };
+
+  return (
+    <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+      <h2 className="text-xl font-bold text-slate-900 mb-6">Connected Accounts & Integrations</h2>
+      <div className="space-y-4">
+        {/* Email */}
+        <div className="p-4 bg-slate-50/50 rounded-lg border border-slate-200/50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center">
+                <Mail className="h-6 w-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-slate-900 font-semibold">Email Accounts</h3>
+                <p className="text-sm text-slate-600">
+                  {emailConns.length > 0
+                    ? `${emailConns.length} email account${emailConns.length !== 1 ? 's' : ''} connected`
+                    : 'Scan emails for bills and subscriptions'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setShowConnectModal(true)} className="text-sm text-emerald-600 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-200 hover:bg-emerald-500/20 transition-all">
+                {emailConns.length > 0 ? '+ Add Email' : 'Connect'}
+              </button>
+            </div>
+          </div>
+          {emailConns.length > 0 && (
+            <div className="mt-3 ml-16 space-y-1.5">
+              {emailConns.map(e => (
+                <div key={e.id} className="flex items-center justify-between text-sm pr-2">
+                  <div className="flex items-center gap-2 text-sm z-10 w-full min-w-0 pr-4">
+                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'active' ? 'bg-green-400' : 'bg-amber-400'}`} />
+                    <span className="text-slate-700 capitalize">{e.provider_type === 'google' ? 'Gmail' : e.provider_type === 'outlook' ? 'Outlook' : e.provider_type}</span>
+                    <span className="text-slate-500 truncate">· {e.email_address}</span>
+                  </div>
+                  <button onClick={() => handleDisconnectEmail(e.id)} className="text-slate-500 hover:text-red-400 text-xs shrink-0">
+                    Disconnect
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Bank */}
+        <div className="p-4 bg-slate-50/50 rounded-lg border border-slate-200/50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                <CreditCard className="h-6 w-6 text-blue-400" />
+              </div>
+              <div>
+                <h3 className="text-slate-900 font-semibold">Bank Accounts</h3>
+                <p className="text-sm text-slate-600">
+                  {activeBanks.length > 0
+                    ? `${activeBanks.reduce((sum, b) => sum + (b.account_display_names?.length || 1), 0)} account${activeBanks.reduce((sum, b) => sum + (b.account_display_names?.length || 1), 0) !== 1 ? 's' : ''} connected`
+                    : 'Automatic transaction categorisation'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {activeBanks.length > 0 && (
+                <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+                </span>
+              )}
+              <a href="/dashboard/subscriptions?connectBank=true" className="text-sm text-emerald-600 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-200 hover:bg-emerald-500/20 transition-all">
+                {activeBanks.length > 0 ? '+ Add Bank' : 'Connect'}
+              </a>
+            </div>
+          </div>
+          {activeBanks.length > 0 && (
+            <div className="mt-3 ml-16 space-y-1.5">
+              {activeBanks.map(b => (
+                (b.account_display_names && b.account_display_names.length > 0)
+                  ? b.account_display_names.map((name, i) => (
+                    <div key={`${b.id}-${i}`} className="flex items-center gap-2 text-sm">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      <span className="text-slate-700">{b.bank_name || 'Bank'}</span>
+                      <span className="text-slate-500">·</span>
+                      <span className="text-slate-600">{name}</span>
+                    </div>
+                  ))
+                  : (
+                    <div key={b.id} className="flex items-center gap-2 text-sm">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      <span className="text-slate-700">{b.bank_name || 'Bank Account'}</span>
+                    </div>
+                  )
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Connect Email Modal */}
+      {showConnectModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}>
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}
+              className="absolute top-4 right-4 text-slate-500 hover:text-slate-900 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="bg-emerald-500/10 w-10 h-10 rounded-xl flex items-center justify-center">
+                <Mail className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Connect Email</h3>
+                <p className="text-slate-600 text-sm">Works with Gmail, Outlook, Yahoo, iCloud, and more</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* Provider selector */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Choose your email provider</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                     onClick={() => { window.location.href = '/api/auth/google?returnPath=/dashboard/profile'; }}
+                    className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
+                  >
+                    <span className="text-xl">📧</span>
+                    <div>
+                      <p className="text-slate-900 text-sm font-medium">Gmail</p>
+                      <p className="text-slate-500 text-[10px]">One-click connect</p>
+                    </div>
+                  </button>
+                  <button
+                     onClick={() => { window.location.href = '/api/outlook/auth?returnPath=/dashboard/profile'; }}
+                    className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
+                  >
+                    <span className="text-xl">📬</span>
+                    <div>
+                      <p className="text-slate-900 text-sm font-medium">Outlook</p>
+                      <p className="text-slate-500 text-[10px]">One-click connect</p>
+                    </div>
+                  </button>
+                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                    <span className="text-xl">📨</span>
+                    <div>
+                      <p className="text-slate-900 text-sm font-medium">Yahoo Mail</p>
+                      <p className="text-slate-500 text-[10px]">App password required</p>
+                    </div>
+                  </button>
+                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                    <span className="text-xl">✉️</span>
+                    <div>
+                      <p className="text-slate-900 text-sm font-medium">Other</p>
+                      <p className="text-slate-500 text-[10px]">iCloud, BT, Sky, etc.</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* IMAP fields for Yahoo/Other */}
+              {imapMode && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
+                    <input
+                      type="email"
+                      value={connectEmail}
+                      onChange={(e) => setConnectEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
+                      autoFocus
+                    />
+                    {detectedProvider && connectEmail.length > 3 && connectEmail.includes('@') && (
+                      <p className="text-xs text-emerald-600 mt-1.5 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Detected: {detectedProvider.name}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Password or App Password</label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={connectPassword}
+                        onChange={(e) => setConnectPassword(e.target.value)}
+                        placeholder="Your email password"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 pr-10 text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
+                      >
+                         <Lock className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {detectedProvider?.note && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5">
+                      <p className="text-xs text-amber-400 leading-relaxed">{detectedProvider.note}</p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleConnectEmail}
+                    disabled={connecting || !connectEmail || !connectEmail.includes('@') || !connectPassword}
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
+                  >
+                    {connecting ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Connecting...</>
+                    ) : (
+                      <><Lock className="h-4 w-4" /> Connect Securely</>
+                    )}
+                  </button>
+                </>
+              )}
+
+              {connectError && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2.5">
+                  <p className="text-xs text-red-400">{connectError}</p>
+                </div>
+              )}
+
+              <div className="flex items-start gap-2 bg-slate-50/50 rounded-lg px-3 py-2">
+                <Sparkles className="h-3.5 w-3.5 text-green-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-slate-500">
+                  Gmail and Outlook use secure OAuth (no password stored). Other providers use encrypted IMAP. Read-only access. We never send emails from your account.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ProfilePage() {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    first_name: '',
+    last_name: '',
+    phone: '',
+    address: '',
+    postcode: '',
+  });
+  const [pendingChange, setPendingChange] = useState<{ type: string; tier?: string; date: string } | null>(null);
+  const [renewalDate, setRenewalDate] = useState<string | null>(null);
+  const [billingMessage, setBillingMessage] = useState<string | null>(null);
+  const [reportData, setReportData] = useState<AnnualReportData | OnDemandReportData | null>(null);
+  const [reportType, setReportType] = useState<'annual' | 'on_demand' | 'sample'>('sample');
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [savedReports, setSavedReports] = useState<Array<{ id: string; report_type: string; year: number; month: number | null; created_at: string }>>([]);
+  const [showReport, setShowReport] = useState(false);
+  const [telegramLinked, setTelegramLinked] = useState<boolean | null>(null);
+  
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+
+  const supabase = createClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 8) {
+      setPasswordMessage({ type: 'error', text: 'Password must be at least 8 characters long.' });
+      return;
+    }
+    setPasswordLoading(true);
+    setPasswordMessage(null);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
+      setNewPassword('');
+      setTimeout(() => setPasswordMessage(null), 5000);
+    } catch (err: any) {
+      setPasswordMessage({ type: 'error', text: err.message || 'Failed to update password.' });
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+
+          if (data) {
+            const isTestUser = user.email?.toLowerCase() === 'sheva.tests.2026@outlook.com';
+            
+            setProfile({
+              email: data.email,
+              full_name: data.full_name,
+              first_name: data.first_name,
+              last_name: data.last_name,
+              phone: data.phone,
+              address: data.address,
+              postcode: data.postcode,
+              subscription_status: isTestUser ? 'active' : data.subscription_status,
+              subscription_tier: isTestUser ? 'pro' : data.subscription_tier,
+              stripe_subscription_id: data.stripe_subscription_id,
+              total_money_recovered: data.total_money_recovered || 0,
+              total_tasks_completed: data.total_tasks_completed || 0,
+              total_agents_run: data.total_agents_run || 0,
+              created_at: data.created_at,
+              trial_ends_at: data.trial_ends_at || null,
+              founding_member: data.founding_member || false,
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+
+    // Sync subscription status from Stripe
+    fetch('/api/stripe/sync', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.pendingChange) setPendingChange(data.pendingChange);
+        if (data.currentPeriodEnd) {
+          setRenewalDate(new Date(data.currentPeriodEnd).toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'long', year: 'numeric',
+          }));
+        }
+        // If returning from billing portal, refetch profile to show updated tier
+        if (searchParams.get('billing') === 'updated' && data.synced) {
+          setBillingMessage('Your subscription has been updated.');
+          setTimeout(() => setBillingMessage(null), 5000);
+          // Refetch profile to pick up any tier changes
+          fetchProfile();
+        }
+      })
+      .catch(() => {});
+  }, [supabase, searchParams]);
+
+  useEffect(() => {
+    fetch('/api/telegram/link-code')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setTelegramLinked(data?.linked === true))
+      .catch(() => setTelegramLinked(false));
+  }, []);
+
+  const startEditing = () => {
+    setEditForm({
+      first_name: profile?.first_name || '',
+      last_name: profile?.last_name || '',
+      phone: profile?.phone || '',
+      address: profile?.address || '',
+      postcode: profile?.postcode || '',
+    });
+    setEditing(true);
+  };
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const fullName = [editForm.first_name, editForm.last_name].filter(Boolean).join(' ');
+
+      await supabase.from('profiles').update({
+        first_name: editForm.first_name || null,
+        last_name: editForm.last_name || null,
+        full_name: fullName || null,
+        phone: editForm.phone || null,
+        address: editForm.address || null,
+        postcode: editForm.postcode?.toUpperCase().trim() || null,
+      }).eq('id', user.id);
+
+      setProfile(prev => prev ? {
+        ...prev,
+        first_name: editForm.first_name || null,
+        last_name: editForm.last_name || null,
+        full_name: fullName || null,
+        phone: editForm.phone || null,
+        address: editForm.address || null,
+        postcode: editForm.postcode?.toUpperCase().trim() || null,
+      } : null);
+
+      setEditing(false);
+      setSaveMessage('Profile updated');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleManageBilling = async () => {
+    setPortalLoading(true);
+    setPortalError(null);
+    try {
+      const res = await fetch('/api/stripe/portal', { method: 'POST' });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setPortalError(data.error || 'Please try again or contact support at support@paybacker.co.uk');
+        setPortalLoading(false);
+      }
+    } catch {
+      setPortalError('Failed to open billing portal. Please try again or contact support at support@paybacker.co.uk');
+      setPortalLoading(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch('/api/account/export', { method: 'POST' });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `paybacker-data-export-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to export data. Please contact support@paybacker.co.uk');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/account/delete', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      await supabase.auth.signOut();
+      router.push('/?deleted=true');
+    } catch {
+      alert('Failed to delete account. Please contact support@paybacker.co.uk');
+      setDeleting(false);
+    }
+  };
+
+  const fetchSavedReports = async () => {
+    try {
+      const res = await fetch('/api/reports');
+      const data = await res.json();
+      if (data.reports) setSavedReports(data.reports);
+    } catch {
+      // Silently fail
+    }
+  };
+
+  const handleGenerateReport = async (type: 'annual' | 'on_demand') => {
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const res = await fetch('/api/reports/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, year: new Date().getFullYear() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setReportError(data.error || 'Failed to generate report');
+        return;
+      }
+      setReportData(data.data);
+      setReportType(type);
+      setShowReport(true);
+      if (type === 'annual') fetchSavedReports();
+    } catch {
+      setReportError('Failed to generate report');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  // Fetch saved reports for Pro users
+  useEffect(() => {
+    const isPro = profile?.subscription_tier &&
+      profile.subscription_tier === 'pro' &&
+      ['active', 'trialing'].includes(profile?.subscription_status ?? '');
+    if (profile && isPro) {
+      fetchSavedReports();
+    }
+  }, [profile]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 text-amber-500 animate-spin" />
+      </div>
+    );
+  }
+
+  const memberSince = profile?.created_at 
+    ? new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    : 'Unknown';
+
+  // Trust the DB tier — covers both Stripe-paying and manually upgraded users
+  const hasActiveSubscription = profile?.subscription_tier && profile.subscription_tier !== 'free' &&
+    ['active', 'trialing'].includes(profile?.subscription_status ?? '');
+  const hasActiveStripe = !!profile?.stripe_subscription_id;
+  const effectiveTier = hasActiveSubscription
+    ? (profile.subscription_tier || 'free')
+    : 'free';
+
+  const subscriptionBadge = () => {
+    const colors = {
+      free: 'bg-slate-500/10 text-slate-600 border-slate-500/30',
+      essential: 'bg-emerald-500/10 text-emerald-600 border-emerald-200',
+      pro: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+    };
+
+    return (
+      <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${colors[effectiveTier as keyof typeof colors]}`}>
+        {effectiveTier.charAt(0).toUpperCase() + effectiveTier.slice(1)}
+      </span>
+    );
+  };
+
+  const subscriptionStatusLabel = () => {
+    const tier = profile?.subscription_tier;
+    const status = profile?.subscription_status;
+    const tierLabel = tier ? tier.charAt(0).toUpperCase() + tier.slice(1) : 'Free';
+
+    if (!tier || tier === 'free' || !hasActiveStripe) {
+      return <span className="text-slate-900 font-semibold">Free Plan</span>;
+    }
+    if (status === 'active') {
+      return <span className="text-slate-900 font-semibold">{tierLabel} — Active</span>;
+    }
+    if (status === 'trialing') {
+      return <span className="text-slate-900 font-semibold">{tierLabel} — Trial</span>;
+    }
+    if (status === 'past_due') {
+      return <span className="text-red-400 font-semibold">{tierLabel} — Payment overdue</span>;
+    }
+    if (status === 'canceled') {
+      return <span className="text-slate-600 font-semibold">{tierLabel} — Cancelled</span>;
+    }
+    if (status === 'paused') {
+      return <span className="text-slate-600 font-semibold">{tierLabel} — Paused</span>;
+    }
+    return <span className="text-slate-900 font-semibold capitalize">{status || 'Free'}</span>;
+  };
+
+  return (
+    <div className="max-w-4xl">
+      {/* Billing update message */}
+      {billingMessage && (
+        <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4" />
+          {billingMessage}
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Profile</h1>
+        <p className="text-slate-600">Manage your account and view your stats</p>
+      </div>
+
+      {/* Account Info */}
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-gradient-to-br from-mint-400 to-mint-500 rounded-full flex items-center justify-center">
+              <User className="h-8 w-8 text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">{profile?.full_name || 'User'}</h2>
+              <p className="text-slate-600 flex items-center gap-2 mt-1">
+                <Mail className="h-4 w-4" />
+                {profile?.email}
+              </p>
+            </div>
+          </div>
+          {subscriptionBadge()}
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 pt-6 border-t border-slate-200/50">
+          <div>
+            <p className="text-sm text-slate-500 mb-1">Member since</p>
+            <p className="text-slate-900 font-semibold">{memberSince}</p>
+          </div>
+          <div>
+            <p className="text-sm text-slate-500 mb-1">Subscription status</p>
+            {subscriptionStatusLabel()}
+          </div>
+        </div>
+      </div>
+
+      {/* Personal Details */}
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-emerald-600" />
+            Personal Details
+          </h2>
+          {!editing && (
+            <button onClick={startEditing} className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition-all">
+              <Pencil className="h-4 w-4" />
+              Edit
+            </button>
+          )}
+        </div>
+
+        {saveMessage && (
+          <div className="mb-4 bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-400 text-sm flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4" />
+            {saveMessage}
+          </div>
+        )}
+
+        {editing ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">First name</label>
+                <input
+                  type="text"
+                  value={editForm.first_name}
+                  onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                  placeholder="First name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Last name</label>
+                <input
+                  type="text"
+                  value={editForm.last_name}
+                  onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                  placeholder="Last name"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone number</label>
+              <input
+                type="tel"
+                value={editForm.phone}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                placeholder="07xxx xxxxxx"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Address</label>
+              <input
+                type="text"
+                value={editForm.address}
+                onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                placeholder="House number, street, city"
+              />
+            </div>
+
+            <div className="max-w-xs">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Postcode</label>
+              <input
+                type="text"
+                value={editForm.postcode}
+                onChange={(e) => setEditForm({ ...editForm, postcode: e.target.value })}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm uppercase"
+                placeholder="SW1A 1AA"
+                maxLength={8}
+              />
+            </div>
+
+            <p className="text-xs text-slate-500">Your address is used to auto-fill complaint letters. We never share your personal details.</p>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setEditing(false)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl transition-all text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveProfile}
+                disabled={saving}
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-slate-500 mb-0.5">Name</p>
+              <p className="text-slate-900 text-sm">{profile?.full_name || 'Not set'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-0.5">Phone</p>
+              <p className="text-slate-900 text-sm">{profile?.phone || 'Not set'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-0.5">Address</p>
+              <p className="text-slate-900 text-sm">{profile?.address || 'Not set'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-0.5">Postcode</p>
+              <p className="text-slate-900 text-sm">{profile?.postcode || 'Not set'}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Security Details */}
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 mb-6">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield h-5 w-5 text-emerald-600"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2-1 4-2 7-2 2.94 0 5 1 7 2a1 1 0 0 1 1 1v7z"/></svg>
+          Security
+        </h2>
+        
+        <form onSubmit={handleChangePassword} className="max-w-md space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">New Password <span className="text-slate-500 font-normal">(min 8 characters)</span></label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+              placeholder="••••••••"
+             />
+          </div>
+          {passwordMessage && (
+            <p className={`text-sm ${passwordMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+              {passwordMessage.text}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={passwordLoading || newPassword.length < 8}
+            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl transition-all text-sm font-semibold disabled:opacity-50"
+          >
+            {passwordLoading ? 'Updating...' : 'Update Password'}
+          </button>
+        </form>
+      </div>
+
+      {/* Profile Completeness */}
+      {(() => {
+        const fields = [
+          { label: 'Name', filled: !!profile?.full_name },
+          { label: 'Phone', filled: !!profile?.phone },
+          { label: 'Address', filled: !!profile?.address },
+          { label: 'Postcode', filled: !!profile?.postcode },
+        ];
+        const filledCount = fields.filter(f => f.filled).length;
+        const percent = Math.round((filledCount / fields.length) * 100);
+        if (percent === 100) return null;
+        return (
+          <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5 mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-slate-900">Profile {percent}% complete</p>
+              <p className="text-xs text-slate-500">{filledCount}/{fields.length} fields</p>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-2 mb-3">
+              <div
+                className="bg-gradient-to-r from-mint-400 to-mint-500 h-2 rounded-full transition-all duration-500"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-600">
+              Complete your profile to auto-fill complaint letters.
+              {!profile?.full_name && ' Add your name.'}
+              {!profile?.phone && ' Add your phone number.'}
+              {!profile?.address && ' Add your address.'}
+              {!profile?.postcode && ' Add your postcode.'}
+            </p>
+            {!editing && (
+              <button onClick={startEditing} className="mt-2 text-xs text-emerald-600 hover:text-mint-300 font-medium transition-all">
+                Complete profile
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Stats */}
+      <ProfileStatsSection supabase={supabase} fallbackRecovered={profile?.total_money_recovered || 0} />
+
+      {/* Your Plan */}
+      {(() => {
+        const isTrialUser = profile?.subscription_status === 'trialing' && !profile?.stripe_subscription_id && effectiveTier !== 'free';
+        const trialEnd = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
+        const trialDays = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : null;
+
+        return (
+          <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-emerald-600" />
+              Your Plan
+            </h2>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className={`inline-block text-sm font-semibold px-3 py-1 rounded-full ${
+                  isTrialUser ? 'bg-amber-400/10 text-amber-400' :
+                  effectiveTier === 'pro' ? 'bg-brand-400/10 text-brand-400' :
+                  effectiveTier === 'essential' ? 'bg-emerald-500/10 text-emerald-600' :
+                  'bg-slate-400/10 text-slate-600'
+                }`}>
+                  {isTrialUser ? 'Pro Trial' : effectiveTier === 'pro' ? 'Pro' : effectiveTier === 'essential' ? 'Essential' : 'Free'}
+                </span>
+                <p className="text-slate-600 text-sm mt-2">
+                  {isTrialUser
+                    ? `Free for 14 days${trialDays !== null ? ` — ${trialDays} days left on your free trial` : ''}`
+                    : effectiveTier === 'free'
+                    ? '3 letters/month, one-time scans. Upgrade for unlimited access.'
+                    : effectiveTier === 'essential'
+                    ? 'Unlimited letters, daily bank sync, full spending dashboard.'
+                    : 'Everything in Essential plus unlimited bank accounts and priority support.'}
+                </p>
+              </div>
+              {isTrialUser ? (
+                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                  Subscribe to keep Pro
+                </Link>
+              ) : effectiveTier === 'free' ? (
+                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                  Upgrade Plan
+                </Link>
+              ) : (
+                <button onClick={handleManageBilling} disabled={portalLoading} className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-900 px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                  {portalLoading ? 'Loading...' : 'Manage Billing'}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Connected Accounts */}
+      <ConnectedAccountsSection supabase={supabase} searchParams={searchParams} />
+
+      {/* Financial Reports */}
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+          <FileText className="h-5 w-5 text-emerald-600" />
+          Financial Reports
+        </h2>
+
+        {effectiveTier === 'pro' ? (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() => handleGenerateReport('annual')}
+                disabled={reportLoading}
+                className="flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-white font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
+              >
+                {reportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                {reportLoading ? 'Generating...' : 'Generate Annual Report'}
+              </button>
+              <button
+                onClick={() => handleGenerateReport('on_demand')}
+                disabled={reportLoading}
+                className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
+              >
+                Quick Summary
+              </button>
+            </div>
+
+            {reportError && (
+              <p className="text-sm text-red-400">{reportError}</p>
+            )}
+
+            {/* Saved reports list */}
+            {savedReports.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Saved Reports</h3>
+                <div className="space-y-2">
+                  {savedReports.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileText className="h-4 w-4 text-emerald-600" />
+                        <div>
+                          <p className="text-slate-900 text-sm font-medium capitalize">
+                            {r.report_type === 'annual' ? `${r.year} Annual Report` : 'Summary Report'}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {new Date(r.created_at).toLocaleDateString('en-GB', {
+                              day: 'numeric',
+                              month: 'long',
+                              year: 'numeric',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Report display */}
+            {showReport && reportData && (
+              <div className="mt-4 pt-4 border-t border-slate-200/50">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    {reportType === 'annual' ? 'Annual Report' : 'Financial Summary'}
+                  </h3>
+                  <button
+                    onClick={() => setShowReport(false)}
+                    className="text-sm text-slate-600 hover:text-slate-900 transition-all"
+                  >
+                    Close
+                  </button>
+                </div>
+                <FinancialReport data={reportData} type={reportType} />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <p className="text-slate-600 text-sm mb-4">
+              {effectiveTier === 'essential'
+                ? 'Upgrade to Pro to unlock personalised annual financial reports with PDF download.'
+                : 'Pro users get personalised annual financial reports with spending analysis, savings tracking, and PDF download.'}
+            </p>
+            <FinancialReport type="sample" />
+          </div>
+        )}
+      </div>
+
+      {/* Legal links */}
+      <div className="flex gap-4 text-xs text-slate-500 mb-6">
+        <a href="/privacy-policy" className="hover:text-slate-900 transition-all">Privacy Policy</a>
+        <a href="/terms-of-service" className="hover:text-slate-900 transition-all">Terms of Service</a>
+      </div>
+
+      {/* Subscription Management */}
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8">
+        <h2 className="text-xl font-bold text-slate-900 mb-4">Subscription</h2>
+        
+        {effectiveTier === 'free' ? (
+          <div className="text-center py-8">
+            <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">Upgrade to unlock more</h3>
+            <p className="text-slate-600 mb-6">
+              Get unlimited complaints, scanning, and lower success fees
+            </p>
+            <a
+              href="/pricing"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-white font-semibold px-6 py-3 rounded-lg transition-all"
+            >
+              Upgrade Plan
+            </a>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-slate-50/50 rounded-lg">
+              <div>
+                <h3 className="text-slate-900 font-semibold capitalize">{effectiveTier} Plan</h3>
+                <p className="text-sm text-slate-600">
+                  {effectiveTier === 'essential' ? '£4.99/month' : '£9.99/month'}
+                </p>
+                {renewalDate && !pendingChange && (
+                  <p className="text-xs text-slate-500 mt-1">Renews {renewalDate}</p>
+                )}
+              </div>
+              <button
+                onClick={handleManageBilling}
+                disabled={portalLoading}
+                className="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
+              >
+                <CreditCard className="h-4 w-4" />
+                {portalLoading ? 'Loading...' : 'Manage Billing'}
+              </button>
+            </div>
+
+            {/* Pending downgrade or cancellation notice */}
+            {pendingChange && (
+              <div className="flex items-start gap-3 p-4 rounded-lg border bg-emerald-500/5 border-emerald-200">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-emerald-600" />
+                <div>
+                  {pendingChange.type === 'cancel' ? (
+                    <>
+                      <p className="text-sm text-emerald-600 font-medium">Subscription set to not renew</p>
+                      <p className="text-xs text-slate-600 mt-0.5">
+                        Your {effectiveTier} plan will not renew after {pendingChange.date}. You keep full access until then. To continue your subscription, click Manage Billing and reactivate.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-emerald-600 font-medium">
+                        Changing to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)}
+                      </p>
+                      <p className="text-xs text-slate-600 mt-0.5">
+                        Your plan will change to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)} on {pendingChange.date}. You keep {effectiveTier?.charAt(0).toUpperCase()}{effectiveTier?.slice(1)} access until then.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {portalError && (
+              <p className="text-xs text-red-400 mt-2">{portalError}</p>
+            )}
+            <p className="text-xs text-slate-500">
+              Manage, upgrade, downgrade or cancel anytime via the billing portal.
+            </p>
+          </div>
+        )}
+      </div>
+      {/* Pocket Agent */}
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+          <Mail className="h-5 w-5 text-amber-500" />
+          Pocket Agent
+        </h2>
+        <p className="text-slate-600 text-sm mb-4">
+          Connect your Paybacker account to Pocket Agent for proactive alerts, spending queries, and complaint letters — all from your phone.
+        </p>
+        {telegramLinked === true ? (
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
+            <span className="text-green-400 text-sm font-medium">Pocket Agent Connected</span>
+            <Link
+              href="/dashboard/pocket-agent"
+              className="ml-2 inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-medium transition-colors border border-slate-200/50"
+            >
+              Manage
+            </Link>
+          </div>
+        ) : (
+          <Link
+            href="/dashboard/pocket-agent"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-sm font-medium transition-colors"
+          >
+            Set Up Pocket Agent
+          </Link>
+        )}
+      </div>
+      {/* Data Export — GDPR Right to Portability */}
+      <div className="bg-white backdrop-blur-sm border border-slate-200 rounded-2xl p-8 mt-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+          <Download className="h-5 w-5 text-emerald-600" />
+          Download My Data
+        </h2>
+        <p className="text-slate-600 text-sm mb-6">
+          Download a copy of all your Paybacker data in JSON format — profile, transactions,
+          subscriptions, disputes, and more. This is your right under GDPR Article 20.
+        </p>
+        <button
+          onClick={handleExportData}
+          disabled={exporting}
+          className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-200 text-emerald-600 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm disabled:opacity-50 inline-flex items-center gap-2"
+        >
+          {exporting ? <><Loader2 className="h-4 w-4 animate-spin" /> Preparing export...</> : <><Download className="h-4 w-4" /> Download my data</>}
+        </button>
+      </div>
+
+      {/* Danger Zone — Delete Account */}
+      <div className="bg-white backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+          <Trash2 className="h-5 w-5 text-red-400" />
+          Delete Account
+        </h2>
+        <p className="text-slate-600 text-sm mb-6">
+          Permanently delete your account and all associated data — complaint letters, subscription history,
+          email connections, and usage logs. This action cannot be undone.
+        </p>
+
+        {!deleteConfirm ? (
+          <button
+            onClick={() => setDeleteConfirm(true)}
+            className="bg-red-900/30 hover:bg-red-900/50 border border-red-800 text-red-400 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
+          >
+            Delete my account and all data
+          </button>
+        ) : (
+          <div className="bg-red-950/50 border border-red-800 rounded-xl p-5">
+            <p className="text-red-300 font-semibold mb-4">
+              Are you sure? This will permanently delete all your data and cannot be reversed.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Yes, delete everything'}
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-900 px-5 py-2.5 rounded-lg transition-all text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,449 @@
+/**
+ * Resend Inbound Email Webhook
+ *
+ * Resend forwards inbound emails (sent to support@paybacker.co.uk) to this endpoint.
+ * Each user reply gets:
+ *   1. Matched to a ticket via ticket_number in subject/headers (X-Paybacker-Ticket).
+ *   2. Inserted into ticket_messages with sender_type='user'.
+ *   3. Status reset to 'open' + assigned_to cleared so Riley re-processes on next 15-min cron.
+ *   4. Recorded in metadata.user_replies for audit + chase-cron resets.
+ *
+ * Auth: Resend webhook signing secret (RESEND_WEBHOOK_SECRET). Falls back to
+ * Bearer CRON_SECRET for manual testing.
+ *
+ * Resend inbound payload (per docs): {
+ *   "type": "email.delivered" | "email.received" | ...,
+ *   "data": {
+ *     "from": "...",
+ *     "to": [...],
+ *     "subject": "...",
+ *     "text": "...",
+ *     "html": "...",
+ *     "headers": [{"name":"X-Paybacker-Ticket","value":"TKT-XXXX"}],
+ *     ...
+ *   }
+ * }
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { Webhook } from 'svix';
+import { handleConfirmationReply, isAwaitingConfirmation } from '@/lib/support/confirmation-reply';
+
+export const runtime = 'nodejs';
+export const maxDuration = 30;
+
+const AGENT_ID = 'resend-inbound-webhook';
+
+function getAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
+/**
+ * Resend dispatches inbound-email webhooks via Svix (Standard Webhooks
+ * spec) — three headers (svix-id, svix-timestamp, svix-signature)
+ * signing the body as `${id}.${timestamp}.${rawBody}` with the
+ * base64-decoded secret-after-`whsec_` as the HMAC-SHA256 key. The
+ * previous implementation did plain HMAC over body and rejected
+ * everything; this delegates verification to the canonical svix lib
+ * (already in deps) which also enforces the 5-minute replay window.
+ *
+ * Returns true on a valid signature, false otherwise. Never throws —
+ * the caller decides whether to 401 or fall through to the
+ * CRON_SECRET bearer-auth path used for manual testing.
+ */
+function verifyResendSignature(
+  rawBody: string,
+  headers: { id: string | null; timestamp: string | null; signature: string | null },
+): boolean {
+  const secret = process.env.RESEND_WEBHOOK_SECRET;
+  if (!secret) return false;
+  const { id, timestamp, signature } = headers;
+  if (!id || !timestamp || !signature) return false;
+  try {
+    const wh = new Webhook(secret);
+    wh.verify(rawBody, {
+      'svix-id': id,
+      'svix-timestamp': timestamp,
+      'svix-signature': signature,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function extractTicketRef(payload: {
+  subject?: string;
+  headers?: Array<{ name: string; value: string }> | Record<string, string>;
+  text?: string;
+}): string | null {
+  // 1. Headers (X-Paybacker-Ticket — set by outbound emails)
+  const headers = payload.headers;
+  if (Array.isArray(headers)) {
+    const h = headers.find(
+      (x) => x.name.toLowerCase() === 'x-paybacker-ticket'
+    );
+    if (h?.value) return h.value.trim().toUpperCase();
+  } else if (headers && typeof headers === 'object') {
+    for (const [k, v] of Object.entries(headers)) {
+      if (k.toLowerCase() === 'x-paybacker-ticket' && v) return v.trim().toUpperCase();
+    }
+  }
+
+  // 2. Subject — usually contains "ref: TKT-XXXX" or "[TKT-XXXX]"
+  if (payload.subject) {
+    const m = payload.subject.match(/\bTKT-\d{4,}\b/i);
+    if (m) return m[0].toUpperCase();
+  }
+
+  // 3. Body text fallback
+  if (payload.text) {
+    const m = payload.text.match(/\bTKT-\d{4,}\b/i);
+    if (m) return m[0].toUpperCase();
+  }
+
+  return null;
+}
+
+/**
+ * Fetch full email body by Resend email_id.
+ *
+ * Resend's email.received webhook payload only includes metadata —
+ * to get the text/html body you have to call the API explicitly.
+ *
+ * Inbound emails are exposed under /emails/receiving/{id}, NOT
+ * /emails/{id} (that path is outbound-only and 404s for inbound
+ * IDs). The SDK exposes this as resend.emails.receiving.get(id).
+ * Earlier deploy of this fetch hit /emails/{id} and silently 404'd,
+ * which is why Paul's first test on 2026-04-29 returned an empty
+ * body — fixed in commit 3ba95560.
+ *
+ * Returns blanks on failure so the caller can render a placeholder
+ * instead of crashing.
+ */
+async function fetchResendEmailBody(
+  emailId: string,
+): Promise<{ text: string; html: string; lastStatus: number | null; lastUrl: string | null }> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey || !emailId) {
+    return { text: '', html: '', lastStatus: null, lastUrl: null };
+  }
+  // Try inbound endpoint first; outbound is a defensive fallback in
+  // case an outbound ID ever reaches this code path.
+  const endpoints = [
+    `https://api.resend.com/emails/receiving/${emailId}`,
+    `https://api.resend.com/emails/${emailId}`,
+  ];
+  let lastStatus: number | null = null;
+  let lastUrl: string | null = null;
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      lastStatus = res.status;
+      lastUrl = url;
+      if (!res.ok) {
+        console.warn(
+          `[resend-inbound] ${url} returned ${res.status} for email ${emailId}`,
+        );
+        continue;
+      }
+      const data = await res.json();
+      const text = typeof data.text === 'string' ? data.text : '';
+      const html = typeof data.html === 'string' ? data.html : '';
+      if (text || html) return { text, html, lastStatus, lastUrl };
+    } catch (err) {
+      console.warn(
+        `[resend-inbound] ${url} fetch failed for ${emailId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  return { text: '', html: '', lastStatus, lastUrl };
+}
+
+function trimReplyBody(text: string): string {
+  // Strip the quoted previous email (everything after a typical quote marker).
+  // Handles common patterns like "On Mon, Apr 24, 2026 at 9:30 PM, Riley..." or "> Quoted..."
+  const splitPatterns = [
+    /\n[-]{2,}\s*Original Message[-]{2,}/i,
+    /\nOn .+,? .+ wrote:\s*\n/,
+    /\n\s*>+ /,
+    /\n\s*From: .+@.+/,
+  ];
+  let body = text;
+  for (const p of splitPatterns) {
+    const m = body.search(p);
+    if (m > 0) {
+      body = body.slice(0, m);
+      break;
+    }
+  }
+  return body.trim().slice(0, 4000);
+}
+
+async function handle(req: NextRequest) {
+  // Auth: prefer Svix signature (Resend's standard webhook delivery
+  // format); fall back to CRON_SECRET Bearer auth for manual testing.
+  const rawBody = await req.text();
+  const auth = req.headers.get('authorization');
+  const isResendVerified = verifyResendSignature(rawBody, {
+    id: req.headers.get('svix-id'),
+    timestamp: req.headers.get('svix-timestamp'),
+    signature: req.headers.get('svix-signature'),
+  });
+  const isCronAuthed = auth === `Bearer ${process.env.CRON_SECRET}`;
+  if (!isResendVerified && !isCronAuthed) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  let payload: {
+    type?: string;
+    data?: {
+      email_id?: string;
+      from?: string;
+      from_email?: string;
+      to?: string[];
+      subject?: string;
+      text?: string;
+      html?: string;
+      headers?: Array<{ name: string; value: string }> | Record<string, string>;
+    };
+  };
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: 'invalid JSON' }, { status: 400 });
+  }
+
+  const data = payload.data || {};
+  const fromEmail =
+    (data.from_email && String(data.from_email).toLowerCase()) ||
+    (data.from && String(data.from).match(/<([^>]+)>/)?.[1]?.toLowerCase()) ||
+    (data.from && String(data.from).toLowerCase()) ||
+    null;
+  const subject = data.subject || '(no subject)';
+
+  // Resend's email.received webhook payload is METADATA-ONLY (email_id,
+  // from, to, subject, message_id, attachments/bcc/cc, created_at).
+  // The text/html body is NOT included. We have to fetch full content
+  // by email_id from the Resend API. Falls through gracefully when the
+  // fetch fails — subject-line TKT-XXXX matching keeps the routing
+  // logic working even with no body, so Riley still sees the reply
+  // arrived and can prompt the user to resend.
+  let bodyText = '';
+  let lastFetchStatus: number | null = null;
+  if (data.text) {
+    bodyText = trimReplyBody(data.text);
+  } else if (data.html) {
+    bodyText = trimReplyBody(data.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+  } else if (data.email_id) {
+    const fetched = await fetchResendEmailBody(data.email_id);
+    lastFetchStatus = fetched.lastStatus;
+    if (fetched.text) {
+      bodyText = trimReplyBody(fetched.text);
+    } else if (fetched.html) {
+      bodyText = trimReplyBody(fetched.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+    }
+  }
+  if (!bodyText) {
+    // Surface the actual HTTP status so future placeholders are
+    // self-diagnosing — 401 = RESEND_API_KEY lacks inbound scope,
+    // 404 = email_id wrong shape, etc. Saves a Vercel log dive.
+    const statusHint = lastFetchStatus
+      ? ` (Resend API ${lastFetchStatus}${lastFetchStatus === 401 ? ' — RESEND_API_KEY likely lacks Inbound read scope' : ''})`
+      : '';
+    bodyText = `[Inbound email from ${fromEmail ?? 'unknown'} — body fetch failed${statusHint}. email_id: ${data.email_id ?? 'none'}.]`;
+  }
+
+  if (!fromEmail) {
+    return NextResponse.json({ ok: false, reason: 'no from address' }, { status: 400 });
+  }
+
+  const ticketRef = extractTicketRef({
+    subject: data.subject,
+    headers: data.headers,
+    text: data.text,
+  });
+
+  const supabase = getAdmin();
+
+  // Find the ticket. Prefer ticket_number; fall back to most-recent ticket from this email.
+  type TicketRow = {
+    id: string;
+    user_id: string | null;
+    status: string;
+    metadata: Record<string, unknown> | null;
+    ticket_number: string | null;
+    subject: string;
+  };
+  let ticket: TicketRow | null = null;
+
+  if (ticketRef) {
+    const { data: byRef } = await supabase
+      .from('support_tickets')
+      .select('id, user_id, status, metadata, ticket_number, subject')
+      .eq('ticket_number', ticketRef)
+      .single();
+    ticket = (byRef as TicketRow | null);
+  }
+
+  if (!ticket) {
+    // Match by user email, most recent non-resolved
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', fromEmail)
+      .single();
+    if (profile?.id) {
+      const { data: byUser } = await supabase
+        .from('support_tickets')
+        .select('id, user_id, status, metadata, ticket_number, subject')
+        .eq('user_id', profile.id)
+        .not('status', 'in', '("resolved","dismissed","closed")')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      ticket = (byUser as TicketRow | null);
+    }
+  }
+
+  if (!ticket) {
+    // No matching ticket. Log to business_log so support-triager can see orphan replies.
+    await supabase.from('business_log').insert({
+      category: 'warn',
+      title: `Inbound email with no matching ticket — from ${fromEmail}`,
+      content: `Subject: ${subject}\nBody excerpt: ${bodyText.slice(0, 500)}`,
+      created_by: AGENT_ID,
+    });
+    return NextResponse.json({ ok: true, matched: false, reason: 'no ticket found' });
+  }
+
+  // Insert into ticket_messages so Riley sees the new user message in conversation history.
+  await supabase.from('ticket_messages').insert({
+    ticket_id: ticket.id,
+    sender_type: 'user',
+    sender_email: fromEmail,
+    message: bodyText,
+    created_at: new Date().toISOString(),
+  });
+
+  // ── Confirmation reply handler ──
+  // If the ticket is awaiting_user_confirmation (Builder shipped a fix and
+  // is asking the user to verify), classify the reply and act on it BEFORE
+  // the generic reopen logic below. This prevents the wrong status
+  // (status='open') from being applied when the user actually confirmed.
+  if (isAwaitingConfirmation(ticket.status)) {
+    const result = await handleConfirmationReply(
+      supabase,
+      {
+        id: ticket.id,
+        ticket_number: ticket.ticket_number,
+        status: ticket.status,
+        subject: ticket.subject,
+        source: 'email',
+        metadata: ticket.metadata,
+      },
+      bodyText,
+    );
+    if (result.handled && result.reply_to_user) {
+      // Send Riley's response back to the user via Resend
+      if (process.env.RESEND_API_KEY) {
+        try {
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
+              replyTo: process.env.RESEND_REPLY_TO || 'support@mail.paybacker.co.uk',
+              to: [fromEmail],
+              subject: `Re: ${ticket.subject} (${result.ticket_number})`,
+              text: result.reply_to_user,
+            }),
+          });
+        } catch {
+          /* best-effort */
+        }
+      }
+      await supabase.from('ticket_messages').insert({
+        ticket_id: ticket.id,
+        sender_type: 'system',
+        sender_name: 'Riley',
+        message: result.reply_to_user,
+      });
+      return NextResponse.json({
+        ok: true,
+        matched: true,
+        outcome: result.outcome,
+        ticket_number: result.ticket_number,
+      });
+    }
+  }
+
+  // Append to metadata.user_replies for audit + to reset chase logic.
+  const meta = (ticket.metadata || {}) as Record<string, unknown>;
+  const existingReplies = (meta.user_replies as Array<{ at: string; excerpt: string }>) || [];
+  const newReplies = [
+    ...existingReplies,
+    { at: new Date().toISOString(), excerpt: bodyText.slice(0, 200) },
+  ];
+
+  // Reset status to 'open' + clear assigned_to. Riley's 15-min cron will pick it up.
+  // ALSO clear chase_sent_at + auto_closed flags so the chase cron resets the lifecycle.
+  const newMeta: Record<string, unknown> = {
+    ...meta,
+    user_replies: newReplies,
+    last_user_reply_at: new Date().toISOString(),
+  };
+  // Remove the chase/auto-close lifecycle markers so the chase cron starts fresh.
+  delete newMeta.chase_sent_at;
+  delete newMeta.auto_closed;
+  delete newMeta.auto_closed_at;
+
+  await supabase
+    .from('support_tickets')
+    .update({
+      status: 'open',
+      assigned_to: null,
+      metadata: newMeta,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', ticket.id);
+
+  // Audit row.
+  await supabase.from('business_log').insert({
+    category: 'info',
+    title: `User replied on ${ticket.ticket_number || ticket.id.slice(0, 8)} — ticket re-opened`,
+    content: `From: ${fromEmail}\nReply excerpt: ${bodyText.slice(0, 500)}\nTicket re-opened for Riley to re-engage on next 15-min cron.`,
+    created_by: AGENT_ID,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    matched: true,
+    ticket_id: ticket.id,
+    ticket_number: ticket.ticket_number,
+    new_status: 'open',
+  });
+}
+
+export async function POST(req: NextRequest) {
+  return handle(req);
+}
+
+// GET is a no-op health check for Resend webhook verification.
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    endpoint: 'resend-inbound',
+    note: 'POST email webhooks here. Sign with Resend webhook secret or use Bearer CRON_SECRET for testing.',
+  });
+}

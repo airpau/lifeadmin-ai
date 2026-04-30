@@ -1,4 +1,11 @@
 User-agent: *
 Allow: /
 
+# Don't waste crawl budget on auth-gated or API surfaces — these pages
+# are 401/403 to crawlers anyway and have no SEO value.
+Disallow: /dashboard/
+Disallow: /auth/
+Disallow: /api/
+Disallow: /preview/
+
 Sitemap: https://paybacker.co.uk/sitemap.xml

@@ -49,7 +49,7 @@ export default function ComparisonCard({ subscription, comparisons, category }: 
           <TrendingDown className="h-3 w-3" />
           {isComparisonOnly ? 'Compare deals' : `Save ${formatGBP(best.annualSaving)}/year`}
         </span>
-        <span className="text-xs text-slate-500 group-hover:text-slate-400 transition-colors">
+        <span className="text-xs text-slate-500 group-hover:text-slate-500 transition-colors">
           {expanded ? 'Hide' : 'Show'} alternatives
         </span>
         {expanded
@@ -67,8 +67,8 @@ export default function ComparisonCard({ subscription, comparisons, category }: 
               <div className="flex-1 grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Your plan</p>
-                  <p className="text-sm font-medium text-white">{subscription.provider_name}</p>
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm font-medium text-slate-900">{subscription.provider_name}</p>
+                  <p className="text-sm text-slate-500">
                     {formatGBP(subscription.amount)}/{subscription.billing_cycle === 'one-time' ? 'once' : 'mo'}
                   </p>
                 </div>
@@ -95,7 +95,7 @@ export default function ComparisonCard({ subscription, comparisons, category }: 
             <div className="flex flex-wrap gap-2 mt-3">
               <a
                 href={`/deals/${dealsPageCategory}`}
-                className="inline-flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-100 text-slate-900 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
               >
                 Compare Deals <ArrowRight className="h-3 w-3" />
               </a>
@@ -114,9 +114,9 @@ export default function ComparisonCard({ subscription, comparisons, category }: 
           {others.length > 0 && (
             <div className="space-y-1.5">
               {others.map((alt, i) => (
-                <div key={i} className="flex items-center justify-between bg-navy-800/50 rounded-lg px-3 py-2">
+                <div key={i} className="flex items-center justify-between bg-slate-100 rounded-lg px-3 py-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-white truncate">{alt.dealProvider}</p>
+                    <p className="text-xs font-medium text-slate-900 truncate">{alt.dealProvider}</p>
                     <p className="text-xs text-slate-500 truncate">{alt.dealName}</p>
                   </div>
                   <div className="flex items-center gap-3 ml-3 flex-shrink-0">
@@ -124,7 +124,7 @@ export default function ComparisonCard({ subscription, comparisons, category }: 
                       <span className="text-xs text-green-400 font-medium">Save {formatGBP(alt.annualSaving)}/yr</span>
                     )}
                     {!isComparisonOnly && alt.dealPrice > 0 && (
-                      <span className="text-xs text-slate-400">{formatGBP(alt.dealPrice)}/mo</span>
+                      <span className="text-xs text-slate-500">{formatGBP(alt.dealPrice)}/mo</span>
                     )}
                     <a
                       href={alt.dealUrl}

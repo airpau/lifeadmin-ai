@@ -92,13 +92,19 @@ export default function PocketAgentPage() {
   const [wa, setWa] = useState<WhatsAppStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Bot's pause_alerts_until tool sets a date on
+  // telegram_alert_preferences. When non-null and in the future,
+  // proactive alerts are silenced until that date — show the user
+  // a status banner with a "resume now" button.
+  const [alertsPausedUntil, setAlertsPausedUntil] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     setError(null);
     try {
-      const [tgRes, waRes] = await Promise.all([
+      const [tgRes, waRes, prefsRes] = await Promise.all([
         fetch('/api/telegram/link-code', { credentials: 'include', cache: 'no-store' }),
         fetch('/api/whatsapp/link-code', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/notification-preferences', { credentials: 'include', cache: 'no-store' }),
       ]);
       const tgData: TelegramStatus = tgRes.ok
         ? await tgRes.json()
@@ -108,6 +114,15 @@ export default function PocketAgentPage() {
         : { canUse: false, linked: false, session: null, pendingCode: null, senderPhone: '+447883318406' };
       setTg(tgData);
       setWa(waData);
+      if (prefsRes.ok) {
+        const prefs = await prefsRes.json();
+        const paused = prefs?.alerts_paused_until as string | null;
+        if (paused && new Date(paused).getTime() > Date.now()) {
+          setAlertsPausedUntil(paused);
+        } else {
+          setAlertsPausedUntil(null);
+        }
+      }
       // Pick the linked tab on first load — most useful to the user.
       if (waData.linked) setTab('whatsapp');
       else if (tgData.linked) setTab('telegram');
@@ -158,6 +173,52 @@ export default function PocketAgentPage() {
         </div>
       )}
 
+      {/* Alerts-paused banner. Bot's pause_alerts_until tool sets a
+          date on telegram_alert_preferences.alerts_paused_until.
+          While that date is in the future, proactive alerts (price
+          rises, contract renewals, budget overruns) are silenced.
+          Watchdog and dispute follow-ups still fire — only the
+          proactive sweep is paused. */}
+      {alertsPausedUntil && (
+        <div className="flex items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-300 rounded-xl">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🌙</span>
+            <div className="text-sm">
+              <p className="font-semibold text-amber-900">
+                Proactive alerts paused until {new Date(alertsPausedUntil).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+              <p className="text-amber-800 text-xs mt-0.5">
+                Price rises, contract renewals and budget overruns won&apos;t fire.
+                Watchdog dispute replies and Riley support replies still come through.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/notification-preferences', {
+                  method: 'PATCH',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ alerts_paused_until: null }),
+                });
+                if (res.ok) {
+                  setAlertsPausedUntil(null);
+                } else {
+                  setError('Failed to resume alerts. Try again or run "resume alerts" via the Pocket Agent chat.');
+                }
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to resume alerts');
+              }
+            }}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors shrink-0"
+          >
+            Resume now
+          </button>
+        </div>
+      )}
+
       {/* Channel tab switcher */}
       <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-fit">
         <button
@@ -194,12 +255,22 @@ export default function PocketAgentPage() {
 
       {/* Telegram panel */}
       {tab === 'telegram' && (
-        <TelegramPanel status={tg} onChange={loadAll} setError={setError} />
+        <TelegramPanel
+          status={tg}
+          onChange={loadAll}
+          setError={setError}
+          otherLinked={!!wa?.linked}
+        />
       )}
 
       {/* WhatsApp panel */}
       {tab === 'whatsapp' && (
-        <WhatsAppPanel status={wa} onChange={loadAll} setError={setError} />
+        <WhatsAppPanel
+          status={wa}
+          onChange={loadAll}
+          setError={setError}
+          otherLinked={!!tg?.linked}
+        />
       )}
 
       {/* Capability grid (channel-agnostic) */}
@@ -250,11 +321,12 @@ export default function PocketAgentPage() {
  * Telegram panel                                      *
  * -------------------------------------------------- */
 function TelegramPanel({
-  status, onChange, setError,
+  status, onChange, setError, otherLinked,
 }: {
   status: TelegramStatus | null;
   onChange: () => Promise<void>;
   setError: (e: string | null) => void;
+  otherLinked: boolean;
 }) {
   const [generating, setGenerating] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
@@ -355,6 +427,17 @@ function TelegramPanel({
         <h3 className="text-slate-900 font-semibold mb-1">Set up Telegram</h3>
         <p className="text-slate-600 text-sm">Free on every Paybacker plan. Three steps.</p>
       </div>
+      {otherLinked && (
+        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-900">
+            <p className="font-semibold">WhatsApp is your active channel.</p>
+            <p className="text-amber-800 mt-0.5">
+              Linking Telegram will automatically disconnect WhatsApp — only one Pocket Agent channel can be active at a time.
+            </p>
+          </div>
+        </div>
+      )}
       <ol className="space-y-4">
         <li className="flex items-start gap-3">
           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-orange-500/20 text-orange-600 text-xs font-bold flex items-center justify-center">1</span>
@@ -417,11 +500,12 @@ function TelegramPanel({
  * WhatsApp panel                                      *
  * -------------------------------------------------- */
 function WhatsAppPanel({
-  status, onChange, setError,
+  status, onChange, setError, otherLinked,
 }: {
   status: WhatsAppStatus | null;
   onChange: () => Promise<void>;
   setError: (e: string | null) => void;
+  otherLinked: boolean;
 }) {
   const [generating, setGenerating] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
@@ -449,16 +533,8 @@ function WhatsAppPanel({
             does client-side navigation, the cookie-based session stays
             intact, and Stripe checkout works straight through.
           */}
-          {/*
-            Send the user straight to the Stripe-Checkout-style /upgrade
-            confirmation page. They've already declared intent (clicked
-            Upgrade to Pro on the WhatsApp panel), so bouncing them back
-            to /pricing is a needless step. /upgrade fetches the proration
-            preview + card on file and renders a real confirmation
-            screen before any money moves.
-          */}
           <Link
-            href="/upgrade?plan=pro&cycle=monthly"
+            href="/pricing?from=whatsapp"
             className="inline-flex items-center px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold"
           >
             Upgrade to Pro
@@ -576,21 +652,33 @@ function WhatsAppPanel({
         </p>
       </div>
 
+      {otherLinked && (
+        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-900">
+            <p className="font-semibold">Telegram is your active channel.</p>
+            <p className="text-amber-800 mt-0.5">
+              Linking WhatsApp will automatically disconnect Telegram — only one Pocket Agent channel can be active at a time.
+            </p>
+          </div>
+        </div>
+      )}
+
       <ol className="space-y-4">
         <li className="flex items-start gap-3">
           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 text-xs font-bold flex items-center justify-center">1</span>
-          <p className="text-sm text-slate-900">Tap <em>Generate link code</em> below — we&apos;ll create a 6-character code for you.</p>
+          <p className="text-sm text-slate-900">Tap <em>Generate link code</em> below to get your 6-character code.</p>
         </li>
         <li className="flex items-start gap-3">
           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 text-xs font-bold flex items-center justify-center">2</span>
           <p className="text-sm text-slate-900">
-            An <em>Open WhatsApp</em> button will appear with the code pre-filled. Tap it (or open WhatsApp on your phone and start a chat with <strong>{senderPhone}</strong>).
+            Tap <em>Open WhatsApp</em>, or message <strong>{senderPhone}</strong> from your phone.
           </p>
         </li>
         <li className="flex items-start gap-3">
           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 text-xs font-bold flex items-center justify-center">3</span>
           <p className="text-sm text-slate-900">
-            Send your code (<code className="text-emerald-600 bg-slate-100 px-1.5 py-0.5 rounded">LINK XXXXXX</code>) on WhatsApp — not SMS. We&apos;ll confirm here within 5 seconds.
+            Send: <code className="text-emerald-600 bg-slate-100 px-1.5 py-0.5 rounded">LINK YOUR_CODE</code> (we&apos;ll prefill it for you).
           </p>
         </li>
       </ol>

@@ -178,6 +178,26 @@ export interface AnnualReportData {
   // Top merchants
   topMerchants: MerchantSpend[];
 
+  // v2 additions (data-driven, replaces shallow AI prose) ──────────
+  /** Forward projection: average of last 3 months of spend × 12.
+   * Quick "if you carry on as you are" annual-spend headline. */
+  projectedAnnualSpend: number;
+  /** Same projection for income — useful for net-position forecast. */
+  projectedAnnualIncome: number;
+  /** Per-month savings rate (income - spend) / income, 0-1. Drives a
+   * compact chart showing whether the user's saving rate is
+   * improving / drifting. */
+  savingsRateByMonth: Array<{ month: string; monthLabel: string; rate: number }>;
+  /** Year-over-year comparison — same rolling-12-months window
+   * shifted back one year. Null if there isn't enough history. */
+  yoy: {
+    previousIncome: number;
+    previousSpend: number;
+    incomeDeltaPct: number; // (current-prev)/prev * 100
+    spendDeltaPct: number;
+    netDeltaPct: number;
+  } | null;
+
   // Legacy fields for backwards compat with PDF & sample
   subscriptionsCancelled: number;
   annualSavingsFromCancellations: number;
@@ -1024,6 +1044,65 @@ export async function generateAnnualReportData(
     ? profile.subscription_tier.charAt(0).toUpperCase() + profile.subscription_tier.slice(1) + ' Plan'
     : 'Free Plan';
 
+  // ── v2 derived fields (data-driven, replace shallow AI prose) ───────
+  // Forward projection: average of the last 3 months of spend × 12.
+  // Recent months reflect current behaviour better than the rolling
+  // 12-month average (which dilutes recent changes).
+  const recent3 = monthlyTrends.slice(-3).filter((m) => m.hasData);
+  const avgRecentSpend = recent3.length > 0
+    ? recent3.reduce((s, m) => s + (m.spend ?? 0), 0) / recent3.length
+    : 0;
+  const avgRecentIncome = recent3.length > 0
+    ? recent3.reduce((s, m) => s + (m.income ?? 0), 0) / recent3.length
+    : 0;
+  const projectedAnnualSpend = parseFloat((avgRecentSpend * 12).toFixed(2));
+  const projectedAnnualIncome = parseFloat((avgRecentIncome * 12).toFixed(2));
+
+  // Savings rate by month — (income - spend) / income, clamped to
+  // [-1, 1] so a one-off zero-income month doesn't blow the chart.
+  const savingsRateByMonth = monthlyTrends.map((m) => ({
+    month: m.month,
+    monthLabel: m.monthLabel,
+    rate: m.income > 0
+      ? Math.max(-1, Math.min(1, (m.income - m.spend) / m.income))
+      : 0,
+  }));
+
+  // Year-over-year — pull the same rolling window shifted back one
+  // year. Compare totals against the current period.
+  const prevYearStartDt = new Date(yearStartDt);
+  prevYearStartDt.setFullYear(prevYearStartDt.getFullYear() - 1);
+  const prevYearEndDt = new Date(yearStartDt);
+  let yoy: AnnualReportData['yoy'] = null;
+  try {
+    const { data: prevTx } = await admin
+      .from('bank_transactions')
+      .select('amount')
+      .eq('user_id', userId)
+      .gte('timestamp', prevYearStartDt.toISOString())
+      .lt('timestamp', prevYearEndDt.toISOString());
+    if (prevTx && prevTx.length > 0) {
+      let prevIncome = 0;
+      let prevSpend = 0;
+      for (const t of prevTx) {
+        const amt = Number(t.amount) || 0;
+        if (amt > 0) prevIncome += amt;
+        else prevSpend += Math.abs(amt);
+      }
+      const prevNet = prevIncome - prevSpend;
+      const currNet = totalIncome - totalOutgoings;
+      yoy = {
+        previousIncome: parseFloat(prevIncome.toFixed(2)),
+        previousSpend: parseFloat(prevSpend.toFixed(2)),
+        incomeDeltaPct: prevIncome > 0 ? parseFloat((((totalIncome - prevIncome) / prevIncome) * 100).toFixed(1)) : 0,
+        spendDeltaPct: prevSpend > 0 ? parseFloat((((totalOutgoings - prevSpend) / prevSpend) * 100).toFixed(1)) : 0,
+        netDeltaPct: Math.abs(prevNet) > 0.01 ? parseFloat((((currNet - prevNet) / Math.abs(prevNet)) * 100).toFixed(1)) : 0,
+      };
+    }
+  } catch {
+    // Non-fatal; YoY just stays null.
+  }
+
   return {
     year,
     generatedAt: new Date().toISOString(),
@@ -1053,6 +1132,12 @@ export async function generateAnnualReportData(
     profileCompleteness,
     dataMonths,
     topMerchants,
+
+    // v2 fields
+    projectedAnnualSpend,
+    projectedAnnualIncome,
+    savingsRateByMonth,
+    yoy,
 
     // Legacy fields
     subscriptionsCancelled: cancelledSubs.length,

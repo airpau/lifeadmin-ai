@@ -64,6 +64,9 @@ const PROVIDER_DOMAINS: Record<string, string[]> = {
   // --- Travel ---
   ryanair: ['ryanair.com'],
   easyjet: ['easyjet.com'],
+
+  // --- Smart-home / IoT (added 2026-04-28 — Paul's Nuki dispute) ---
+  nuki: ['nuki.io', 'nuki.com'],
 };
 
 /**

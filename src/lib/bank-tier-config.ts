@@ -7,24 +7,28 @@ export type SyncTrigger = 'cron' | 'manual' | 'initial';
 export type SyncStatus = 'success' | 'failed' | 'skipped';
 export type BankTier = 'free' | 'essential' | 'pro';
 
+// Updated April 2026 to match PLAN_LIMITS (see src/lib/plan-limits.ts).
+// Free now gets daily auto-sync and 2 banks (Emma-parity on Free so we don't
+// lose the head-to-head at £0). Essential gets 3 banks. Pro unlimited.
+// Manual on-demand sync stays Pro-only (cost protection).
 export const TIER_CONFIG = {
   free: {
-    maxConnections: 1,
-    dailyCron: false,     // Only syncs on Mondays via cron
-    weeklyCron: true,
-    manualSyncAllowed: false,
-    manualSyncCooldownHours: 0,
-    manualSyncDailyLimit: 0,
-    upgradeMessage: 'Upgrade to Essential for daily auto-sync.',
-  },
-  essential: {
     maxConnections: 2,
     dailyCron: true,
     weeklyCron: false,
     manualSyncAllowed: false,
     manualSyncCooldownHours: 0,
     manualSyncDailyLimit: 0,
-    upgradeMessage: 'Upgrade to Pro for on-demand sync.',
+    upgradeMessage: 'Upgrade to Essential for 3 banks, or Pro for unlimited + on-demand sync.',
+  },
+  essential: {
+    maxConnections: 3,
+    dailyCron: true,
+    weeklyCron: false,
+    manualSyncAllowed: false,
+    manualSyncCooldownHours: 0,
+    manualSyncDailyLimit: 0,
+    upgradeMessage: 'Upgrade to Pro for unlimited banks + on-demand sync.',
   },
   pro: {
     maxConnections: Infinity,

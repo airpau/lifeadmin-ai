@@ -57,10 +57,10 @@ export default function CookieConsentBanner() {
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-[9999] p-4">
-      <div className="max-w-2xl mx-auto bg-navy-900 border border-navy-700 rounded-2xl shadow-2xl p-6">
+      <div className="max-w-2xl mx-auto card shadow-2xl p-6">
         {!showPreferences ? (
           <>
-            <p className="text-sm text-slate-300 mb-4">
+            <p className="text-sm text-slate-700 mb-4">
               We use cookies to improve your experience and analyse how our site is used.
               You can accept all cookies, reject non-essential ones, or manage your preferences.
               See our <Link href="/cookie-policy" className="text-mint-400 underline hover:text-mint-300">Cookie Policy</Link> for details.
@@ -74,13 +74,13 @@ export default function CookieConsentBanner() {
               </button>
               <button
                 onClick={handleRejectAll}
-                className="bg-navy-800 hover:bg-navy-700 text-slate-300 text-sm font-medium px-5 py-2.5 rounded-xl border border-navy-600 transition-all"
+                className="bg-slate-100 hover:bg-slate-100 text-slate-700 text-sm font-medium px-5 py-2.5 rounded-xl border border-navy-600 transition-all"
               >
                 Reject All
               </button>
               <button
                 onClick={() => setShowPreferences(true)}
-                className="text-slate-400 hover:text-white text-sm font-medium px-5 py-2.5 transition-all"
+                className="text-slate-500 hover:text-slate-900 text-sm font-medium px-5 py-2.5 transition-all"
               >
                 Manage Preferences
               </button>
@@ -88,19 +88,19 @@ export default function CookieConsentBanner() {
           </>
         ) : (
           <>
-            <h3 className="text-white font-semibold mb-4">Cookie Preferences</h3>
+            <h3 className="text-slate-900 font-semibold mb-4">Cookie Preferences</h3>
             <div className="space-y-3 mb-5">
-              <label className="flex items-center justify-between p-3 bg-navy-800 rounded-xl">
+              <label className="flex items-center justify-between p-3 bg-slate-100 rounded-xl">
                 <div>
-                  <span className="text-sm text-white font-medium">Essential</span>
-                  <p className="text-xs text-slate-400 mt-0.5">Required for login and basic functionality. Cannot be disabled.</p>
+                  <span className="text-sm text-slate-900 font-medium">Essential</span>
+                  <p className="text-xs text-slate-500 mt-0.5">Required for login and basic functionality. Cannot be disabled.</p>
                 </div>
                 <input type="checkbox" checked disabled className="accent-mint-400 w-4 h-4" />
               </label>
-              <label className="flex items-center justify-between p-3 bg-navy-800 rounded-xl cursor-pointer">
+              <label className="flex items-center justify-between p-3 bg-slate-100 rounded-xl cursor-pointer">
                 <div>
-                  <span className="text-sm text-white font-medium">Analytics</span>
-                  <p className="text-xs text-slate-400 mt-0.5">Help us understand how you use Paybacker (PostHog, Google Analytics).</p>
+                  <span className="text-sm text-slate-900 font-medium">Analytics</span>
+                  <p className="text-xs text-slate-500 mt-0.5">Help us understand how you use Paybacker (PostHog, Google Analytics).</p>
                 </div>
                 <input
                   type="checkbox"
@@ -109,10 +109,10 @@ export default function CookieConsentBanner() {
                   className="accent-mint-400 w-4 h-4"
                 />
               </label>
-              <label className="flex items-center justify-between p-3 bg-navy-800 rounded-xl cursor-pointer">
+              <label className="flex items-center justify-between p-3 bg-slate-100 rounded-xl cursor-pointer">
                 <div>
-                  <span className="text-sm text-white font-medium">Marketing</span>
-                  <p className="text-xs text-slate-400 mt-0.5">Used for ads and referral tracking (Meta Pixel, Awin).</p>
+                  <span className="text-sm text-slate-900 font-medium">Marketing</span>
+                  <p className="text-xs text-slate-500 mt-0.5">Used for ads and referral tracking (Meta Pixel, Awin).</p>
                 </div>
                 <input
                   type="checkbox"
@@ -121,10 +121,10 @@ export default function CookieConsentBanner() {
                   className="accent-mint-400 w-4 h-4"
                 />
               </label>
-              <label className="flex items-center justify-between p-3 bg-navy-800 rounded-xl cursor-pointer">
+              <label className="flex items-center justify-between p-3 bg-slate-100 rounded-xl cursor-pointer">
                 <div>
-                  <span className="text-sm text-white font-medium">Functional</span>
-                  <p className="text-xs text-slate-400 mt-0.5">Enhanced features like chat and personalisation.</p>
+                  <span className="text-sm text-slate-900 font-medium">Functional</span>
+                  <p className="text-xs text-slate-500 mt-0.5">Enhanced features like chat and personalisation.</p>
                 </div>
                 <input
                   type="checkbox"
@@ -143,7 +143,7 @@ export default function CookieConsentBanner() {
               </button>
               <button
                 onClick={handleAcceptAll}
-                className="bg-navy-800 hover:bg-navy-700 text-slate-300 text-sm font-medium px-5 py-2.5 rounded-xl border border-navy-600 transition-all"
+                className="bg-slate-100 hover:bg-slate-100 text-slate-700 text-sm font-medium px-5 py-2.5 rounded-xl border border-navy-600 transition-all"
               >
                 Accept All
               </button>

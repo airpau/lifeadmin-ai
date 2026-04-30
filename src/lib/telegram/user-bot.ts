@@ -15,6 +15,7 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { telegramTools } from './tools';
 import { executeToolCall, type PendingAction } from './tool-handlers';
+import { handleConfirmationReply, isAwaitingConfirmation } from '@/lib/support/confirmation-reply';
 
 // ============================================================
 // Supabase admin client
@@ -127,7 +128,11 @@ READ TOOLS — Core:
 - get_financial_overview — Complete financial overview: income, spending, net position, open disputes
 - get_savings_goals — Savings goals with progress, target amount, and target date
 - get_savings_challenges — Active gamified savings challenges (No-Spend Week, etc.)
-- get_bank_connections — Connected bank accounts, sync status, last synced time
+- get_bank_connections — Connected bank accounts, sync status, last synced time (revoked + removed are hidden; respects the active Space)
+- remove_bank_connection — Permanently hide a connection the user no longer wants (e.g. a sandbox/test one). Only call AFTER the user explicitly confirms ("yes remove it", "get rid of it"). Historical transactions are preserved.
+- list_spaces — List the user's Money Hub Spaces (Everything, Business, Personal, etc.) and show which one is currently active
+- set_active_space — Switch the scope of financial queries to a Space by name ("business", "personal"); pass "everything" to clear. All subsequent spending/income/overview tools answer for that Space until switched again
+- get_active_space — Tell the user which Space they're currently scoped to (use before answering figures questions when the Space matters)
 - get_verified_savings — Confirmed money saved through disputes, cancellations, and refunds
 - get_monthly_trends — Income vs spending trends over the last N months
 - get_income_breakdown — Income by source for a given month
@@ -195,6 +200,27 @@ RULES:
   (b) Put what the user actually said to tell the supplier into the 'user_reply_brief' param — WORD FOR WORD from the user, lightly cleaned up. e.g. if the user typed "tell them I'm available any day except Friday", user_reply_brief = "I'm available any day except Friday, AM or PM." Do not embellish, do not invent extra points, do not add things the user didn't say. The brief is the entire content of the reply — the letter will render it as a short, polite business letter, nothing more.
   (c) Leave 'reply_tone' as 'auto' unless the user explicitly asks to be firmer / softer / more formal ("be firm", "push back hard", "keep it polite") — then set 'firm' / 'friendly' accordingly.
   (d) Never re-narrate the whole complaint history in the reply. When user_reply_brief is set, the letter is a like-for-like professional rendering of the user's words — no added deadlines, no law citations, no escalation threats unless the user asked for them. The system is a quick drafting tool, not a rewriter.
+
+LINKING AN EMAIL TO A DISPUTE — when the user says "link an email", "connect a thread", "find the email about X", "attach the response from Y", or "link nuki's email to my dispute":
+1. Call find_email_thread_for_dispute with provider=<the dispute name> and optionally query=<any extra keyword they gave, e.g. "alice", "refund", "ticket 785661">.
+2. The tool returns up to 5 candidates with subject + sender + date + a metadata blob in square brackets containing connection_id, thread_id, and provider_type.
+3. Show the candidates EXACTLY as the tool returned them (preserve numbering) and ask the user to pick.
+4. When the user picks, call link_email_thread_to_dispute with the chosen candidate's connection_id + thread_id + provider_type from the bracketed metadata, plus subject + sender_address from the candidate.
+5. Confirm what got imported. If imported=0, tell them the watchdog cron will sync within 30 min.
+NEVER auto-link the top result without user confirmation. NEVER guess a thread_id.
+
+FINALISING A LETTER — after you draft a letter via draft_dispute_letter the user is in one of three states. The draft is already tracked as a pending letter in the system; if they don't reply within 1 hour the cron will nudge them. Your job is to interpret their next reply correctly:
+
+(A) SAVE — user says "SAVE", "save it", "I've sent it", "use this one", "go with the firm version", "finalise this draft", or otherwise confirms approval:
+   → Call record_letter_sent(provider, letter_text). Read letter_text VERBATIM from the most recent pendingAction.letter_text in conversation history — don't paraphrase. The tool inserts an ai_letter row, bumps status to awaiting_response, AND marks the pending row as saved so the cron stops nagging.
+
+(B) DISCARD — user says "DISCARD", "drop it", "forget it", "don't send", "cancel that draft", "I won't send this":
+   → Call discard_letter_draft(provider, reason?). Marks the pending row discarded so the cron stops nagging.
+
+(C) CHANGES — user wants tweaks ("make it firmer", "add the £85 figure", "shorter", "more polite"):
+   → Call draft_dispute_letter again with the adjusted reply_tone or user_reply_brief. The handler automatically discards the prior pending draft and creates a fresh pending row.
+
+ALWAYS take action — don't ask "would you like me to save this?" if the user already said SAVE. Don't infer DISCARD from a request for changes; treat (C) as a redraft.
 
 FINANCIAL INTELLIGENCE — CRITICAL:
 - get_expected_bills cross-references bank transaction data to determine paid/unpaid status. Trust its ✅/❌/⏳ indicators. ❌ means a bill was due but no matching payment was found in the bank — flag this clearly to the user.
@@ -396,7 +422,6 @@ export function createUserBot(): Bot<UserBotContext> {
   // /start
   // -------------------------------------------------------
   bot.command('start', async (ctx) => {
-    const startKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
     await ctx.reply(
       `Welcome to *Paybacker* 👋\n\n` +
         `I'm your personal financial assistant. I can:\n\n` +
@@ -409,9 +434,8 @@ export function createUserBot(): Bot<UserBotContext> {
         `*To get started, link your Paybacker account:*\n\n` +
         `1. Go to paybacker.co.uk/dashboard/settings/telegram\n` +
         `2. Click "Generate Link Code"\n` +
-        `3. Send: \`/link YOUR_CODE\`\n\n` +
-        `*Pocket Agent is a Pro plan feature* — full spending insights, smart budget alerts, AI-drafted complaint letters, and proactive bill monitoring for *£9.99/month*.`,
-      { parse_mode: 'Markdown', reply_markup: startKeyboard },
+        `3. Send: \`/link YOUR_CODE\``,
+      { parse_mode: 'Markdown' },
     );
   });
 
@@ -447,30 +471,6 @@ export function createUserBot(): Bot<UserBotContext> {
     if (new Date(linkCode.expires_at) < new Date()) {
       return ctx.reply(
         'This code has expired (15 min limit). Generate a new one at paybacker.co.uk/dashboard/settings/telegram',
-      );
-    }
-
-    // Verify Pro subscription
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
-      .eq('id', linkCode.user_id)
-      .single();
-
-    const tier = profile?.subscription_tier;
-    const status = profile?.subscription_status;
-    const hasStripe = !!profile?.stripe_subscription_id;
-    const isPro =
-      tier === 'pro' &&
-      (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing');
-
-    if (!isPro) {
-      const linkUpgradeKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
-      return ctx.reply(
-        `To unlock Pocket Agent, upgrade to *Pro*.\n\n` +
-          `Pro gives you real-time spending insights, smart budget alerts, AI-drafted complaint letters citing UK consumer law, and proactive bill-increase detection — all for *£9.99/month*.\n\n` +
-          `Once upgraded, generate a fresh link code from your dashboard and come back here.`,
-        { parse_mode: 'Markdown', reply_markup: linkUpgradeKeyboard },
       );
     }
 
@@ -1953,36 +1953,8 @@ Return JSON: { "subject": "...", "body": "..." }`;
       );
     }
 
-    // Verify Pro subscription + check rate limit in parallel
-    const [profileResult, rateLimitResult] = await Promise.all([
-      supabase
-        .from('profiles')
-        .select('subscription_tier, subscription_status, stripe_subscription_id')
-        .eq('id', session.user_id)
-        .single(),
-      checkRateLimit(supabase, session.user_id),
-    ]);
-
-    if (profileResult.error) {
-      console.error('[UserBot] Profile lookup error:', profileResult.error);
-    }
-    const profile = profileResult.data;
-
-    const tier = profile?.subscription_tier;
-    const status = profile?.subscription_status;
-    const hasStripe = !!profile?.stripe_subscription_id;
-    const isPro =
-      tier === 'pro' &&
-      (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing');
-
-    if (!isPro) {
-      const chatUpgradeKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
-      return ctx.reply(
-        `To unlock Pocket Agent, upgrade to *Pro*.\n\n` +
-          `Pro gives you real-time access to your spending, budgets, subscriptions, and disputes — plus AI-drafted complaint letters and proactive bill alerts — all for *£9.99/month*.`,
-        { parse_mode: 'Markdown', reply_markup: chatUpgradeKeyboard },
-      );
-    }
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit(supabase, session.user_id);
 
     if (!rateLimitResult) {
       return ctx.reply(
@@ -2004,6 +1976,145 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .update({ user_id: session.user_id })
         .eq('id', earlyLog.id)
         .then(() => {});
+    }
+
+    // -----------------------------------------------------------------
+    // Ticket-thread routing: if this user has an open Telegram-source
+    // support ticket, treat their message as a ticket reply rather than
+    // a fresh chatbot prompt. Also auto-reopens RECENTLY-resolved tickets
+    // (resolved within last 7 days) so a "still broken" follow-up routes
+    // back into Riley instead of restarting the conversation cold.
+    // Inserts into ticket_messages, resets status to 'open' so Riley
+    // re-engages on next 15-min cron, and sends a brief acknowledgement
+    // instead of the chatbot's improvised answer.
+    // -----------------------------------------------------------------
+    try {
+      // First look for a non-terminal open ticket.
+      const { data: liveTicket } = await supabase
+        .from('support_tickets')
+        .select('id, ticket_number, status, metadata, resolved_at, subject, source')
+        .eq('user_id', session.user_id)
+        .eq('source', 'telegram')
+        .not('status', 'in', '("resolved","closed","dismissed")')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      // ── Confirmation reply handler ──
+      // If the ticket is awaiting_user_confirmation (Builder shipped a fix and
+      // is asking the user to verify), classify the message and route it.
+      if (liveTicket && isAwaitingConfirmation((liveTicket as { status: string }).status)) {
+        const result = await handleConfirmationReply(
+          supabase,
+          liveTicket as { id: string; ticket_number: string | null; status: string; subject: string; source: string; metadata: Record<string, unknown> | null },
+          userMessage,
+        );
+        if (result.handled && result.reply_to_user) {
+          await supabase.from('ticket_messages').insert({
+            ticket_id: (liveTicket as { id: string }).id,
+            sender_type: 'system',
+            sender_name: 'Riley',
+            message: result.reply_to_user,
+          });
+          await ctx.reply(result.reply_to_user, { parse_mode: 'Markdown' as const });
+          return;
+        }
+      }
+
+      // If no live ticket, fall back to a recently-resolved one (within 7 days).
+      // A user replying within a week is probably saying "this is still broken" —
+      // auto-reopen rather than starting a new chatbot conversation.
+      let openTicket = liveTicket as
+        | { id: string; ticket_number: string | null; status: string; metadata: Record<string, unknown> | null; resolved_at: string | null }
+        | null;
+      let isReopen = false;
+      if (!openTicket) {
+        const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
+        const { data: recentResolved } = await supabase
+          .from('support_tickets')
+          .select('id, ticket_number, status, metadata, resolved_at')
+          .eq('user_id', session.user_id)
+          .eq('source', 'telegram')
+          .in('status', ['resolved', 'closed'])
+          .gte('resolved_at', sevenDaysAgo)
+          .order('resolved_at', { ascending: false })
+          .limit(1)
+          .single();
+        if (recentResolved) {
+          openTicket = recentResolved as unknown as typeof openTicket;
+          isReopen = true;
+        }
+      }
+
+      if (openTicket?.id) {
+        // 1. Append the user's message to the ticket conversation history.
+        await supabase.from('ticket_messages').insert({
+          ticket_id: openTicket.id,
+          sender_type: 'user',
+          sender_name: 'Telegram User',
+          message: userMessage,
+        });
+
+        // 2. Reset status to 'open' + clear chase metadata so Riley re-processes.
+        // If this is a reopen of a recently-resolved ticket, also clear resolved_at.
+        const meta = (openTicket.metadata || {}) as Record<string, unknown>;
+        const userReplies = (meta.user_replies as Array<{ at: string; excerpt: string }>) || [];
+        const updatedMeta: Record<string, unknown> = {
+          ...meta,
+          user_replies: [
+            ...userReplies,
+            { at: new Date().toISOString(), excerpt: userMessage.slice(0, 200) },
+          ],
+          last_user_reply_at: new Date().toISOString(),
+        };
+        delete updatedMeta.chase_sent_at;
+        delete updatedMeta.auto_closed;
+        delete updatedMeta.auto_closed_at;
+        if (isReopen) {
+          updatedMeta.reopened_at = new Date().toISOString();
+          updatedMeta.reopen_count = ((meta.reopen_count as number | undefined) || 0) + 1;
+        }
+
+        const updatePayload: Record<string, unknown> = {
+          status: 'open',
+          assigned_to: null,
+          metadata: updatedMeta,
+          updated_at: new Date().toISOString(),
+        };
+        if (isReopen) {
+          updatePayload.resolved_at = null;
+        }
+
+        await supabase
+          .from('support_tickets')
+          .update(updatePayload)
+          .eq('id', openTicket.id);
+
+        // 3. Brief acknowledgement (Riley will respond properly within ~15 min).
+        const ref = openTicket.ticket_number || openTicket.id.slice(0, 8).toUpperCase();
+        if (isReopen) {
+          await ctx.reply(
+            `Sorry to hear it's still not sorted — I've re-opened ticket *${ref}* and Riley will take another look (usually within 15 minutes).\n\n` +
+              `If it's urgent, reply with the word *urgent* and we'll prioritise.`,
+            { parse_mode: 'Markdown' },
+          );
+        } else {
+          await ctx.reply(
+            `Got it — added to your ticket *${ref}*. Riley will respond shortly (usually within 15 minutes).\n\n` +
+              `If it's urgent, reply with the word *urgent* and we'll prioritise.`,
+            { parse_mode: 'Markdown' },
+          );
+        }
+
+        // Skip the chatbot processing for this message — Riley owns the conversation now.
+        console.log(
+          `[UserBot] Routed message into ticket ${ref} (chat_id=${chatId}, ticket_id=${openTicket.id})`,
+        );
+        return;
+      }
+    } catch (ticketLookupErr) {
+      // Non-fatal — fall through to normal chatbot processing.
+      console.error('[UserBot] Open-ticket lookup failed (non-fatal):', ticketLookupErr);
     }
 
     // Show typing indicator immediately, then repeat every 4s while Claude processes
@@ -2050,12 +2161,22 @@ Return JSON: { "subject": "...", "body": "..." }`;
           .text('Approve and save ✓', `approve_${pending?.id}`)
           .text('Cancel ✗', `cancel_${pending?.id}`);
 
-        const chunks = splitMessage(text);
-        for (let i = 0; i < chunks.length; i++) {
-          if (i === chunks.length - 1) {
-            await ctx.reply(chunks[i], { reply_markup: keyboard });
-          } else {
-            await ctx.reply(chunks[i]);
+        // Send the header first (no keyboard), then the letter body
+        // with the Approve/Cancel keyboard attached. Previously the
+        // header + letter were concatenated into `text` and split into
+        // chunks, which (on WhatsApp callers) led to a duplicated send.
+        // The handler now returns text = header only, pendingAction
+        // .letter_text = body — both surfaces send them as two messages.
+        await ctx.reply(text);
+        const letterBody = (pendingAction as { letter_text?: string }).letter_text;
+        if (letterBody) {
+          const letterChunks = splitMessage(letterBody);
+          for (let i = 0; i < letterChunks.length; i++) {
+            if (i === letterChunks.length - 1) {
+              await ctx.reply(letterChunks[i], { reply_markup: keyboard });
+            } else {
+              await ctx.reply(letterChunks[i]);
+            }
           }
         }
       } else {
