@@ -28,6 +28,7 @@ interface LegalRef {
   last_changed: string | null;
   verification_notes: string | null;
   verified_url: string | null;
+  auto_corrected?: boolean | null;
   created_at: string;
 }
 
@@ -105,6 +106,9 @@ export default function LegalRefsAdminPage() {
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmAllOpen, setConfirmAllOpen] = useState(false);
+  const [verifyAllRunning, setVerifyAllRunning] = useState(false);
+  const [verifyAllResult, setVerifyAllResult] = useState<string | null>(null);
   const REVIEW_PAGE_SIZE = 50;
   const supabase = createClient();
 
@@ -436,6 +440,12 @@ export default function LegalRefsAdminPage() {
                         <StatusIcon className="h-3 w-3" />
                         {status.label}
                       </span>
+                      {ref.auto_corrected && (
+                        <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200" title="Perplexity auto-overwrote the canonical citation. Please review.">
+                          <AlertTriangle className="h-3 w-3" />
+                          AI auto-correction
+                        </div>
+                      )}
                     </td>
                     <td className="px-5 py-4 hidden lg:table-cell">
                       <div className="flex items-center gap-1.5 text-slate-600 text-xs">
@@ -518,14 +528,91 @@ export default function LegalRefsAdminPage() {
                 )}
                 <button
                   onClick={() => setConfirmOpen(true)}
-                  disabled={anyVerifying || reviewable.length === 0}
+                  disabled={anyVerifying || verifyAllRunning || reviewable.length === 0}
                   className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-4 py-2 rounded-lg text-sm transition-all"
                 >
                   {anyVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Verify all with AI
+                  Verify needs-review only
+                </button>
+                <button
+                  onClick={() => setConfirmAllOpen(true)}
+                  disabled={anyVerifying || verifyAllRunning || refs.length === 0}
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-900 font-semibold px-4 py-2 rounded-lg text-sm transition-all"
+                  title="Re-verify every legal_references row to establish a clean baseline"
+                >
+                  {verifyAllRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  Re-verify ALL refs (full baseline)
                 </button>
               </div>
             </div>
+
+            {verifyAllResult && (
+              <div className={`mb-3 px-4 py-3 rounded-xl text-sm font-medium border ${
+                verifyAllResult.startsWith('Done') ? 'bg-green-500/10 border-green-500/20 text-green-700' : 'bg-red-500/10 border-red-500/20 text-red-500'
+              }`}>
+                {verifyAllResult}
+              </div>
+            )}
+
+            {confirmAllOpen && (
+              <div
+                className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+                onClick={() => setConfirmAllOpen(false)}
+              >
+                <div
+                  className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl border border-slate-200"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 className="text-lg font-bold text-slate-900 mb-2">Re-verify ALL references</h3>
+                  <p className="text-sm text-slate-600 mb-5">
+                    This will re-verify all {refs.length} refs to establish a clean
+                    compliance baseline. Cost ~£{(refs.length * PERPLEXITY_COST_PER_ROW_GBP).toFixed(2)}.
+                    High-confidence corrections will auto-overwrite the canonical
+                    citation fields and be flagged with an amber badge for your review.
+                  </p>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setConfirmAllOpen(false)}
+                      className="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setConfirmAllOpen(false);
+                        setVerifyAllRunning(true);
+                        setVerifyAllResult(null);
+                        try {
+                          const res = await fetch('/api/admin/legal-refs/verify-all', {
+                            method: 'POST',
+                            credentials: 'include',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({}),
+                          });
+                          const data = await res.json();
+                          if (data.ok && data.counts) {
+                            const c = data.counts;
+                            setVerifyAllResult(
+                              `Done. ${c.verified} verified · ${c.updated} auto-updated · ${c.superseded} superseded · ${c.needs_review} needs review · ${c.broken} broken · ${c.error} errors · ${c.auto_corrected} auto-corrected (review).`
+                            );
+                            await fetchRefs();
+                          } else {
+                            setVerifyAllResult(`Error: ${data.error || 'Unknown error'}`);
+                          }
+                        } catch (err: any) {
+                          setVerifyAllResult(`Failed: ${err?.message || 'Request failed'}`);
+                        } finally {
+                          setVerifyAllRunning(false);
+                        }
+                      }}
+                      className="px-4 py-2 text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-slate-900 rounded-lg"
+                    >
+                      Run full baseline
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {confirmOpen && (
               <div
@@ -609,6 +696,12 @@ export default function LegalRefsAdminPage() {
                               <StatusIcon className="h-3 w-3" />
                               {status.label}
                             </span>
+                            {ref.auto_corrected && (
+                              <span className="ml-1 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200" title="Perplexity auto-overwrote the canonical citation. Please review.">
+                                <AlertTriangle className="h-3 w-3" />
+                                AI auto-correction — please review
+                              </span>
+                            )}
                           </td>
                           <td className="px-5 py-4 hidden lg:table-cell text-slate-600 text-xs">
                             {relativeTime(ref.last_verified)}
