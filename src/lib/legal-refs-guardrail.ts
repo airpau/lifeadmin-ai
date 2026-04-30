@@ -53,10 +53,38 @@ export interface LegalRef {
 const FRESH_STATUSES = new Set(['current', 'updated', 'verified']);
 const PERPLEXITY_TIMEOUT_MS = 5000;
 
-function maxAgeMs(): number {
+/**
+ * Tiered freshness cascade (PR — 503-softening).
+ *
+ * Replaces the binary fresh/stale split with four bands. Tier 1 is the
+ * historical "fresh" window — citations in this band emit no warning.
+ * Tiers 2-4 are progressively older but still usable; the engine cites
+ * them and surfaces a `_compliance_warnings` entry so the API consumer
+ * can decide whether to surface to the agent. Beyond tier 4 (or with
+ * an ineligible verification_status) the ref is unusable and falls
+ * through to the substitute / category-chain logic.
+ *
+ * Tier 1 is governed by `LEGAL_REF_MAX_AGE_DAYS` so existing operator
+ * configuration still controls the "no-warning" window. Tiers 2-4 are
+ * fixed at 30/60/90 days because their semantics (warning copy) is
+ * baked into product UX.
+ */
+export const FRESHNESS_TIER_CAPS_DAYS = [14, 30, 60, 90] as const;
+
+export interface FreshnessTier {
+  /** 1-4. Tier 1 = no warning, tiers 2-4 emit progressively stronger warnings. */
+  tier: 1 | 2 | 3 | 4;
+  /** Age in whole days at the time of evaluation. */
+  ageDays: number;
+}
+
+function tier1MaxDays(): number {
   const days = Number.parseInt(process.env.LEGAL_REF_MAX_AGE_DAYS || '14', 10);
-  const safe = Number.isFinite(days) && days > 0 ? days : 14;
-  return safe * 24 * 60 * 60 * 1000;
+  return Number.isFinite(days) && days > 0 ? days : 14;
+}
+
+function maxAgeMs(): number {
+  return tier1MaxDays() * 24 * 60 * 60 * 1000;
 }
 
 /**
@@ -251,6 +279,176 @@ export async function findFreshSubstitute(
   // Filter to refs that pass the freshness check (last_verified within window).
   for (const row of data as LegalRef[]) {
     if (freshnessOf(row) === 'fresh') return row;
+  }
+  return null;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  TIERED FRESHNESS + CATEGORY FALLBACK CHAIN                                 */
+/* -------------------------------------------------------------------------- */
+/*
+ * 503-softening (PR — make B2B 503 essentially never).
+ *
+ * The pre-flight guardrail above is binary: a ref either passes the 14-day
+ * window or it doesn't. In practice the founder's verification cron runs
+ * daily but third-party rate limits + Perplexity flakes occasionally
+ * leave a category with NO ref freshly verified in the last fortnight,
+ * which forces a 503 even though we have a perfectly serviceable copy
+ * verified 21 days ago.
+ *
+ * `freshnessTier` returns the freshest tier a ref qualifies under so
+ * the engine can decide:
+ *   - tier 1 (≤14d): use silently
+ *   - tier 2 (15-30d): use + emit "within acceptable bounds" warning
+ *   - tier 3 (31-60d): use + emit "stronger" warning
+ *   - tier 4 (61-90d): use + emit "critical" warning
+ *   - null: ineligible status, never verified, or older than 90d
+ *
+ * `findTieredSubstitute` walks tier 1 → 4 and returns the first fresh
+ * substitute it finds in the same category, plus the tier it qualified
+ * under (so the caller can emit the right warning).
+ *
+ * `CATEGORY_FALLBACK_CHAINS` lets a stale category borrow from a
+ * legally-adjacent neighbour. Energy + broadband + mobile all fall back
+ * to "general" (which holds CRA 2015, CCA 1974 — pan-sector statutes
+ * that apply regardless of vertical). Travel + rail share. Finance +
+ * insurance share. The chains were chosen so that every fallback is
+ * legally defensible: a CRA 2015 citation is correct on an energy
+ * dispute even when there's no fresh Gas Act ref.
+ */
+
+export const CATEGORY_FALLBACK_CHAINS: Record<string, string[]> = {
+  energy: ['utilities', 'general'],
+  utilities: ['general'],
+  broadband: ['telecoms', 'general'],
+  telecoms: ['general'],
+  mobile: ['telecoms', 'general'],
+  finance: ['banking', 'general'],
+  banking: ['finance', 'general'],
+  insurance: ['finance', 'general'],
+  travel: ['general'],
+  rail: ['travel', 'general'],
+  parking: ['general'],
+  council_tax: ['general'],
+  hmrc: ['general'],
+  dvla: ['general'],
+  nhs: ['general'],
+  gym: ['general'],
+  debt: ['finance', 'general'],
+  general: [],
+};
+
+/**
+ * Classify a ref by the freshest tier it qualifies under. Returns
+ * null when the ref is unusable (broken/superseded status, missing
+ * last_verified, ineligible verification_status, or older than the
+ * tier-4 cap of 90 days).
+ *
+ * Tier 1's cap is read from LEGAL_REF_MAX_AGE_DAYS (defaults to 14).
+ * Tiers 2-4 are fixed at 30/60/90 days.
+ */
+export function freshnessTier(ref: LegalRef, now: Date = new Date()): FreshnessTier | null {
+  if (!ref) return null;
+  const status = (ref.verification_status || '').toLowerCase();
+  if (status === 'broken' || status === 'superseded') return null;
+  if (!FRESH_STATUSES.has(status)) return null;
+  if (!ref.last_verified) return null;
+  const verifiedAt = new Date(ref.last_verified).getTime();
+  if (!Number.isFinite(verifiedAt)) return null;
+  const ageMs = now.getTime() - verifiedAt;
+  if (ageMs < 0) return { tier: 1, ageDays: 0 };
+  const ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+  // 90-day ceiling is a non-negotiable contract — anything older is
+  // unusable regardless of how the operator configured tier 1. Apply
+  // it FIRST so a misconfigured `LEGAL_REF_MAX_AGE_DAYS=180` (or
+  // similar) can't accidentally promote 91-day-old refs to tier 1.
+  if (ageDays > 90) return null;
+  // Tier 1 follows operator configuration but is also clamped to the
+  // tier-2 boundary (30d) so a configuration above 30 doesn't swallow
+  // tier-2 warnings either — operators can only TIGHTEN tier 1, not
+  // widen it past the next tier. Default 14 stays well within bounds.
+  const tier1Cap = Math.min(tier1MaxDays(), 30);
+  if (ageDays <= tier1Cap) return { tier: 1, ageDays };
+  if (ageDays <= 30) return { tier: 2, ageDays };
+  if (ageDays <= 60) return { tier: 3, ageDays };
+  return { tier: 4, ageDays };
+}
+
+/**
+ * Build the human-readable `_compliance_warnings` string for a ref
+ * cited under tier 2-4. Tier 1 returns null (no warning needed).
+ */
+export function tierWarning(ref: LegalRef, t: FreshnessTier): string | null {
+  if (t.tier === 1) return null;
+  const name = ref.law_name || 'statute';
+  if (t.tier === 2) {
+    return `Statute '${name}' last verified ${t.ageDays} days ago — within acceptable bounds but flagged for review`;
+  }
+  if (t.tier === 3) {
+    return `Statute '${name}' last verified ${t.ageDays} days ago — stronger review recommended before relying on quantitative figures`;
+  }
+  // tier 4
+  return `Statute '${name}' last verified ${t.ageDays} days ago — CRITICAL: verify before sending`;
+}
+
+/**
+ * Same as `findFreshSubstitute` but walks the tier cascade. Returns the
+ * freshest tier-N substitute found (where N is the lowest tier with a
+ * usable ref). The `tier` field tells the caller which warning to emit;
+ * tier 1 means a "normal" substitute (no warning), tiers 2-4 require a
+ * warning.
+ *
+ * Used by both pre-flight (substitute a stale ref the engine wanted to
+ * cite) and category-chain fallback (borrow from a neighbour category).
+ */
+export async function findTieredSubstitute(
+  supabase: SupabaseClient,
+  category: string,
+  excludeIds: string[],
+): Promise<{ ref: LegalRef; tier: FreshnessTier } | null> {
+  if (!category) return null;
+  let query = supabase
+    .from('legal_references')
+    .select('id, category, subcategory, law_name, section, summary, source_url, verification_status, last_verified, verified_url')
+    .eq('category', category)
+    .in('verification_status', ['current', 'updated', 'verified'])
+    .order('last_verified', { ascending: false })
+    .limit(50);
+  if (excludeIds.length > 0) {
+    query = query.not('id', 'in', `(${excludeIds.map((id) => `"${id}"`).join(',')})`);
+  }
+  const { data } = await query;
+  if (!data || data.length === 0) return null;
+  const now = new Date();
+  let best: { ref: LegalRef; tier: FreshnessTier } | null = null;
+  for (const row of data as LegalRef[]) {
+    const t = freshnessTier(row, now);
+    if (!t) continue;
+    if (!best || t.tier < best.tier.tier || (t.tier === best.tier.tier && t.ageDays < best.tier.ageDays)) {
+      best = { ref: row, tier: t };
+      if (t.tier === 1) break; // can't beat tier 1
+    }
+  }
+  return best;
+}
+
+/**
+ * Walk the category fallback chain. Returns the first chain entry that
+ * yields a tier 1-4 substitute. Caller is expected to emit a
+ * `_compliance_warnings` line referencing the original category and
+ * the fallback that was used.
+ */
+export async function findChainSubstitute(
+  supabase: SupabaseClient,
+  originalCategory: string,
+  excludeIds: string[],
+): Promise<{ ref: LegalRef; tier: FreshnessTier; fallbackCategory: string } | null> {
+  const chain = CATEGORY_FALLBACK_CHAINS[originalCategory] ?? ['general'];
+  for (const fallback of chain) {
+    const found = await findTieredSubstitute(supabase, fallback, excludeIds);
+    if (found) {
+      return { ref: found.ref, tier: found.tier, fallbackCategory: fallback };
+    }
   }
   return null;
 }

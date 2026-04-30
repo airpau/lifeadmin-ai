@@ -23,6 +23,10 @@ import {
   refreshSingleRef,
   findFreshSubstitute,
   freshnessOf,
+  freshnessTier,
+  tierWarning,
+  findTieredSubstitute,
+  findChainSubstitute,
   extractCitations,
   validateCitations,
   planSubstitutions,
@@ -227,6 +231,13 @@ export interface DisputeError {
    * a one-minute retry hint matches the spec.
    */
   retry_after?: number;
+  /**
+   * Categories whose entire freshness cascade (tier 1-4 + chain
+   * fallback) produced no usable ref. Surfaced to the route handler so
+   * the 503 alarm can pinpoint which legal sectors need urgent
+   * re-verification.
+   */
+  unsalvageable_categories?: string[];
 }
 
 export function validateRequest(body: unknown): DisputeRequest | DisputeError {
@@ -504,6 +515,12 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
   const supabase = getAdmin();
   let verifiedRefs = await fetchVerifiedRefs(req.scenario);
 
+  // Accumulate compliance warnings from pre-flight (tier 2-4 usage,
+  // category-chain fallback) AND post-flight (rogue citation rewrites).
+  // Single buffer so the final response carries everything that fired
+  // during this call.
+  const complianceWarnings: string[] = [];
+
   // PR β — pre-send freshness guardrail (B2B path).
   //
   // Compliance is the entire selling point of /v1/disputes vs a
@@ -527,32 +544,67 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
     if (!freshness.ok && freshness.stale.length > 0) {
       const usedIds = new Set<string>(idsBeingFed);
       const unsalvageable: string[] = [];
+      const unsalvageableCategories = new Set<string>();
       for (const { id: staleId } of freshness.stale) {
+        // Step 1 — synchronous Perplexity refresh. If it returns a tier-1
+        // ref we use it silently; if it returns a tier 2-4 ref we keep it
+        // but emit a warning; if it doesn't qualify under any tier we fall
+        // through to the substitute logic.
         const refreshed = await refreshSingleRef(supabase, staleId);
-        if (refreshed && freshnessOf(refreshed) === 'fresh') {
-          const idx = verifiedRefs.findIndex((r: any) => r.id === staleId);
-          if (idx >= 0) verifiedRefs[idx] = { ...verifiedRefs[idx], ...refreshed };
-          continue;
+        if (refreshed) {
+          const t = freshnessTier(refreshed);
+          if (t) {
+            const idx = verifiedRefs.findIndex((r: any) => r.id === staleId);
+            if (idx >= 0) verifiedRefs[idx] = { ...verifiedRefs[idx], ...refreshed };
+            const w = tierWarning(refreshed, t);
+            if (w) complianceWarnings.push(w);
+            continue;
+          }
         }
+        // Step 2 — same-category tiered substitute. Walks tier 1 → 4.
         const original = verifiedRefs.find((r: any) => r.id === staleId);
         const category = original?.category;
         if (category) {
-          const sub = await findFreshSubstitute(supabase, category, [...usedIds]);
+          const sub = await findTieredSubstitute(supabase, category, [...usedIds]);
           if (sub) {
             const idx = verifiedRefs.findIndex((r: any) => r.id === staleId);
-            if (idx >= 0) verifiedRefs[idx] = { ...sub } as any;
-            usedIds.add(sub.id);
+            if (idx >= 0) verifiedRefs[idx] = { ...sub.ref } as any;
+            usedIds.add(sub.ref.id);
+            const w = tierWarning(sub.ref, sub.tier);
+            if (w) complianceWarnings.push(w);
             continue;
           }
+          // Step 3 — category fallback chain. Borrow from a legally-
+          // adjacent neighbour (energy → utilities → general etc.). Even
+          // a tier-4 hit here is preferable to a 503 because the chain
+          // entries are pan-sector statutes (CRA 2015, CCA 1974) that
+          // legitimately apply across categories.
+          const chained = await findChainSubstitute(supabase, category, [...usedIds]);
+          if (chained) {
+            const idx = verifiedRefs.findIndex((r: any) => r.id === staleId);
+            if (idx >= 0) verifiedRefs[idx] = { ...chained.ref } as any;
+            usedIds.add(chained.ref.id);
+            complianceWarnings.push(
+              `No fresh ref for '${category}' — substituted with '${chained.fallbackCategory}' (${chained.ref.law_name})`,
+            );
+            const w = tierWarning(chained.ref, chained.tier);
+            if (w) complianceWarnings.push(w);
+            continue;
+          }
+          unsalvageableCategories.add(category);
         }
         unsalvageable.push(staleId);
       }
       if (unsalvageable.length > 0) {
+        // 503 only fires when the entire cascade — refresh, tier 1-4
+        // substitute, AND category fallback chain — produced nothing for
+        // at least one ref. Should be vanishingly rare in normal operation.
         return {
           code: 'STALE_CITATION',
           message: 'Citation freshness check failed',
           ref_ids: unsalvageable,
           retry_after: 60,
+          unsalvageable_categories: [...unsalvageableCategories],
         };
       }
     }
@@ -675,7 +727,9 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
     law_name: r.law_name as string,
     category: (r.category as string | null) ?? null,
   }));
-  const complianceWarnings: string[] = [];
+  // complianceWarnings hoisted at top of function — pre-flight tier/chain
+  // warnings already accumulated, post-flight rogue-citation warnings
+  // appended below.
 
   // 2a. Structured statute field (the LLM-derived primary statute).
   let structuredStatute = inferStatute(legalRefs);
