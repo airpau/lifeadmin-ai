@@ -414,3 +414,10 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ ok: true, ...results });
 }
+
+// Mirror GET so the founder can trigger this from the admin dashboard
+// without needing a cron-secret bearer header (the admin UI authenticates
+// via the Supabase session cookie, see authorizeAdminOrCron).
+export async function POST(request: NextRequest) {
+  return GET(request);
+}

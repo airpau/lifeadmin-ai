@@ -42,7 +42,7 @@ export async function POST(
   let correction:
     | {
         id: string;
-        legal_reference_id: string;
+        ref_id: string;
         status: string;
         before_law_name?: string | null;
         before_source_url?: string | null;
@@ -96,7 +96,7 @@ export async function POST(
     const { error } = await supabase
       .from('legal_references')
       .update(restore)
-      .eq('id', correction.legal_reference_id);
+      .eq('id', correction.ref_id);
     if (error) {
       return NextResponse.json(
         { error: `legal_references update failed: ${error.message}` },
@@ -127,7 +127,7 @@ export async function POST(
   // Audit row.
   try {
     await supabase.from('legal_ref_verifications').insert({
-      legal_reference_id: correction.legal_reference_id,
+      legal_reference_id: correction.ref_id,
       verifier: 'founder-revert',
       changes: { restored: restore, correction_id: correction.id },
       reasons: ['Founder one-click revert via admin UI'],
