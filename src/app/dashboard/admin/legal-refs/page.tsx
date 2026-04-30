@@ -405,6 +405,7 @@ export default function LegalRefsAdminPage() {
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">Status</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide hidden lg:table-cell">Last verified</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide hidden xl:table-cell">Strength</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide hidden xl:table-cell" title="How many B2C letters / B2B disputes are currently citing this ref. Wired in PR γ.">Block effect</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -460,6 +461,9 @@ export default function LegalRefsAdminPage() {
                       <span className={`text-xs font-medium capitalize ${STRENGTH_CONFIG[ref.strength] || 'text-slate-600'}`}>
                         {ref.strength}
                       </span>
+                    </td>
+                    <td className="px-5 py-4 hidden xl:table-cell">
+                      <span className="text-xs text-slate-500" title="Wired in PR γ — legal_ref_usages table">TBD</span>
                     </td>
                     <td className="px-5 py-4">
                       <a
