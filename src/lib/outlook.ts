@@ -493,6 +493,19 @@ urgency values:
       messages: [{ role: 'user', content: `Analyse these ${senderMap.size} email providers and find every financial opportunity. Extract all dates, amounts, and frequencies you can find:\n\n${truncatedSummary}` }],
     });
 
+    // Log to internal cost ledger (fire-and-forget).
+    try {
+      const { logAnthropicCall } = await import('@/lib/cost-ledger');
+      logAnthropicCall({
+        model: SCAN_MODEL,
+        inputTokens: message.usage?.input_tokens ?? 0,
+        outputTokens: message.usage?.output_tokens ?? 0,
+        endpoint: 'lib/outlook.scanOutlookForOpportunities',
+        userId: null,
+        metadata: { senders: senderMap.size },
+      });
+    } catch { /* never throw */ }
+
     const content = message.content[0];
     if (content.type === 'text') {
       let raw = content.text.trim();
