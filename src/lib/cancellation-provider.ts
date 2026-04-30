@@ -37,8 +37,17 @@ export function detectUkCity(providerName: string): string | null {
   return null;
 }
 
+// Produces the same shape used as the `provider` unique key in the
+// 20260424070000 seed (e.g. "virgin media", "now tv", "puregym"). Keep
+// in sync with the `normalise()` helper used by getCancellationInfo so
+// reads, writes, and substring lookups all share one key space.
 export function providerKey(providerName: string): string {
-  return providerName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 80);
+  return providerName
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
 }
 
 export function buildCancellationPrompt(providerName: string): string {
@@ -136,7 +145,7 @@ export async function researchCancellationForProvider(
     const { data: existing } = await admin
       .from('provider_cancellation_info')
       .select('id')
-      .eq('provider_key', key)
+      .eq('provider', key)
       .maybeSingle();
     if (existing) return; // already researched
   } catch (err: any) {
@@ -146,14 +155,14 @@ export async function researchCancellationForProvider(
 
   const prompt = buildCancellationPrompt(providerName);
   const result = await askPerplexity(prompt);
-  if (!result) return;
+  if (!result || !result.method) return;
 
   const city = detectUkCity(providerName);
   const dataSource = opts.dataSource || 'ai-on-create';
 
   await admin.from('provider_cancellation_info').upsert({
-    provider_name: providerName,
-    provider_key: key,
+    provider: key,
+    display_name: providerName,
     city,
     method: result.method,
     email: result.email,
@@ -165,7 +174,7 @@ export async function researchCancellationForProvider(
     confidence: 'medium',
     last_verified_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'provider_key' }).then(({ error }) => {
+  }, { onConflict: 'provider' }).then(({ error }) => {
     if (error) console.error('[cancellation-provider] upsert failed:', error.message);
   });
 }
