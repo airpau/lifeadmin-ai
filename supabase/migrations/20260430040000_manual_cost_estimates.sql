@@ -26,3 +26,21 @@ CREATE POLICY "manual_cost_estimates_service_role"
   ON public.manual_cost_estimates FOR ALL
   USING (auth.role() = 'service_role')
   WITH CHECK (auth.role() = 'service_role');
+
+-- Keep updated_at fresh on every UPDATE so audit/recency semantics work.
+-- Without this, edits to an existing row (e.g. repricing Google Ads) would
+-- retain the original insert timestamp.
+CREATE OR REPLACE FUNCTION public.manual_cost_estimates_touch()
+RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS manual_cost_estimates_touch_trigger
+  ON public.manual_cost_estimates;
+CREATE TRIGGER manual_cost_estimates_touch_trigger
+  BEFORE UPDATE ON public.manual_cost_estimates
+  FOR EACH ROW
+  EXECUTE FUNCTION public.manual_cost_estimates_touch();
