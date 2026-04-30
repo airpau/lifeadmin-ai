@@ -9,6 +9,7 @@ import {
   Loader2, ChevronLeft, ArrowLeft, Search, Filter,
 } from 'lucide-react';
 import Link from 'next/link';
+import { AutoAppliedPanel } from './AutoAppliedPanel';
 import PendingCorrectionsSection from './PendingCorrectionsSection';
 
 const ADMIN_EMAIL = 'aireypaul@googlemail.com';
@@ -537,6 +538,9 @@ export default function LegalRefsAdminPage() {
           </div>
         </div>
       )}
+
+      {/* η — Auto-applied (last 7 days) panel */}
+      <AutoAppliedPanel />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
