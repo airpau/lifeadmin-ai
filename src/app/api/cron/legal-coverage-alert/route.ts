@@ -41,6 +41,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
+import { CITATION_ELIGIBLE_STATUSES } from '@/lib/legal-refs-statuses';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -126,7 +127,7 @@ export async function GET(request: NextRequest) {
   const { data: allActive } = await sb
     .from('legal_references')
     .select('id, law_name, section, last_verified, last_check_attempt_at, confidence_score')
-    .in('verification_status', ['current', 'updated']);
+    .in('verification_status', CITATION_ELIGIBLE_STATUSES as unknown as string[]);
   const total = allActive?.length ?? 0;
   const stale = (allActive ?? []).filter((r) => {
     const checked = r.last_check_attempt_at ?? r.last_verified;
@@ -152,7 +153,7 @@ export async function GET(request: NextRequest) {
   const { data: sourceRows } = await sb
     .from('legal_references')
     .select('source_url')
-    .in('verification_status', ['current', 'updated'])
+    .in('verification_status', CITATION_ELIGIBLE_STATUSES as unknown as string[])
     .not('source_url', 'is', null);
   const sourceCounts = new Map<string, number>();
   for (const r of sourceRows ?? []) {
@@ -182,7 +183,7 @@ export async function GET(request: NextRequest) {
   const { data: byCat } = await sb
     .from('legal_references')
     .select('category')
-    .in('verification_status', ['current', 'updated']);
+    .in('verification_status', CITATION_ELIGIBLE_STATUSES as unknown as string[]);
   const present = new Set<string>();
   for (const r of byCat ?? []) present.add((r.category as string) ?? 'general');
   const missingCategories = REQUIRED_CATEGORIES.filter((c) => !present.has(c));
@@ -192,7 +193,7 @@ export async function GET(request: NextRequest) {
     const { count } = await sb
       .from('legal_references')
       .select('id', { count: 'exact', head: true })
-      .in('verification_status', ['current', 'updated'])
+      .in('verification_status', CITATION_ELIGIBLE_STATUSES as unknown as string[])
       .ilike('law_name', `%${probe.keyword}%`);
     if (!count || count === 0) missingNamedStatutes.push(probe);
   }

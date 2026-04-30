@@ -48,6 +48,7 @@
     { "path": "/api/cron/builder-verify",            "schedule": "*/5 * * * *" },
     { "path": "/api/cron/refresh-cancellation-info", "schedule": "0 3 * * 1" },
     { "path": "/api/cron/discover-legal-refs?leg=recent",   "schedule": "0 3 * * 0" },
-    { "path": "/api/cron/discover-legal-refs?leg=category", "schedule": "30 4 * * *" }
+    { "path": "/api/cron/discover-legal-refs?leg=category", "schedule": "30 4 * * *" },
+    { "path": "/api/cron/reverify-all-legal-refs",   "schedule": "30 3 * * *" }
   ]
 }

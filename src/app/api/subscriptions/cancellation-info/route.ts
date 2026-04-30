@@ -24,8 +24,8 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await admin
     .from('provider_cancellation_info')
-    .select('provider_name, city, method, email, phone, url, tips, notice_period_days, last_verified_at, confidence, data_source')
-    .eq('provider_key', key)
+    .select('provider, display_name, city, method, email, phone, url, tips, notice_period_days, last_verified_at, confidence, data_source')
+    .eq('provider', key)
     .maybeSingle();
 
   if (error) {
