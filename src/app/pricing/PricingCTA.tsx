@@ -35,6 +35,30 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { PRICE_IDS } from '@/lib/stripe';
+import { capture as posthogCapture } from '@/lib/posthog';
+
+// Basic-but-sensible email regex — local@host.tld, no spaces, no
+// double-@. Real validation is server-side; this just stops obvious
+// typos so we don't push junk into consumer_leads.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Read UTM params from the current URL — best-effort, never throws. */
+function readUtm(): { utm_source?: string; utm_medium?: string; utm_campaign?: string } {
+  if (typeof window === 'undefined') return {};
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const out: { utm_source?: string; utm_medium?: string; utm_campaign?: string } = {};
+    const s = sp.get('utm_source');
+    const m = sp.get('utm_medium');
+    const c = sp.get('utm_campaign');
+    if (s) out.utm_source = s;
+    if (m) out.utm_medium = m;
+    if (c) out.utm_campaign = c;
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 type Plan = 'free' | 'essential' | 'pro';
 
@@ -68,6 +92,10 @@ export default function PricingCTA({ plan, className, children, style, billingCy
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<PreviewState | null>(null);
+  // Inline email gate for logged-out paid-plan clicks.
+  const [showEmailGate, setShowEmailGate] = useState(false);
+  const [gateEmail, setGateEmail] = useState('');
+  const [gateError, setGateError] = useState<string | null>(null);
   const supabase = createClient();
   const priceId = priceIdFor(plan, billingCycle);
 
@@ -120,12 +148,153 @@ export default function PricingCTA({ plan, className, children, style, billingCy
     );
   }
 
-  // Logged-out → preserve original behaviour
+  // Logged-out, paid plan → inline email gate (Option A).
+  // Capture email before bouncing to /auth/signup so we still have a
+  // lead row even if the visitor bails at signup or Stripe.
+  //
+  // The flow is intentionally non-modal: the CTA button morphs into a
+  // small inline email input + Continue / Cancel pair, sized to fit the
+  // existing button slot so the pricing card layout doesn't reflow. On
+  // submit we POST /api/leads/capture (best-effort — DB hiccups never
+  // block the redirect to signup) and fire a `lead_captured` PostHog
+  // event, then redirect to /auth/signup?plan=… so the existing signup
+  // flow handles auth + Stripe checkout from there.
   if (!isAuthed) {
+    if (!showEmailGate) {
+      return (
+        <a
+          className={className}
+          href={`/auth/signup?plan=${plan}`}
+          style={style}
+          onClick={(e) => {
+            e.preventDefault();
+            setGateEmail('');
+            setGateError(null);
+            setShowEmailGate(true);
+          }}
+        >
+          {children}
+        </a>
+      );
+    }
+
+    const submitGate = async (e: React.FormEvent) => {
+      e.preventDefault();
+      const email = gateEmail.trim();
+      if (!EMAIL_RE.test(email)) {
+        setGateError('Please enter a valid email address.');
+        return;
+      }
+      setGateError(null);
+      setLoading(true);
+
+      // Best-effort lead capture. We deliberately do NOT block the
+      // redirect on this — if our DB hiccups, we still want the
+      // visitor to reach the signup flow.
+      const utm = readUtm();
+      try {
+        await fetch('/api/leads/capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            // server enum is 'pricing_page_exit' — covers pricing-page
+            // captures, including bounces before reaching Stripe.
+            source: 'pricing_page_exit',
+            intended_tier: plan,
+            intended_billing_interval: billingCycle,
+            ...utm,
+          }),
+        });
+      } catch {
+        // Swallow — capture is best-effort.
+      }
+
+      try {
+        posthogCapture('lead_captured', {
+          source: 'pricing_page',
+          intended_tier: plan,
+          intended_billing_interval: billingCycle,
+          ...utm,
+        });
+      } catch {
+        // Swallow — analytics is best-effort.
+      }
+
+      // Pass the email through to signup so the form is pre-filled.
+      const params = new URLSearchParams({ plan, email });
+      window.location.href = `/auth/signup?${params.toString()}`;
+    };
+
+    // Inline gate — sized to fit roughly inside the existing CTA slot.
     return (
-      <Link className={className} href={`/auth/signup?plan=${plan}`} style={style}>
-        {children}
-      </Link>
+      <form
+        onSubmit={submitGate}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          width: '100%',
+          ...style,
+        }}
+        aria-label="Enter your email to continue"
+      >
+        <input
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          autoFocus
+          required
+          placeholder="you@example.com"
+          value={gateEmail}
+          onChange={(e) => setGateEmail(e.target.value)}
+          aria-label="Email address"
+          aria-invalid={gateError ? true : undefined}
+          style={{
+            padding: '12px 14px',
+            fontSize: 15,
+            borderRadius: 10,
+            border: '1px solid var(--divider)',
+            background: '#fff',
+            color: 'var(--text-primary)',
+            outline: 'none',
+          }}
+        />
+        {gateError && (
+          <div role="alert" style={{ fontSize: 13, color: '#B91C1C' }}>{gateError}</div>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="submit"
+            className={className}
+            disabled={loading}
+            style={{ flex: 1, cursor: loading ? 'wait' : 'pointer' }}
+            aria-busy={loading}
+          >
+            {loading ? 'Continuing…' : 'Continue to checkout →'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowEmailGate(false);
+              setGateError(null);
+            }}
+            disabled={loading}
+            style={{
+              padding: '0 14px',
+              fontSize: 14,
+              background: 'transparent',
+              border: '1px solid var(--divider)',
+              borderRadius: 10,
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+            }}
+            aria-label="Cancel"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
     );
   }
 
