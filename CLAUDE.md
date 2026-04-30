@@ -439,6 +439,37 @@ gates in `evaluateCorrection` — don't. The rule "100% correct" depends
 on this being conservative. Founder review only when enrichment can't
 decide.
 
+### Compliance dashboard — daily-driver UX (added 2026-04-29)
+
+The admin page at `/dashboard/admin/legal-refs` is structured for
+glance-then-act, not browse-and-explore:
+
+1. "What needs your attention" — bordered amber panel at the top.
+   Surfaces only action items: pending corrections, url_dead refs
+   needing recovery, "AI auto-correction" rows needing eyeball,
+   discovery candidates pending approval, and last sync outcome.
+   Empty state: "Nothing needs your attention. Last sync clean."
+2. "Compliance ops" toolbar — primary "Run sync now" button.
+3. Pending corrections + Review queue — visible by default.
+4. "All references" — wrapped in `<details>` so the 124-row dump
+   collapses past unless the founder explicitly expands it.
+5. Auto-corrected rows in the full table get an amber row tint and
+   a "⚠ Auto-corrected — verify" badge so Perplexity-overwritten
+   citations stand out for founder review.
+
+If you add a new compliance op, surface it as a counter in the action
+panel rather than a row in the big table — the panel is the
+daily-driver, the table is reference data.
+
+### Compliance endpoint auth (added 2026-04-29)
+
+Admin compliance endpoints that the chained `/api/cron/compliance-sync`
+calls must accept BOTH founder cookie auth AND `Bearer ${CRON_SECRET}`.
+Use `authorizeAdminOrCron(request)` from `src/lib/admin-auth.ts` — never
+the cookie-only `supabase.auth.getUser()` pattern, or the cron leg will
+401. Currently wired: `recover-url-dead`, `audit-authority`. Any new
+phase the cron chains must follow the same pattern.
+
 ---
 
 ## CORE FEATURES

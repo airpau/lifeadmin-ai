@@ -20,18 +20,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server';
 import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
+import { authorizeAdminOrCron } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
-
-function getAdminEmails(): string[] {
-  return (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'aireypaul@googlemail.com')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-}
 
 function getAdmin() {
   return createAdminClient(
@@ -45,22 +38,6 @@ interface RefRow {
   law_name: string;
   source_url: string;
   verification_status: string | null;
-}
-
-async function authorise(): Promise<{ ok: boolean; userEmail?: string }> {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const allow = getAdminEmails();
-    if (!user?.email || !allow.includes(user.email.toLowerCase())) {
-      return { ok: false };
-    }
-    return { ok: true, userEmail: user.email };
-  } catch {
-    return { ok: false };
-  }
 }
 
 async function classify() {
@@ -100,10 +77,10 @@ async function classify() {
   };
 }
 
-export async function GET() {
-  const auth = await authorise();
+export async function GET(request: NextRequest) {
+  const auth = await authorizeAdminOrCron(request);
   if (!auth.ok) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: auth.reason || 'Unauthorized' }, { status: auth.status });
   }
   const result = await classify();
   if ('error' in result) {
@@ -125,10 +102,10 @@ export async function GET() {
   });
 }
 
-export async function POST() {
-  const auth = await authorise();
+export async function POST(request: NextRequest) {
+  const auth = await authorizeAdminOrCron(request);
   if (!auth.ok) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: auth.reason || 'Unauthorized' }, { status: auth.status });
   }
 
   const result = await classify();

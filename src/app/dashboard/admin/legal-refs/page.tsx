@@ -169,6 +169,12 @@ export default function LegalRefsAdminPage() {
   const [opRunning, setOpRunning] = useState<string | null>(null);
   const [opToast, setOpToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
+  // Action-panel state (Section A — "What needs your attention")
+  const [pendingCorrectionsCount, setPendingCorrectionsCount] = useState<number>(0);
+  const [lastSyncRun, setLastSyncRun] = useState<{ at: string; ok: boolean; failedPhases: string[] } | null>(null);
+  const [allRefsExpanded, setAllRefsExpanded] = useState<boolean>(false);
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (!opToast) return;
     const t = setTimeout(() => setOpToast(null), 8000);
@@ -186,7 +192,7 @@ export default function LegalRefsAdminPage() {
         return;
       }
       setAuthorized(true);
-      await Promise.all([fetchRefs(), fetchCandidates()]);
+      await Promise.all([fetchRefs(), fetchCandidates(), fetchActionPanelCounts()]);
     };
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,6 +237,47 @@ export default function LegalRefsAdminPage() {
       }
     } catch {}
     setLoading(false);
+  };
+
+  const fetchActionPanelCounts = async () => {
+    // Pending corrections — count only.
+    try {
+      const { count } = await supabase
+        .from('legal_ref_corrections')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      setPendingCorrectionsCount(typeof count === 'number' ? count : 0);
+    } catch {
+      // Table may be missing on dev — non-fatal.
+    }
+    // Last sync run — most recent business_log row tagged compliance_sync_run.
+    try {
+      const { data } = await supabase
+        .from('business_log')
+        .select('content, created_at, title')
+        .eq('category', 'compliance')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      const row = (data || []).find((r: { title?: string | null }) =>
+        (r.title || '').toLowerCase().includes('compliance sync'),
+      ) || (data || [])[0];
+      if (row) {
+        // Heuristic: content includes 'failed' or names of phases when failed.
+        const content = (row as { content?: string }).content || '';
+        const failedPhases: string[] = [];
+        const m = content.match(/failed phases?:\s*([\w\-,\s]+)/i);
+        if (m) {
+          failedPhases.push(...m[1].split(',').map((s: string) => s.trim()).filter(Boolean));
+        }
+        setLastSyncRun({
+          at: (row as { created_at: string }).created_at,
+          ok: failedPhases.length === 0 && !/error|fail/i.test(content),
+          failedPhases,
+        });
+      }
+    } catch {
+      // non-fatal
+    }
   };
 
   const fetchCandidates = async () => {
@@ -418,7 +465,7 @@ export default function LegalRefsAdminPage() {
     try {
       const result = await fn();
       setOpToast({ kind: result.ok ? 'ok' : 'err', text: result.text });
-      await Promise.all([fetchRefs(), fetchCandidates()]);
+      await Promise.all([fetchRefs(), fetchCandidates(), fetchActionPanelCounts()]);
     } catch (err) {
       setOpToast({
         kind: 'err',
@@ -818,6 +865,78 @@ export default function LegalRefsAdminPage() {
         </div>
       </div>
 
+      {/* Section A — "What needs your attention". Daily-driver summary
+          panel that surfaces only the action items: pending corrections,
+          url_dead refs needing recovery, AI auto-corrections needing
+          founder eyeball, candidates pending approval, and last sync
+          outcome. Founder reads this, clicks the right link, deals with
+          what matters — without scrolling through 124-row tables. */}
+      {(() => {
+        const autoCorrectedCount = refs.filter((r) => r.auto_corrected === true).length;
+        const items: Array<{ label: string; count: number; href?: string; tone: 'amber' | 'red' | 'slate' }> = [
+          { label: 'pending corrections need review', count: pendingCorrectionsCount, href: '#pending-corrections', tone: 'amber' },
+          { label: 'URL_DEAD refs need recovery', count: urlDeadCount, href: '#review-queue', tone: 'red' },
+          { label: '"AI auto-correction" rows need verification', count: autoCorrectedCount, href: '#review-queue', tone: 'amber' },
+          { label: 'candidates pending approval', count: pendingCandCount, tone: 'slate' },
+        ];
+        const totalAction = items.reduce((s, i) => s + i.count, 0);
+        const tonePill = (t: 'amber' | 'red' | 'slate') =>
+          t === 'red'
+            ? 'bg-red-100 text-red-700 border-red-200'
+            : t === 'amber'
+              ? 'bg-amber-100 text-amber-700 border-amber-200'
+              : 'bg-slate-100 text-slate-700 border-slate-200';
+        return (
+          <div className="mb-6 bg-white border-2 border-amber-300 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              <h2 className="text-lg font-bold text-slate-900">What needs your attention</h2>
+            </div>
+            {totalAction === 0 ? (
+              <p className="text-sm text-emerald-700 font-medium flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                Nothing needs your attention. Last sync clean.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {items
+                  .filter((i) => i.count > 0)
+                  .map((i) => (
+                    <li key={i.label} className="flex items-center gap-3 text-sm">
+                      <span className={`inline-flex items-center justify-center min-w-[2rem] h-7 px-2 rounded-full border text-xs font-bold ${tonePill(i.tone)}`}>
+                        {i.count}
+                      </span>
+                      {i.href ? (
+                        <a href={i.href} className="text-slate-800 hover:text-emerald-700 hover:underline">
+                          {i.label}
+                        </a>
+                      ) : (
+                        <span className="text-slate-800">{i.label}</span>
+                      )}
+                    </li>
+                  ))}
+              </ul>
+            )}
+            <div className="mt-4 pt-3 border-t border-slate-200 text-xs text-slate-600">
+              {lastSyncRun ? (
+                <span>
+                  Last sync run: {formatDate(lastSyncRun.at)} —{' '}
+                  {lastSyncRun.ok ? (
+                    <span className="text-emerald-700 font-medium">success</span>
+                  ) : (
+                    <span className="text-red-600 font-medium">
+                      failed{lastSyncRun.failedPhases.length > 0 ? ` (${lastSyncRun.failedPhases.join(', ')})` : ''}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span>No sync runs recorded yet.</span>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Single end-to-end compliance pipeline button. The chained
           /api/cron/compliance-sync runs the same phases as the nightly
           cron: recover url_dead → authority audit → discover → enrich →
@@ -1016,10 +1135,25 @@ export default function LegalRefsAdminPage() {
       </div>
 
       {/* Pending corrections (PR ε — human-in-loop gate) */}
-      <PendingCorrectionsSection />
+      <div id="pending-corrections">
+        <PendingCorrectionsSection />
+      </div>
 
+      {/* Section C — "All references" collapsed by default. Founder
+          rarely needs the full 124-row dump — it's reference data, not a
+          daily-driver. Wrapped in <details> so it scrolls past unless
+          they want to dig. */}
+      <details
+        className="mb-6 bg-white border border-slate-200 rounded-2xl"
+        open={allRefsExpanded}
+        onToggle={(e) => setAllRefsExpanded((e.target as HTMLDetailsElement).open)}
+      >
+        <summary className="cursor-pointer px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50 select-none">
+          All references ({counts.dbTotal}) — click to expand
+        </summary>
+        <div className="px-5 pb-5">
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap gap-3 mb-4 mt-3">
         <div className="flex-1 min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-700" />
           <input
@@ -1087,7 +1221,11 @@ export default function LegalRefsAdminPage() {
                   <tr
                     key={ref.id}
                     id={`ref-${ref.id}`}
-                    className={`border-b border-slate-200 hover:bg-slate-100/50 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-100/30'}`}
+                    className={`border-b border-slate-200 hover:bg-slate-100/50 transition-colors ${
+                      ref.auto_corrected
+                        ? 'bg-amber-50'
+                        : i % 2 === 0 ? '' : 'bg-slate-100/30'
+                    }`}
                   >
                     <td className="px-5 py-4">
                       <p className="text-slate-900 text-sm font-medium">{ref.law_name}</p>
@@ -1095,9 +1233,34 @@ export default function LegalRefsAdminPage() {
                         <p className="text-slate-700 text-xs mt-0.5">{ref.section}</p>
                       )}
                       <p className="text-slate-600 text-xs mt-1 line-clamp-2 max-w-sm">{ref.summary}</p>
-                      {ref.verification_notes && (
-                        <p className="text-amber-600/70 text-[11px] mt-1 line-clamp-1">{ref.verification_notes}</p>
-                      )}
+                      {ref.verification_notes && (() => {
+                        const notes = ref.verification_notes!;
+                        const expanded = expandedNotes.has(ref.id);
+                        const tail = notes.length > 80 ? notes.slice(-80) : notes;
+                        const display = expanded ? notes : (notes.length > 80 ? `…${tail}` : notes);
+                        const toggle = () => setExpandedNotes((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(ref.id)) next.delete(ref.id);
+                          else next.add(ref.id);
+                          return next;
+                        });
+                        return (
+                          <div className="mt-1">
+                            <p className={`text-amber-700 text-[11px] ${expanded ? 'whitespace-pre-wrap' : 'line-clamp-1'} max-w-sm`}>
+                              {display}
+                            </p>
+                            {notes.length > 80 && (
+                              <button
+                                type="button"
+                                onClick={toggle}
+                                className="text-[11px] text-emerald-700 hover:text-emerald-800 mt-0.5"
+                              >
+                                {expanded ? 'collapse ▴' : 'expand ▾'}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-5 py-4">
                       <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200">
@@ -1113,9 +1276,9 @@ export default function LegalRefsAdminPage() {
                         {status.label}
                       </span>
                       {ref.auto_corrected && (
-                        <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200" title="Perplexity auto-overwrote the canonical citation. Please review.">
+                        <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full bg-amber-200 text-amber-900 border-2 border-amber-400 shadow-sm" title="Perplexity auto-overwrote the canonical citation. Please verify before relying on this ref.">
                           <AlertTriangle className="h-3 w-3" />
-                          AI auto-correction
+                          ⚠ Auto-corrected — verify
                         </div>
                       )}
                     </td>
@@ -1172,6 +1335,8 @@ export default function LegalRefsAdminPage() {
           </div>
         )}
       </div>
+        </div>
+      </details>
 
       {/* Review queue — AI-assisted manual verification */}
       {(() => {
@@ -1195,7 +1360,7 @@ export default function LegalRefsAdminPage() {
         const totalCost = (reviewable.length * PERPLEXITY_COST_PER_ROW_GBP).toFixed(3);
         const anyVerifying = aiVerifyingIds.size > 0;
         return (
-          <div className="mt-10">
+          <div className="mt-10" id="review-queue">
             <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
               <div>
                 <h2 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">

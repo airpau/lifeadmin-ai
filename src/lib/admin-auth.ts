@@ -22,6 +22,20 @@ import { createClient } from '@/lib/supabase/server';
 
 export const ADMIN_EMAIL = 'aireypaul@googlemail.com';
 
+function getAdminEmails(): string[] {
+  // Founder gate via NEXT_PUBLIC_ADMIN_EMAILS (comma-separated). Falls back
+  // to the canonical ADMIN_EMAIL so localhost / preview deploys without the
+  // env var still authorise the founder.
+  const fromEnv = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  if (fromEnv.length === 0) return [ADMIN_EMAIL.toLowerCase()];
+  return fromEnv.includes(ADMIN_EMAIL.toLowerCase())
+    ? fromEnv
+    : [...fromEnv, ADMIN_EMAIL.toLowerCase()];
+}
+
 export interface AuthResult {
   ok: boolean;
   status: 401 | 403 | 200;
@@ -41,7 +55,8 @@ export async function authorizeAdminOrCron(request: NextRequest | Request): Prom
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (user && user.email === ADMIN_EMAIL) {
+    const allow = getAdminEmails();
+    if (user?.email && allow.includes(user.email.toLowerCase())) {
       return { ok: true, status: 200, userId: user.id };
     }
     if (user) {
