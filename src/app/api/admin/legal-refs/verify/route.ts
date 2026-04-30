@@ -156,6 +156,20 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
 
   const verdict = await askPerplexity(buildPrompt(ref as LegalRefRow));
   if (!verdict) {
+    // PR γ — record the failed attempt in the audit table too.
+    void admin.from('legal_ref_verifications').insert({
+      ref_id: id,
+      verifier: 'perplexity-sonar-pro',
+      triggered_by: userId ? 'manual-admin' : 'unknown',
+      before_status: (ref as any).verification_status ?? null,
+      after_status: 'error',
+      before_url: (ref as any).source_url ?? null,
+      after_url: null,
+      changes: null,
+      cost_gbp: null,
+      perplexity_response: null,
+      notes: 'Perplexity call failed',
+    });
     return {
       id,
       status: 'error',
@@ -202,6 +216,25 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       error: `DB update failed: ${updateError.message}`,
     };
   }
+
+  // PR γ — audit-trail row.
+  void admin.from('legal_ref_verifications').insert({
+    ref_id: id,
+    verifier: 'perplexity-sonar-pro',
+    triggered_by: userId ? 'manual-admin' : 'unknown',
+    before_status: (ref as any).verification_status ?? null,
+    after_status: status,
+    before_url: (ref as any).source_url ?? null,
+    after_url: verdict.current_url ?? null,
+    changes: {
+      auto_corrected: false,
+      law_name_changed: false,
+      url_changed: false,
+    },
+    cost_gbp: 0.005 * 0.79,
+    perplexity_response: verdict as any,
+    notes: notes || null,
+  });
 
   return {
     id,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
@@ -613,6 +614,40 @@ export async function POST(request: NextRequest) {
         estimated_cost: parseFloat((inputCost + outputCost).toFixed(6)),
         completed_at: new Date().toISOString(),
       });
+    }
+
+    // PR γ — reverse-lookup audit. Fire-and-forget one row per cited
+    // ref into legal_ref_usages so the admin "Where used" drawer and
+    // the daily re-verify cron can prioritise high-traffic refs. Never
+    // blocks the user — wrapped in `void` and best-effort.
+    //
+    // RLS on legal_ref_usages is service-role-only (no anon INSERT
+    // policy), so the request-scoped `supabase` client (anon + user
+    // session) would be silently rejected. Use a fresh service-role
+    // client just for this insert.
+    try {
+      if (relevantRefs.length > 0 && result.legalReferences && result.legalReferences.length > 0) {
+        const citedLower = result.legalReferences.map((r: string) => r.toLowerCase());
+        const usageRows = relevantRefs
+          .filter((r: any) => citedLower.some((c: string) => c.includes(r.law_name.toLowerCase()) || r.law_name.toLowerCase().includes(c.split(',')[0].trim())))
+          .map((r: any) => ({
+            ref_id: r.id,
+            product: 'b2c-complaint',
+            artefact_id: task?.id ?? null,
+            artefact_kind: 'complaint_letter',
+            user_id: user.id,
+            cited_text: result.legalReferences.find((c: string) => c.toLowerCase().includes(r.law_name.toLowerCase())) || r.law_name,
+          }));
+        if (usageRows.length > 0) {
+          const adminSb = createAdminClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          );
+          void adminSb.from('legal_ref_usages').insert(usageRows);
+        }
+      }
+    } catch (e) {
+      console.warn('[legal_ref_usages] insert failed (non-fatal):', e);
     }
 
     // If part of a dispute, add to correspondence thread

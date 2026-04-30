@@ -207,6 +207,21 @@ export async function POST(_request: NextRequest) {
 
       await admin.from('legal_references').update(update).eq('id', ref.id);
 
+      // PR γ — audit-trail row.
+      void admin.from('legal_ref_verifications').insert({
+        ref_id: ref.id,
+        verifier: 'perplexity-sonar-pro',
+        triggered_by: userId ? 'manual-admin' : 'unknown',
+        before_status: (ref as any).verification_status ?? null,
+        after_status: status,
+        before_url: (ref as any).source_url ?? null,
+        after_url: (update.source_url as string | undefined) ?? (verdict.current_url ?? null),
+        changes: { auto_corrected: autoCorrected },
+        cost_gbp: 0.005 * 0.79,
+        perplexity_response: verdict as any,
+        notes: notes || null,
+      });
+
       if (status === 'verified') counts.verified += 1;
       else if (status === 'updated') counts.updated += 1;
       else if (status === 'superseded') counts.superseded += 1;
