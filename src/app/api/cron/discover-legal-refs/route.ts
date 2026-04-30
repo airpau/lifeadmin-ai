@@ -34,6 +34,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
 import { logPerplexityCall } from '@/lib/cost-ledger';
+import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
+
+const CITATION_SOURCE_RULE = [
+  'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
+  'authorities. Acceptable sources: legislation.gov.uk, gov.uk and its',
+  'subdomains (.fca.org.uk, .ofcom.org.uk, .ofgem.gov.uk, etc.),',
+  'financial-ombudsman.org.uk, parliament.uk, bailii.org, judiciary.uk,',
+  'supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
+  '',
+  'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites,',
+  'news sites, law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or',
+  'consumer-rights aggregators. They are commentary, not authority.',
+  '',
+  'If the only available source is a trade association or commentary site,',
+  'return null for source_url rather than fabricating a primary citation.',
+].join('\n');
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -83,7 +99,10 @@ async function callPerplexity(prompt: string): Promise<{ items: PerplexityCandid
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'sonar-pro',
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'system', content: CITATION_SOURCE_RULE },
+        { role: 'user', content: prompt },
+      ],
       return_citations: true,
     }),
   });
@@ -277,6 +296,8 @@ export async function GET(request: NextRequest) {
   const items = perplexityResult.items.slice(0, MAX_CALLS_PER_RUN); // safety bound
   let added = 0;
   let skipped = 0;
+  let rejectedNonAuthority = 0;
+  let secondaryFlagged = 0;
   const admin = getAdmin();
 
   // Insert run row first so candidates can reference it.
@@ -300,14 +321,36 @@ export async function GET(request: NextRequest) {
       skipped++;
       continue;
     }
+
+    // Authority allowlist gate. Drop rejected/unrecognised entirely.
+    // Secondary sources are queued but force-low-confidence with a
+    // notes warning so the founder must verify before approving.
+    let confidence = item.confidence?.toString().slice(0, 20) || null;
+    let summaryWithWarning = item.summary?.toString().slice(0, 4000) || null;
+    if (item.source_url) {
+      const authority = checkUkLegalAuthority(item.source_url);
+      if (!authority.ok) {
+        rejectedNonAuthority++;
+        skipped++;
+        continue;
+      }
+      if (authority.reason === 'secondary') {
+        secondaryFlagged++;
+        confidence = 'low';
+        const warning =
+          `[secondary source: ${authority.matched_domain}] verify against primary source before approving. `;
+        summaryWithWarning = (warning + (summaryWithWarning ?? '')).slice(0, 4000);
+      }
+    }
+
     const { error } = await admin.from('legal_ref_candidates').insert({
       title: item.title.slice(0, 500),
       source_url: item.source_url?.toString().slice(0, 1000) || null,
       source_type: item.source_type?.toString().slice(0, 80) || null,
-      summary: item.summary?.toString().slice(0, 4000) || null,
+      summary: summaryWithWarning,
       category: (item.category || targetCategory || null)?.toString().slice(0, 80) || null,
       jurisdiction: item.jurisdiction || 'UK',
-      confidence: item.confidence?.toString().slice(0, 20) || null,
+      confidence,
       status: 'pending',
       discovery_run_id: runId,
     });
@@ -320,10 +363,23 @@ export async function GET(request: NextRequest) {
   }
 
   // Update run row with final tallies (best-effort).
+  const authorityNotes =
+    rejectedNonAuthority > 0 || secondaryFlagged > 0
+      ? `authority_filter: {rejected_non_authority: ${rejectedNonAuthority}, secondary: ${secondaryFlagged}}`
+      : null;
   if (runId !== null) {
+    const update: Record<string, unknown> = {
+      candidates_added: added,
+      candidates_skipped_duplicate: skipped,
+    };
+    if (authorityNotes) {
+      // Append to existing notes rather than overwriting the category tag.
+      const existingNote = targetCategory ? `category: ${targetCategory}` : null;
+      update.notes = [existingNote, authorityNotes].filter(Boolean).join(' | ');
+    }
     await admin
       .from('legal_ref_discovery_runs')
-      .update({ candidates_added: added, candidates_skipped_duplicate: skipped })
+      .update(update)
       .eq('id', runId);
   }
 
@@ -334,6 +390,8 @@ export async function GET(request: NextRequest) {
     candidates_found: items.length,
     candidates_added: added,
     candidates_skipped_duplicate: skipped,
+    rejected_non_authority: rejectedNonAuthority,
+    secondary: secondaryFlagged,
     cost_gbp: Number(costGbp.toFixed(6)),
   });
 }

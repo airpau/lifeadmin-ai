@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
 import { logPerplexityCall } from '@/lib/cost-ledger';
+import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -89,7 +90,22 @@ Rules:
           {
             role: 'system',
             content:
-              'You are a UK consumer-law research assistant. Return STRICT JSON only — no markdown.',
+              [
+                'You are a UK consumer-law research assistant. Return STRICT JSON only — no markdown.',
+                '',
+                'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
+                'authorities. Acceptable sources: legislation.gov.uk, gov.uk and its',
+                'subdomains (.fca.org.uk, .ofcom.org.uk, .ofgem.gov.uk, etc.),',
+                'financial-ombudsman.org.uk, parliament.uk, bailii.org, judiciary.uk,',
+                'supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
+                '',
+                'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites,',
+                'news sites, law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or',
+                'consumer-rights aggregators. They are commentary, not authority.',
+                '',
+                'If the only available source is a trade association or commentary site,',
+                'return null for proposed_source_url rather than fabricating a primary citation.',
+              ].join('\n'),
           },
           { role: 'user', content: prompt },
         ],
@@ -196,12 +212,52 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
+      // Authority allowlist gate — never queue a correction whose
+      // proposed source is a trade association, commentary site, or
+      // unrecognised domain. Only run the check when a URL is actually
+      // proposed (a name-only correction is fine).
+      let extraNotes: string | null = null;
+      let forcedConfidence: 'high' | 'medium' | 'low' = verdict.confidence;
+      if (verdict.proposed_source_url) {
+        const authority = checkUkLegalAuthority(verdict.proposed_source_url);
+        if (!authority.ok) {
+          const reasonNote =
+            authority.reason === 'rejected'
+              ? `rejected: non-authority source (${authority.hostname ?? 'unknown'})`
+              : `unrecognised source (${authority.hostname ?? 'unknown'}) — consider adding to allowlist`;
+          // Audit-log the drop so the founder can see what was filtered.
+          void supabase.from('legal_ref_verifications').insert({
+            ref_id: ref.id,
+            verifier: 'perplexity-sonar-pro',
+            triggered_by: 'reverify-cron',
+            before_status: ref.verification_status,
+            after_status: ref.verification_status,
+            before_url: ref.source_url,
+            after_url: null,
+            changes: { dropped_by_authority_allowlist: true, proposed_url: verdict.proposed_source_url },
+            cost_gbp: COST_PER_CALL_GBP,
+            perplexity_response: raw as object,
+            notes: reasonNote,
+          });
+          continue;
+        }
+        if (authority.reason === 'secondary') {
+          forcedConfidence = 'low';
+          extraNotes =
+            `Source is secondary (${authority.matched_domain}) — verify against primary source before approving.`;
+        }
+      }
+
       // Mark prior pending corrections for the same ref as superseded.
       await supabase
         .from('legal_ref_corrections')
         .update({ status: 'superseded_by_newer', reviewed_at: nowIso, reviewed_by: 'reverify-cron' })
         .eq('ref_id', ref.id)
         .eq('status', 'pending');
+
+      const finalReasoning = extraNotes
+        ? `${extraNotes} ${verdict.reasoning}`.trim()
+        : verdict.reasoning;
 
       const { error: insErr } = await supabase.from('legal_ref_corrections').insert({
         ref_id: ref.id,
@@ -213,9 +269,9 @@ export async function GET(request: NextRequest) {
         proposed_source_url: verdict.proposed_source_url ?? null,
         proposed_status: verdict.status === 'unknown' ? null : verdict.status,
         superseded_by: verdict.superseded_by ?? null,
-        reasoning: verdict.reasoning,
+        reasoning: finalReasoning,
         raw_response: raw as object,
-        confidence: verdict.confidence,
+        confidence: forcedConfidence,
         cost_gbp: COST_PER_CALL_GBP,
         status: 'pending',
       });

@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { logPerplexityCall } from '@/lib/cost-ledger';
+import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -101,7 +102,22 @@ async function askPerplexity(prompt: string): Promise<PerplexityVerdict | null> 
           {
             role: 'system',
             content:
-              'You are a UK legal-citation verification assistant. Return STRICT JSON only — no markdown, no commentary. If unsure, set confidence to "low" and explain in notes.',
+              [
+                'You are a UK legal-citation verification assistant. Return STRICT JSON only — no markdown, no commentary. If unsure, set confidence to "low" and explain in notes.',
+                '',
+                'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
+                'authorities. Acceptable sources: legislation.gov.uk, gov.uk and its',
+                'subdomains (.fca.org.uk, .ofcom.org.uk, .ofgem.gov.uk, etc.),',
+                'financial-ombudsman.org.uk, parliament.uk, bailii.org, judiciary.uk,',
+                'supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
+                '',
+                'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites,',
+                'news sites, law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or',
+                'consumer-rights aggregators. They are commentary, not authority.',
+                '',
+                'If the only available source is a trade association or commentary site,',
+                'return null for current_url rather than fabricating a primary citation.',
+              ].join('\n'),
           },
           { role: 'user', content: prompt },
         ],
@@ -198,7 +214,10 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
     verification_notes: notes || null,
   };
   if (verdict.current_url) {
-    update.verified_url = verdict.current_url;
+    const authority = checkUkLegalAuthority(verdict.current_url);
+    if (authority.reason === 'authority') {
+      update.verified_url = verdict.current_url;
+    }
   }
 
 

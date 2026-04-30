@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { logPerplexityCall } from '@/lib/cost-ledger';
+import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 800;
@@ -86,7 +87,22 @@ async function askPerplexity(prompt: string): Promise<PerplexityVerdict | null> 
       body: JSON.stringify({
         model: PERPLEXITY_MODEL,
         messages: [
-          { role: 'system', content: 'You are a UK legal-citation verification assistant. Return STRICT JSON only — no markdown, no commentary. If unsure, set confidence to "low" and explain in notes.' },
+          { role: 'system', content: [
+              'You are a UK legal-citation verification assistant. Return STRICT JSON only — no markdown, no commentary. If unsure, set confidence to "low" and explain in notes.',
+              '',
+              'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
+              'authorities. Acceptable sources: legislation.gov.uk, gov.uk and its',
+              'subdomains (.fca.org.uk, .ofcom.org.uk, .ofgem.gov.uk, etc.),',
+              'financial-ombudsman.org.uk, parliament.uk, bailii.org, judiciary.uk,',
+              'supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
+              '',
+              'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites,',
+              'news sites, law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or',
+              'consumer-rights aggregators. They are commentary, not authority.',
+              '',
+              'If the only available source is a trade association or commentary site,',
+              'return null for current_url rather than fabricating a primary citation.',
+            ].join('\n') },
           { role: 'user', content: prompt },
         ],
         max_tokens: 500,
@@ -182,17 +198,36 @@ export async function POST(_request: NextRequest) {
         last_verified: new Date().toISOString(),
         verification_notes: notes || null,
       };
-      if (verdict.current_url) update.verified_url = verdict.current_url;
+      // Only treat current_url as a verified URL if it's from an
+      // accepted UK legal authority. Same gate is applied to any URL
+      // we would write into source_url below.
+      const currentUrlAuthority = verdict.current_url
+        ? checkUkLegalAuthority(verdict.current_url)
+        : null;
+      if (verdict.current_url && currentUrlAuthority?.reason === 'authority') {
+        update.verified_url = verdict.current_url;
+      }
 
       let autoCorrected = false;
       if (verdict.confidence === 'high' && verdict.superseded_by) {
         const parsed = parseSuperseded(verdict.superseded_by);
+        const supersededUrlAuthority = parsed.url
+          ? checkUkLegalAuthority(parsed.url)
+          : null;
         update.law_name = parsed.law_name;
-        if (parsed.url) update.source_url = parsed.url;
-        else if (verdict.current_url) update.source_url = verdict.current_url;
+        if (parsed.url && supersededUrlAuthority?.reason === 'authority') {
+          update.source_url = parsed.url;
+        } else if (verdict.current_url && currentUrlAuthority?.reason === 'authority') {
+          update.source_url = verdict.current_url;
+        }
         status = 'superseded';
         autoCorrected = true;
-      } else if (verdict.confidence === 'high' && verdict.valid === false && verdict.current_url) {
+      } else if (
+        verdict.confidence === 'high' &&
+        verdict.valid === false &&
+        verdict.current_url &&
+        currentUrlAuthority?.reason === 'authority'
+      ) {
         update.source_url = verdict.current_url;
         status = 'updated';
         autoCorrected = true;
