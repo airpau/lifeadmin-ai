@@ -51,16 +51,12 @@ function relativeTime(d: string | null): string {
   return years === 1 ? '1 year ago' : `${years} years ago`;
 }
 
-const REVIEW_STATUSES = new Set(['needs_review', 'broken', 'stale', 'error', 'superseded']);
-const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
-
-function isReviewable(r: LegalRef): boolean {
-  if (REVIEW_STATUSES.has(r.verification_status)) return true;
-  if (!r.last_verified) return true;
-  const verifiedAt = new Date(r.last_verified).getTime();
-  if (isNaN(verifiedAt)) return true;
-  return Date.now() - verifiedAt > SIXTY_DAYS_MS;
-}
+// NOTE: the canonical "needs review" predicate is `needsReview` defined below
+// (PR #373). The Review queue uses `needsReview` directly so the stats counter
+// and the queue list always agree — previously a separate `isReviewable`
+// predicate excluded `url_dead` rows, which caused the stats panel to say
+// "28 need review" while the queue rendered empty (and therefore no per-row
+// "Verify with AI" buttons). See fix(admin) on legal-refs page.
 
 const STATUS_CONFIG: Record<string, { label: string; icon: typeof CheckCircle; className: string }> = {
   current: { label: 'Current', icon: CheckCircle, className: 'text-green-400 bg-green-500/10' },
@@ -763,7 +759,7 @@ export default function LegalRefsAdminPage() {
       {/* Review queue — AI-assisted manual verification */}
       {(() => {
         const reviewable = refs
-          .filter(isReviewable)
+          .filter(needsReview)
           .sort((a, b) => {
             // last_verified NULLS FIRST, then created_at DESC
             if (!a.last_verified && b.last_verified) return -1;
