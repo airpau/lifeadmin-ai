@@ -4,7 +4,7 @@ export const maxDuration = 120;
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { scanOutlookForOpportunities, refreshMicrosoftToken } from '@/lib/outlook';
-import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { checkUsageLimit, incrementUsage, checkFreeScanGate } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
 import { getUserPlan } from '@/lib/get-user-plan';
 
@@ -22,11 +22,20 @@ export async function POST(request: NextRequest) {
   const isAdmin = user.email === 'aireypaul@googlemail.com';
 
   if (!isAdmin) {
+    // Free-tier monthly gate (mirror of gmail/scan): one scan per 30 days.
     if (plan.tier === 'free') {
-      return NextResponse.json(
-        { error: 'Inbox scanning is available on Essential and Pro plans. Upgrade to automatically find hidden subscriptions and savings.', upgradeRequired: true },
-        { status: 403 }
-      );
+      const gate = await checkFreeScanGate(user.id);
+      if (!gate.allowed) {
+        return NextResponse.json(
+          {
+            error: `Free tier scans monthly. Next scan available ${gate.nextAvailableISO}. Upgrade for unlimited scans.`,
+            upgrade_url: '/pricing',
+            nextAvailableISO: gate.nextAvailableISO,
+            lastScanISO: gate.lastScanISO,
+          },
+          { status: 429 }
+        );
+      }
     }
 
     if (!usageCheck.allowed) {

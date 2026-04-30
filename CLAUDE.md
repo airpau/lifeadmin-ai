@@ -96,6 +96,8 @@ Paybacker is an AI-powered savings platform for UK consumers. It helps people di
 - **Web Research:** Perplexity API (used by Leo and Nico agents)
 - **IP Intelligence:** ipapi.co (used by Finn agent)
 
+**API cost tracking:** every paid third-party API call (Anthropic, Perplexity, Resend, Stripe, TrueLayer) should fire-and-forget a row into `api_cost_ledger` via the helpers in `src/lib/cost-ledger.ts` (`logAnthropicCall`, `logPerplexityCall`, `logResendCall`). The founder-only billing dashboard at `/dashboard/admin/billing` reads from that table — its accuracy depends on every call site being instrumented.
+
 ---
 
 ## CRITICAL ARCHITECTURE RULES — NEVER VIOLATE THESE
