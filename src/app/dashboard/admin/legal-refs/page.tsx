@@ -297,6 +297,11 @@ export default function LegalRefsAdminPage() {
         const data = await res.json();
         const u = data?.updated;
         if (u) {
+          // The verify route is now propose-only. Possible statuses:
+          //   - 'no_change'    — observational fields touched only
+          //   - 'queued'       — correction inserted into legal_ref_corrections
+          //   - 'auto_applied' — rare; correction passed all auto-apply gates
+          //   - 'error'        — surface the error, don't mutate row state
           setAiResults(prev => ({
             ...prev,
             [u.id]: {
@@ -305,13 +310,17 @@ export default function LegalRefsAdminPage() {
               ok: u.status !== 'error',
             },
           }));
-          setRefs(prev => prev.map(r => (r.id === u.id ? {
-            ...r,
-            verification_status: u.status === 'error' ? r.verification_status : u.status,
-            verified_url: u.current_url ?? r.verified_url,
-            verification_notes: u.notes ?? r.verification_notes,
-            last_verified: u.status === 'error' ? r.last_verified : new Date().toISOString(),
-          } : r)));
+          setRefs(prev => prev.map(r => {
+            if (r.id !== u.id) return r;
+            if (u.status === 'error') return r;
+            // Only refresh observational fields. Canonical verification_status
+            // is mutated only by the auto-apply sweep or a founder approval click.
+            return {
+              ...r,
+              verification_notes: u.notes ?? r.verification_notes,
+              last_verified: new Date().toISOString(),
+            };
+          }));
         }
       } else {
         // Batch in chunks of 25.
@@ -339,10 +348,11 @@ export default function LegalRefsAdminPage() {
           setRefs(prev => prev.map(r => {
             const u = results.find(x => x.id === r.id);
             if (!u || u.status === 'error') return r;
+            // Propose-only: only refresh observational fields client-side.
+            // Canonical verification_status is mutated by the auto-apply
+            // sweep or a founder approval click, not this route.
             return {
               ...r,
-              verification_status: u.status,
-              verified_url: u.current_url ?? r.verified_url,
               verification_notes: u.notes ?? r.verification_notes,
               last_verified: new Date().toISOString(),
             };
@@ -997,7 +1007,12 @@ export default function LegalRefsAdminPage() {
                             </div>
                             {result && (
                               <p className={`text-[11px] mt-1.5 text-right ${result.ok ? 'text-emerald-600' : 'text-red-500'}`}>
-                                {result.ok ? '✓ ' : '✗ '}{result.ok ? `Verified · ${result.status}` : result.notes || 'Failed'}
+                                {result.ok ? '✓ ' : '✗ '}{result.ok ? (
+                                  result.status === 'no_change' ? 'No change · still current'
+                                  : result.status === 'queued' ? 'Correction queued for review'
+                                  : result.status === 'auto_applied' ? 'Auto-applied (low-risk)'
+                                  : `Verified · ${result.status}`
+                                ) : (result.notes || 'Failed')}
                               </p>
                             )}
                           </td>

@@ -7,9 +7,14 @@
  *      hasn't been verified in the last 7 days.
  *   3. Capped at 30 refs total to keep daily spend under £0.15.
  *
- * Each ref runs through the same Perplexity flow as the admin
- * `/api/admin/legal-refs/verify` endpoint, including the auto-overwrite
- * + audit-row write.
+ * COMPLIANCE PRINCIPLE (non-negotiable): this cron is propose-only. Any
+ * proposed change to canonical fields (law_name, source_url,
+ * verification_status) is INSERTed into `legal_ref_corrections` with
+ * status='pending'. Only the observational fields (last_verified,
+ * verification_notes) are written directly here.
+ *
+ * Auto-apply (if any) happens in the dedicated η sweep cron after ζ has
+ * attached enrichment_data.
  *
  * Auth: standard Vercel cron Bearer (CRON_SECRET).
  */
@@ -17,6 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { logPerplexityCall } from '@/lib/cost-ledger';
+import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -26,6 +32,7 @@ const HARD_CAP = 30;
 const OLDEST_TARGET = 20;
 const RECENT_USAGE_HOURS = 24;
 const RECENT_USAGE_REVERIFY_DAYS = 7;
+const COST_PER_CALL_GBP = 0.005;
 
 function getAdmin() {
   return createAdminClient(
@@ -119,23 +126,79 @@ async function askPerplexity(prompt: string): Promise<PerplexityVerdict | null> 
   }
 }
 
-function parseSuperseded(s: string): { law_name: string; url: string | null } {
+function normaliseUrl(u: string | null | undefined): string {
+  return (u ?? '').replace(/\/$/, '').trim().toLowerCase();
+}
+
+function parseSupersededTitle(s: string | null | undefined): string | null {
+  if (!s) return null;
   const urlMatch = s.match(/https?:\/\/\S+/);
-  const url = urlMatch ? urlMatch[0].replace(/[)\].,;]+$/, '') : null;
   const title = s
     .replace(urlMatch?.[0] ?? '', '')
     .replace(/\(\s*\)/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/^[—–\-:]\s*/, '');
-  return { law_name: title || s.trim(), url };
+  return title || null;
 }
 
-function deriveStatus(verdict: PerplexityVerdict): string {
-  if (verdict.superseded_by) return 'superseded';
-  if (!verdict.valid) return 'broken';
-  if (verdict.valid && verdict.confidence !== 'low') return 'verified';
-  return 'needs_review';
+function deriveProposal(
+  ref: LegalRefRow,
+  verdict: PerplexityVerdict,
+): {
+  hasProposal: boolean;
+  proposed_law_name: string | null;
+  proposed_source_url: string | null;
+  proposed_status: string | null;
+  superseded_by: string | null;
+} {
+  let proposed_source_url: string | null = null;
+  if (verdict.current_url) {
+    const authority = checkUkLegalAuthority(verdict.current_url);
+    if (authority.ok) proposed_source_url = verdict.current_url;
+  }
+
+  let proposed_law_name: string | null = null;
+  let proposed_status: string | null = null;
+  let superseded_by: string | null = null;
+
+  if (verdict.superseded_by) {
+    proposed_law_name = parseSupersededTitle(verdict.superseded_by);
+    proposed_status = 'superseded';
+    superseded_by = verdict.superseded_by;
+  } else if (!verdict.valid && verdict.current_url) {
+    proposed_status = 'updated';
+  } else if (verdict.confidence === 'low') {
+    proposed_status = 'needs_review';
+  }
+
+  if (
+    proposed_source_url &&
+    normaliseUrl(proposed_source_url) === normaliseUrl(ref.source_url)
+  ) {
+    proposed_source_url = null;
+  }
+  if (
+    proposed_law_name &&
+    proposed_law_name.trim().toLowerCase() === ref.law_name.trim().toLowerCase()
+  ) {
+    proposed_law_name = null;
+  }
+
+  const hasProposal = !!(
+    proposed_law_name ||
+    proposed_source_url ||
+    proposed_status === 'superseded' ||
+    proposed_status === 'updated'
+  );
+
+  return {
+    hasProposal,
+    proposed_law_name,
+    proposed_source_url,
+    proposed_status,
+    superseded_by,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -147,14 +210,12 @@ export async function GET(request: NextRequest) {
 
   const admin = getAdmin();
 
-  // 1. Oldest by last_verified, NULLS FIRST.
   const { data: oldest } = await admin
     .from('legal_references')
     .select('id, law_name, section, source_url, source_type, category, verification_status, last_verified, created_at')
     .order('last_verified', { ascending: true, nullsFirst: true })
     .limit(OLDEST_TARGET);
 
-  // 2. Recently used + not verified in last 7 days.
   const since24h = new Date(Date.now() - RECENT_USAGE_HOURS * 60 * 60 * 1000).toISOString();
   const sevenDaysAgo = new Date(Date.now() - RECENT_USAGE_REVERIFY_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data: recentlyUsed } = await admin
@@ -173,7 +234,6 @@ export async function GET(request: NextRequest) {
     recentRefs = (data as LegalRefRow[]) || [];
   }
 
-  // Merge + dedupe + cap at HARD_CAP.
   const seen = new Set<string>();
   const queue: LegalRefRow[] = [];
   for (const r of [...(oldest || []), ...recentRefs] as LegalRefRow[]) {
@@ -183,7 +243,7 @@ export async function GET(request: NextRequest) {
     if (queue.length >= HARD_CAP) break;
   }
 
-  const counts = { processed: 0, errors: 0, auto_corrected: 0 };
+  const counts = { processed: 0, errors: 0, queued: 0, no_change: 0 };
 
   for (const ref of queue) {
     const verdict = await askPerplexity(buildPrompt(ref));
@@ -209,55 +269,113 @@ export async function GET(request: NextRequest) {
       metadata: { legal_reference_id: ref.id },
     });
 
-    let status = deriveStatus(verdict);
     const notes = verdict.superseded_by
       ? `Superseded by: ${verdict.superseded_by}. ${verdict.notes}`.trim()
       : verdict.notes;
-    const update: Record<string, unknown> = {
-      last_verified: new Date().toISOString(),
-      verification_notes: notes || null,
-    };
-    if (verdict.current_url) update.verified_url = verdict.current_url;
 
-    let autoCorrected = false;
-    if (verdict.confidence === 'high' && verdict.superseded_by) {
-      const parsed = parseSuperseded(verdict.superseded_by);
-      update.law_name = parsed.law_name;
-      if (parsed.url) update.source_url = parsed.url;
-      else if (verdict.current_url) update.source_url = verdict.current_url;
-      status = 'superseded';
-      autoCorrected = true;
-    } else if (verdict.confidence === 'high' && verdict.valid === false && verdict.current_url) {
-      update.source_url = verdict.current_url;
-      status = 'updated';
-      autoCorrected = true;
-    } else if (verdict.confidence === 'medium') {
-      status = 'needs_review';
-    } else if (verdict.confidence === 'low') {
-      status = 'broken';
+    // Touch ONLY observational fields. Never canonical from this route.
+    const nowIso = new Date().toISOString();
+    await admin
+      .from('legal_references')
+      .update({
+        last_verified: nowIso,
+        verification_notes: notes || null,
+      })
+      .eq('id', ref.id);
+
+    const proposal = deriveProposal(ref, verdict);
+
+    if (!proposal.hasProposal) {
+      counts.no_change += 1;
+      void admin.from('legal_ref_verifications').insert({
+        ref_id: ref.id,
+        verifier: 'perplexity-sonar-pro',
+        triggered_by: 'cron',
+        before_status: ref.verification_status,
+        after_status: ref.verification_status,
+        before_url: ref.source_url,
+        after_url: ref.source_url,
+        changes: { no_change: true },
+        cost_gbp: COST_PER_CALL_GBP * 0.79,
+        perplexity_response: verdict as any,
+        notes: notes || null,
+      });
+      counts.processed += 1;
+      await new Promise((r) => setTimeout(r, 200));
+      continue;
     }
 
-    update.verification_status = status;
-    if (autoCorrected) {
-      update.auto_corrected = true;
-      counts.auto_corrected += 1;
+    // Mark prior pending corrections for this ref as superseded.
+    await admin
+      .from('legal_ref_corrections')
+      .update({
+        status: 'superseded_by_newer',
+        reviewed_at: nowIso,
+        reviewed_by: 'daily-reverify-new-proposal',
+      })
+      .eq('ref_id', ref.id)
+      .eq('status', 'pending');
+
+    const { data: insertedRows, error: insErr } = await admin
+      .from('legal_ref_corrections')
+      .insert({
+        ref_id: ref.id,
+        proposer: 'perplexity-sonar-pro',
+        before_law_name: ref.law_name,
+        before_source_url: ref.source_url,
+        before_status: ref.verification_status,
+        proposed_law_name: proposal.proposed_law_name,
+        proposed_source_url: proposal.proposed_source_url,
+        proposed_status: proposal.proposed_status,
+        superseded_by: proposal.superseded_by,
+        reasoning: notes || null,
+        raw_response: verdict as any,
+        confidence: verdict.confidence,
+        cost_gbp: COST_PER_CALL_GBP,
+        status: 'pending',
+      })
+      .select('id')
+      .limit(1);
+
+    const correctionId = insertedRows?.[0]?.id;
+
+    if (insErr) {
+      counts.errors += 1;
+      void admin.from('legal_ref_verifications').insert({
+        ref_id: ref.id,
+        verifier: 'perplexity-sonar-pro',
+        triggered_by: 'cron',
+        before_status: ref.verification_status,
+        after_status: 'error',
+        before_url: ref.source_url,
+        after_url: null,
+        changes: { corrections_insert_failed: true, error: insErr.message },
+        cost_gbp: COST_PER_CALL_GBP * 0.79,
+        perplexity_response: verdict as any,
+        notes: `corrections insert failed: ${insErr.message}`,
+      });
+    } else {
+      counts.queued += 1;
+      void admin.from('legal_ref_verifications').insert({
+        ref_id: ref.id,
+        verifier: 'perplexity-sonar-pro',
+        triggered_by: 'cron',
+        before_status: ref.verification_status,
+        after_status: 'pending-correction-queued',
+        before_url: ref.source_url,
+        after_url: proposal.proposed_source_url,
+        changes: {
+          queued_correction: true,
+          correction_id: correctionId ?? null,
+          proposed_law_name: proposal.proposed_law_name,
+          proposed_source_url: proposal.proposed_source_url,
+          proposed_status: proposal.proposed_status,
+        },
+        cost_gbp: COST_PER_CALL_GBP * 0.79,
+        perplexity_response: verdict as any,
+        notes: notes || null,
+      });
     }
-
-    await admin.from('legal_references').update(update).eq('id', ref.id);
-
-    void admin.from('legal_ref_verifications').insert({
-      ref_id: ref.id,
-      verifier: 'perplexity-sonar-pro',
-      triggered_by: 'cron',
-      before_status: ref.verification_status,
-      after_status: status,
-      before_url: ref.source_url,
-      after_url: (update.source_url as string | undefined) ?? (verdict.current_url ?? null),
-      changes: { auto_corrected: autoCorrected },
-      cost_gbp: 0.005 * 0.79,
-      perplexity_response: verdict as any,
-      notes: notes || null,
-    });
 
     counts.processed += 1;
     await new Promise((r) => setTimeout(r, 200));
