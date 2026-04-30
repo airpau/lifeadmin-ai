@@ -9,6 +9,7 @@ import {
   Loader2, ChevronLeft, ArrowLeft, Search, Filter,
 } from 'lucide-react';
 import Link from 'next/link';
+import PendingCorrectionsSection from './PendingCorrectionsSection';
 
 const ADMIN_EMAIL = 'aireypaul@googlemail.com';
 
@@ -345,6 +346,9 @@ export default function LegalRefsAdminPage() {
         ))}
       </div>
 
+      {/* Pending corrections (PR ε — human-in-loop gate) */}
+      <PendingCorrectionsSection />
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-4">
         <div className="flex-1 min-w-[200px] relative">
@@ -411,6 +415,7 @@ export default function LegalRefsAdminPage() {
                 return (
                   <tr
                     key={ref.id}
+                    id={`ref-${ref.id}`}
                     className={`border-b border-slate-200 hover:bg-slate-100/50 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-100/30'}`}
                   >
                     <td className="px-5 py-4">
