@@ -109,6 +109,7 @@ export default function LegalRefsAdminPage() {
   const [confirmAllOpen, setConfirmAllOpen] = useState(false);
   const [verifyAllRunning, setVerifyAllRunning] = useState(false);
   const [verifyAllResult, setVerifyAllResult] = useState<string | null>(null);
+  const [blockEffect, setBlockEffect] = useState<Record<string, { b2c: number; b2b: number; total: number }>>({});
   const REVIEW_PAGE_SIZE = 50;
   const supabase = createClient();
 
@@ -134,7 +135,20 @@ export default function LegalRefsAdminPage() {
       .order('category')
       .order('law_name');
 
-    if (!error && data) setRefs(data);
+    if (!error && data) {
+      setRefs(data);
+      // PR γ — fetch block-effect counts (how many letters / disputes cite each ref).
+      try {
+        const ids = data.map((r: any) => r.id).filter(Boolean);
+        if (ids.length > 0) {
+          const res = await fetch(`/api/admin/legal-refs/audit?block_effect=${ids.join(',')}`, { credentials: 'include' });
+          if (res.ok) {
+            const j = await res.json();
+            if (j?.counts) setBlockEffect(j.counts);
+          }
+        }
+      } catch {}
+    }
     setLoading(false);
   };
 
@@ -321,6 +335,23 @@ export default function LegalRefsAdminPage() {
         </div>
       </div>
 
+      {/* PR γ — compliance debt alert. Refs cited in the last (audit
+          window) that are currently stale. The block-effect counts come
+          from legal_ref_usages so this surfaces refs that high-traffic
+          flows depend on. */}
+      {(() => {
+        const usedRefs = refs.filter((r) => (blockEffect[r.id]?.total ?? 0) > 0);
+        const staleUsed = usedRefs.filter((r) => !['current', 'updated', 'verified'].includes(r.verification_status));
+        if (usedRefs.length === 0) return null;
+        return (
+          <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium border ${
+            staleUsed.length > 0 ? 'bg-red-500/10 border-red-500/20 text-red-700' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700'
+          }`}>
+            Refs used in the audit window: {usedRefs.length} / {staleUsed.length} stale{staleUsed.length > 0 ? ' — compliance debt' : ''}.
+          </div>
+        );
+      })()}
+
       {/* Verify result banner */}
       {verifyResult && (
         <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium border ${
@@ -463,7 +494,18 @@ export default function LegalRefsAdminPage() {
                       </span>
                     </td>
                     <td className="px-5 py-4 hidden xl:table-cell">
-                      <span className="text-xs text-slate-500" title="Wired in PR γ — legal_ref_usages table">TBD</span>
+                      {(() => {
+                        const c = blockEffect[ref.id];
+                        if (!c || c.total === 0) {
+                          return <span className="text-xs text-slate-400">—</span>;
+                        }
+                        const stale = !['current', 'updated', 'verified'].includes(ref.verification_status);
+                        return (
+                          <span className={`text-xs font-medium ${stale && c.total > 0 ? 'text-red-600' : 'text-slate-700'}`} title={`B2C ${c.b2c} · B2B ${c.b2b}`}>
+                            {c.total}{stale ? ' ⚠' : ''}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-5 py-4">
                       <a
