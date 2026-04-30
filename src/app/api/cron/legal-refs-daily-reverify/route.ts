@@ -82,7 +82,17 @@ async function askPerplexity(prompt: string): Promise<PerplexityVerdict | null> 
       body: JSON.stringify({
         model: PERPLEXITY_MODEL,
         messages: [
-          { role: 'system', content: 'You are a UK legal-citation verification assistant. Return STRICT JSON only.' },
+          { role: 'system', content: [
+              'You are a UK legal-citation verification assistant. Return STRICT JSON only.',
+              '',
+              'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
+              'authorities — legislation.gov.uk, gov.uk subdomains, fca.org.uk, ofcom.org.uk,',
+              'ofgem.gov.uk, financial-ombudsman.org.uk, parliament.uk, bailii.org,',
+              'judiciary.uk, supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
+              'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites, news,',
+              'law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or aggregators. If the',
+              'only available source is a non-authority site, return null rather than fabricating.',
+            ].join('\n') },
           { role: 'user', content: prompt },
         ],
         max_tokens: 500,

@@ -250,6 +250,18 @@ for both B2C complaints and B2B disputes.
 If you're tempted to add a "trust the AI, just write through" path
 because it would be more elegant, don't. Compliance correctness wins.
 
+## Source authority is non-negotiable
+
+A citation is only as valid as its source. Even a correctly-stated
+statute is unusable if it links to a trade-association site or a
+news article. The UK_LEGAL_AUTHORITY_DOMAINS allowlist in
+src/lib/legal-refs-authority.ts is the canonical list of sources
+the engine will accept. The verifier and discovery cron both gate
+on this list; non-authority sources are dropped, not queued.
+
+If a real citation needs a source we haven't allowlisted, ADD the
+domain to the list — don't bypass the gate.
+
 ---
 
 ## CRITICAL ARCHITECTURE RULES — NEVER VIOLATE THESE
