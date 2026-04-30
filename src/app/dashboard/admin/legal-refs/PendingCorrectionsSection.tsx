@@ -38,6 +38,8 @@ interface Correction {
     subcategory: string | null;
     verification_status: string;
   } | null;
+  enrichment_data?: { risk_score?: 'low' | 'medium' | 'high' | null } | null;
+  enriched_at?: string | null;
 }
 
 const CONFIDENCE_CLASS: Record<string, string> = {
@@ -53,6 +55,9 @@ export default function PendingCorrectionsSection() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  // Default view = only items that genuinely need a human eye (enriched
+  // AND medium/high risk). Toggle to show every pending row.
+  const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,13 +127,27 @@ export default function PendingCorrectionsSection() {
 
   const highCount = corrections.filter((c) => c.confidence === 'high').length;
 
+  // "Genuinely needs a human eye" = enriched AND (medium or high risk).
+  // Items without enrichment_data haven't been processed yet — they'll
+  // be enriched on the next compliance-sync run, after which the auto-
+  // apply / auto-reject phases will resolve the obvious cases.
+  const needsHumanEye = (c: Correction): boolean => {
+    const risk = c.enrichment_data?.risk_score ?? null;
+    return !!c.enriched_at && (risk === 'medium' || risk === 'high');
+  };
+  const visible = showAll ? corrections : corrections.filter(needsHumanEye);
+  const hiddenCount = corrections.length - visible.length;
+
   return (
     <section className="mt-10 mb-10">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <AlertTriangle className="h-6 w-6 text-amber-500" />
           Pending corrections{' '}
-          <span className="text-slate-500 text-base font-normal">({corrections.length})</span>
+          <span className="text-slate-500 text-base font-normal">
+            ({visible.length}
+            {hiddenCount > 0 && !showAll ? ` of ${corrections.length}` : ''})
+          </span>
         </h2>
         {highCount > 0 && (
           <button
@@ -142,10 +161,27 @@ export default function PendingCorrectionsSection() {
         )}
       </div>
 
-      <p className="text-slate-600 text-sm mb-4">
-        Automated verifiers propose corrections here. Nothing in the canonical citation table changes
-        until a founder clicks Approve.
+      <p className="text-slate-600 text-sm mb-3">
+        Default view shows only enriched MEDIUM/HIGH-risk items that genuinely need your judgment.
+        Mechanical and auto-rejectable rows resolve themselves on the next compliance sync.
       </p>
+
+      <div className="flex items-center gap-3 mb-4 text-xs">
+        <label className="inline-flex items-center gap-2 text-slate-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showAll}
+            onChange={(e) => setShowAll(e.target.checked)}
+            className="rounded border-slate-300"
+          />
+          Show all pending ({corrections.length})
+        </label>
+        {hiddenCount > 0 && !showAll && (
+          <span className="text-slate-500">
+            {hiddenCount} hidden (low-risk / un-enriched — will resolve automatically)
+          </span>
+        )}
+      </div>
 
       {error && (
         <div className="mb-3 px-4 py-3 rounded-xl text-sm font-medium bg-red-50 border border-red-200 text-red-700">
@@ -157,13 +193,15 @@ export default function PendingCorrectionsSection() {
         <div className="py-10 flex justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
         </div>
-      ) : corrections.length === 0 ? (
+      ) : visible.length === 0 ? (
         <div className="py-10 text-center text-slate-500 text-sm border border-dashed border-slate-200 rounded-2xl">
-          No pending corrections. The queue is clean.
+          {corrections.length === 0
+            ? 'No pending corrections. The queue is clean.'
+            : `No items currently need your eye. ${corrections.length} pending row${corrections.length === 1 ? '' : 's'} ${corrections.length === 1 ? 'is' : 'are'} hidden — toggle "Show all pending" to see them.`}
         </div>
       ) : (
         <div className="space-y-3">
-          {corrections.map((c) => {
+          {visible.map((c) => {
             const isOpen = expanded[c.id] ?? false;
             const reasoningShort = (c.reasoning ?? '').slice(0, 200);
             const reasoningHasMore = (c.reasoning ?? '').length > 200;
@@ -174,7 +212,8 @@ export default function PendingCorrectionsSection() {
             return (
               <div
                 key={c.id}
-                className="border border-slate-200 rounded-2xl p-5 bg-white"
+                id={`correction-${c.id}`}
+                className="border border-slate-200 rounded-2xl p-5 bg-white scroll-mt-24"
               >
                 <div className="flex items-start justify-between gap-4 mb-3">
                   <div className="flex-1 min-w-0">

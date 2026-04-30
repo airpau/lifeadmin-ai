@@ -152,8 +152,10 @@ export default function LegalRefsAdminPage() {
   // so the founder can run every compliance op from this page (no terminal
   // scripts, no hand-curl). Each op shares the same modal pattern: confirm
   // cost (or zero-cost note), POST, show toast, refresh.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [opModal, setOpModal] = useState<null | {
     op:
+      | 'compliance-sync'
       | 'recover-url-dead'
       | 'authority-audit'
       | 'discover'
@@ -425,6 +427,46 @@ export default function LegalRefsAdminPage() {
     } finally {
       setOpRunning(null);
     }
+  };
+
+  const opComplianceSync = () => {
+    setOpModal({
+      op: 'compliance-sync',
+      title: 'Run end-to-end compliance sync',
+      body:
+        'Run the full daily pipeline now: probe url_dead refs → authority audit → Perplexity discovery → enrich → auto-reject non-authority → auto-apply low-risk → email summary.\n\n' +
+        'Estimated cost ≈ £0.30–£0.50 depending on backlog size.\n\n' +
+        'You will receive a punch-list email with what auto-applied vs. what needs your eye.',
+      action: async () => {
+        await runOp('compliance-sync', async () => {
+          const res = await fetch('/api/cron/compliance-sync', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          const data = await res.json();
+          if (!data.ok) {
+            const failed = (data.phases || [])
+              .filter((p: { status: string }) => p.status === 'error')
+              .map((p: { name: string }) => p.name)
+              .join(', ');
+            return {
+              ok: false,
+              text: `Sync failed${failed ? ` in: ${failed}` : ''}. See network tab for details.`,
+            };
+          }
+          const t = data.totals;
+          return {
+            ok: true,
+            text:
+              `Sync done in ${(data.total_ms / 1000).toFixed(1)}s · ` +
+              `${t.auto_applied} auto-applied · ${t.auto_rejected} auto-rejected · ` +
+              `${t.needs_review} need review · ${t.new_candidates} new candidates · ` +
+              `${t.url_dead_unrecoverable} url_dead unrecoverable.` +
+              (data.email_sent ? ' Email sent.' : ''),
+          };
+        });
+      },
+    });
   };
 
   const opRecoverUrlDead = () => {
@@ -776,37 +818,67 @@ export default function LegalRefsAdminPage() {
         </div>
       </div>
 
-      {/* Compliance ops toolbar — single pane of glass for all manual triggers
-          (added in feat/compliance-ops-from-dashboard). Each button shows a
-          tooltip with cost estimate, opens a confirmation modal, then fires
-          the op. Long-running ops are fire-and-forget; the page refreshes
-          state on completion so new pending corrections / candidates are
-          immediately visible. */}
-      <div className="mb-6 bg-white border border-slate-200 rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3">
+      {/* Single end-to-end compliance pipeline button. The chained
+          /api/cron/compliance-sync runs the same phases as the nightly
+          cron: recover url_dead → authority audit → discover → enrich →
+          auto-reject non-authority → auto-apply low-risk → email summary.
+          This is the founder's daily-driver — the older granular ops are
+          escape hatches and live below in the "Advanced ops" disclosure. */}
+      <div className="mb-6 bg-white border border-slate-200 rounded-2xl p-5">
+        <div className="flex items-start justify-between gap-4 mb-3 flex-wrap">
           <div>
-            <p className="text-sm font-semibold text-slate-900">Compliance ops</p>
-            <p className="text-xs text-slate-600">All manual triggers — cost-confirmation before any paid op.</p>
+            <p className="text-sm font-semibold text-slate-900">Compliance pipeline</p>
+            <p className="text-xs text-slate-600 max-w-xl">
+              One button runs the full chain: probe url_dead refs, authority audit, Perplexity discovery,
+              enrichment, auto-reject non-authority, auto-apply low-risk, and email a punch-list summary.
+              The same chain runs nightly at 03:00 UTC.
+            </p>
           </div>
+          <button
+            onClick={opComplianceSync}
+            disabled={opRunning !== null}
+            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm shrink-0"
+          >
+            {opRunning === 'compliance-sync' ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            {opRunning === 'compliance-sync' ? 'Running sync…' : 'Run sync now'}
+          </button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {opButtons.map((b) => (
-            <button
-              key={b.key}
-              onClick={b.onClick}
-              disabled={!!b.disabled || opRunning !== null}
-              title={b.tooltip}
-              className={`flex items-center gap-2 border disabled:opacity-50 font-semibold px-3.5 py-2 rounded-lg transition-all text-xs ${opVariantClass(b.variant)}`}
-            >
-              {opRunning === b.key ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-              {b.label}
-            </button>
-          ))}
-        </div>
+
+        <button
+          onClick={() => setAdvancedOpen((s) => !s)}
+          className="text-xs text-slate-600 hover:text-slate-900 inline-flex items-center gap-1"
+        >
+          {advancedOpen ? '▾' : '▸'} Advanced ops (escape hatches)
+        </button>
+        {advancedOpen && (
+          <div className="mt-3 pt-3 border-t border-slate-200">
+            <p className="text-xs text-slate-500 mb-2">
+              Run individual phases manually. Use the single-button pipeline above for normal operation.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {opButtons.map((b) => (
+                <button
+                  key={b.key}
+                  onClick={b.onClick}
+                  disabled={!!b.disabled || opRunning !== null}
+                  title={b.tooltip}
+                  className={`flex items-center gap-2 border disabled:opacity-50 font-semibold px-3.5 py-2 rounded-lg transition-all text-xs ${opVariantClass(b.variant)}`}
+                >
+                  {opRunning === b.key ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* PR γ — compliance debt alert. Refs cited in the last (audit

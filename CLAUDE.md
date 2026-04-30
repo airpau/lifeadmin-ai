@@ -394,30 +394,50 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 
 ---
 
-## Compliance citation principle (refined 2026-04-30)
+## Compliance citation principle (refined 2026-04-30, simplified 2026-04-29)
 
 Citation correctness is non-negotiable. We achieve it by tiering by risk:
 
-- LOW-risk mechanical changes (URL redirects within the same domain,
-  capitalisation, punctuation, canonical-URL canonicalisation) MAY be
-  auto-applied if AND ONLY IF all three corroboration gates in
-  `evaluateCorrection` pass: risk_score='low', source-text corroborates
-  the proposed name AND URL, and no semantic change is detected.
+- FAST-PATH (added in feat/compliance-end-to-end-sync): a same-host URL
+  redirect within the authority allowlist (e.g. legislation.gov.uk/x/y →
+  legislation.gov.uk/x/y/contents) auto-applies WITHOUT requiring
+  enrichment. Same hostname + authority allowlist + identical law_name =
+  no semantic change is possible by definition. This is the common case
+  and shouldn't burden the founder.
+
+- LOW-risk mechanical changes that are NOT same-host redirects (cross-
+  domain authority moves, capitalisation, punctuation) MAY be auto-applied
+  if AND ONLY IF all three corroboration gates in `evaluateCorrection`
+  pass: risk_score='low', source-text corroborates the proposed name AND
+  URL, and no semantic change is detected.
 
 - MEDIUM and HIGH-risk changes (section numbers, year changes, act
   renames, supersessions, jurisdiction changes) MUST pass through
   `legal_ref_corrections.status='approved'` via founder click.
 
+- NON-AUTHORITY proposals (proposed_source_url that returns rejected /
+  unrecognised from `checkUkLegalAuthority`) are auto-rejected by the
+  daily compliance-sync pipeline before they reach the founder queue.
+
 - DISCOVERY of new refs ALWAYS goes to `legal_ref_candidates.status='pending'`
   and requires founder approval — discovery is never auto-applied.
 
+The pipeline runs as ONE chained cron at `/api/cron/compliance-sync`
+(daily 03:00 UTC) — recover url_dead → authority audit → discover →
+enrich → auto-reject non-authority → auto-apply low-risk → email
+punch-list to hello@paybacker.co.uk. The same chain is the founder's
+"Run sync now" admin button.
+
 The auto-apply audit trail (`legal_ref_verifications` rows with
 verifier='auto-apply-low-risk') and the admin "Auto-applied (last 7
-days)" panel give the founder full visibility + one-click revert.
+days)" panel give the founder full visibility + one-click revert. The
+pending queue defaults to showing only enriched MEDIUM/HIGH risk so
+the founder isn't reading the noise.
 
-If you're tempted to widen auto-apply beyond the three gates in
-`evaluateCorrection` — don't. The rule "100% correct" depends on
-those gates being conservative.
+If you're tempted to widen auto-apply beyond the fast-path or the three
+gates in `evaluateCorrection` — don't. The rule "100% correct" depends
+on this being conservative. Founder review only when enrichment can't
+decide.
 
 ---
 

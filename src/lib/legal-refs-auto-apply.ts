@@ -22,6 +22,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { checkUkLegalAuthority } from './legal-refs-authority';
 
 export interface LegalRefCorrection {
   id: string;
@@ -145,6 +146,46 @@ export async function evaluateCorrection(
 ): Promise<AutoApplyDecision> {
   const reasons: string[] = [];
   const failed: FailedGate[] = [];
+
+  // -------- Fast-path: same-host URL redirect within authority allowlist --------
+  // If the only change is the source_url, the new URL is on the UK legal
+  // authority allowlist, AND the URL stays on the same hostname, this is
+  // definitionally a mechanical redirect with zero possible semantic change.
+  // Apply without requiring enrichment — this is the common case (e.g.
+  // legislation.gov.uk/x/y → legislation.gov.uk/x/y/contents).
+  //
+  // Safety: same-host within an authority domain cannot mutate the law's
+  // semantic meaning. The strict three-gate path below still applies to
+  // every other case (cross-domain, name change, section change, etc.).
+  if (
+    correction.proposed_law_name &&
+    correction.before_law_name &&
+    correction.proposed_law_name.trim().toLowerCase() ===
+      correction.before_law_name.trim().toLowerCase() &&
+    correction.before_source_url &&
+    correction.proposed_source_url &&
+    correction.before_source_url !== correction.proposed_source_url
+  ) {
+    const beforeHost = safeUrl(correction.before_source_url)?.hostname;
+    const proposedHost = safeUrl(correction.proposed_source_url)?.hostname;
+    if (
+      beforeHost &&
+      proposedHost &&
+      normaliseDomain(beforeHost) === normaliseDomain(proposedHost)
+    ) {
+      const authorityCheck = checkUkLegalAuthority(correction.proposed_source_url);
+      if (authorityCheck.ok && authorityCheck.reason === 'authority') {
+        return {
+          shouldAutoApply: true,
+          reasons: [
+            'fast-path: URL-only redirect within same authority hostname ' +
+              `(${normaliseDomain(beforeHost)}) — no semantic change possible`,
+          ],
+          failed_gates: [],
+        };
+      }
+    }
+  }
 
   // -------- Gate 1: risk score --------
   const enr = correction.enrichment_data;
