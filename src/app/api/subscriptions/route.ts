@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { deriveRecurringGroup } from '@/lib/subscription-key';
+import { researchCancellationForProvider } from '@/lib/cancellation-provider';
 
 export async function GET() {
   try {
@@ -150,6 +151,13 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    // Fire-and-forget: research cancellation contact for this provider in the
+    // background. Branch-aware (see researchCancellationForProvider for the
+    // UK-locality logic). Errors are swallowed so they don't break the create.
+    void researchCancellationForProvider(body.provider_name).catch((err) => {
+      console.error('[subscriptions] cancellation research failed:', err?.message || err);
+    });
 
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {

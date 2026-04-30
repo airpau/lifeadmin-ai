@@ -19,6 +19,26 @@ import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, getCategoryLabel, ge
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 
+// Rotating copy for the Inbox Scan loading card. British tone, mix of
+// concrete progress and light humour. Tokens: {N}, {X} are replaced at render.
+const SCAN_COPY: string[] = [
+  "Reading your inbox… don't worry, we won't tell anyone about the Wordle subscription",
+  "Scanning {N} emails from your inbox…",
+  "Asking Claude to spot a subscription",
+  "Cross-checking with your bank feed",
+  "Searching for '£' the way HMRC searches for missing taxes",
+  "Found {X} so far — keep going",
+  "Filtering out that one Just Eat receipt from 2024",
+  "Ignoring the 47 Boots Advantage Card emails",
+  "Calculating how much of your salary is on streaming",
+  "Looking for free trials that became paid plans (you signed up in February, didn't you?)",
+  "Counting price increases — this might sting",
+  "Unearthing the fitness app you used twice in January",
+  "Checking renewal dates so you don't get auto-billed",
+  "Sniffing out forgotten direct debits",
+  "One more sweep — finalising results",
+];
+
 interface ContractAlert {
   id: string;
   subscription_id: string;
@@ -135,6 +155,10 @@ export default function SubscriptionsPage() {
     council_tax_monthly: number; council_tax_count: number;
   } | null>(null);
   const [detectedSubs, setDetectedSubs] = useState<any[]>([]);
+  const [scanSummary, setScanSummary] = useState<Array<{ provider_email: string; provider_type: string; count: number; emailsScanned?: number; error?: string }>>([]);
+  const [scanCopyIdx, setScanCopyIdx] = useState(0);
+  const [providerCancelInfo, setProviderCancelInfo] = useState<Record<string, { method?: string; email?: string; phone?: string; url?: string; tips?: string; last_verified_at?: string } | null>>({});
+  const [openCancelPill, setOpenCancelPill] = useState<string | null>(null);
   const [editSub, setEditSub] = useState<Subscription | null>(null);
   const [editForm, setEditForm] = useState({
     provider_name: '',
@@ -361,6 +385,38 @@ export default function SubscriptionsPage() {
     }
   }, [searchParams]);
 
+  // Lazy-load provider_cancellation_info rows for all displayed subscriptions.
+  // Batched on the client so the list page renders fast and only fetches each
+  // provider once per session.
+  useEffect(() => {
+    const providers = Array.from(new Set(subscriptions.map((s) => s.provider_name).filter(Boolean)));
+    const toFetch = providers.filter((p) => !(p in providerCancelInfo));
+    if (toFetch.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const updates: Record<string, any> = {};
+      for (const p of toFetch.slice(0, 50)) {
+        try {
+          const res = await fetch(`/api/subscriptions/cancellation-info?provider=${encodeURIComponent(p)}`);
+          if (!res.ok) { updates[p] = null; continue; }
+          const d = await res.json();
+          updates[p] = d.info || null;
+        } catch {
+          updates[p] = null;
+        }
+      }
+      if (!cancelled) setProviderCancelInfo((prev) => ({ ...prev, ...updates }));
+    })();
+    return () => { cancelled = true; };
+  }, [subscriptions, providerCancelInfo]);
+
+  // Rotate the inbox-scan loading copy every 2.5s while scanning.
+  useEffect(() => {
+    if (!detectingFromInbox) return;
+    const id = setInterval(() => setScanCopyIdx((i) => i + 1), 2500);
+    return () => clearInterval(id);
+  }, [detectingFromInbox]);
+
   // Filter out loans, mortgages, credit cards from subscriptions view
   // These are shown in Money Hub / Spending Insights instead
   const DEBT_KEYWORDS = ['mortgage', 'loan', 'finance', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa'];
@@ -545,16 +601,28 @@ export default function SubscriptionsPage() {
   const handleDetectFromInbox = async () => {
     setDetectingFromInbox(true);
     setDetectedSubs([]);
+    setScanSummary([]);
+    setScanCopyIdx(0);
     try {
-      const res = await fetch('/api/gmail/detect-subscriptions', { method: 'POST' });
+      // Use the unified multi-inbox scan endpoint — covers every connected
+      // inbox (Gmail, Outlook) in one go.
+      const res = await fetch('/api/subscriptions/scan-all', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        // Filter out already-tracked ones
+        if (Array.isArray(data.summary)) setScanSummary(data.summary);
         const tracked = subscriptions.map((s) => s.provider_name.toLowerCase());
-        const novel = (data.subscriptions || []).filter(
-          (s: any) => !tracked.includes(s.provider_name.toLowerCase())
-        );
+        const subsOnly = (data.opportunities || []).filter((o: any) => o.type === 'subscription' || o.type === 'forgotten_subscription');
+        const novel = subsOnly
+          .filter((s: any) => s.provider && !tracked.includes(String(s.provider).toLowerCase()))
+          .map((s: any) => ({
+            provider_name: s.provider,
+            category: s.category || 'other',
+            amount: Number(s.paymentAmount || s.amount || 0),
+            billing_cycle: s.paymentFrequency || 'monthly',
+          }));
         setDetectedSubs(novel);
+        // Refresh persisted subscriptions (the scan endpoints write into the table)
+        await fetchSubscriptions();
       }
     } catch (e) {
       console.error(e);
@@ -1705,6 +1773,43 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
+      {/* Inbox scan — rotating loading card */}
+      {detectingFromInbox && (
+        <div className="bg-mint-400/5 border border-mint-400/30 rounded-2xl p-6 mb-8">
+          <div className="flex items-start gap-4">
+            <Loader2 className="h-5 w-5 text-mint-400 animate-spin shrink-0 mt-1" />
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-medium mb-2">
+                {(() => {
+                  const totalEmails = scanSummary.reduce((s, r) => s + (r.emailsScanned || 0), 0);
+                  const found = detectedSubs.length;
+                  const idx = scanCopyIdx % SCAN_COPY.length;
+                  return SCAN_COPY[idx]
+                    .replace('{N}', totalEmails > 0 ? String(totalEmails) : 'your')
+                    .replace('{X}', String(found));
+                })()}
+              </p>
+              {scanSummary.length > 0 && (
+                <ul className="text-xs text-slate-400 space-y-1 mt-2">
+                  {scanSummary.map((r) => (
+                    <li key={r.provider_email} className="flex items-center gap-2">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-mint-400/60" />
+                      <span className="truncate">
+                        <strong className="text-slate-300">{r.provider_email}</strong>
+                        {r.error
+                          ? <span className="text-amber-400"> — {r.error}</span>
+                          : <> — {r.count} {r.count === 1 ? 'opportunity' : 'opportunities'}{r.emailsScanned ? ` (${r.emailsScanned} emails scanned)` : ''}</>
+                        }
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Detected subscriptions from inbox */}
       {detectedSubs.length > 0 && (
         <div className="bg-mint-400/5 border border-mint-400/30 rounded-2xl p-6 mb-8">
@@ -2118,6 +2223,42 @@ export default function SubscriptionsPage() {
                       )}
                       {sub.auto_renews === false && (
                         <span className="text-xs bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded">No auto-renew</span>
+                      )}
+                      {/* "How to cancel" pill — backed by provider_cancellation_info */}
+                      {providerCancelInfo[sub.provider_name] && (
+                        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => setOpenCancelPill(openCancelPill === sub.id ? null : sub.id)}
+                            className="text-xs bg-mint-400/10 text-mint-400 hover:bg-mint-400/20 border border-mint-400/30 px-2 py-0.5 rounded-full transition-colors"
+                          >
+                            How to cancel
+                          </button>
+                          {openCancelPill === sub.id && (() => {
+                            const info = providerCancelInfo[sub.provider_name]!;
+                            return (
+                              <div className="absolute top-full left-0 mt-1 w-72 bg-navy-800 border border-navy-700 rounded-lg shadow-xl z-30 p-4 text-xs space-y-2">
+                                {info.method && <p className="text-slate-300">{info.method}</p>}
+                                <div className="flex flex-col gap-1">
+                                  {info.email && (
+                                    <a href={`mailto:${info.email}`} className="text-mint-400 hover:underline truncate">{info.email}</a>
+                                  )}
+                                  {info.phone && (
+                                    <a href={`tel:${info.phone.replace(/\s+/g, '')}`} className="text-mint-400 hover:underline">{info.phone}</a>
+                                  )}
+                                  {info.url && (
+                                    <a href={info.url} target="_blank" rel="noopener noreferrer" className="text-mint-400 hover:underline truncate">{info.url}</a>
+                                  )}
+                                </div>
+                                {info.tips && <p className="text-slate-400">{info.tips}</p>}
+                                {info.last_verified_at && (
+                                  <p className="text-slate-500 text-[10px] pt-1 border-t border-navy-700">
+                                    Last verified {new Date(info.last_verified_at).toLocaleDateString('en-GB')}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
                       )}
                     </div>
                     {sub.source === 'bank' && (
