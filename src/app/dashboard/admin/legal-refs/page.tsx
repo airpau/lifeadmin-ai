@@ -148,6 +148,33 @@ export default function LegalRefsAdminPage() {
   const REVIEW_PAGE_SIZE = 50;
   const supabase = createClient();
 
+  // Compliance-ops toolbar state — wired in feat/compliance-ops-from-dashboard
+  // so the founder can run every compliance op from this page (no terminal
+  // scripts, no hand-curl). Each op shares the same modal pattern: confirm
+  // cost (or zero-cost note), POST, show toast, refresh.
+  const [opModal, setOpModal] = useState<null | {
+    op:
+      | 'recover-url-dead'
+      | 'authority-audit'
+      | 'discover'
+      | 'enrich'
+      | 'auto-apply-sweep'
+      | 'verify-all-baseline';
+    title: string;
+    body: string;
+    action: () => Promise<void>;
+  }>(null);
+  const [opRunning, setOpRunning] = useState<string | null>(null);
+  const [opToast, setOpToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!opToast) return;
+    const t = setTimeout(() => setOpToast(null), 8000);
+    return () => clearTimeout(t);
+  }, [opToast]);
+
+  const urlDeadCount = refs.filter((r) => r.verification_status === 'url_dead').length;
+
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -376,6 +403,172 @@ export default function LegalRefsAdminPage() {
     }
   };
 
+  // ---------- Compliance ops handlers ----------
+  // All ops post to founder-gated endpoints, surface a toast on completion,
+  // and refresh the page state so any new pending corrections become
+  // visible in the existing review queue.
+
+  const runOp = async (
+    op: NonNullable<typeof opModal>['op'],
+    fn: () => Promise<{ ok: boolean; text: string }>,
+  ) => {
+    setOpRunning(op);
+    try {
+      const result = await fn();
+      setOpToast({ kind: result.ok ? 'ok' : 'err', text: result.text });
+      await Promise.all([fetchRefs(), fetchCandidates()]);
+    } catch (err) {
+      setOpToast({
+        kind: 'err',
+        text: `Failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      setOpRunning(null);
+    }
+  };
+
+  const opRecoverUrlDead = () => {
+    setOpModal({
+      op: 'recover-url-dead',
+      title: 'Recover url_dead refs',
+      body: `Probe ${urlDeadCount} url_dead ref${urlDeadCount === 1 ? '' : 's'} (no API cost — server-side HTTP probes, ~30–60s for typical batches). Recoverable URLs will be queued as pending corrections for your approval.`,
+      action: async () => {
+        await runOp('recover-url-dead', async () => {
+          const res = await fetch('/api/admin/legal-refs/recover-url-dead', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ queue: true }),
+          });
+          const data = await res.json();
+          if (!data.ok) return { ok: false, text: `Error: ${data.error || 'Unknown'}` };
+          return {
+            ok: true,
+            text:
+              `Probed ${data.probed} · still dead ${data.still_dead} · now resolves ${data.now_resolves} · ` +
+              `redirected to authority ${data.redirected_to_authority} · queued ${data.queued} pending correction${data.queued === 1 ? '' : 's'}.`,
+          };
+        });
+      },
+    });
+  };
+
+  const opAuthorityAudit = () => {
+    setOpModal({
+      op: 'authority-audit',
+      title: 'Run authority audit',
+      body: `Audit ${counts.dbTotal} ref source URLs against the UK legal authority allowlist. No API cost — local check. Refs flagged as rejected/unrecognised will be queued as pending corrections.`,
+      action: async () => {
+        await runOp('authority-audit', async () => {
+          const res = await fetch('/api/admin/legal-refs/audit-authority', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          const data = await res.json();
+          if (!data.ok) return { ok: false, text: `Error: ${data.error || 'Unknown'}` };
+          const c = data.counts;
+          return {
+            ok: true,
+            text: `Audit done. Authority ${c.authority} · secondary ${c.secondary} · rejected ${c.rejected} · unrecognised ${c.unrecognised}. Inserted ${data.inserted} pending corrections (skipped ${data.skipped_existing} already-queued).`,
+          };
+        });
+      },
+    });
+  };
+
+  const opDiscover = () => {
+    setOpModal({
+      op: 'discover',
+      title: 'Discover new refs (Perplexity)',
+      body: 'Run Perplexity discovery for recent UK consumer-law updates. Estimated cost ~£0.05–£0.30 depending on candidates found. New candidates appear in the discovery queue for founder approval.',
+      action: async () => {
+        await runOp('discover', async () => {
+          const res = await fetch('/api/cron/discover-legal-refs?leg=recent', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          const data = await res.json();
+          if (!data.ok) return { ok: false, text: `Error: ${data.error || 'Unknown'}` };
+          return {
+            ok: true,
+            text: `Discovery done. ${data.candidates_found ?? 0} found · ${data.candidates_added ?? 0} new · ${data.candidates_skipped_duplicate ?? 0} duplicates.`,
+          };
+        });
+      },
+    });
+  };
+
+  const opEnrich = () => {
+    setOpModal({
+      op: 'enrich',
+      title: 'Enrich pending review queue',
+      body: 'Run enrichment on pending corrections + candidates (adds risk_score + URL diff so the auto-apply sweep can act on low-risk rows). Estimated cost ~£0.01–£0.05 per run.',
+      action: async () => {
+        await runOp('enrich', async () => {
+          const res = await fetch('/api/cron/enrich-compliance-pending', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          const data = await res.json();
+          if (!data.ok) return { ok: false, text: `Error: ${data.error || 'Unknown'}` };
+          return {
+            ok: true,
+            text: `Enrichment done. Corrections ${data.processed_corrections} · candidates ${data.processed_candidates} · low ${data.risk_low} · medium ${data.risk_medium} · high ${data.risk_high} · errors ${data.errors}.`,
+          };
+        });
+      },
+    });
+  };
+
+  const opAutoApplySweep = () => {
+    setOpModal({
+      op: 'auto-apply-sweep',
+      title: 'Run auto-apply sweep',
+      body: 'Evaluate pending corrections through the three auto-apply gates (risk=low, source-text corroboration, no semantic change) and auto-apply LOW-risk rows. Hard cap 50 per run. No API cost — local evaluation.',
+      action: async () => {
+        await runOp('auto-apply-sweep', async () => {
+          const res = await fetch('/api/cron/legal-refs-auto-apply-sweep', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          const data = await res.json();
+          if (data.skipped_table_missing) {
+            return { ok: false, text: 'Skipped: legal_ref_corrections table not available.' };
+          }
+          return {
+            ok: true,
+            text: `Sweep done. Processed ${data.processed} · auto-applied ${data.auto_applied} · still pending ${data.still_pending} · failures ${data.failures}.`,
+          };
+        });
+      },
+    });
+  };
+
+  const opVerifyAllBaseline = () => {
+    setOpModal({
+      op: 'verify-all-baseline',
+      title: 'Re-verify ALL refs (Perplexity baseline)',
+      body: `Re-verify all ${refs.length} refs via Perplexity to establish a clean compliance baseline. Estimated cost ~£${(refs.length * PERPLEXITY_COST_PER_ROW_GBP).toFixed(2)}. Corrections route through the pending review queue.`,
+      action: async () => {
+        await runOp('verify-all-baseline', async () => {
+          const res = await fetch('/api/admin/legal-refs/verify-all', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          const data = await res.json();
+          if (!data.ok || !data.counts) return { ok: false, text: `Error: ${data.error || 'Unknown'}` };
+          const c = data.counts;
+          return {
+            ok: true,
+            text: `Baseline done. ${c.verified} verified · ${c.updated} auto-updated · ${c.superseded} superseded · ${c.needs_review} needs review · ${c.broken} broken · ${c.error} errors.`,
+          };
+        });
+      },
+    });
+  };
+
   const filtered = refs.filter(r => {
     if (filterStatus === 'needs_review_any') {
       if (!needsReview(r)) return false;
@@ -428,8 +621,125 @@ export default function LegalRefsAdminPage() {
     );
   }
 
+  const opButtons: Array<{
+    key: NonNullable<typeof opModal>['op'];
+    label: string;
+    tooltip: string;
+    onClick: () => void;
+    disabled?: boolean;
+    variant: 'primary' | 'secondary' | 'amber';
+  }> = [
+    {
+      key: 'discover',
+      label: 'Discover new refs',
+      tooltip: 'Perplexity scans for recent UK consumer-law updates. Cost ~£0.05–£0.30.',
+      onClick: opDiscover,
+      variant: 'primary',
+    },
+    {
+      key: 'verify-all-baseline',
+      label: 'Re-verify ALL (baseline)',
+      tooltip: `Perplexity re-verifies all ${refs.length} refs. Cost ~£${(refs.length * PERPLEXITY_COST_PER_ROW_GBP).toFixed(2)}.`,
+      onClick: opVerifyAllBaseline,
+      variant: 'amber',
+    },
+    {
+      key: 'authority-audit',
+      label: 'Authority audit',
+      tooltip: 'Audit source URLs against the UK legal authority allowlist. No API cost.',
+      onClick: opAuthorityAudit,
+      variant: 'secondary',
+    },
+    {
+      key: 'recover-url-dead',
+      label: `Recover url_dead (${urlDeadCount})`,
+      tooltip: 'Probe url_dead refs with a real-browser UA. No API cost — server-side HTTP probes.',
+      onClick: opRecoverUrlDead,
+      disabled: urlDeadCount === 0,
+      variant: 'secondary',
+    },
+    {
+      key: 'enrich',
+      label: 'Enrich pending queue',
+      tooltip: 'Add risk_score + URL diff to pending rows so auto-apply can act. Cost ~£0.01–£0.05.',
+      onClick: opEnrich,
+      variant: 'secondary',
+    },
+    {
+      key: 'auto-apply-sweep',
+      label: 'Run auto-apply sweep',
+      tooltip: 'Auto-apply LOW-risk corrections that pass all 3 gates. No API cost.',
+      onClick: opAutoApplySweep,
+      variant: 'secondary',
+    },
+  ];
+
+  const opVariantClass = (v: 'primary' | 'secondary' | 'amber') =>
+    v === 'primary'
+      ? 'bg-emerald-500 hover:bg-emerald-600 text-slate-900 border-emerald-500'
+      : v === 'amber'
+        ? 'bg-amber-500 hover:bg-amber-600 text-slate-900 border-amber-500'
+        : 'bg-white hover:border-emerald-500 text-slate-900 border-slate-200';
+
   return (
     <div className="max-w-7xl">
+      {/* Compliance ops toast */}
+      {opToast && (
+        <div
+          className={`fixed top-4 right-4 z-[60] max-w-md px-4 py-3 rounded-xl shadow-lg border text-sm font-medium ${
+            opToast.kind === 'ok'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+              : 'bg-red-50 border-red-300 text-red-800'
+          }`}
+          role="status"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <span>{opToast.text}</span>
+            <button
+              onClick={() => setOpToast(null)}
+              className="text-xs text-slate-500 hover:text-slate-900"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Compliance ops cost-confirmation modal */}
+      {opModal && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          onClick={() => setOpModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-slate-900 mb-2">{opModal.title}</h3>
+            <p className="text-sm text-slate-600 mb-5 whitespace-pre-line">{opModal.body}</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setOpModal(null)}
+                className="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const action = opModal.action;
+                  setOpModal(null);
+                  void action();
+                }}
+                className="px-4 py-2 text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-slate-900 rounded-lg"
+              >
+                Confirm &amp; run
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-6">
         <Link
@@ -454,23 +764,48 @@ export default function LegalRefsAdminPage() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => triggerDiscovery('recent')}
-              disabled={discovering}
-              className="flex items-center gap-2 bg-white border border-slate-200 hover:border-emerald-500 disabled:opacity-50 text-slate-900 font-semibold px-4 py-2.5 rounded-lg transition-all text-sm"
-              title="Run Perplexity discovery for recent UK consumer-law updates"
+              onClick={runVerification}
+              disabled={verifying}
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
+              title="Run the cron-based verification pass (legislation.gov.uk staleness + regulator rule diff)"
             >
-              {discovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              Discover now
+              {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {verifying ? 'Verifying...' : 'Run Verification'}
             </button>
-          <button
-            onClick={runVerification}
-            disabled={verifying}
-            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
-          >
-            {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {verifying ? 'Verifying...' : 'Run Verification'}
-          </button>
           </div>
+        </div>
+      </div>
+
+      {/* Compliance ops toolbar — single pane of glass for all manual triggers
+          (added in feat/compliance-ops-from-dashboard). Each button shows a
+          tooltip with cost estimate, opens a confirmation modal, then fires
+          the op. Long-running ops are fire-and-forget; the page refreshes
+          state on completion so new pending corrections / candidates are
+          immediately visible. */}
+      <div className="mb-6 bg-white border border-slate-200 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Compliance ops</p>
+            <p className="text-xs text-slate-600">All manual triggers — cost-confirmation before any paid op.</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {opButtons.map((b) => (
+            <button
+              key={b.key}
+              onClick={b.onClick}
+              disabled={!!b.disabled || opRunning !== null}
+              title={b.tooltip}
+              className={`flex items-center gap-2 border disabled:opacity-50 font-semibold px-3.5 py-2 rounded-lg transition-all text-xs ${opVariantClass(b.variant)}`}
+            >
+              {opRunning === b.key ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              {b.label}
+            </button>
+          ))}
         </div>
       </div>
 

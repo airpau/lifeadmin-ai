@@ -25,7 +25,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface LegalRefCorrection {
   id: string;
-  legal_reference_id: string;
+  // Schema uses `ref_id` (FK to legal_references.id). Earlier drafts of this
+  // type used `legal_reference_id`, which silently broke the auto-apply
+  // sweep — the canonical update never matched a row. See PR
+  // feat/compliance-ops-from-dashboard for the fix.
+  ref_id: string;
   status: string;
   before_law_name?: string | null;
   before_source_url?: string | null;
@@ -327,7 +331,7 @@ export async function applyCorrection(
     const { error } = await supabase
       .from('legal_references')
       .update(update)
-      .eq('id', correction.legal_reference_id);
+      .eq('id', correction.ref_id);
     if (error) {
       console.error('[auto-apply] legal_references update failed', error);
       return false;
@@ -355,7 +359,7 @@ export async function applyCorrection(
   // 3. Audit row in legal_ref_verifications (γ). Soft if missing.
   try {
     await supabase.from('legal_ref_verifications').insert({
-      legal_reference_id: correction.legal_reference_id,
+      legal_reference_id: correction.ref_id,
       verifier: 'auto-apply-low-risk',
       changes: {
         before: {

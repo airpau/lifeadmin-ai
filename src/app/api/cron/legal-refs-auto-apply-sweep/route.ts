@@ -122,3 +122,9 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(summary);
 }
+
+// Mirror GET so the founder admin button can POST without exposing the
+// cron-secret bearer header to the browser bundle.
+export async function POST(request: NextRequest) {
+  return GET(request);
+}
