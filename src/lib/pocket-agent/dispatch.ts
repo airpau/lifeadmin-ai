@@ -161,6 +161,19 @@ export async function dispatchPocketAgentAlert(args: {
       // shape from the registry to order them correctly.
       const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
       const { TEMPLATES } = await import('@/lib/whatsapp/template-registry');
+      const { getTemplateSid } = await import('@/lib/whatsapp/template-sids');
+      const liveSid = await getTemplateSid(templateName);
+      if (!liveSid) {
+        const err = `template not yet approved`;
+        await logWhatsAppDispatchOutcome({
+          session,
+          alertType,
+          ok: false,
+          error: err,
+          templateName,
+        });
+        return { ok: false, channel: 'whatsapp', error: err };
+      }
       const tpl = (TEMPLATES as Record<string, { vars: readonly string[] }>)[templateName];
       const positional = tpl.vars.map((name) => {
         const v = whatsappVars[name];

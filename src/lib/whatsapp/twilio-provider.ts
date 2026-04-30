@@ -83,8 +83,14 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
     //      live there. Without this fallback every new caller needed an env
     //      var, which silently broke production sends.
     const envOverride = process.env[`TWILIO_TEMPLATE_${opts.templateName.toUpperCase()}`];
+    // Runtime-mutable DB SID (whatsapp_template_sids) takes priority over the
+    // registry's compile-time fallback. Returns null when the template isn't
+    // approved — in which case we still try the registry as a last-ditch
+    // fallback (covers templates approved before the dynamic-SID layer).
+    const { getTemplateSid } = await import('./template-sids');
+    const dbSid = await getTemplateSid(opts.templateName);
     const registry = (TEMPLATES as Record<string, { sid: string }>)[opts.templateName as TemplateName];
-    const contentSid = envOverride || registry?.sid;
+    const contentSid = envOverride || dbSid || registry?.sid;
     const from = requireEnv('TWILIO_WHATSAPP_FROM');
 
     if (contentSid) {
