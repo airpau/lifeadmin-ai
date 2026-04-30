@@ -1,24 +1,6 @@
 /**
  * WhatsApp Template Registry — single source of truth for the 16 templates
- * submitted to Meta on 2026-04-27. Approval check 2026-04-29: 15/16
- * approved, 1 (paybacker_login_code AUTHENTICATION) rejected.
- *
- * IMPORTANT — Meta re-categorisation
- * -----------------------------------
- * Meta re-categorised 5 templates from UTILITY (what we submitted) to
- * MARKETING on approval. The `category` field below reflects what Meta
- * APPROVED them as, not what we submitted. This matters because:
- *
- *   1. Cost — marketing conversations cost ~6x utility (~£0.05 vs
- *      ~£0.009 per 24h conversation in the UK).
- *   2. Opt-in — Meta commerce policy requires SEPARATE explicit
- *      marketing opt-in. We track that in
- *      whatsapp_sessions.marketing_opt_in_at and the dispatch helper
- *      checks it before any MARKETING send. Sending without consent
- *      tanks the WABA quality rating.
- *   3. Frequency cap — dispatch enforces max 1 marketing-category
- *      template per user per 24h via
- *      whatsapp_sessions.last_marketing_template_at.
+ * submitted to Meta on 2026-04-27.
  *
  * Why this lives here and not in the DB:
  * - SIDs are baked into Meta's approval and never change once a template is
@@ -81,8 +63,7 @@ export const TEMPLATES = {
   /** Sent once after a user opts in / completes their first link */
   paybacker_welcome: {
     sid: 'HXd0a7d989fbaa8d254d530119a276eace',
-    // Meta re-categorised UTILITY → MARKETING on approval (2026-04-29).
-    category: 'MARKETING',
+    category: 'UTILITY',
     vars: ['name'] as const,
     description: 'First-touch welcome after WhatsApp opt-in',
     proOnly: true,
@@ -98,9 +79,7 @@ export const TEMPLATES = {
   /** Contract end ≤30 days, looks at contract_end_date on subscriptions */
   paybacker_alert_renewal: {
     sid: 'HXd6fbd2bf402a63e920e4d375f20502e6',
-    // Meta re-categorised UTILITY → MARKETING on approval (2026-04-29).
-    // Sends are gated by marketing_opt_in_at + 24h freq cap.
-    category: 'MARKETING',
+    category: 'UTILITY',
     vars: ['service', 'days_left', 'monthly_cost'] as const,
     description: 'Contract renewal approaching',
     proOnly: true,
@@ -156,23 +135,18 @@ export const TEMPLATES = {
     description: 'Outcome check after dispute / cancellation',
     proOnly: true,
   },
-  /** Pro-only morning brief — DEFAULT WEEKLY not daily (cost). */
+  /** Pro-only daily 8am brief */
   paybacker_morning_summary: {
     sid: 'HX4eae8f7c8806c540fac25e69c528faa5',
-    // Meta re-categorised UTILITY → MARKETING on approval (2026-04-29).
-    // £1.50/user/month if sent daily. Default cadence in
-    // /api/cron/personal-schedules is now WEEKLY (Mon 8am) and the
-    // dispatcher skips the send when opportunities_count === 0.
-    category: 'MARKETING',
+    category: 'UTILITY',
     vars: ['name', 'scanned_count', 'opportunities_count', 'top_focus'] as const,
-    description: 'Pro morning summary (default weekly; daily opt-in)',
+    description: 'Daily 8am morning summary (Pro only)',
     proOnly: true,
   },
   /** Savings goal milestone (25/50/75/100% bands) */
   paybacker_savings_goal_milestone: {
     sid: 'HXf547f5b569adb3132963eaf2908387e0',
-    // Meta re-categorised UTILITY → MARKETING on approval (2026-04-29).
-    category: 'MARKETING',
+    category: 'UTILITY',
     vars: ['goal_name', 'percent', 'amount_saved', 'target_amount'] as const,
     description: 'Savings goal milestone hit',
     proOnly: true,
@@ -197,8 +171,7 @@ export const TEMPLATES = {
   /** Sunday 9am weekly recovery digest */
   paybacker_recovery_total_weekly: {
     sid: 'HX88de4d980c0f450e33a3792ffebf3528',
-    // Meta re-categorised UTILITY → MARKETING on approval (2026-04-29).
-    category: 'MARKETING',
+    category: 'UTILITY',
     vars: ['amount_this_week', 'lifetime_amount'] as const,
     description: 'Weekly recovery digest (Sunday 9am)',
     proOnly: true,

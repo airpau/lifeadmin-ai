@@ -47,6 +47,18 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
+  // CSV export is Pro-only per plan-limits.ts. Previously the route only
+  // gated on auth, so any authenticated user with the URL could download
+  // their full ledger regardless of tier.
+  const { getEffectiveTier } = await import('@/lib/plan-limits')
+  const tier = await getEffectiveTier(user.id)
+  if (tier !== 'pro') {
+    return NextResponse.json(
+      { error: 'CSV export is available on the Pro plan.' },
+      { status: 403 },
+    )
+  }
+
   // Pull the user's bank connections so we can map account_id -> bank/account name.
   const { data: bankConns } = await supabase
     .from('bank_connections')

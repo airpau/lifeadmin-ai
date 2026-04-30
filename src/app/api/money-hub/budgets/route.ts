@@ -84,6 +84,16 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // Budgets are an Essential+ feature (PLAN_LIMITS.budgetsGoals).
+  const { getEffectiveTier } = await import('@/lib/plan-limits');
+  const tier = await getEffectiveTier(user.id);
+  if (tier === 'free') {
+    return NextResponse.json(
+      { error: 'Budgets are available on the Essential plan.', upgradeRequired: true, tier },
+      { status: 403 },
+    );
+  }
+
   const body = await request.json();
   const { data, error } = await supabase.from('money_hub_budgets').insert({
     user_id: user.id, category: body.category,

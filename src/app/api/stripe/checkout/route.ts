@@ -52,10 +52,33 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { priceId, billingCycle } = body;
+    const { priceId, billingCycle, confirmed } = body;
 
     if (!priceId) {
       return NextResponse.json({ error: 'Price ID required' }, { status: 400 });
+    }
+
+    // Defensive guard against any legacy / cached client that might
+    // POST here directly without going through /upgrade. The /upgrade
+    // confirmation page sends `confirmed: true` AFTER the user has
+    // seen the prorated breakdown + card on file + clicked "Confirm
+    // and pay". Anything else is suspicious — bounce them through the
+    // confirmation page instead of charging silently.
+    //
+    // This is the fix for the bug Paul hit 2026-04-27: clicked "Upgrade"
+    // on /pricing, was charged £4.97 immediately with no confirmation
+    // dialog. Adding this guard means even if a stale browser cache
+    // resurrects the old race-condition path, the worst case is the
+    // user is redirected to /upgrade — never silently charged.
+    if (!confirmed) {
+      return NextResponse.json(
+        {
+          error: 'Charge requires explicit confirmation. Redirecting…',
+          requiresConfirmation: true,
+          redirectUrl: `/upgrade?priceId=${encodeURIComponent(priceId)}${billingCycle ? `&cycle=${billingCycle}` : ''}`,
+        },
+        { status: 409 },
+      );
     }
 
     const { data: profile } = await supabase

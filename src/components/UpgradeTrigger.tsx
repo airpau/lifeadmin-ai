@@ -102,7 +102,7 @@ export default function UpgradeTrigger({
       title: `We found ${subscriptionCount} subscription${subscriptionCount !== 1 ? 's' : ''} totalling £${monthlyCost.toFixed(0)}/month`,
       body: 'Upgrade to Essential to track these daily, get renewal reminders, and get alerted to price increases.',
       cta: 'Track daily — from £4.99/mo',
-      ctaClass: 'bg-emerald-500 hover:bg-emerald-600 text-white',
+      ctaClass: 'bg-emerald-500 hover:bg-emerald-600 text-slate-900',
     },
     letter_limit: {
       icon: <Sparkles className="h-5 w-5 text-amber-400" />,
@@ -124,7 +124,7 @@ export default function UpgradeTrigger({
       title: `Your email scan found ${opportunitiesFound} potential saving${opportunitiesFound !== 1 ? 's' : ''}`,
       body: 'Upgrade to Essential to scan your inbox every month automatically.',
       cta: 'Scan monthly — £4.99/mo',
-      ctaClass: 'bg-purple-500 hover:bg-purple-600 text-white',
+      ctaClass: 'bg-purple-500 hover:bg-purple-600 text-slate-900',
     },
     price_increase: {
       icon: <TrendingUp className="h-5 w-5 text-red-400" />,
@@ -134,7 +134,7 @@ export default function UpgradeTrigger({
       title: `${priceIncreaseCount} price increase${priceIncreaseCount !== 1 ? 's' : ''} detected — costing you £${priceIncreaseAnnual.toFixed(0)}/year extra`,
       body: 'Upgrade to get automatic alerts whenever your bills go up so you can act immediately.',
       cta: 'Get price alerts — £4.99/mo',
-      ctaClass: 'bg-red-500 hover:bg-red-600 text-white',
+      ctaClass: 'bg-red-500 hover:bg-red-600 text-slate-900',
     },
   };
 
@@ -144,7 +144,7 @@ export default function UpgradeTrigger({
     <div className={`bg-gradient-to-r ${c.gradient} border ${c.border} rounded-2xl p-5 relative ${className}`}>
       <button
         onClick={handleDismiss}
-        className="absolute top-3 right-3 text-slate-500 hover:text-white p-1 transition-colors"
+        className="absolute top-3 right-3 text-slate-500 hover:text-slate-900 p-1 transition-colors"
         aria-label="Dismiss"
       >
         <X className="h-4 w-4" />
@@ -155,8 +155,8 @@ export default function UpgradeTrigger({
           {c.icon}
         </div>
         <div>
-          <p className="text-white font-semibold text-sm leading-snug">{c.title}</p>
-          <p className="text-slate-400 text-xs mt-0.5">{c.body}</p>
+          <p className="text-slate-900 font-semibold text-sm leading-snug">{c.title}</p>
+          <p className="text-slate-500 text-xs mt-0.5">{c.body}</p>
         </div>
       </div>
 

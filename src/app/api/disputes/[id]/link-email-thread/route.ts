@@ -42,7 +42,7 @@ export async function GET(
 
   const { data, error } = await supabase
     .from('dispute_watchdog_links')
-    .select('id, provider, thread_id, subject, sender_domain, sender_address, last_synced_at, last_message_date, sync_enabled, created_at')
+    .select('id, email_connection_id, provider, thread_id, subject, sender_domain, sender_address, last_synced_at, last_message_date, sync_enabled, created_at')
     .eq('dispute_id', disputeId)
     .eq('user_id', user.id)
     .eq('sync_enabled', true)

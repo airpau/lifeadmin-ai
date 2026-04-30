@@ -12,6 +12,43 @@ function getAdmin() {
 }
 
 /**
+ * Normalise a provider name for deduplication.
+ * Strips suffixes, numbers, special chars; lowercases.
+ */
+function normaliseProviderName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\b(ltd|limited|plc|llp|inc|corp|co\.uk|uk)\b/g, '')
+    .replace(/\d{4,}/g, '')           // strip long number references
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Council tax / local authority blocklist.
+ * Any merchant whose normalised name matches one of these patterns
+ * will NEVER be classified as a subscription — they belong in Expected Bills.
+ */
+const COUNCIL_TAX_PATTERNS: RegExp[] = [
+  /borough council/i,
+  /city council/i,
+  /district council/i,
+  /county council/i,
+  /council tax/i,
+  /london borough/i,
+  /\btest valley\b/i,
+  /\bwinchester\b.*\bcouncil\b/i,
+  /\bwestminster\b.*\bcouncil\b/i,
+  /\bhounslow\b/i,
+  /\b(lbh|lbw|lbc)\b/i,            // common council abbreviations
+];
+
+function isCouncilTaxMerchant(merchantName: string): boolean {
+  return COUNCIL_TAX_PATTERNS.some(re => re.test(merchantName));
+}
+
+/**
  * Daily subscription auto-detection cron.
  * Scans bank_transactions for recurring patterns, enriches merchant_name,
  * and auto-creates subscriptions from high-confidence matches.
@@ -75,16 +112,20 @@ export async function GET(request: NextRequest) {
       groups.get(tx.merchant_name!)!.push(tx);
     }
 
-    // Get existing subscriptions for this user — pull recurring_group too
-    // so we can short-circuit duplicates on the canonical key rather than
-    // a loose lowercase-provider-name compare.
+    // Get existing subscriptions for this user (all statuses — including dismissed).
+    // Pull recurring_group too so we can short-circuit duplicates on the canonical
+    // key rather than a loose lowercase-provider-name compare.
     const { data: existingSubs } = await supabase
       .from('subscriptions')
       .select('provider_name, recurring_group')
       .eq('user_id', userId);
 
-    const existingProviders = new Set(
-      (existingSubs || []).map(s => s.provider_name?.toLowerCase())
+    // Build two sets: exact lowercase names AND normalised names for fuzzy dedup
+    const existingExact = new Set(
+      (existingSubs || []).map(s => (s.provider_name || '').toLowerCase())
+    );
+    const existingNormalised = new Set(
+      (existingSubs || []).map(s => normaliseProviderName(s.provider_name || ''))
     );
     const existingKeys = new Set(
       (existingSubs || [])
@@ -93,9 +134,13 @@ export async function GET(request: NextRequest) {
     );
 
     for (const [merchant, merchantTxs] of groups) {
-      // Skip if already tracked — either by lowercase name (legacy) or by
-      // canonical recurring_group (post-20260422020000).
-      if (existingProviders.has(merchant.toLowerCase())) continue;
+      // Skip council tax / local authority payments — they belong in Expected Bills
+      if (isCouncilTaxMerchant(merchant)) continue;
+
+      // Skip if already tracked (exact match, normalised match, or canonical
+      // recurring_group key from post-20260422020000 migration).
+      if (existingExact.has(merchant.toLowerCase())) continue;
+      if (existingNormalised.has(normaliseProviderName(merchant))) continue;
       const merchantKey = deriveRecurringGroup(merchant);
       if (merchantKey && existingKeys.has(merchantKey)) continue;
 
@@ -154,6 +199,9 @@ export async function GET(request: NextRequest) {
 
         if (!insertErr) {
           results.created++;
+          // Add to both dedup sets so concurrent iterations in this run don't re-insert
+          existingExact.add(merchant.toLowerCase());
+          existingNormalised.add(normaliseProviderName(merchant));
         }
       } else {
         results.skipped++;

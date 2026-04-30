@@ -1,11 +1,18 @@
 /**
- * Branch-aware cancellation intelligence helper.
+ * DB-backed cancellation-info lookup + branch-aware research helper.
  *
- * On subscription creation we fire-and-forget `researchCancellationForProvider`
- * which checks the cache, and if missing, asks Perplexity for the cancellation
- * details. UK chains often have per-branch contacts (gyms in particular), so
- * when a city name is found in the provider string we ask explicitly for the
- * branch contact.
+ * Two responsibilities live here:
+ *
+ * 1. `getCancellationInfo` / `upsertCancellationInfo` — Supabase-backed
+ *    cancellation-method lookup that replaces the hand-maintained static
+ *    list in cancellation-methods.ts. AI-generated rows get persisted
+ *    back with data_source='ai' and confidence='low'.
+ *
+ * 2. `researchCancellationForProvider` — fire-and-forget Perplexity
+ *    research kicked off from the subscription create endpoint. UK
+ *    chains often have per-branch contacts (gyms in particular), so
+ *    when a city name is found in the provider string we ask
+ *    explicitly for the branch contact.
  */
 
 import { createClient as createAdminClient, SupabaseClient } from '@supabase/supabase-js';
@@ -24,8 +31,6 @@ export const UK_CITIES = [
 export function detectUkCity(providerName: string): string | null {
   const lower = providerName.toLowerCase();
   for (const city of UK_CITIES) {
-    // Word-boundary match so "Brighton" matches but "Bath" doesn't trigger
-    // on "BatHQ" or similar.
     const re = new RegExp(`\\b${city}\\b`, 'i');
     if (re.test(lower)) return city.charAt(0).toUpperCase() + city.slice(1);
   }
@@ -39,7 +44,6 @@ export function providerKey(providerName: string): string {
 export function buildCancellationPrompt(providerName: string): string {
   const city = detectUkCity(providerName);
   if (city) {
-    // Strip the city to get the chain name for the prompt
     const chain = providerName.replace(new RegExp(`\\b${city}\\b`, 'i'), '').trim() || providerName;
     return `Find the cancellation contact for the **${city}** branch of ${chain} specifically — branch email, branch phone, branch URL. Many UK chains have per-branch contacts; corporate-only details are not acceptable. Return JSON: {"method":"...","email":"branch@...","phone":"...","url":"https://...","tips":"...","notice_period_days":30}. Use null where unknown.`;
   }
@@ -136,7 +140,6 @@ export async function researchCancellationForProvider(
       .maybeSingle();
     if (existing) return; // already researched
   } catch (err: any) {
-    // If the table doesn't exist yet (migration not applied), bail quietly.
     console.warn('[cancellation-provider] cache lookup failed:', err?.message || err);
     return;
   }
@@ -165,4 +168,102 @@ export async function researchCancellationForProvider(
   }, { onConflict: 'provider_key' }).then(({ error }) => {
     if (error) console.error('[cancellation-provider] upsert failed:', error.message);
   });
+}
+
+export interface CancellationRecord {
+  provider: string;
+  display_name?: string | null;
+  method: string;
+  email?: string | null;
+  phone?: string | null;
+  url?: string | null;
+  tips?: string | null;
+  category?: string | null;
+  region: string;
+  data_source: 'seed' | 'ai' | 'admin' | 'perplexity';
+  confidence: 'high' | 'medium' | 'low';
+  auto_cancel_support: 'none' | 'email' | 'api';
+  last_verified_at: string | null;
+  aliases?: string[];
+}
+
+function normalise(input: string): string {
+  return input.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+}
+
+/**
+ * Look up cancellation info for a provider name (merchant string from the
+ * bank or a user-edited subscription label). Returns null when no match
+ * is found — callers decide whether to fall back to AI generation.
+ */
+export async function getCancellationInfo(
+  supabase: SupabaseClient,
+  providerName: string,
+): Promise<CancellationRecord | null> {
+  const search = normalise(providerName);
+  if (!search) return null;
+
+  const { data, error } = await supabase
+    .from('provider_cancellation_info')
+    .select('*');
+  if (error || !data) return null;
+
+  const rows = data as CancellationRecord[];
+  const firstWord = search.split(/\s+/)[0];
+
+  for (const r of rows) {
+    if (!r.provider) continue;
+    if (search.includes(r.provider) || r.provider.includes(firstWord)) {
+      return r;
+    }
+  }
+
+  for (const r of rows) {
+    for (const alias of r.aliases ?? []) {
+      const a = alias.toLowerCase();
+      if (!a) continue;
+      if (search.includes(a) || a.includes(firstWord)) return r;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Persist an AI-generated cancellation record so the next lookup for the
+ * same merchant hits the DB and doesn't re-spend a Claude call.
+ */
+export async function upsertCancellationInfo(
+  supabase: SupabaseClient,
+  providerName: string,
+  fields: {
+    method: string;
+    email?: string | null;
+    phone?: string | null;
+    url?: string | null;
+    tips?: string | null;
+    category?: string | null;
+  },
+): Promise<void> {
+  const canonical = normalise(providerName);
+  if (!canonical) return;
+
+  await supabase
+    .from('provider_cancellation_info')
+    .upsert(
+      {
+        provider: canonical,
+        display_name: providerName.trim(),
+        method: fields.method,
+        email: fields.email ?? null,
+        phone: fields.phone ?? null,
+        url: fields.url ?? null,
+        tips: fields.tips ?? null,
+        category: fields.category ?? null,
+        data_source: 'ai',
+        confidence: 'low',
+        last_verified_at: null,
+      },
+      { onConflict: 'provider' },
+    );
 }

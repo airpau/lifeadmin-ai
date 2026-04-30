@@ -4,9 +4,45 @@ import { fmtNum } from '@/lib/format';
 import { Calendar, AlertTriangle, Lock, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
+/** Normalise a provider name for dedup (mirrors the cron logic). */
+function normaliseProvider(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .replace(/\b(ltd|limited|plc|llp|inc|corp|co\.uk|uk)\b/g, '')
+    .replace(/\d{4,}/g, '')
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Logarithmic amount band (~10% wide). Amounts within ~5% map to the same
+ * band; amounts differing by >10% produce different bands.
+ * Prevents two separate bills at the same provider but different amounts
+ * (e.g. two council-tax DDs) from being collapsed to one entry.
+ */
+function amountBand(amount: number): number {
+  if (amount <= 0) return 0;
+  return Math.round(Math.log(Math.max(amount, 0.01)) / Math.log(1.1));
+}
+
 export default function ContractsPanel({ data, isPro }: { data: any, isPro: boolean }) {
   const subscriptions = data.subscriptions || [];
-  const activeSubs = subscriptions.filter((s: any) => s.status === 'active');
+
+  // Deduplicate active subscriptions by normalised provider name + billing cycle
+  // + amount band.  Including the amount band ensures that two genuinely separate
+  // subscriptions from the same provider at different amounts (e.g. two council-
+  // tax DDs for different properties) are shown as distinct entries.
+  const seen = new Map<string, boolean>();
+  const activeSubs = subscriptions
+    .filter((s: any) => s.status === 'active')
+    .filter((s: any) => {
+      const band = amountBand(Math.abs(parseFloat(String(s.amount)) || 0));
+      const key = `${normaliseProvider(s.provider_name)}|${s.billing_cycle}|${band}`;
+      if (seen.has(key)) return false;
+      seen.set(key, true);
+      return true;
+    });
   
   // Calculate totals
   const monthlyTotal = activeSubs.reduce((sum: number, s: any) => {
@@ -20,9 +56,9 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
   const switchableCount = activeSubs.filter((s: any) => switchableCats.has(s.category)).length;
 
   return (
-    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 flex flex-col h-full">
+    <div className="card p-5 flex flex-col h-full">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+        <h3 className="text-slate-900 font-semibold text-lg flex items-center gap-2">
           <Calendar className="h-5 w-5 text-amber-400" />
           Regular Payments
         </h3>
@@ -36,7 +72,7 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
         <div className="flex items-center gap-4 mb-4 text-xs">
           <div>
             <span className="text-slate-500">Monthly</span>
-            <p className="text-white font-semibold">£{fmtNum(monthlyTotal)}</p>
+            <p className="text-slate-900 font-semibold">£{fmtNum(monthlyTotal)}</p>
           </div>
           <div className="text-slate-700">|</div>
           <div>
@@ -55,15 +91,15 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
       )}
       
       {!isPro ? (
-        <div className="bg-navy-950/50 border border-navy-700/50 rounded-xl p-4 relative overflow-hidden flex-1">
-          <div className="absolute inset-0 bg-navy-950/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 relative overflow-hidden flex-1">
+          <div className="absolute inset-0 bg-white backdrop-blur-sm z-10 flex flex-col items-center justify-center">
             <Lock className="h-6 w-6 text-slate-500 mb-2" />
-            <p className="text-white font-semibold text-xs mb-1">Upgrade to track subscriptions</p>
+            <p className="text-slate-900 font-semibold text-xs mb-1">Upgrade to track subscriptions</p>
             <Link href="/pricing" className="text-mint-400 text-[10px] hover:text-mint-300">View plans</Link>
           </div>
           <div className="space-y-3 opacity-30 pointer-events-none">
-            <div className="h-10 bg-navy-800 rounded-lg w-full" />
-            <div className="h-10 bg-navy-800 rounded-lg w-full" />
+            <div className="h-10 bg-slate-100 rounded-lg w-full" />
+            <div className="h-10 bg-slate-100 rounded-lg w-full" />
           </div>
         </div>
       ) : (
@@ -86,9 +122,9 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
               const cycleLabel = sub.billing_cycle === 'yearly' ? '/yr' : sub.billing_cycle === 'quarterly' ? '/qtr' : '/mo';
               
               return (
-                <div key={sub.id} className="flex items-center justify-between bg-navy-950/50 rounded-xl p-3 border border-navy-800 hover:border-navy-700 transition-colors">
+                <div key={sub.id} className="flex items-center justify-between bg-white rounded-xl p-3 border border-slate-200 hover:border-slate-200 transition-colors">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-white capitalize truncate">{sub.provider_name}</p>
+                    <p className="text-sm font-medium text-slate-900 capitalize truncate">{sub.provider_name}</p>
                     {tag}
                   </div>
                   <p className="text-sm font-semibold text-amber-400 whitespace-nowrap ml-2">

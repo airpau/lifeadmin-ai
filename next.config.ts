@@ -16,6 +16,22 @@ const nextConfig: NextConfig = {
         destination: 'https://paybacker.co.uk/:path*',
         permanent: true,
       },
+      // Legacy /login path — route to the real auth page
+      {
+        source: '/login',
+        destination: '/auth/login',
+        permanent: true,
+      },
+      // Engineers guessing paybacker.co.uk/api should land on the B2B
+      // landing page. Exact match only — /api/foo continues to resolve
+      // against route handlers in src/app/api/*. Temporary (307) so we
+      // can swap in a real developer portal later without a permanent
+      // redirect cache hangover.
+      {
+        source: '/api',
+        destination: '/for-business',
+        permanent: false,
+      },
     ];
   },
   async rewrites() {

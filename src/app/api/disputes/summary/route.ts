@@ -38,11 +38,21 @@ export async function GET() {
     });
   }
 
-  const resolvedStatuses = ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed', 'won', 'partial', 'lost', 'withdrawn'];
-  const total_open = disputes.filter(d => !resolvedStatuses.includes(d.status)).length;
-  const total_resolved = disputes.filter(d => resolvedStatuses.includes(d.status)).length;
-  const total_disputed_amount = disputes.reduce((sum, d) => sum + (d.disputed_amount || 0), 0);
-  const total_recovered = disputes.reduce((sum, d) => sum + (d.money_recovered || 0), 0);
+  // Terminal = any status where the dispute is closed (won, partial, lost, or user-closed).
+  // Won = only the states where the user actually got something back. The "Resolved" KPI
+  // on the Disputes Centre is labelled "Closed · won or settled" — semantically wins only.
+  // Counting lost/closed in it was the reason the card stayed at 0 for users who had
+  // won cases: a resolved_won row was getting *diluted* by the label's promise.
+  const terminalStatuses = ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'];
+  const wonStatuses = ['resolved_won', 'resolved_partial'];
+  const total_open = disputes.filter(d => !terminalStatuses.includes(d.status)).length;
+  const total_resolved = disputes.filter(d => wonStatuses.includes(d.status)).length;
+  const total_disputed_amount = disputes
+    .filter(d => !terminalStatuses.includes(d.status))
+    .reduce((sum, d) => sum + (d.disputed_amount || 0), 0);
+  const total_recovered = disputes
+    .filter(d => wonStatuses.includes(d.status))
+    .reduce((sum, d) => sum + (d.money_recovered || 0), 0);
 
   return NextResponse.json({
     total_open,

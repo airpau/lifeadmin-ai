@@ -12,8 +12,14 @@ export async function uploadImageToStorage(
   mimeType: string,
   filename: string
 ): Promise<string> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Trim env values defensively — Vercel's env-add UI can preserve a
+  // trailing newline if the value was pasted with one, and that newline
+  // ends up embedded mid-URL in the public link we return. Caught
+  // 2026-04-27 when the first per-post blog hero image URL contained
+  // a literal `\n` between the host and `/storage/...`. Trimming on
+  // read fixes both the URL we build and the supabase-js client init.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');

@@ -24,11 +24,11 @@ export default function CreditScoreWarning({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-navy-900 border-2 border-amber-500/50 rounded-2xl w-full max-w-md shadow-2xl">
+      <div className="relative bg-white border-2 border-amber-500/50 rounded-2xl w-full max-w-md shadow-2xl">
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white transition-all"
+          className="absolute top-4 right-4 text-slate-500 hover:text-slate-900 transition-all"
         >
           <X className="h-5 w-5" />
         </button>
@@ -40,20 +40,20 @@ export default function CreditScoreWarning({
               <AlertTriangle className="h-5 w-5 text-amber-400" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Credit Score Warning</h2>
+              <h2 className="text-lg font-bold text-slate-900">Credit Score Warning</h2>
               <p className="text-amber-400 text-sm font-medium">{productType}</p>
             </div>
           </div>
 
           {/* Provider name */}
-          <div className="bg-navy-950 rounded-lg px-4 py-3 mb-4 border border-navy-700/50">
-            <p className="text-slate-400 text-xs mb-0.5">Provider</p>
-            <p className="text-white font-semibold">{providerName}</p>
+          <div className="bg-white rounded-lg px-4 py-3 mb-4 border border-slate-200">
+            <p className="text-slate-500 text-xs mb-0.5">Provider</p>
+            <p className="text-slate-900 font-semibold">{providerName}</p>
           </div>
 
           {/* Warning content */}
           <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 mb-4">
-            <p className="text-slate-300 text-sm leading-relaxed">{warningContent}</p>
+            <p className="text-slate-700 text-sm leading-relaxed">{warningContent}</p>
           </div>
 
           {/* FCA disclaimer */}
@@ -65,7 +65,7 @@ export default function CreditScoreWarning({
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all font-medium text-sm"
+              className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-100 text-slate-900 py-3 rounded-lg transition-all font-medium text-sm"
             >
               Keep Subscription
             </button>

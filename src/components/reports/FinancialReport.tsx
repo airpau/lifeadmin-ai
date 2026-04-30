@@ -99,6 +99,30 @@ const SAMPLE_ANNUAL: AnnualReportData = {
   profileCompleteness: 100,
   profileCompletenessNum: 100,
   moneyRecoveryScore: 847,
+  // v2 sample fields
+  projectedAnnualSpend: 17220,
+  projectedAnnualIncome: 39600,
+  savingsRateByMonth: [
+    { month: '2026-01', monthLabel: 'Jan', rate: 0.547 },
+    { month: '2026-02', monthLabel: 'Feb', rate: 0.569 },
+    { month: '2026-03', monthLabel: 'Mar', rate: 0.553 },
+    { month: '2026-04', monthLabel: 'Apr', rate: 0.597 },
+    { month: '2026-05', monthLabel: 'May', rate: 0.497 },
+    { month: '2026-06', monthLabel: 'Jun', rate: 0.594 },
+    { month: '2026-07', monthLabel: 'Jul', rate: 0.516 },
+    { month: '2026-08', monthLabel: 'Aug', rate: 0.538 },
+    { month: '2026-09', monthLabel: 'Sep', rate: 0.578 },
+    { month: '2026-10', monthLabel: 'Oct', rate: 0.582 },
+    { month: '2026-11', monthLabel: 'Nov', rate: 0.513 },
+    { month: '2026-12', monthLabel: 'Dec', rate: 0.481 },
+  ],
+  yoy: {
+    previousIncome: 36400,
+    previousSpend: 18200,
+    incomeDeltaPct: 8.2,
+    spendDeltaPct: -7.1,
+    netDeltaPct: 23.6,
+  },
 };
 
 /* ------------------------------------------------------------------ */

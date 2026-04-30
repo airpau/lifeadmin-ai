@@ -7,10 +7,21 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
-import { Mail, Lock, User, Phone, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, User, Phone, CheckCircle2 } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
 import { capture } from '@/lib/posthog';
+import { MarkNav } from '@/app/blog/_shared';
+import '../../(marketing)/styles.css';
+import '../auth.css';
+
+// Password strength helpers — used to drive the live checklist below the
+// password field. Same rules Supabase will enforce server-side so the
+// user gets immediate feedback instead of a post-submit bounce.
+const PW_RULES = [
+  { id: 'length', label: 'At least 8 characters', test: (v: string) => v.length >= 8 },
+  { id: 'letter', label: 'Contains a letter', test: (v: string) => /[A-Za-z]/.test(v) },
+  { id: 'number', label: 'Contains a number', test: (v: string) => /\d/.test(v) },
+] as const;
 
 export default function SignupPage() {
   const [firstName, setFirstName] = useState('');
@@ -18,23 +29,46 @@ export default function SignupPage() {
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [verifyMode, setVerifyMode] = useState(false);
+
+  const passedRules = PW_RULES.filter((r) => r.test(password));
+  const passwordValid = passedRules.length === PW_RULES.length;
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
   const rawRedirect = searchParams.get('redirect');
-  const redirectTo = rawRedirect?.startsWith('/') && !rawRedirect.startsWith('//')
+  let redirectTo = rawRedirect?.startsWith('/') && !rawRedirect.startsWith('//')
     ? rawRedirect
     : null;
+
+  // Homepage "Sign up free to open the full draft" flow — carry the
+  // demo form intent straight into the dispute composer so the user
+  // doesn't re-type what they just described. See HeroDemo in
+  // src/app/preview/homepage/page.tsx for the source of these params.
+  if (!redirectTo && searchParams.get('from') === 'homepage_demo') {
+    const t = searchParams.get('type');
+    const iss = searchParams.get('issue');
+    const params = new URLSearchParams({ new: '1' });
+    if (t) params.set('type', t);
+    if (iss) params.set('issue', iss);
+    redirectTo = `/dashboard/complaints?${params.toString()}`;
+  }
 
   useEffect(() => {
     if (WAITLIST_MODE) {
       router.replace('/');
       return;
     }
-    // Redirect to dashboard if already logged in
+    // Redirect to dashboard if already logged in. Pending OAuth consent
+    // (stashed before the Google redirect) is drained in the dashboard
+    // layout — we deliberately don't drain here because this branch also
+    // fires for users who are just revisiting /auth/signup in a new tab,
+    // and at that point we can't tell whether the pending blob belongs
+    // to them or to an abandoned signup on the same origin.
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) router.replace(redirectTo || '/dashboard');
     });
@@ -42,7 +76,29 @@ export default function SignupPage() {
   }, [searchParams, router]);
 
   const handleGoogleSignup = async () => {
+    // Same consent gate as the email/password path — don't start the
+    // OAuth redirect without explicit T&Cs acceptance, otherwise we'd
+    // end up with Google accounts that skipped the checkbox entirely.
+    if (!termsAccepted) {
+      setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
     try {
+      // Stash consent choices in sessionStorage so they're tab-scoped
+      // (avoids leaking onto a different user who later signs in on a
+      // shared browser — localStorage would persist across tab lifetimes).
+      // The dashboard layout drains this onto user_metadata once the
+      // OAuth callback establishes a session, but only for users who
+      // themselves were just created (server-side created_at check),
+      // and only deletes the blob after a confirmed successful write.
+      sessionStorage.setItem(
+        'pb_pending_consent',
+        JSON.stringify({
+          terms_accepted_at: new Date().toISOString(),
+          marketing_opt_in: marketingOptIn,
+          created_at: Date.now(),
+        })
+      );
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -78,6 +134,18 @@ export default function SignupPage() {
       }
     }
 
+    if (!passwordValid) {
+      setError('Password must be at least 8 characters and include a letter and a number.');
+      setLoading(false);
+      return;
+    }
+
+    if (!termsAccepted) {
+      setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      setLoading(false);
+      return;
+    }
+
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
 
     try {
@@ -90,6 +158,8 @@ export default function SignupPage() {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
             mobile_number: mobile.trim() || null,
+            terms_accepted_at: new Date().toISOString(),
+            marketing_opt_in: marketingOptIn,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
@@ -157,11 +227,12 @@ export default function SignupPage() {
           localStorage.removeItem('pb_ref');
         }
 
-        // Founding member: first 25 signups get Pro free for 30 days
-        fetch('/api/founding-member', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        }).catch(() => {});
+        // Auto-trial removed (CLAUDE.md: "we don't grant trials
+        // automatically on signup" — auto-trial caused silent downgrades
+        // at expiry and meant tier gating was untestable). Users now
+        // start on Free and explicitly upgrade via the pricing page.
+        // The /api/founding-member endpoint still exists for admin-
+        // initiated trial grants but is no longer called from signup.
 
         // Fire Awin S2S lead tracking — must be awaited before navigation
         const awinRes = await fetch('/api/awin/signup', {
@@ -184,9 +255,12 @@ export default function SignupPage() {
         if (awinAwc) sessionStorage.setItem('awin_awc', awinAwc);
         sessionStorage.setItem('awin_ref', `signup-${data.user!.id}`);
 
+        // Fresh signups land on the onboarding wizard (Connect bank → Scan
+        // inbox → First win). Users who signed up via a ?redirect= param
+        // get sent to that target instead so deep-links still work.
         const destination = redirectTo
           ? `${redirectTo}${redirectTo.includes('?') ? '&' : '?'}signup=1`
-          : '/dashboard?signup=1';
+          : '/onboarding?signup=1';
         router.push(destination);
         router.refresh();
       } else {
@@ -201,177 +275,213 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-navy-950 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 mb-4">
-            <Image src="/logo.png" alt="Paybacker" width={36} height={36} className="rounded-lg" />
-            <span className="text-2xl font-bold text-white">
-              Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span>
-            </span>
+    <div className="m-land-root">
+      <MarkNav />
+      <main className="auth-shell">
+        <div className="auth-wrap">
+          <Link href="/" className="auth-brand">
+            <span className="pay">Pay</span>
+            <span className="backer">backer</span>
           </Link>
-          <h1 className="text-3xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Create your account</h1>
-          <p className="text-slate-400">Start getting your money back today</p>
-        </div>
 
-        {/* Signup Form */}
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-8 shadow-2xl">
-          {verifyMode ? (
-            <div className="text-center py-6">
-              <div className="bg-green-500/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle2 className="h-8 w-8 text-green-500" />
-              </div>
-              <h2 className="text-xl font-bold text-white mb-2">Check your email</h2>
-              <p className="text-slate-400 text-sm mb-6">
-                We sent a confirmation link to <span className="text-white font-medium">{email}</span>.
-                Click it to activate your account.
-              </p>
-              <Link href="/auth/login" className="text-mint-400 hover:text-mint-300 text-sm font-medium">
-                Back to sign in
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* AU-007: Continue with Google */}
-              <button
-                type="button"
-                onClick={handleGoogleSignup}
-                className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-900 font-semibold py-3 rounded-xl transition-all"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
-                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                </svg>
-                Continue with Google
-              </button>
+          <div className="auth-head">
+            <h1>Create your account</h1>
+            <p>Start getting your money back today.</p>
+          </div>
 
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-navy-700"></div>
+          <div className="auth-card">
+            {verifyMode ? (
+              <div className="auth-sent">
+                <div className="icon">
+                  <CheckCircle2 className="h-7 w-7" />
                 </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-navy-900 text-slate-500">Or continue with email</span>
+                <h3>Check your email</h3>
+                <p>
+                  We sent a confirmation link to <strong>{email}</strong>. Click
+                  it to activate your account.
+                </p>
+                <Link className="back" href="/auth/login">Back to sign in</Link>
+              </div>
+            ) : (
+              <>
+                {/* Consent gate — sits above both signup paths so Google
+                    OAuth and email/password both respect the same T&Cs
+                    checkbox. Without this, Google skipped consent entirely
+                    and `terms_accepted_at` only landed on email users. */}
+                <div className="consent">
+                  <label className="consent__row">
+                    <input
+                      type="checkbox"
+                      checked={termsAccepted}
+                      onChange={(e) => setTermsAccepted(e.target.checked)}
+                    />
+                    <span>
+                      I agree to the{' '}
+                      <Link href="/terms-of-service">Terms of Service</Link>
+                      {' '}and{' '}
+                      <Link href="/privacy-policy">Privacy Policy</Link>.
+                    </span>
+                  </label>
+                  <label className="consent__row consent__row--optional">
+                    <input
+                      type="checkbox"
+                      checked={marketingOptIn}
+                      onChange={(e) => setMarketingOptIn(e.target.checked)}
+                    />
+                    <span>
+                      Send me the Paybacker newsletter — savings tips and
+                      product updates (optional, unsubscribe anytime).
+                    </span>
+                  </label>
                 </div>
-              </div>
 
-          <form onSubmit={handleSignup} className="space-y-4">
-            {/* First + Last name row */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">First name *</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                  <input
-                    type="text"
-                    required
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full pl-9 pr-3 py-3 bg-navy-950 border border-navy-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-                    placeholder="Paul"
-                  />
+                <button
+                  type="button"
+                  onClick={handleGoogleSignup}
+                  className="oauth-btn"
+                  disabled={!termsAccepted}
+                  aria-disabled={!termsAccepted}
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  Continue with Google
+                </button>
+
+                <div className="oauth-divider">
+                  <span>Or continue with email</span>
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Last name *</label>
-                <input
-                  type="text"
-                  required
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  className="w-full px-3 py-3 bg-navy-950 border border-navy-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-                  placeholder="Smith"
-                />
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Email address *</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-9 pr-4 py-3 bg-navy-950 border border-navy-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-                  placeholder="you@example.com"
-                />
-              </div>
-            </div>
+                <form onSubmit={handleSignup}>
+                  <div className="field-row">
+                    <div className="field">
+                      <label htmlFor="first-name">First name</label>
+                      <div className="field-control">
+                        <User className="lead h-4 w-4" aria-hidden="true" />
+                        <input
+                          id="first-name"
+                          type="text"
+                          required
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          placeholder="Paul"
+                          autoComplete="given-name"
+                        />
+                      </div>
+                    </div>
+                    <div className="field">
+                      <label htmlFor="last-name">Last name</label>
+                      <div className="field-control">
+                        <input
+                          id="last-name"
+                          type="text"
+                          required
+                          value={lastName}
+                          onChange={(e) => setLastName(e.target.value)}
+                          placeholder="Smith"
+                          autoComplete="family-name"
+                          className="no-icon"
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Mobile number
-                <span className="text-slate-500 font-normal ml-1">(optional)</span>
-              </label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                <input
-                  type="tel"
-                  value={mobile}
-                  onChange={(e) => setMobile(e.target.value)}
-                  className="w-full pl-9 pr-4 py-3 bg-navy-950 border border-navy-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-                  placeholder="+44 7700 900000"
-                />
-              </div>
-            </div>
+                  <div className="field">
+                    <label htmlFor="signup-email">Email address</label>
+                    <div className="field-control">
+                      <Mail className="lead h-4 w-4" aria-hidden="true" />
+                      <input
+                        id="signup-email"
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        autoComplete="email"
+                      />
+                    </div>
+                  </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Password *</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                <input
-                  type="password"
-                  required
-                  minLength={8}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-4 py-3 bg-navy-950 border border-navy-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-                  placeholder="••••••••"
-                />
-              </div>
-              <p className="text-xs text-slate-500 mt-1">Minimum 8 characters</p>
-            </div>
+                  <div className="field">
+                    <label htmlFor="signup-mobile">
+                      Mobile number <span className="optional">(optional)</span>
+                    </label>
+                    <div className="field-control">
+                      <Phone className="lead h-4 w-4" aria-hidden="true" />
+                      <input
+                        id="signup-mobile"
+                        type="tel"
+                        inputMode="tel"
+                        value={mobile}
+                        onChange={(e) => setMobile(e.target.value)}
+                        placeholder="+44 7700 900000"
+                        autoComplete="tel"
+                      />
+                    </div>
+                  </div>
 
-            {error && (
-              <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                {error}
-              </div>
+                  <div className="field">
+                    <label htmlFor="signup-password">Password</label>
+                    <div className="field-control">
+                      <Lock className="lead h-4 w-4" aria-hidden="true" />
+                      <input
+                        id="signup-password"
+                        type="password"
+                        required
+                        minLength={8}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        aria-describedby="password-requirements"
+                      />
+                    </div>
+                    <ul
+                      id="password-requirements"
+                      className={`pw-checklist ${password.length === 0 ? 'is-idle' : ''}`}
+                      aria-live="polite"
+                    >
+                      {PW_RULES.map((rule) => {
+                        const ok = rule.test(password);
+                        return (
+                          <li key={rule.id} className={ok ? 'ok' : 'todo'}>
+                            <span className="pw-checklist__mark" aria-hidden="true">
+                              {ok ? '✓' : '○'}
+                            </span>
+                            {rule.label}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+
+                  {error && <div className="form-error">{error}</div>}
+
+                  <button
+                    type="submit"
+                    disabled={loading || !termsAccepted}
+                    className="auth-submit"
+                  >
+                    {loading ? 'Creating account…' : 'Create account'}
+                  </button>
+                </form>
+
+                <div className="auth-foot">
+                  Already have an account?{' '}
+                  <Link
+                    href={redirectTo ? `/auth/login?redirect=${encodeURIComponent(redirectTo)}` : '/auth/login'}
+                  >
+                    Sign in
+                  </Link>
+                </div>
+              </>
             )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Creating account...' : 'Create account'}
-            </button>
-
-          <div className="mt-6 text-center">
-            <p className="text-slate-400 text-sm">
-              Already have an account?{' '}
-              <Link
-                href={redirectTo ? `/auth/login?redirect=${encodeURIComponent(redirectTo)}` : '/auth/login'}
-                className="text-mint-400 hover:text-mint-300 font-medium"
-              >
-                Sign in
-              </Link>
-            </p>
           </div>
-
-          <div className="mt-6 pt-6 border-t border-navy-700/50">
-            <p className="text-xs text-slate-500 text-center">
-              By creating an account, you agree to our Terms of Service and Privacy Policy
-            </p>
-          </div>
-          </form>
-            </div>
-          )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

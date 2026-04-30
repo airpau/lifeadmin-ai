@@ -243,15 +243,6 @@ export default function WhatsAppSettingsPage() {
         </div>
       )}
 
-      {/* Marketing-template opt-in. Separate from the channel opt-in
-          because Meta treats marketing as a distinct consent category.
-          Five of our approved templates are MARKETING (welcome,
-          alert_renewal, morning_summary, savings_goal_milestone,
-          recovery_total_weekly). Without this consent the dispatcher
-          skips them. UTILITY templates (price hikes, dispute replies,
-          unusual charges, etc.) send regardless. */}
-      {linked && <MarketingOptInCard />}
-
       {!linked && (
         <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-4">
           <h2 className="font-semibold text-slate-900 mb-1">Connect your WhatsApp</h2>
@@ -324,97 +315,6 @@ export default function WhatsAppSettingsPage() {
           By connecting you agree to receive Pocket Agent messages on this number — reply <code>STOP</code> at any time to opt out.
         </p>
       </div>
-    </div>
-  );
-}
-
-/**
- * MarketingOptInCard — separate consent for MARKETING-category templates.
- *
- * Why a dedicated card and not a generic toggle?
- *   Meta's commerce policy requires explicit, demonstrable consent for
- *   marketing templates separate from transactional / service consent.
- *   We persist the consent moment as a timestamp on
- *   whatsapp_sessions.marketing_opt_in_at — that's the audit trail if
- *   Meta ever queries our WABA quality rating.
- *
- *   We default OFF and label the cadence (weekly digest, ~5/yr lifecycle)
- *   honestly so the user knows what they're enabling. The dispatcher's
- *   24h frequency cap means even if they enable it they'll never get
- *   more than 1 marketing template per day from us.
- */
-function MarketingOptInCard() {
-  const [optedIn, setOptedIn] = useState<boolean | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/whatsapp/marketing-opt-in', { credentials: 'include', cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (!cancelled && d) setOptedIn(!!d.optedIn); })
-      .catch(() => { if (!cancelled) setOptedIn(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  const toggle = async (next: boolean) => {
-    setSaving(true);
-    setErr(null);
-    try {
-      const r = await fetch('/api/whatsapp/marketing-opt-in', {
-        method: next ? 'POST' : 'DELETE',
-        credentials: 'include',
-      });
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}));
-        throw new Error(body.error || `Failed (${r.status})`);
-      }
-      setOptedIn(next);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Could not save preference');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (optedIn === null) {
-    return (
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-4 flex items-center gap-2 text-sm text-slate-500">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading preferences…
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-4">
-      <h2 className="font-semibold text-slate-900 mb-1">Weekly summaries & lifecycle nudges</h2>
-      <p className="text-sm text-slate-600 mb-4">
-        Get the weekly recovery digest, monthly contract-renewal reminders, savings-goal milestones and the welcome message on WhatsApp. Off by default. We never send more than one of these per day.
-      </p>
-      <p className="text-xs text-slate-500 mb-4">
-        Time-sensitive alerts — price hikes, dispute replies, unusual charges, money recovered, complaint letters — are NOT covered by this toggle and send on the channel you choose, regardless of this setting.
-      </p>
-
-      <label className="flex items-start gap-3 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={optedIn}
-          disabled={saving}
-          onChange={(e) => toggle(e.target.checked)}
-          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-        />
-        <span className="text-sm text-slate-700">
-          {optedIn
-            ? 'On — you\'ll get weekly summaries and lifecycle nudges on WhatsApp.'
-            : 'Send me weekly summaries and lifecycle nudges on WhatsApp.'}
-        </span>
-      </label>
-
-      {err && (
-        <p className="mt-3 text-xs text-red-600 flex items-start gap-1">
-          <AlertCircle className="h-3.5 w-3.5 mt-0.5" /> {err}
-        </p>
-      )}
     </div>
   );
 }

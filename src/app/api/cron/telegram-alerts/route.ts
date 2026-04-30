@@ -150,11 +150,6 @@ export async function GET(request: NextRequest) {
             session,
             alertType: 'price_increase',
             detectedIssueId: issue.id,
-            // Pass supabase so the WhatsApp branch can apply the
-            // service-window fallback + marketing gate. Without it,
-            // every send would burn a marketing-rate template even
-            // when the user is actively chatting (£0 alternative).
-            supabase,
             telegram: { title, detail, recommendation, amount_impact: annualImpact },
             whatsappVars: {
               merchant: alert.merchant_name ?? 'A provider',
@@ -264,7 +259,6 @@ export async function GET(request: NextRequest) {
             session,
             alertType: 'contract_expiring',
             detectedIssueId: issue.id,
-            supabase,
             telegram: { title, detail, recommendation, amount_impact: annualCost },
             whatsappVars: {
               service: contract.provider_name,
@@ -431,7 +425,6 @@ export async function GET(request: NextRequest) {
         session,
         alertType: 'dispute_followup',
         detectedIssueId: issue.id,
-        supabase,
         telegram: {
           title: followUpText.title,
           detail: followUpText.detail,
@@ -555,7 +548,6 @@ export async function GET(request: NextRequest) {
           session,
           alertType: 'subscription_renewing',
           detectedIssueId: issue.id,
-          supabase,
           telegram: { title, detail, recommendation },
           whatsappVars: {
             service: sub.provider_name,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { resend, FROM_EMAIL } from '@/lib/resend';
+import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
 import Anthropic from '@anthropic-ai/sdk';
 
 /**
@@ -18,7 +18,13 @@ import Anthropic from '@anthropic-ai/sdk';
  */
 
 const AGENT_ID = 'riley-support-agent';
-const TICKET_REPLY_TO = 'support@paybacker.co.uk';
+// Routes to mail.paybacker.co.uk via REPLY_TO from src/lib/resend.ts (the apex
+// paybacker.co.uk has receiving=disabled in Resend; user replies were silently
+// bouncing pre-2026-04-26). REPLY_TO is the canonical address used everywhere.
+const TICKET_REPLY_TO = REPLY_TO;
+// Don't fire two Telegram escalation alerts on the same ticket within this
+// window — multi-turn re-engagement should NOT trigger fresh alerts.
+const ESCALATION_ALERT_DEDUPE_MIN = 60;
 
 export const maxDuration = 300;
 export const runtime = 'nodejs';
@@ -125,10 +131,38 @@ async function searchResolutions(supabase: ReturnType<typeof getAdmin>, category
 // ─────────────────────────────────────────────
 // Telegram alert to founder on escalation
 // ─────────────────────────────────────────────
-async function alertFounder(ticketRef: string, subject: string, fixType: string, urgency: string, summary: string) {
+async function alertFounder(
+  supabase: ReturnType<typeof getAdmin>,
+  ticketRef: string,
+  subject: string,
+  fixType: string,
+  urgency: string,
+  summary: string,
+) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
   if (!token || !chatId) return;
+
+  // DEDUPE: skip if we Telegram-alerted on this same ticket within the last
+  // ESCALATION_ALERT_DEDUPE_MIN minutes. Multi-turn user replies that re-open
+  // a ticket should not trigger a fresh alert (that's noise).
+  const cutoff = new Date(Date.now() - ESCALATION_ALERT_DEDUPE_MIN * 60_000).toISOString();
+  const { data: recent } = await supabase
+    .from('business_log')
+    .select('id, created_at')
+    .eq('created_by', AGENT_ID)
+    .eq('category', 'finding')
+    .ilike('title', `%${ticketRef}%`)
+    .gte('created_at', cutoff)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (recent && recent.length > 0) {
+    const ageMin = Math.floor((Date.now() - new Date(recent[0].created_at).getTime()) / 60_000);
+    console.log(
+      `[${AGENT_ID}] Suppressing Telegram alert for ${ticketRef} — already alerted ${ageMin}min ago (dedupe ${ESCALATION_ALERT_DEDUPE_MIN}min).`,
+    );
+    return;
+  }
 
   const urgencyEmoji: Record<string, string> = {
     critical: '🔴',
@@ -227,10 +261,12 @@ export async function GET(request: NextRequest) {
   let ticketsResolved = 0;
 
   try {
-    // 1. Fetch open tickets with no agent assignment
+    // 1. Fetch open tickets with no agent assignment.
+    // source + metadata included so Riley can branch reply channel
+    // (telegram → DM via Telegram bot; otherwise → email).
     const { data: openTickets, error: ticketsError } = await supabase
       .from('support_tickets')
-      .select('id, user_id, subject, description, ticket_number, priority, category')
+      .select('id, user_id, subject, description, ticket_number, priority, category, source, metadata')
       .eq('status', 'open')
       .is('assigned_to', null)
       .order('created_at', { ascending: true })
@@ -258,13 +294,15 @@ export async function GET(request: NextRequest) {
 
       if (!messages || messages.length === 0) continue;
 
-      // GUARDRAIL: Don't double-reply — skip if last message is from an agent
+      // GUARDRAIL: Don't double-reply — only proceed when the latest message in the
+      // conversation is from the user (or the system seed message). If Riley already
+      // replied as the most recent message, skip until the user replies again.
+      // (Removed 2026-04-26: the previous "if any agent has ever replied, skip"
+      // hasAgentReply guard which made Riley single-touch and broke multi-turn after
+      // user replies came back through the Resend inbound webhook → status reset to
+      // 'open'. This single guard on the LATEST message is sufficient.)
       const lastMessage = messages[messages.length - 1];
       if (lastMessage.sender_type !== 'user' && lastMessage.sender_type !== 'system') continue;
-
-      // GUARDRAIL: Don't reply if an agent has already responded
-      const hasAgentReply = messages.some(m => m.sender_type === 'agent');
-      if (hasAgentReply) continue;
 
       // 3. Get user info
       const ticketRef = ticket.ticket_number || ticket.id.slice(0, 8).toUpperCase();
@@ -408,8 +446,65 @@ export async function GET(request: NextRequest) {
         message: reply,
       });
 
-      // 10. Email Riley's response to the user
-      if (userEmail) {
+      // 10a. If the ticket originated from Telegram, DM Riley's reply to the user via the
+      // Telegram bot. Falls through to email as a belt-and-braces if Telegram delivery fails.
+      const ticketSource = (ticket as { source?: string }).source as string | undefined;
+      const ticketMetadata = (ticket as { metadata?: Record<string, unknown> }).metadata || {};
+      const telegramChatId = (ticketMetadata as Record<string, unknown>).telegram_chat_id as
+        | number
+        | string
+        | null
+        | undefined;
+      let telegramDelivered = false;
+      if (ticketSource === 'telegram' && telegramChatId) {
+        try {
+          const tgToken = process.env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_USER_BOT_TOKEN;
+          if (tgToken) {
+            // Telegram caps message text at 4096 chars; chunk the reply if longer.
+            const intro = `🤝 *Riley · Paybacker Support* (ticket ${ticketRef})\n\n`;
+            const fullText = intro + reply;
+            const chunks: string[] = [];
+            for (let i = 0; i < fullText.length; i += 3800) {
+              chunks.push(fullText.slice(i, i + 3800));
+            }
+            for (const chunk of chunks) {
+              const res = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: Number(telegramChatId),
+                  text: chunk,
+                  parse_mode: 'Markdown',
+                  disable_web_page_preview: true,
+                }),
+              });
+              if (!res.ok) {
+                // Retry once without Markdown in case of formatting issues
+                const retry = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: Number(telegramChatId),
+                    text: chunk,
+                  }),
+                });
+                if (!retry.ok) {
+                  throw new Error(`Telegram send failed: ${res.status}`);
+                }
+              }
+            }
+            telegramDelivered = true;
+          }
+        } catch (tgErr) {
+          console.error(
+            `[${AGENT_ID}] Telegram reply failed for ${ticketRef}, falling back to email:`,
+            tgErr,
+          );
+        }
+      }
+
+      // 10b. Email Riley's response to the user (skipped if Telegram already delivered).
+      if (userEmail && !telegramDelivered) {
         try {
           const htmlReply = reply
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -496,14 +591,41 @@ export async function GET(request: NextRequest) {
           console.error(`[${AGENT_ID}] Escalation email failed for ${ticketRef}:`, emailErr);
         }
 
-        // Telegram alert to founder
+        // Telegram alert to founder (deduped — won't re-alert within 60min on the same ticket)
         await alertFounder(
+          supabase,
           ticketRef,
           ticket.subject,
           escalationFixType,
           escalationUrgency,
           escalationSummary,
         );
+
+        // For code/database fixes, write a structured business_log entry so
+        // the bug-triager managed agent picks it up on its next 12h run and
+        // categorises with proposed-fix + risk-of-fix. This connects Riley's
+        // escalation to the existing observe-and-recommend pipeline that
+        // ends in the builder agent (on-demand, founder-approved) opening
+        // a PR. No autonomous code changes.
+        if (escalationFixType === 'code_fix' || escalationFixType === 'database_fix') {
+          try {
+            await supabase.from('business_log').insert({
+              category: escalationUrgency === 'critical' ? 'critical' : 'finding',
+              title: `Riley escalation needs ${escalationFixType.replace('_', ' ')} — ${ticketRef}: ${ticket.subject}`,
+              content:
+                `User: ${userEmail || 'unknown'}\n` +
+                `Urgency: ${escalationUrgency}\n` +
+                `Fix type: ${escalationFixType}\n\n` +
+                `What needs doing:\n${escalationSummary}\n\n` +
+                `Original report:\n${(messages?.[0]?.message || ticket.description || '').slice(0, 1500)}\n\n` +
+                `Riley's response to user:\n${reply.slice(0, 800)}\n\n` +
+                `Ticket admin link: https://paybacker.co.uk/dashboard/admin`,
+              created_by: AGENT_ID,
+            });
+          } catch (logErr) {
+            console.warn(`[${AGENT_ID}] business_log escalation insert failed:`, logErr);
+          }
+        }
       } else {
         ticketsResolved++;
       }

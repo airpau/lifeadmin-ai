@@ -163,7 +163,13 @@ function UpgradeInner() {
       const res = await fetch('/api/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priceId, billingCycle: cycle }),
+        // `confirmed: true` is required by the route — it's the
+        // signal that the user has seen the prorated breakdown +
+        // card on file (this very page) and clicked Confirm. Any
+        // POST without this flag returns 409 redirecting back to
+        // /upgrade, so a legacy / cached client cannot silently
+        // charge the saved card.
+        body: JSON.stringify({ priceId, billingCycle: cycle, confirmed: true }),
       });
       const text = await res.text();
       let data: {

@@ -217,6 +217,7 @@ type TxRow = {
   user_category: string | null
   income_type: string | null
   is_recurring: boolean | null
+  is_pending: boolean | null
 }
 
 async function fetchAllTransactions(
@@ -225,15 +226,26 @@ async function fetchAllTransactions(
   accountId: string,
   sinceTimestamp: string | null
 ): Promise<TxRow[]> {
+  // Pending transactions are included so the sheet stays current with the
+  // dashboard. Previously this filtered to is_pending=false, which left
+  // multi-day gaps any time recent activity was unsettled (e.g. a card
+  // payment posted at 03:00 stays pending for 24-72h until the bank
+  // settles). Users were seeing "latest entry: 24 April" on 27 April
+  // because all of 25-27's activity was still in pending state.
+  //
+  // The Type column tags pending rows so the user can distinguish them
+  // from settled. The dedup-by-transaction_id in the calling export
+  // collapses the same row when it later appears as settled — accepting
+  // that the Type label may stay "Pending" until a full re-export.
   const all: TxRow[] = []
   let from = 0
   while (true) {
     let q = supabase
       .from('bank_transactions')
-      .select('transaction_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring')
+      .select('transaction_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring, is_pending')
       .eq('user_id', userId)
       .eq('account_id', accountId)
-      .eq('is_pending', false)
+      .is('deleted_at', null)
       .order('timestamp', { ascending: true })
       .range(from, from + DB_PAGE_SIZE - 1)
     if (sinceTimestamp) q = q.gte('timestamp', sinceTimestamp)
@@ -261,7 +273,11 @@ function formatTransaction(tx: TxRow): (string | number)[] {
   const merchant = tx.merchant_name ?? ''
   const amount = Number(tx.amount.toFixed(2))
   const category = tx.user_category ?? tx.category ?? ''
-  const type = tx.income_type ?? (tx.amount > 0 ? 'Income' : 'Expense')
+  // Pending transactions are flagged in the Type column so the user can
+  // distinguish settled vs unsettled at a glance. The amount sign still
+  // tells them income/expense, the prefix tells them it's not final yet.
+  const baseType = tx.income_type ?? (tx.amount > 0 ? 'Income' : 'Expense')
+  const type = tx.is_pending ? `Pending ${baseType.toLowerCase()}` : baseType
   const recurring = tx.is_recurring ? 'Yes' : 'No'
   const ref = tx.transaction_id
 

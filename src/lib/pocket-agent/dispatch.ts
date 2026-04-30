@@ -14,26 +14,9 @@
  * Telegram path: existing sendProactiveAlert (rich Markdown +
  * inline buttons).
  *
- * WhatsApp path: smart routing —
- *   1. UTILITY templates always send freely (price hike, dispute
- *      reply, money recovered, unusual charge, budget alert).
- *   2. MARKETING templates (alert_renewal etc — Meta re-categorised
- *      these on approval 2026-04-29) check three guards:
- *        a) Inside the 24h customer-service window? → send free-form
- *           text instead of the template (£0, no opt-in required).
- *        b) Outside the window AND user has marketing_opt_in_at? →
- *           send template, stamp last_marketing_template_at, respect
- *           the 24h frequency cap.
- *        c) Outside the window AND no opt-in? → skip silently.
- *
- *   This matches the rules the unified notification dispatcher
- *   enforces in src/lib/notifications/dispatch.ts. Both code paths
- *   converge on the same gate so a Pocket Agent alert and a generic
- *   notification can never together breach the 1-marketing/24h cap.
- *
- * Templates in src/lib/whatsapp/template-registry.ts are pre-approved
- * by Meta — that file is the single source of truth for category +
- * SID + variable order.
+ * WhatsApp path: Twilio template send via the registered template
+ * matching the alert type. Templates in
+ * src/lib/whatsapp/template-registry.ts are pre-approved by Meta.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -43,15 +26,6 @@ import { createClient } from '@supabase/supabase-js';
 // produce. We only call .from() so the loose shape is fine.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminClient = any;
-
-/**
- * 24h window in milliseconds. Inside this window WhatsApp lets us
- * send free-form text with no template, no marketing fee, no opt-in
- * requirement. Outside, every outbound MUST be a Meta-approved
- * template.
- */
-const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const MARKETING_FREQUENCY_CAP_MS = 24 * 60 * 60 * 1000;
 
 export type AlertType =
   | 'price_increase'
@@ -141,19 +115,8 @@ export async function dispatchPocketAgentAlert(args: {
   /** WhatsApp template variables — keyed by var name in the
    * template registry. Missing vars throw on send. */
   whatsappVars?: Record<string, string | number>;
-  /**
-   * Optional supabase admin client. When provided, the WhatsApp
-   * branch checks the session's last_message_at + marketing_opt_in_at
-   * + last_marketing_template_at to apply the service-window
-   * fallback and the marketing gate. Callers that already hold an
-   * admin client (every cron does) should pass it. Without it, the
-   * WhatsApp branch falls back to the legacy "always send template"
-   * behaviour — safe but pays the marketing rate when it didn't
-   * have to.
-   */
-  supabase?: AdminClient;
 }): Promise<DispatchResult> {
-  const { session, alertType, detectedIssueId, telegram, whatsappVars, supabase } = args;
+  const { session, alertType, detectedIssueId, telegram, whatsappVars } = args;
 
   if (session.channel === 'telegram') {
     if (!telegram) {
@@ -178,13 +141,13 @@ export async function dispatchPocketAgentAlert(args: {
     }
   }
 
-  // WhatsApp path — match alert type to the approved template, then
-  // apply the service-window fallback + marketing gate.
+  // WhatsApp path — match alert type to the approved template.
   if (session.channel === 'whatsapp') {
     if (!whatsappVars) {
       return { ok: false, channel: 'whatsapp', error: 'no whatsapp vars provided' };
     }
     try {
+      const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
       const templateName = templateForAlertType(alertType);
       if (!templateName) {
         return {
@@ -193,9 +156,12 @@ export async function dispatchPocketAgentAlert(args: {
           error: `no whatsapp template registered for alert type ${alertType}`,
         };
       }
-
+      // Send via the existing twilio-provider, which resolves the
+      // template SID from the registry (added 2026-04-28 fallback).
+      // Template parameters are positional — we get the template
+      // shape from the registry to order them correctly.
       const { TEMPLATES } = await import('@/lib/whatsapp/template-registry');
-      const tpl = (TEMPLATES as Record<string, { vars: readonly string[]; category: string }>)[templateName];
+      const tpl = (TEMPLATES as Record<string, { vars: readonly string[] }>)[templateName];
       const positional = tpl.vars.map((name) => {
         const v = whatsappVars[name];
         if (v === undefined) {
@@ -203,91 +169,11 @@ export async function dispatchPocketAgentAlert(args: {
         }
         return String(v);
       });
-
-      const isMarketing = tpl.category === 'MARKETING';
-
-      // Look up the session's window + opt-in state. We can only do
-      // this when the caller passed a supabase client — without it
-      // we fall back to the legacy template-only path, which is safe
-      // but pays marketing rates when it didn't have to.
-      let inWindow = false;
-      let hasMarketingOptIn = false;
-      let withinMarketingCap = false;
-      if (supabase) {
-        const { data: row } = await supabase
-          .from('whatsapp_sessions')
-          .select('last_message_at, marketing_opt_in_at, last_marketing_template_at')
-          .eq('user_id', session.user_id)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (row) {
-          if (row.last_message_at) {
-            inWindow = Date.now() - new Date(row.last_message_at).getTime() < SERVICE_WINDOW_MS;
-          }
-          hasMarketingOptIn = !!row.marketing_opt_in_at;
-          if (row.last_marketing_template_at) {
-            const since = Date.now() - new Date(row.last_marketing_template_at).getTime();
-            withinMarketingCap = since < MARKETING_FREQUENCY_CAP_MS;
-          }
-        }
-      }
-
-      // Service-window fast path: free-form text inside the 24h
-      // window. Costs nothing, no opt-in needed, no cap. Used for
-      // marketing AND utility templates when we're inside the window
-      // — the user gets a friendlier message AND we save the fee.
-      if (inWindow && supabase) {
-        const text = renderAlertText(alertType, whatsappVars);
-        if (text) {
-          const { sendWhatsAppText } = await import('@/lib/whatsapp');
-          const result = await sendWhatsAppText({
-            to: String(session.destination),
-            text,
-          });
-          return {
-            ok: true,
-            channel: 'whatsapp',
-            messageId: result.providerMessageId,
-          };
-        }
-        // No text renderer — fall through to template path.
-      }
-
-      // Marketing gate (template path, outside window).
-      if (isMarketing) {
-        if (!hasMarketingOptIn) {
-          return {
-            ok: false,
-            channel: 'whatsapp',
-            error: 'marketing opt-in required and 24h window expired',
-          };
-        }
-        if (withinMarketingCap) {
-          return {
-            ok: false,
-            channel: 'whatsapp',
-            error: 'marketing 24h frequency cap',
-          };
-        }
-      }
-
-      const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
       const result = await sendWhatsAppTemplate({
         to: String(session.destination),
         templateName,
         parameters: positional,
       });
-
-      // Stamp last_marketing_template_at so concurrent crons can't
-      // double-charge by both deciding the cap had elapsed.
-      if (isMarketing && supabase) {
-        await supabase
-          .from('whatsapp_sessions')
-          .update({ last_marketing_template_at: new Date().toISOString() })
-          .eq('user_id', session.user_id)
-          .eq('is_active', true);
-      }
-
       return { ok: true, channel: 'whatsapp', messageId: result.providerMessageId };
     } catch (e) {
       return { ok: false, channel: 'whatsapp', error: e instanceof Error ? e.message : String(e) };
@@ -295,64 +181,6 @@ export async function dispatchPocketAgentAlert(args: {
   }
 
   return { ok: false, channel: session.channel, error: 'unknown channel' };
-}
-
-/**
- * Render the alert as friendly free-form text — used inside the 24h
- * customer-service window when we don't need to burn a Meta template
- * to deliver the same content.
- *
- * Each branch consumes the same `whatsappVars` keys as the matching
- * template, so callers don't have to assemble the message twice.
- *
- * Returns null if we don't have a renderer for the alert type — the
- * dispatcher will fall through to the template path. Currently every
- * alert type has one.
- */
-function renderAlertText(
-  alertType: AlertType,
-  vars: Record<string, string | number>,
-): string | null {
-  const v = (k: string): string => String(vars[k] ?? '');
-  switch (alertType) {
-    case 'price_increase':
-      return (
-        `📈 Price hike spotted on *${v('merchant')}*.\n\n` +
-        `Old: ${v('old_price')} → New: ${v('new_price')}\n` +
-        `Effective from ${v('effective_date')}.\n\n` +
-        `Want me to draft a complaint or find a cheaper deal? Just reply.`
-      );
-    case 'contract_expiring':
-    case 'subscription_renewing':
-      return (
-        `⏰ Renewal coming up — *${v('service')}* in ${v('days_left')} days.\n\n` +
-        `You're paying ${v('monthly_cost')}/mo on this. Want me to compare cheaper deals or draft a cancellation? Reply for either.`
-      );
-    case 'unusual_charge':
-      return (
-        `⚠️ Unusual charge from *${v('merchant')}*.\n\n` +
-        `Charged: ${v('current_amount')}\n` +
-        `Your average: ${v('average_amount')} (${v('percent_higher')}% higher)\n\n` +
-        `Reply "dispute" if this looks wrong.`
-      );
-    case 'money_recovered':
-      return (
-        `💰 Refund received! ${v('amount')} from *${v('merchant')}*.\n\n` +
-        `Lifetime recovered through Paybacker: ${v('lifetime_total')}. Nice one.`
-      );
-    case 'dispute_followup':
-      return (
-        `📨 *${v('merchant')}* replied to your dispute.\n\n` +
-        `Summary: ${v('summary')}\n\n` +
-        `Full thread: ${v('thread_url')}`
-      );
-    case 'budget_overrun':
-      return (
-        `🟡 Budget watch — *${v('category')}* is at ${v('percent_used')}% with ${v('amount_left')} left until ${v('end_date')}.`
-      );
-    default:
-      return null;
-  }
 }
 
 /**
