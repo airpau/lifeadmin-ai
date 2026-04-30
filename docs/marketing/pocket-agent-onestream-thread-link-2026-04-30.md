@@ -130,6 +130,11 @@ demand", the engine MUST quote/extract from the linked email body,
 not infer from other context. See the corresponding fix PR for
 detail.
 
+Fix PR: #388 — adds `quote_email_from_thread` shared tool +
+"CITATION RULE — NON-NEGOTIABLE" preamble to both the Telegram and
+WhatsApp Pocket Agent system prompts, plus a `tsc`-time smoke test
+that fails if either surface drops the citation rule.
+
 ## Use cases this snippet supports
 
 - LinkedIn post #6 ("Four ways UK fintechs are using /v1/disputes")
