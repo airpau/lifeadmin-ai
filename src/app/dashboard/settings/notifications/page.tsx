@@ -48,6 +48,7 @@ interface Payload {
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
   timezone: string;
+  newsletter_opted_in: boolean;
 }
 
 const GROUP_LABELS: Record<EventRow['group'], { label: string; icon: any; blurb: string }> = {
@@ -165,6 +166,26 @@ export default function NotificationsSettingsPage() {
     }
   };
 
+  const setNewsletterOptIn = async (next: boolean) => {
+    setData((prev) => prev ? { ...prev, newsletter_opted_in: next } : prev);
+    try {
+      const res = await fetch('/api/notification-preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ newsletter_opted_in: next }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Update failed (${res.status})`);
+      }
+    } catch (e: any) {
+      // Roll back on failure so the UI reflects truth.
+      setData((prev) => prev ? { ...prev, newsletter_opted_in: !next } : prev);
+      setError(e?.message || 'Could not update newsletter preference');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -192,6 +213,50 @@ export default function NotificationsSettingsPage() {
       <p className="text-sm text-slate-500 mb-6">
         Pick where each kind of alert lands. Turn off the channels you don&apos;t want — leave Paybacker to reach you how you prefer.
       </p>
+
+      {/* Weekly newsletter opt-in — saved to user_metadata + profiles
+          on click (no Save button needed). The cron at Thu 11:00 UTC
+          reads from `newsletter_audience` view which gates on both. */}
+      <section className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-emerald-100 flex-shrink-0">
+            <Mail className="h-5 w-5 text-emerald-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Weekly newsletter</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Every Thursday at 11:00 UTC. UK consumer-rights wins, recent law changes, the Paybacker Index, and one quick action you can take that week.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={data.newsletter_opted_in}
+                onClick={() => setNewsletterOptIn(!data.newsletter_opted_in)}
+                className={[
+                  'relative inline-flex h-7 w-12 items-center rounded-full transition-colors flex-shrink-0',
+                  data.newsletter_opted_in ? 'bg-emerald-600' : 'bg-slate-300',
+                ].join(' ')}
+              >
+                <span
+                  className={[
+                    'inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform',
+                    data.newsletter_opted_in ? 'translate-x-6' : 'translate-x-1',
+                  ].join(' ')}
+                />
+                <span className="sr-only">Toggle weekly newsletter</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-2">
+              {data.newsletter_opted_in
+                ? "Subscribed. We'll never share your email and you can unsubscribe in one click from any newsletter."
+                : 'Not subscribed. Flip the switch to start receiving the Thursday newsletter.'}
+            </p>
+          </div>
+        </div>
+      </section>
 
       {/* Pocket Agent channel picker — telegram XOR whatsapp */}
       <section className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">

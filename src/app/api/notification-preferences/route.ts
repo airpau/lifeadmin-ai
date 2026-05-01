@@ -46,7 +46,7 @@ export async function GET() {
       .eq('user_id', user.id),
     supabase
       .from('profiles')
-      .select('quiet_hours_start, quiet_hours_end, notification_timezone')
+      .select('quiet_hours_start, quiet_hours_end, notification_timezone, newsletter_unsubscribed_at')
       .eq('id', user.id)
       .maybeSingle(),
     supabase
@@ -119,6 +119,13 @@ export async function GET() {
     quiet_hours_end: trimTimeOfDay(profileRes.data?.quiet_hours_end),
     timezone: profileRes.data?.notification_timezone ?? 'Europe/London',
     alerts_paused_until: alertPrefsRes.data?.alerts_paused_until ?? null,
+    // Newsletter (Thu 11:00 UTC) opt-in. Source of truth is
+    //   user_metadata.marketing_opt_in === true
+    //   AND profiles.newsletter_unsubscribed_at IS NULL.
+    // Either signal flipping off => unsubscribed.
+    newsletter_opted_in:
+      ((user.user_metadata as { marketing_opt_in?: boolean } | null)?.marketing_opt_in ?? false) === true
+      && !profileRes.data?.newsletter_unsubscribed_at,
   });
 }
 
@@ -174,6 +181,7 @@ interface PutBody {
   }>;
   quiet_hours_start?: string | null;
   quiet_hours_end?: string | null;
+  newsletter_opted_in?: boolean;
 }
 
 export async function PUT(request: Request) {
@@ -213,6 +221,27 @@ export async function PUT(request: Request) {
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
+    }
+  }
+
+  if (body.newsletter_opted_in !== undefined) {
+    // Two-write update: keep auth user_metadata.marketing_opt_in
+    // (source-of-truth for the signup-time consent record) and the
+    // profiles.newsletter_unsubscribed_at column (source-of-truth for
+    // post-signup opt-outs, also queried by /api/unsubscribe) in sync.
+    const optedIn = !!body.newsletter_opted_in;
+    const { error: metaErr } = await supabase.auth.updateUser({
+      data: { marketing_opt_in: optedIn },
+    });
+    if (metaErr) {
+      return NextResponse.json({ error: metaErr.message }, { status: 500 });
+    }
+    const { error: profileErr } = await supabase
+      .from('profiles')
+      .update({ newsletter_unsubscribed_at: optedIn ? null : new Date().toISOString() })
+      .eq('id', user.id);
+    if (profileErr) {
+      return NextResponse.json({ error: profileErr.message }, { status: 500 });
     }
   }
 
