@@ -48,9 +48,20 @@ import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
 import {
   fetchStatuteByUri,
   isLegislationDocAuthoritative,
-  isLegislationGovUkUrl,
   type LegislationDoc,
 } from '@/lib/legal-data/legislation-gov-uk';
+import { fetchContent, type GovUkContent } from '@/lib/legal-data/gov-uk-content';
+import {
+  fetchAtomRaw,
+  parseAtomFeed,
+  isProductionEnabled as findCaseLawEnabled,
+  type CaseLawHit,
+} from '@/lib/legal-data/find-case-law';
+import {
+  pickCanonicalSource,
+  SOURCE_LABEL,
+  type CanonicalSourceKind,
+} from '@/lib/legal-data/source-router';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -306,6 +317,102 @@ function verdictFromLegislationDoc(
   };
 }
 
+/**
+ * Authority gate for gov.uk content (CMA cases / regulator pubs).
+ * Same pattern as `isLegislationDocAuthoritative` — non-empty title +
+ * a matching base_path/identifier check. We require the ref's
+ * source_url to share its base_path with the fetched doc, otherwise
+ * we're verifying against an unrelated page.
+ */
+function isGovUkContentDocAuthoritative(
+  doc: GovUkContent | null | undefined,
+  ref: { source_url: string; law_name: string },
+): { authoritative: boolean; reason: string } {
+  if (!doc) return { authoritative: false, reason: 'doc:null' };
+  if (!doc.title || !doc.title.trim()) {
+    return { authoritative: false, reason: 'doc:no-title' };
+  }
+  if (!doc.body || !doc.body.trim()) {
+    return { authoritative: false, reason: 'doc:no-body' };
+  }
+  let refPath = '';
+  try {
+    refPath = new URL(ref.source_url).pathname;
+  } catch {
+    return { authoritative: false, reason: 'ref-url:malformed' };
+  }
+  if (refPath.replace(/\/$/, '') !== doc.base_path.replace(/\/$/, '')) {
+    return {
+      authoritative: false,
+      reason: `doc:path-mismatch(ref='${refPath}',doc='${doc.base_path}')`,
+    };
+  }
+  return { authoritative: true, reason: 'doc:path+title-match' };
+}
+
+function verdictFromGovUkContentDoc(
+  ref: LegalRefRow,
+  doc: GovUkContent,
+): PerplexityVerdict {
+  const titleMatches =
+    doc.title.trim().toLowerCase() === ref.law_name.trim().toLowerCase();
+  return {
+    valid: true,
+    current_url: doc.web_url,
+    superseded_by: null,
+    confidence: titleMatches ? 'high' : 'medium',
+    notes: [
+      `Verified against gov.uk Content API (document_type='${doc.document_type}').`,
+      titleMatches ? null : `Title differs: canonical='${doc.title}', stored='${ref.law_name}'.`,
+      doc.public_updated_at ? `Last updated: ${doc.public_updated_at}.` : null,
+      `Source: gov.uk (Crown Copyright, OGL v3.0).`,
+    ].filter(Boolean).join(' '),
+  };
+}
+
+function pickFindCaseLawMatch(
+  hits: CaseLawHit[],
+  ref: { source_url: string; law_name: string },
+): CaseLawHit | null {
+  if (!hits || hits.length === 0) return null;
+  // Prefer a URI exact match against the stored source_url.
+  const stripSlash = (u: string) => u.replace(/\/$/, '').toLowerCase();
+  const refUrl = stripSlash(ref.source_url);
+  const byUri = hits.find((h) => stripSlash(h.uri) === refUrl);
+  if (byUri) return byUri;
+  // Fall back to a fuzzy title match.
+  const refTitle = ref.law_name.trim().toLowerCase();
+  return (
+    hits.find((h) => h.title.trim().toLowerCase() === refTitle) ||
+    hits.find((h) =>
+      h.title.toLowerCase().includes(refTitle) ||
+      refTitle.includes(h.title.toLowerCase()),
+    ) ||
+    null
+  );
+}
+
+function verdictFromFindCaseLawHit(
+  ref: LegalRefRow,
+  hit: CaseLawHit,
+): PerplexityVerdict {
+  const titleMatches =
+    hit.title.trim().toLowerCase() === ref.law_name.trim().toLowerCase();
+  return {
+    valid: true,
+    current_url: hit.uri,
+    superseded_by: null,
+    confidence: titleMatches ? 'high' : 'medium',
+    notes: [
+      `Verified against Find Case Law (TNA) Atom feed.`,
+      hit.court ? `Court: ${hit.court}.` : null,
+      hit.publishedAt ? `Published: ${hit.publishedAt}.` : null,
+      titleMatches ? null : `Title differs: canonical='${hit.title}', stored='${ref.law_name}'.`,
+      `Source: caselaw.nationalarchives.gov.uk (Crown Copyright, OGL v3.0).`,
+    ].filter(Boolean).join(' '),
+  };
+}
+
 async function verifyOne(id: string, userId: string | null): Promise<VerifyResult> {
   const admin = getAdmin();
   const { data: ref, error } = await admin
@@ -325,15 +432,22 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
   // try the canonical fetcher FIRST and only fall back to Perplexity
   // when the fetch fails or returns no body.
   let verdict: PerplexityVerdict | null = null;
-  let verifierLabel: 'legislation-gov-uk' | 'perplexity-sonar-pro' = 'perplexity-sonar-pro';
-  if (isLegislationGovUkUrl((ref as LegalRefRow).source_url)) {
+  let verifierLabel:
+    | 'legislation-gov-uk'
+    | 'gov-uk-content'
+    | 'find-case-law'
+    | 'perplexity-sonar-pro' = 'perplexity-sonar-pro';
+
+  // Phase 5: pick the canonical source via the router, then dispatch to
+  // the matching first-party fetcher. Fall through to Perplexity on
+  // any non-authoritative result so the existing P1-#415 safety net
+  // still applies for every source.
+  const canonicalKind: CanonicalSourceKind = pickCanonicalSource(
+    (ref as LegalRefRow).source_url,
+  );
+
+  if (canonicalKind === 'legislation') {
     const doc = await fetchStatuteByUri((ref as LegalRefRow).source_url);
-    // We must NOT treat the canonical fetch as authoritative just because
-    // the XML parsed and had a title. If the URL targets a section but the
-    // parser didn't find that section, OR the URL targets a whole Act but
-    // the title doesn't match the stored law_name, we have to fall through
-    // to Perplexity — otherwise an unmatched fetch silently masquerades as
-    // "no_change" and never gets re-grounded. (Codex P1 #415)
     const auth = isLegislationDocAuthoritative(doc, ref as LegalRefRow);
     if (doc && auth.authoritative) {
       verdict = verdictFromLegislationDoc(ref as LegalRefRow, doc);
@@ -343,6 +457,40 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
         '[legal-refs/verify] legislation.gov.uk fetch not authoritative; falling back to Perplexity',
         { ref_id: id, source_url: (ref as LegalRefRow).source_url, reason: auth.reason },
       );
+    }
+  } else if (canonicalKind === 'gov-uk-content') {
+    const doc = await fetchContent((ref as LegalRefRow).source_url);
+    const auth = isGovUkContentDocAuthoritative(doc, ref as LegalRefRow);
+    if (doc && auth.authoritative) {
+      verdict = verdictFromGovUkContentDoc(ref as LegalRefRow, doc);
+      verifierLabel = 'gov-uk-content';
+    } else {
+      console.warn(
+        '[legal-refs/verify] gov.uk content fetch not authoritative; falling back to Perplexity',
+        { ref_id: id, source_url: (ref as LegalRefRow).source_url, reason: auth.reason },
+      );
+    }
+  } else if (canonicalKind === 'find-case-law') {
+    if (!findCaseLawEnabled()) {
+      console.info(
+        '[legal-refs/verify] Find Case Law source skipped — licence env-gate not enabled (FIND_CASE_LAW_LICENCE_ACCEPTED)',
+        { ref_id: id, source_url: (ref as LegalRefRow).source_url },
+      );
+    } else {
+      // Use the ref's title as the search query — Find Case Law's
+      // atom feed returns hits scoring strongly on title match.
+      const xml = await fetchAtomRaw((ref as LegalRefRow).law_name);
+      const hits = xml ? parseAtomFeed(xml) : [];
+      const match = pickFindCaseLawMatch(hits, ref as LegalRefRow);
+      if (match) {
+        verdict = verdictFromFindCaseLawHit(ref as LegalRefRow, match);
+        verifierLabel = 'find-case-law';
+      } else {
+        console.warn(
+          '[legal-refs/verify] find-case-law fetch returned no matching hit; falling back to Perplexity',
+          { ref_id: id, source_url: (ref as LegalRefRow).source_url },
+        );
+      }
     }
   }
 
@@ -451,6 +599,15 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       confidence: verdict.confidence,
       cost_gbp: verifierLabel === 'perplexity-sonar-pro' ? COST_PER_CALL_GBP : 0,
       status: 'pending',
+      source_host: SOURCE_LABEL[
+        verifierLabel === 'legislation-gov-uk'
+          ? 'legislation'
+          : verifierLabel === 'gov-uk-content'
+          ? 'gov-uk-content'
+          : verifierLabel === 'find-case-law'
+          ? 'find-case-law'
+          : 'perplexity'
+      ],
     })
     .select('id')
     .limit(1);

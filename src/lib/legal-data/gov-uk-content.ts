@@ -251,3 +251,38 @@ export function isGovUkUrl(url: string | null | undefined): boolean {
     return false;
   }
 }
+
+/**
+ * Hash a GovUkContent doc for drift detection (Phase 5 amendments
+ * sweep). The fingerprint includes the stable identifier (base_path),
+ * the title, and the body — but NOT `public_updated_at`, which the
+ * publishing platform sometimes ticks on republish without a real
+ * content change. SHA-256 lowercase hex.
+ *
+ * Same hashing pattern as `hashLegislationDoc` so the amendments
+ * sweep can compare new vs stored hashes uniformly across sources.
+ */
+export async function hashGovUkContentDoc(
+  doc: Pick<GovUkContent, 'base_path' | 'title' | 'body' | 'description'>,
+): Promise<string> {
+  const body = (doc.body ?? doc.description ?? '').replace(/\s+/g, ' ').trim();
+  const payload = [
+    `base_path:${doc.base_path}`,
+    `title:${(doc.title || '').trim()}`,
+    `body:${body}`,
+  ].join('\n');
+  return sha256Hex(payload);
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const subtle = (globalThis as { crypto?: Crypto }).crypto?.subtle;
+  if (subtle) {
+    const buf = await subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  const nodeCrypto: typeof import('node:crypto') = await import('node:crypto');
+  return nodeCrypto.createHash('sha256').update(data).digest('hex');
+}

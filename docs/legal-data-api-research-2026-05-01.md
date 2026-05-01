@@ -271,3 +271,137 @@ The gate is forward-compatible:
 
 When `feat/legal-data-freshness-pipeline` merges, the gate auto-
 upgrades — no code change required.
+
+
+## Phase 5 — Multi-source routing (2026-05-01)
+
+Phase 1–4 wired `legislation.gov.uk` as the primary canonical source
+and Perplexity as the fallback verifier. Two typed clients shipped at
+the same time but were ORPHANED — no caller imported them:
+
+- `src/lib/legal-data/gov-uk-content.ts` (CMA cases, regulator
+  decisions on gov.uk under `/cma-cases/` and
+  `/government/publications/`)
+- `src/lib/legal-data/find-case-law.ts` (TNA Find Case Law / BAILII /
+  Judiciary judgments)
+
+Phase 5 wires both into the verify route, the amendments-sweep cron,
+and the discover cron via a single canonical-source router.
+
+### Canonical source router
+
+`src/lib/legal-data/source-router.ts → pickCanonicalSource(ref)` is a
+pure synchronous classifier. It returns one of:
+
+| `CanonicalSourceKind` | Host / path matches |
+|---|---|
+| `'legislation'` | `(www\.)?legislation\.gov\.uk` |
+| `'gov-uk-content'` | `(www\.)?gov\.uk` AND path includes `/cma-cases/` OR `/government/publications/` |
+| `'find-case-law'` | `caselaw.nationalarchives.gov.uk`, `(www\.)?bailii\.org`, `(www\.)?judiciary\.uk` |
+| `'perplexity'` | everything else (FCA, Ofcom, Ofgem, FOS, ICO, generic gov.uk, …) |
+
+The router is pure — no env reads, no I/O. Licence enforcement for
+Find Case Law lives at the call site.
+
+### Per-source authority logic (verify route)
+
+For each canonical kind the verify route follows the same shape as
+the legislation.gov.uk path: fetch first-party, then run an
+authority-gate, then fall through to Perplexity if the authority
+gate fails. A canonical fetch is treated as authoritative when:
+
+- `legislation`: existing `isLegislationDocAuthoritative` check —
+  section-text + section-number match, or whole-Act fuzzy title
+  match.
+- `gov-uk-content`: doc returned from
+  `https://www.gov.uk/api/content/{base_path}` with a non-empty
+  title, a non-empty body, and a `base_path` that matches the ref's
+  source_url path. Otherwise: Perplexity fallback.
+- `find-case-law`: search the Atom feed for the ref's `law_name`,
+  prefer an exact URI match against `source_url`, fall back to fuzzy
+  title match. If no hit → Perplexity fallback.
+
+Same `legal_ref_corrections` queue, same founder-approval gate. The
+audit trail records `proposer ∈ {'legislation-gov-uk',
+'gov-uk-content', 'find-case-law', 'perplexity-sonar-pro'}` and
+`source_host ∈ {'legislation.gov.uk', 'gov-uk-content',
+'find-case-law', 'perplexity'}` so the admin UI can show provenance.
+
+### Amendments sweep (Phase 5 changes)
+
+`/api/cron/legal-refs-amendments-sweep` now buckets by canonical
+source. Each tick:
+
+1. Pull the 100 oldest-checked refs.
+2. Bucket via `pickCanonicalSource`.
+3. Sweep the `'legislation'` bucket (existing behaviour, unchanged
+   semantics — `hashLegislationDoc` fingerprint).
+4. Sweep the `'gov-uk-content'` bucket using
+   `hashGovUkContentDoc(doc) = SHA-256(base_path + title + body)`.
+   Drift queues a `legal_ref_corrections` row exactly like
+   legislation.
+5. **Skip** the `'find-case-law'` bucket. Case law is published, not
+   amended, so the weekly reverify cron is sufficient. We
+   reconsider this once the licence env-gate flips.
+6. Existing 100-cap and 5-parallel concurrency apply across both
+   sweeps independently.
+
+### Discover cron (Phase 5 changes)
+
+`/api/cron/discover-legal-refs` gains two alternate-source legs that
+bypass Perplexity entirely:
+
+- `?source=cma&query=<term>` — seeds candidates from
+  `searchByDocumentType('cma_case', query)`.
+- `?source=tna&query=<term>` — seeds candidates from the Find Case
+  Law Atom feed. **Licence-gated** — returns a no-op log line
+  unless `FIND_CASE_LAW_LICENCE_ACCEPTED=true`.
+
+Both write to the existing `legal_ref_candidates` table at status
+`'pending'` so the founder approves before anything reaches
+`legal_references`.
+
+**vercel.json**: the project is at the Vercel cron limit (60
+entries — already over the documented 40-cap and running on a
+custom workaround). We DID NOT add new scheduled cron entries for
+the alternate-source legs. Trade-off: founder runs them ad-hoc via
+the admin "Discover now" button (`POST /api/cron/discover-legal-refs?source=cma&query=...`)
+or, when the licence lands, `?source=tna&query=...`. If/when the
+cron count drops, add `0 5 * * 0` (weekly) for `?source=cma&query=energy`
+and similar.
+
+### B2B contract — `legal_basis_freshness.source` rename
+
+The optional response field's `source` union renamed `'cma-case'` →
+`'gov-uk-content'`. Reasons:
+
+- Aligns with the canonical-source router taxonomy.
+- The `/cma-cases/` and `/government/publications/` paths share the
+  same gov.uk Content API; a CMA-only literal was misleading.
+
+This is technically a breaking change in the union of allowed values.
+The field is 5 days old at rename time so no external integrator is
+expected to be discriminating on `'cma-case'`. Defensive integrators
+should prefer `source.startsWith('gov-uk') ||
+source === 'legislation.gov.uk'` rather than equality matching.
+
+### How the founder activates Find Case Law
+
+1. Apply for the licence:
+   `email caselawlicence@nationalarchives.gov.uk` — see
+   `https://caselaw.nationalarchives.gov.uk/licence-application-process`
+   (~10 working-day approval).
+2. When the licence is granted, set
+   `FIND_CASE_LAW_LICENCE_ACCEPTED=true` in Vercel env (production +
+   preview) and redeploy.
+3. Verify by hitting `POST /api/cron/discover-legal-refs?source=tna&query=PPI`
+   from the admin UI — should return a non-zero `candidates_found`
+   instead of `skipped: true, reason: 'licence-env-not-set'`.
+4. The verify route's find-case-law branch and the discover cron's
+   `?source=tna` leg light up automatically — no code change
+   required.
+
+Until that env is set the router still classifies `caselaw.*` URLs
+as `'find-case-law'` (so the admin chip shows the right family) but
+every call site short-circuits to a structured info log + Perplexity
+fallback.
