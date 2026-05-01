@@ -40,20 +40,56 @@ export interface SyncResult {
   reason?: string;
 }
 
+/**
+ * Resolve which user owns an `apple_original_transaction_id`.
+ *
+ * Apple `originalTransactionId` is the immutable identity of an Apple
+ * subscription chain — once an Apple ID owns one, it owns it forever
+ * across renewals/upgrades. We treat it the same way: the FIRST user
+ * to link a transaction id is the only user that can update it.
+ *
+ * Returns one of:
+ *   { ok: true,  userId }                 — caller should sync this user
+ *   { ok: false, reason: 'unlinked' }     — caller (verify) supplied an
+ *                                           authenticated userId for a
+ *                                           transaction id we've never
+ *                                           seen — fine, link it now
+ *   { ok: false, reason: 'conflict' }     — transaction id is owned by
+ *                                           a DIFFERENT user. Refuse to
+ *                                           proceed; the caller must
+ *                                           surface this as an error,
+ *                                           NOT silently reassign.
+ *
+ * Without this guard, anyone who learned a real `originalTransactionId`
+ * (logs, support screenshots) could authenticate as their own account
+ * and call /api/iap/verify to claim that subscription's entitlement —
+ * upsert(onConflict='apple_original_transaction_id') would then move
+ * `user_id` to them.
+ */
 async function resolveUserId(
   originalTransactionId: string,
   fallbackUserId?: string,
-): Promise<string | null> {
-  if (fallbackUserId) return fallbackUserId;
-
+): Promise<
+  | { ok: true; userId: string }
+  | { ok: false; reason: 'unlinked' | 'conflict'; conflictUserId?: string }
+> {
   const admin = getAdmin();
   const { data } = await admin
     .from('subscriptions')
     .select('user_id')
     .eq('apple_original_transaction_id', originalTransactionId)
     .maybeSingle();
+  const linkedUserId = (data?.user_id as string | undefined) ?? null;
 
-  return (data?.user_id as string) ?? null;
+  if (fallbackUserId) {
+    if (linkedUserId && linkedUserId !== fallbackUserId) {
+      return { ok: false, reason: 'conflict', conflictUserId: linkedUserId };
+    }
+    return { ok: true, userId: fallbackUserId };
+  }
+
+  if (linkedUserId) return { ok: true, userId: linkedUserId };
+  return { ok: false, reason: 'unlinked' };
 }
 
 export async function syncAppleSubscription(
@@ -74,8 +110,20 @@ export async function syncAppleSubscription(
     };
   }
 
-  const resolvedUserId = await resolveUserId(payload.originalTransactionId, userId);
-  if (!resolvedUserId) {
+  const resolved = await resolveUserId(payload.originalTransactionId, userId);
+  if (!resolved.ok) {
+    if (resolved.reason === 'conflict') {
+      return {
+        ok: false,
+        productId: payload.productId,
+        tier: product.tier,
+        period: product.period,
+        status: 'active',
+        effectiveTierBefore: 'free',
+        effectiveTierAfter: 'free',
+        reason: `originalTransactionId ${payload.originalTransactionId} is already owned by another user — refusing to reassign`,
+      };
+    }
     return {
       ok: false,
       productId: payload.productId,
@@ -87,6 +135,7 @@ export async function syncAppleSubscription(
       reason: `no user linked to originalTransactionId ${payload.originalTransactionId} — verify must run first`,
     };
   }
+  const resolvedUserId = resolved.userId;
 
   const admin = getAdmin();
 

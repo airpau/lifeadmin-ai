@@ -9,6 +9,7 @@ import {
   type IapProductId,
   type IapPurchaseResult,
 } from '@/lib/native-shell';
+import { createClient } from '@/lib/supabase/client';
 
 /**
  * Native IAP buttons — rendered inside the Capacitor shell only.
@@ -25,9 +26,27 @@ import {
  * notice instead of risking a double-charge.
  */
 
+/**
+ * Subset of /api/subscription/active's response that the guard cares
+ * about. Full shape is documented at the route handler — keep these
+ * field names in sync if the API shape changes.
+ */
+type SubscriptionActiveResponse = {
+  ok: boolean;
+  effectiveTier?: 'free' | 'essential' | 'pro';
+  primarySource?: 'stripe' | 'apple_iap' | 'google_play_billing' | null;
+  trialActive?: boolean;
+  subscriptions?: Array<{
+    source: string;
+    tier: string;
+    status: string;
+    expiresAt: string | null;
+  }>;
+};
+
 type CrossSourceCheck = {
   hasActive: boolean;
-  source?: 'stripe' | 'apple_iap' | 'google_iap';
+  source?: 'stripe' | 'apple_iap' | 'google_play_billing';
   tier?: 'free' | 'essential' | 'pro';
 };
 
@@ -60,16 +79,64 @@ export default function NativeIapButtons() {
       }
 
       try {
+        // /api/subscription/active requires Bearer auth (it's the same
+        // endpoint the iOS app calls, and that path uses Supabase
+        // access tokens, not cookies). Without the header we'd hit 401
+        // and the guard would silently fail-open — meaning a user with
+        // an active Stripe subscription could buy again on iOS and be
+        // double-charged. Pull the access token from the browser
+        // Supabase session before the fetch.
+        const supabase = createClient();
+        const sessionRes = await supabase.auth.getSession();
+        const accessToken = sessionRes.data.session?.access_token;
+
+        const guardFetch = (async (): Promise<CrossSourceCheck> => {
+          if (!accessToken) {
+            // Logged-out / unknown user — IAP shouldn't surface here
+            // anyway (the page is gated upstream), but be conservative
+            // and treat as "no active sub elsewhere" rather than
+            // blocking purchase.
+            return { hasActive: false };
+          }
+          try {
+            const r = await fetch('/api/subscription/active', {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (!r.ok) return { hasActive: false };
+            const data = (await r.json()) as SubscriptionActiveResponse;
+            const subs = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+            // We only block IAP when the user already has a NON-IAP
+            // active subscription — i.e. Stripe-on-web. An existing
+            // apple_iap/google_play sub means "tap Restore", not
+            // "you'll be double-charged".
+            const blocking = subs.find(
+              (s) =>
+                s.status !== 'expired' &&
+                s.source !== 'apple_iap' &&
+                s.source !== 'google_play_billing',
+            );
+            if (!blocking) return { hasActive: false };
+            return {
+              hasActive: true,
+              source: blocking.source as CrossSourceCheck['source'],
+              tier: data.effectiveTier ?? (blocking.tier as CrossSourceCheck['tier']),
+            };
+          } catch {
+            // Conservative default: don't block purchase on a network
+            // hiccup. The /verify call after a successful purchase
+            // catches double-pay server-side via iap_source_tracking.
+            return { hasActive: false };
+          }
+        })();
+
         // Fire both lookups in parallel
         const [productsResp, crossResp] = await Promise.all([
           plugin.getProducts(),
-          fetch('/api/subscription/active', { credentials: 'include' })
-            .then((r) => (r.ok ? r.json() : { hasActive: false }))
-            .catch(() => ({ hasActive: false })),
+          guardFetch,
         ]);
         if (cancelled) return;
         setProducts(productsResp.products);
-        setCrossSource(crossResp as CrossSourceCheck);
+        setCrossSource(crossResp);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load products');
       } finally {
@@ -95,7 +162,7 @@ export default function NativeIapButtons() {
           // Refresh the cross-source state so the UI re-renders the upgraded tier
           setCrossSource({
             hasActive: true,
-            source: getPlatform() === 'ios' ? 'apple_iap' : 'google_iap',
+            source: getPlatform() === 'ios' ? 'apple_iap' : 'google_play_billing',
             tier: TIER_DISPLAY[productId].tier,
           });
           // Trigger any parent listener (e.g. close the modal)
@@ -182,7 +249,7 @@ export default function NativeIapButtons() {
   }
 
   // Already subscribed via the same store — show manage instead
-  if (crossSource?.hasActive && (crossSource.source === 'apple_iap' || crossSource.source === 'google_iap')) {
+  if (crossSource?.hasActive && (crossSource.source === 'apple_iap' || crossSource.source === 'google_play_billing')) {
     return (
       <div className="space-y-3">
         <div className="bg-mint-400/10 border border-mint-400/20 rounded-xl p-4 text-sm text-slate-900">

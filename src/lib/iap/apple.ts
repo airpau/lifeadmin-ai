@@ -25,6 +25,9 @@
  */
 
 import * as jose from 'jose';
+import { verifyJwsChain } from './apple-chain';
+
+export { verifyJwsChain };
 
 const PROD_BASE = 'https://api.storekit.itunes.apple.com';
 const SANDBOX_BASE = 'https://api.storekit-sandbox.itunes.apple.com';
@@ -56,12 +59,11 @@ export interface JwsTransactionPayload {
 
 /**
  * Decode + verify a JWS string from Apple. Returns the decoded payload
- * if the leaf cert signature checks out.
- *
- * TODO before public launch: full x5c chain validation up to
- * AppleRootCA-G3 in verifyJwsChain() (currently no-op). For sandbox
- * testing this is acceptable — leaf-cert verification still rejects
- * unsigned/wrong-key tokens.
+ * only when:
+ *   1. The leaf cert in `x5c[0]` signs the JWS (jose.jwtVerify)
+ *   2. The full x5c chain validates and terminates at a pinned Apple
+ *      root (verifyJwsChain) — without this, anyone with a self-signed
+ *      cert can mint payloads we'd otherwise accept as Apple's.
  */
 export async function verifyAppleJws<T = JwsTransactionPayload>(
   jws: string,
@@ -72,6 +74,10 @@ export async function verifyAppleJws<T = JwsTransactionPayload>(
     throw new Error('JWS missing x5c header — refusing to verify');
   }
 
+  // Chain validation FIRST. If we don't trust the leaf, jose.jwtVerify's
+  // signature check is meaningless because the attacker controls the key.
+  verifyJwsChain(x5c);
+
   const leafCertPem = `-----BEGIN CERTIFICATE-----\n${x5c[0]}\n-----END CERTIFICATE-----`;
   const leafKey = await jose.importX509(leafCertPem, 'ES256');
 
@@ -79,15 +85,9 @@ export async function verifyAppleJws<T = JwsTransactionPayload>(
     algorithms: ['ES256'],
   });
 
-  await verifyJwsChain(x5c);
-
   return payload as unknown as T;
 }
 
-async function verifyJwsChain(_x5c: string[]): Promise<void> {
-  // TODO: walk x5c chain up to AppleRootCA-G3 before public launch
-  return;
-}
 
 async function generateApiJwt(): Promise<string> {
   const issuerId = process.env.APPLE_ISSUER_ID;
