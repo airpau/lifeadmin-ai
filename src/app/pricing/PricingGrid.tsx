@@ -58,8 +58,10 @@ export default function PricingGrid() {
           <div className="founding" style={{ visibility: 'hidden' }}>—</div>
           <ul>
             <li>3 AI dispute letters / month</li>
+            <li>2 bank accounts · daily auto-sync</li>
             <li>Manual subscription tracker</li>
             <li>Public deals marketplace</li>
+            <li>Telegram Pocket Agent + AI chatbot</li>
           </ul>
           <PricingCTA
             plan="free"
