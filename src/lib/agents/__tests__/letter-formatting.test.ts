@@ -20,6 +20,7 @@ import {
   stripMarkdownEmphasis,
   stripSenderAddressBlock,
   stripLetterFormatting,
+  reorderHeaderToTop,
 } from '../letter-formatting.ts';
 
 describe('stripMarkdownEmphasis', () => {
@@ -160,5 +161,81 @@ describe('stripLetterFormatting (combined)', () => {
     assert.ok(/Account 123456/.test(clean), 'account number preserved');
     assert.ok(/Dear Octopus/.test(clean), 'salutation preserved');
     assert.ok(/£85\.00/.test(clean), 'amount preserved');
+  });
+});
+
+describe('reorderHeaderToTop', () => {
+  it('moves a date+recipient+Re:+Dear header from the end to the top', () => {
+    // Mirrors the OneStream draft on 2026-05-01 where the LLM put the
+    // body first and the header block last, so the user got the letter
+    // opening in the LAST WhatsApp chunk instead of the first.
+    const wrong = [
+      'You have framed your calculation around 1.5 months of service charges, but this bears no relationship to the actual disruption.',
+      '',
+      'Although OneStream has chosen to opt out of the Ofcom Automatic Compensation Scheme, the scheme rate remains the appropriate benchmark.',
+      '',
+      'I am therefore requesting a revised settlement within fourteen days. If I do not receive an adequate response I will refer to CISAS.',
+      '',
+      'Yours faithfully,',
+      'Paul',
+      '',
+      '1 May 2026',
+      '',
+      'OneStream Broadband',
+      'Customer Relations Department',
+      '',
+      'Re: Rejection of £135 offer — accounts Flat 1 and Flat 2',
+      '',
+      'Dear Sir or Madam,',
+      '',
+      'Further to your message of 30 April 2026, I am writing to reject your revised offer of £135.',
+    ].join('\n');
+    const out = reorderHeaderToTop(wrong);
+    const paras = out.split(/\n\n+/);
+    // Date opens the letter
+    assert.match(paras[0], /1 May 2026/, 'first paragraph is the date');
+    // Header block (date through salutation) sits at the top, in order, before any body
+    const headerSpan = paras.slice(0, 5).join('\n\n');
+    assert.match(headerSpan, /1 May 2026/);
+    assert.match(headerSpan, /OneStream Broadband/);
+    assert.match(headerSpan, /Re: Rejection/);
+    assert.match(headerSpan, /Dear Sir or Madam/);
+    // Salutation comes BEFORE the body content that mentions £135 / CRA / CISAS
+    const salutationPos = out.indexOf('Dear Sir or Madam');
+    const bodyPos = out.indexOf('You have framed your calculation');
+    assert.ok(salutationPos < bodyPos, 'salutation must appear before the body');
+    assert.match(out, /Yours faithfully/, 'sign-off preserved somewhere in letter');
+  });
+
+  it('leaves a correctly ordered letter unchanged', () => {
+    const correct = [
+      '1 May 2026',
+      '',
+      'OneStream Broadband',
+      '',
+      'Re: account 12345',
+      '',
+      'Dear Sir or Madam,',
+      '',
+      'I am writing to dispute the charge.',
+      '',
+      'Yours faithfully,',
+      'Paul',
+    ].join('\n');
+    assert.equal(reorderHeaderToTop(correct), correct);
+  });
+
+  it('does not move a body paragraph that merely says "Dear customer" with no date or Re:', () => {
+    const text = [
+      'Opening paragraph.',
+      '',
+      'Dear customer note: this is a body paragraph with a salutation-shaped phrase but no date or Re: line.',
+    ].join('\n');
+    assert.equal(reorderHeaderToTop(text), text);
+  });
+
+  it('returns short / single-paragraph input untouched', () => {
+    assert.equal(reorderHeaderToTop(''), '');
+    assert.equal(reorderHeaderToTop('Just one paragraph.'), 'Just one paragraph.');
   });
 });

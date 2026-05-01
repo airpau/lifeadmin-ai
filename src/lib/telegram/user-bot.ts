@@ -61,11 +61,18 @@ async function sendChunked(
   options?: Parameters<Context['reply']>[1],
 ) {
   const chunks = splitMessage(text);
+  const total = chunks.length;
   for (let i = 0; i < chunks.length; i++) {
+    // Number chunks when there are 2+ so the user can read them in
+    // order even if delivery jitters on rapid sends.
+    const body = total > 1 ? `(${i + 1}/${total})\n\n${chunks[i]}` : chunks[i];
     if (i === chunks.length - 1 && options) {
-      await ctx.reply(chunks[i], options);
+      await ctx.reply(body, options);
     } else {
-      await ctx.reply(chunks[i]);
+      await ctx.reply(body);
+    }
+    if (i < chunks.length - 1) {
+      await new Promise((r) => setTimeout(r, 250));
     }
   }
 }

@@ -339,19 +339,30 @@ function chunkForWhatsApp(
 async function sendChunked(phone: string, text: string): Promise<void> {
   const chunks = chunkForWhatsApp(formatForWhatsApp(text));
   const sb = getAdmin();
-  for (const chunk of chunks) {
+  const total = chunks.length;
+  for (let i = 0; i < chunks.length; i++) {
+    // Number chunks when there are 2+ so the user can read them in
+    // order even if Twilio + WhatsApp jitter delivery on rapid sends.
+    const body =
+      total > 1 ? `(${i + 1}/${total})\n\n${chunks[i]}` : chunks[i];
     try {
-      const r = await sendWhatsAppText({ to: phone, text: chunk });
+      const r = await sendWhatsAppText({ to: phone, text: body });
       await sb.from('whatsapp_message_log').insert({
         whatsapp_phone: phone,
         direction: 'outbound',
         message_type: 'text',
-        message_text: chunk,
+        message_text: body,
         provider: r.provider,
         provider_message_id: r.providerMessageId,
       });
     } catch (err) {
       console.error('[whatsapp/user-bot] send chunk failed', err);
+    }
+    // Small spacing between rapid sends — WhatsApp occasionally delivers
+    // back-to-back messages out of order when they hit the queue inside
+    // the same ~100ms window.
+    if (i < chunks.length - 1) {
+      await new Promise((r) => setTimeout(r, 250));
     }
   }
 }

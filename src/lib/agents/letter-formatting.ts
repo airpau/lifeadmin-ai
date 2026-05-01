@@ -32,7 +32,58 @@ export function stripLetterFormatting(letter: string | undefined | null): string
   if (!letter) return '';
   let out = stripMarkdownEmphasis(letter);
   out = stripSenderAddressBlock(out);
+  out = reorderHeaderToTop(out);
   return out;
+}
+
+/**
+ * The model is told to put date + recipient + Re: + Dear at the top, then
+ * body. Occasionally — confirmed in production with a OneStream draft on
+ * 2026-05-01 — it produces the body first and stuffs the header block
+ * (date / recipient / "Re:" / "Dear …") at the END of the letter. Once
+ * chunked over WhatsApp the user receives body paragraphs first and the
+ * actual letter opening last, which reads as 6 scrambled messages
+ * instead of one cohesive letter.
+ *
+ * Find the salutation paragraph ("Dear Sir or Madam," / "Dear <Name>,").
+ * If it isn't already at the top, walk backwards up to a small window
+ * for the start of the header block (a UK date or a "Re:" line) and
+ * lift the entire span to position 0. Conservative: if no salutation is
+ * found, or it's already at index 0, return the letter unchanged.
+ */
+export function reorderHeaderToTop(text: string): string {
+  if (!text) return text;
+  const paragraphs = text.split(/\n\n+/);
+  if (paragraphs.length < 2) return text;
+
+  // Salutation MUST anchor at the start of the paragraph so we don't
+  // match "Dear customer note: …" mid-body references.
+  const salutation = /^\s*Dear\s+(Sir\b|Madam\b|Sirs\b|[A-Z][a-z]+)/;
+  const ukDate =
+    /^\s*\d{1,2}\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/i;
+  const subjectLine = /^\s*Re:\s+/i;
+
+  const salutationIdx = paragraphs.findIndex((p) => salutation.test(p));
+  if (salutationIdx <= 0) return text; // already at top, or none found
+
+  // Walk backwards from the salutation looking for a date OR Re: line —
+  // that's the start of the header block (date and recipient lines may
+  // sit between them, which we sweep up in the splice below).
+  const LOOKBACK = 5;
+  let headerStart = salutationIdx;
+  for (let i = salutationIdx - 1; i >= Math.max(0, salutationIdx - LOOKBACK); i--) {
+    if (ukDate.test(paragraphs[i]) || subjectLine.test(paragraphs[i])) {
+      headerStart = i;
+    }
+  }
+
+  // No date / Re: line found anywhere in the lookback window — the
+  // bare "Dear …" alone isn't a strong enough signal to risk reordering.
+  if (headerStart === salutationIdx) return text;
+  if (headerStart === 0) return text; // already at top
+
+  const block = paragraphs.splice(headerStart, salutationIdx - headerStart + 1);
+  return [...block, ...paragraphs].join('\n\n');
 }
 
 export function stripMarkdownEmphasis(text: string): string {
