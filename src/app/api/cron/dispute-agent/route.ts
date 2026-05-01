@@ -251,10 +251,18 @@ async function surfaceDecision(args: {
   }
 
   // Email fallback when no Pocket Agent session OR push failed.
+  // sendPaybackerEmail does NOT throw on Resend rejection — it returns
+  // {ok:false}. Only mark `email` as surfaced when delivery actually
+  // succeeded so transient outages stay flagged as un-surfaced and
+  // get retried on the next cron tick.
   if (surfacedVia.length === 0) {
     try {
-      await sendEmailFallback({ sb, dispute, decision });
-      surfacedVia.push('email');
+      const result = await sendEmailFallback({ sb, dispute, decision });
+      if (result.ok) {
+        surfacedVia.push('email');
+      } else if (result.error) {
+        console.warn('[cron/dispute-agent] email fallback rejected', dispute.id, result.error);
+      }
     } catch (err) {
       console.warn('[cron/dispute-agent] email fallback failed', dispute.id, err);
     }
@@ -296,16 +304,16 @@ async function sendEmailFallback(args: {
   sb: ReturnType<typeof admin>;
   dispute: DisputeRow;
   decision: AgentDecision;
-}): Promise<void> {
+}): Promise<{ ok: boolean; error?: string }> {
   const { sb, dispute, decision } = args;
-  if (!process.env.RESEND_API_KEY) return;
+  if (!process.env.RESEND_API_KEY) return { ok: false, error: 'no RESEND_API_KEY' };
   const { data: profile } = await sb
     .from('profiles')
     .select('email,first_name')
     .eq('id', dispute.user_id)
     .maybeSingle();
   const email = (profile as { email?: string } | null)?.email;
-  if (!email) return;
+  if (!email) return { ok: false, error: 'no profile email' };
   const firstName = (profile as { first_name?: string } | null)?.first_name?.trim() || 'there';
   const merchant =
     dispute.provider_name || dispute.merchant_normalised || 'your dispute';
@@ -322,7 +330,7 @@ async function sendEmailFallback(args: {
     ),
   ].join('');
 
-  await sendPaybackerEmail({
+  const result = await sendPaybackerEmail({
     to: email,
     subject: `Update on your ${merchant} dispute`,
     preheader: decision.rationale.slice(0, 90),
@@ -334,4 +342,5 @@ async function sendEmailFallback(args: {
     },
     footnote: 'Sent by the Paybacker Dispute Agent — your AI caseworker.',
   });
+  return { ok: result.ok, error: result.error };
 }
