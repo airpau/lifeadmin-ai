@@ -171,8 +171,18 @@ export function monospaceBlock(text: string): string {
 function footerHtml(variant: EmailVariant, unsubscribeUrl?: string): string {
   const unsub = (() => {
     if (variant === 'marketing') {
-      const href = unsubscribeUrl || `${SITE}/unsubscribe`;
-      return `<a href="${href}" style="color:${COLOR.brand};text-decoration:underline;font-weight:600;">Unsubscribe in one click</a>`;
+      // Marketing footer MUST render the caller-supplied tokenised unsubscribe URL
+      // verbatim. There is no fallback — `/unsubscribe` is the success status page
+      // and accepts no token, so falling back there silently breaks one-click
+      // unsubscribe (PECR + RFC 8058). `sendPaybackerEmail` enforces this by
+      // throwing `MissingUnsubscribeUrlError` before we get here.
+      if (!unsubscribeUrl) {
+        throw new Error(
+          'PaybackerEmailLayout: marketing variant requires an unsubscribeUrl ' +
+            '(use sendPaybackerEmail which enforces this).',
+        );
+      }
+      return `<a href="${unsubscribeUrl}" style="color:${COLOR.brand};text-decoration:underline;font-weight:600;">Unsubscribe in one click</a>`;
     }
     if (variant === 'b2b') {
       return `<a href="mailto:business@paybacker.co.uk" style="color:${COLOR.inkFaint};text-decoration:none;">business@paybacker.co.uk</a>`;

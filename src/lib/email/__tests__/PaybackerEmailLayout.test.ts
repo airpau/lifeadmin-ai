@@ -13,6 +13,7 @@ import {
   orderedList,
   monospaceBlock,
 } from '../PaybackerEmailLayout';
+import { sendPaybackerEmail, MissingUnsubscribeUrlError } from '../send';
 
 function assert(cond: unknown, msg: string): void {
   if (!cond) {
@@ -83,4 +84,65 @@ console.log('Test: b2b variant (different audience copy)');
   assert(html.includes('business@paybacker.co.uk'), 'b2b reply address in footer');
 }
 
-console.log('\nAll tests passed.');
+console.log('Test: marketing footer renders supplied unsubscribeUrl verbatim (no /unsubscribe fallback)');
+{
+  const tokenisedUrl = 'https://paybacker.co.uk/api/unsubscribe?token=tok_abc123';
+  const html = renderPaybackerEmail({
+    preheader: 'Marketing nudge',
+    heading: 'A small thank-you',
+    body: paragraph('A friendly nudge.'),
+    variant: 'marketing',
+    unsubscribeUrl: tokenisedUrl,
+  });
+  assert(html.includes(`href="${tokenisedUrl}"`), 'footer href is the tokenised /api/unsubscribe URL verbatim');
+  // Status page fallback must NEVER appear in the footer for a marketing send.
+  // The bare `/unsubscribe` (status page) has no token and silently breaks one-click.
+  assert(!html.includes('href="https://paybacker.co.uk/unsubscribe"'), 'no fallback to bare /unsubscribe status page');
+  assert(!html.includes("href=\"https://paybacker.co.uk/unsubscribe\""), 'no fallback double-quoted variant');
+}
+
+console.log('Test: marketing variant render WITHOUT unsubscribeUrl throws');
+{
+  let threw = false;
+  try {
+    renderPaybackerEmail({
+      preheader: 'Marketing nudge',
+      heading: 'A small thank-you',
+      body: paragraph('A friendly nudge.'),
+      variant: 'marketing',
+      // unsubscribeUrl intentionally omitted
+    });
+  } catch {
+    threw = true;
+  }
+  assert(threw, 'renderPaybackerEmail throws for marketing variant without unsubscribeUrl');
+}
+
+async function testSendThrowsOnMissingUnsubUrl(): Promise<void> {
+  console.log('Test: sendPaybackerEmail rejects marketing variant without unsubscribeUrl');
+  let caught: unknown;
+  try {
+    await sendPaybackerEmail({
+      to: 'someone@example.com',
+      subject: 'Test marketing',
+      preheader: 'pre',
+      heading: 'Hello',
+      body: paragraph('body'),
+      variant: 'marketing',
+      // unsubscribeUrl deliberately missing
+    });
+  } catch (err) {
+    caught = err;
+  }
+  assert(caught instanceof MissingUnsubscribeUrlError, 'throws typed MissingUnsubscribeUrlError');
+}
+
+testSendThrowsOnMissingUnsubUrl().then(
+  () => {
+    console.log('\nAll tests passed.');
+  },
+  (err) => {
+    console.error('FAIL (async):', err);
+    process.exit(1);
+  },
+);

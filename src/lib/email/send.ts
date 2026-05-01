@@ -19,7 +19,13 @@ import {
 } from './PaybackerEmailLayout';
 
 const FROM_B2B = process.env.RESEND_FROM_EMAIL_B2B || 'Paybacker for Business <noreply@paybacker.co.uk>';
-const REPLY_TO_B2B = process.env.RESEND_REPLY_TO_B2B || 'business@paybacker.co.uk';
+// IMPORTANT: per src/lib/resend.ts, the apex paybacker.co.uk domain is SEND-ONLY in
+// Resend (receiving disabled). Replies routed to `business@paybacker.co.uk` would be
+// silently dropped. The receiving-enabled domain is `mail.paybacker.co.uk`, so the
+// B2B reply-to mirrors the consumer pattern (`support@mail.paybacker.co.uk`) and
+// uses the `business@mail.paybacker.co.uk` mailbox there. Override at deploy-time
+// via `RESEND_REPLY_TO_B2B` if the apex is ever flipped to receiving=enabled.
+const REPLY_TO_B2B = process.env.RESEND_REPLY_TO_B2B || 'business@mail.paybacker.co.uk';
 
 export type EmailAudience = 'consumer' | 'b2b';
 
@@ -45,9 +51,31 @@ export interface SendResult {
   error?: string;
 }
 
+/**
+ * Thrown when a `variant: 'marketing'` send is attempted without an
+ * `unsubscribeUrl`. Marketing emails MUST carry a tokenised one-click
+ * unsubscribe URL — without it, the layout has no valid footer link and
+ * the RFC 8058 `List-Unsubscribe` headers can't be set, which is both a
+ * compliance break (PECR / CAN-SPAM) and a deliverability hit.
+ */
+export class MissingUnsubscribeUrlError extends Error {
+  constructor() {
+    super(
+      'sendPaybackerEmail: variant "marketing" requires a tokenised unsubscribeUrl. ' +
+        'Generate a per-recipient token (see src/app/api/unsubscribe/route.ts) and ' +
+        'pass `${SITE}/api/unsubscribe?token=...`.',
+    );
+    this.name = 'MissingUnsubscribeUrlError';
+  }
+}
+
 export async function sendPaybackerEmail(input: SendPaybackerEmailInput): Promise<SendResult> {
   const audience: EmailAudience = input.audience ?? (input.variant === 'b2b' ? 'b2b' : 'consumer');
   const variant: EmailVariant = input.variant ?? (audience === 'b2b' ? 'b2b' : 'standard');
+
+  if (variant === 'marketing' && !input.unsubscribeUrl) {
+    throw new MissingUnsubscribeUrlError();
+  }
 
   const html = renderPaybackerEmail({
     preheader: input.preheader,
@@ -61,7 +89,8 @@ export async function sendPaybackerEmail(input: SendPaybackerEmailInput): Promis
   });
 
   const headers: Record<string, string> = { ...(input.headers ?? {}) };
-  if (variant === 'marketing' && input.unsubscribeUrl && !headers['List-Unsubscribe']) {
+  if (variant === 'marketing' && !headers['List-Unsubscribe']) {
+    // unsubscribeUrl is guaranteed by the throw above for marketing variant.
     headers['List-Unsubscribe'] = `<${input.unsubscribeUrl}>`;
     headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
   }
