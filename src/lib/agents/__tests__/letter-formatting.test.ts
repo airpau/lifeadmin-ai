@@ -225,6 +225,55 @@ describe('reorderHeaderToTop', () => {
     assert.equal(reorderHeaderToTop(correct), correct);
   });
 
+  it('moves a header that sits in the MIDDLE of the letter and keeps the opening paragraph adjacent', () => {
+    // Mirrors the SECOND OneStream draft on 2026-05-01 (15:38) where
+    // the LLM put two body paragraphs FIRST, then the date /
+    // recipient / Re: / Dear / opening, then more body. The user got
+    // the letter intro as message #3 of 6 instead of message #1.
+    const wrong = [
+      'You state that OneStream does not participate in the Ofcom Voluntary Automatic Compensation Scheme. I understand that position, but it does not follow that your internal policy sets the ceiling for what a consumer is owed.',
+      '',
+      'The Ofcom scheme rate for total loss of service is £9.76 per day. For Flat 1, with 30 qualifying days, the figure is £292.80.',
+      '',
+      '1 May 2026',
+      '',
+      'Customer Relations',
+      'OneStream',
+      '',
+      'Re: Rejection of £135 Offer — Broadband Outage',
+      '',
+      'Dear Sir or Madam,',
+      '',
+      'Further to your message received recently, and to the sixteen formal complaint letters I have submitted, I am writing to formally reject your revised offer of £135.00.',
+      '',
+      'Your message confirms the facts of this matter accurately: both services lost connection on 23 March 2026.',
+      '',
+      'Separately, and in addition to that outage figure, I am also seeking pro-rata service credits under Ofcom General Condition C1.',
+      '',
+      'Yours faithfully,',
+      'Paul',
+    ].join('\n');
+    const out = reorderHeaderToTop(wrong);
+    const paras = out.split(/\n\n+/);
+    // Date opens the letter
+    assert.match(paras[0], /1 May 2026/, 'first paragraph is the date');
+    // Salutation must precede ALL of the body paragraphs (including the
+    // ones that originally appeared before the header).
+    const salutationPos = out.indexOf('Dear Sir or Madam');
+    const policyArgPos = out.indexOf('You state that OneStream');
+    const ofcomRatePos = out.indexOf('The Ofcom scheme rate');
+    const proRataPos = out.indexOf('Separately, and in addition');
+    assert.ok(salutationPos < policyArgPos, 'salutation precedes "You state that…"');
+    assert.ok(salutationPos < ofcomRatePos, 'salutation precedes "The Ofcom scheme rate…"');
+    assert.ok(salutationPos < proRataPos, 'salutation precedes "Separately…"');
+    // The "Further to…" and "Your message confirms…" opening paragraphs
+    // must sit IMMEDIATELY after the salutation, not after the body.
+    const furtherToPos = out.indexOf('Further to your message');
+    const yourMessagePos = out.indexOf('Your message confirms');
+    assert.ok(furtherToPos < policyArgPos, '"Further to…" precedes mid-letter args');
+    assert.ok(yourMessagePos < policyArgPos, '"Your message confirms…" precedes mid-letter args');
+  });
+
   it('does not move a body paragraph that merely says "Dear customer" with no date or Re:', () => {
     const text = [
       'Opening paragraph.',
