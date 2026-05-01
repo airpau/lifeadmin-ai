@@ -227,6 +227,15 @@ export default function PendingCorrectionsSection() {
                       proposed by {c.proposer} · {new Date(c.proposed_at).toLocaleString('en-GB')}
                       {c.cost_gbp != null && ` · £${c.cost_gbp.toFixed(4)}`}
                     </p>
+                    {/* Amendments-sweep proposals are XML-hash drift signals
+                        (high trust, deterministic) — distinguish them from
+                        Perplexity-verdict proposals so the founder knows
+                        what they're approving. Added 2026-05-01. */}
+                    {c.proposer && c.proposer.includes('amendments-sweep') && (
+                      <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
+                        🔁 amendments sweep
+                      </span>
+                    )}
                   </div>
                   <span
                     className={`inline-flex text-xs font-medium px-2.5 py-1 rounded-full border ${CONFIDENCE_CLASS[c.confidence]}`}

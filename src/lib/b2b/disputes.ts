@@ -228,6 +228,26 @@ export interface DisputeResponse {
     data_grounded: boolean;
     historical_signal?: { merchant_win_rate: number; sample_size: number };
   } | null;
+  /**
+   * Per-citation freshness metadata. One entry per cited
+   * `legal_references` row, surfacing how recently we re-verified the
+   * citation and which authoritative source provided the verdict.
+   *
+   * Additive optional field — never required, never breaking. The
+   * dispute-engine omits the field entirely on responses that pre-date
+   * the freshness pipeline rather than emitting an empty array, so
+   * back-compat is preserved for callers that gate on `in` checks.
+   *
+   * Shipped 2026-05-01 alongside the legal-refs freshness pipeline
+   * (daily legislation.gov.uk amendments sweep + weekly Perplexity /
+   * GOV.UK / Find Case Law reverify).
+   */
+  legal_basis_freshness?: Array<{
+    ref_id: string;
+    last_verified_at: string | null;
+    source: 'legislation.gov.uk' | 'perplexity' | 'find-case-law' | 'cma-case';
+    is_stale: boolean;
+  }>;
 }
 
 export interface PreflightResult {
@@ -478,7 +498,7 @@ async function fetchVerifiedRefs(scenario: string): Promise<any[]> {
   // /coverage page and the consumer engine's ground truth.
   const { data } = await supabase
     .from('legal_references')
-    .select('law_name, section, summary, full_text, source_url, category')
+    .select('id, law_name, section, summary, full_text, source_url, category, is_stale, last_freshness_check_at, last_verified')
     .in('verification_status', CITATION_ELIGIBLE_STATUSES as unknown as string[])
     .limit(500);
   if (!data || data.length === 0) return [];
@@ -948,6 +968,35 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
       }));
     if (matched.length > 0) {
       void supabase.from('legal_ref_usages').insert(matched);
+    }
+    // Populate legal_basis_freshness — additive optional field. One
+    // entry per cited ref so callers that care about citation
+    // freshness can surface "verified Xd ago" in their CRM. Best-effort:
+    // empty/missing freshness columns just produce nulls.
+    if (matched.length > 0) {
+      const freshness: NonNullable<DisputeResponse['legal_basis_freshness']> = [];
+      for (const r of verifiedRefs as Array<Record<string, unknown>>) {
+        if (!r?.id) continue;
+        const sourceUrl = typeof r.source_url === 'string' ? r.source_url : '';
+        const isStale = !!(r.is_stale as boolean | undefined);
+        const lastVerified =
+          (r.last_freshness_check_at as string | null | undefined) ??
+          (r.last_verified as string | null | undefined) ??
+          null;
+        let source: 'legislation.gov.uk' | 'perplexity' | 'find-case-law' | 'cma-case' = 'perplexity';
+        if (sourceUrl.includes('legislation.gov.uk')) source = 'legislation.gov.uk';
+        else if (sourceUrl.includes('caselaw.nationalarchives.gov.uk')) source = 'find-case-law';
+        else if (sourceUrl.includes('gov.uk/cma-cases')) source = 'cma-case';
+        freshness.push({
+          ref_id: String(r.id),
+          last_verified_at: lastVerified,
+          source,
+          is_stale: isStale,
+        });
+      }
+      if (freshness.length > 0) {
+        response.legal_basis_freshness = freshness;
+      }
     }
   } catch (e) {
     console.warn('[legal_ref_usages] B2B insert failed (non-fatal):', e);

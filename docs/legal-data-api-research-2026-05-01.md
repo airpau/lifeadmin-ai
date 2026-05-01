@@ -149,3 +149,45 @@ Net effect: Perplexity moves from "decide if law changed + summarise" to just "s
 ### Source attribution
 
 All content surfaced via this client is © Crown copyright, available under the Open Government Licence v3.0. The `sourceUrl` field is preserved end-to-end so any downstream UI can render the OGL attribution.
+
+---
+
+## Phase 2 + 3 — Implemented 2026-05-01
+
+**Branch:** `feat/legal-data-freshness-pipeline` (extends Phase 1 PR #415).
+
+### Shipped
+
+- **`source_xml_hash` column** on `legal_references` + `legal_ref_corrections`, plus `last_freshness_check_at`, `is_stale`, `unapplied_effects`, `superseded_by`. Migration `supabase/migrations/20260502000000_legal_ref_freshness.sql`. Strictly additive.
+- **Daily amendments cron** `src/app/api/cron/legal-refs-amendments-sweep/route.ts`. Schedule `15 3 * * *` (avoids the existing `compliance-sync` slot at `0 3 * * *`). Caps 100 refs/run, 5 parallel fetches. Drift detected via SHA-256 hash of normalised section body. Drift inserts a PROPOSED `legal_ref_corrections` row (`proposer='legislation-gov-uk-amendments-sweep'`, `cost_gbp=0`, `source_xml_hash` set, `status='pending'`) and flips `is_stale=true` on canonical row. `<ukm:UnappliedEffects>` flips `unapplied_effects=true`. Canonical citation fields are NEVER mutated by this cron.
+- **Weekly re-validation cron** `src/app/api/cron/legal-refs-reverify/route.ts`. Schedule `0 4 * * 0`. Caps 200 refs/run, 4 parallel. Per-ref dedup: skip if `last_freshness_check_at < 6 days ago`. Prioritises non-legislation.gov.uk hosts (those have no daily cron and depend on Perplexity). Calls the existing `/api/admin/legal-refs/verify` endpoint so all three corroboration gates + the same-host fast-path are reused — no behaviour fork.
+- **GOV.UK Content client** `src/lib/legal-data/gov-uk-content.ts` — typed wrapper over `https://www.gov.uk/api/content/{path}` and `https://www.gov.uk/api/search.json`. Surfaces `cma_case` regulator decisions for the discovery pipeline. 6 unit tests with mocked fixtures.
+- **Find Case Law (TNA) scaffold** `src/lib/legal-data/find-case-law.ts` — Atom feed parser for `https://caselaw.nationalarchives.gov.uk/atom.xml?query=…`. **Dormant in production** behind `FIND_CASE_LAW_LICENCE_ACCEPTED=true`. Founder still needs to apply for the free transactional licence (~10 working days; email `caselawlicence@nationalarchives.gov.uk`). Tests cover the licence gate, parser, and dedup; flipping the env var enables production wiring with no code change.
+- **Admin UI** `/dashboard/admin/legal-refs`:
+  - New **Freshness** column with colour-coded badge (green `<7d`, amber `7-30d`, red `>30d` or null).
+  - `❗ Unapplied effects` badge when `unapplied_effects=true`.
+  - `⚠️ STALE — pending correction` badge when `is_stale=true`.
+  - New filter checkboxes: "Show stale only" + "Unapplied effects only".
+  - Pending corrections panel highlights `🔁 amendments sweep` proposals to distinguish XML-hash drift signals (high trust) from Perplexity verdicts.
+- **B2B contract** `DisputeResponse.legal_basis_freshness` — additive optional field. One entry per cited ref: `{ ref_id, last_verified_at, source: 'legislation.gov.uk' | 'perplexity' | 'find-case-law' | 'cma-case', is_stale }`. Backward-compatible per the public-contract rule.
+
+### Behind the licence env-var
+
+- `searchAtom()` in `src/lib/legal-data/find-case-law.ts` short-circuits to `[]` and logs once until `FIND_CASE_LAW_LICENCE_ACCEPTED=true`. The client surface, parsers, and tests are all live; only production wiring is gated. To enable post-approval: set the env var on Vercel; no code change required.
+
+### Confidence by source type
+
+| Source | Pipeline | Cost / call | Drift signal | Trust ceiling | Notes |
+|---|---|---|---|---|---|
+| **legislation.gov.uk** (primary) | Daily amendments-sweep + verify route | £0 | SHA-256 hash of normalised section body | **HIGH** — deterministic, canonical Crown copyright XML | Hash diff ⇒ proposal queued. `<ukm:UnappliedEffects>` flagged on UI. Republish-only metadata churn filtered out via `normaliseXmlForHash`. |
+| **GOV.UK Content (cma_case)** (secondary) | Discovery cron leg + manual `discoverCmaCases()` | £0 | `public_updated_at` timestamp | **MEDIUM** — content body is HTML with inconsistent shape across cases | Always lands in `legal_ref_candidates` (founder approves before any canonical write). |
+| **Find Case Law / TNA** (secondary, **dormant**) | Atom search via env-gated `searchAtom()` | £0 | `<published>` timestamp on entries | **MEDIUM** — judgment text is authoritative, but selection of which cases to cite is editorial | Dormant until licence accepted. Public Atom is OGL v3.0; programmatic re-use needs the transactional licence. |
+| **Perplexity sonar-pro** (fallback) | Verify route + weekly reverify | £0.005 | Probabilistic verdict + cited URL | **LOW-MEDIUM** — output is a re-statement, not the authority | Authority allowlist + 3-gate corroboration before any canonical write. Stays as the only freshness signal for FCA / Ofcom / Ofgem refs. |
+
+The tiering is deliberate: the higher the trust ceiling, the closer to canonical the auto-apply gates allow. legislation.gov.uk is the only source that can flip the `is_stale` flag on a canonical row without founder review (because the flag is observational, not a citation field). Every actual citation change still passes through `legal_ref_corrections` and a founder click — no fork in the dispute path.
+
+### Risks + caveats
+
+- **legislation.gov.uk amendments sweep load**: ~hundreds of refs × daily fetch. Concurrency capped at 5; per-fetch timeout 8 s. Expected nightly bandwidth ≈ 100 fetches × ~50 KB = ~5 MB, well within polite-use limits. No published rate-limit ceiling on the source; we identify ourselves via a User-Agent.
+- **Hash false-positives from XML whitespace / republish drift**: addressed by `normaliseXmlForHash` (strips XML comments, `<ukm:DocumentVersion>`, `<ukm:Modified>`, collapses whitespace). Verified by the `freshness.test.ts` suite.
+- **Find Case Law licence delay**: ~10 working days. The scaffold ships dormant so we can flip the env var the moment the licence email arrives; no PR required at that point.
