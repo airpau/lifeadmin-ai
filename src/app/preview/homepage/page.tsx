@@ -673,11 +673,11 @@ const TESTIMONIALS = [
     color: 'var(--accent-mint-deep)',
   },
   {
-    name: 'Aisha K.',
+    name: 'Sarah K.',
     meta: 'Freelancer · Manchester',
     quote:
-      "I thought I was on top of my subs. Paybacker found six I'd completely forgotten about, including two gym memberships.",
-    saved: 'Saved £392',
+      "I was about to call a solicitor — Paybacker had the letter drafted before I'd finished my coffee. Got £340 back from EE for a mid-contract price hike.",
+    saved: 'Recovered £340 · kept 100%',
     color: 'var(--accent-orange-deep)',
   },
   {
@@ -700,8 +700,8 @@ const TESTIMONIALS = [
     name: 'Rita N.',
     meta: 'Teacher · Leeds',
     quote:
-      "Paybacker caught a £41/month energy hike British Gas quietly slipped in. The dispute paid for a year of Pro in one letter.",
-    saved: 'Saved £492',
+      "A claims firm wanted 30% to chase British Gas for me. Paybacker caught the £41/month hike, drafted the letter, and I kept every pound. Paid for a year of Pro in one go.",
+    saved: 'Recovered £492 · kept 100%',
     color: 'var(--accent-mint-deep)',
   },
   {
@@ -825,28 +825,30 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="hero-copy">
               <span className="eyebrow">Free forever tier · No card required</span>
               <h1>
-                <span className="l1">Find the £1,000+</span>
-                <span className="l2">you&rsquo;re overpaying.</span>
-                <span className="l3">Get your money back.</span>
+                <span className="l1">Your AI lawyer</span>
+                <span className="l2">for unfair bills.</span>
+                <span className="l3">You keep 100% of what we recover.</span>
               </h1>
               <p className="hero-sub">
-                Paybacker scans your bank and email to spot overcharges, forgotten
-                subscriptions, and unfair bills — then writes professional complaint
-                letters citing UK law in 30 seconds.
+                Paybacker reads your bank and inbox, drafts complaint letters
+                citing the exact UK statute, and runs every dispute end-to-end —
+                through provider escalation and Ombudsman if needed. Solicitors
+                charge £250/hour. Claims firms take 30%. We charge £4.99/month
+                and you keep every penny we win back.
               </p>
               <div className="hero-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
-                  Start free — 3 AI letters included →
+                  Start free — keep 100% of your wins →
                 </Link>
-                <a className="btn btn-ghost" href="#how">
-                  See how it works
+                <a className="btn btn-ghost" href="#vs-lawyers">
+                  Why not a solicitor?
                 </a>
               </div>
               <div className="hero-ticker">
                 <span className="pulse" />
                 <span>
-                  UK households are typically overcharged{' '}
-                  <strong>£1,000+ a year</strong> — we find it.
+                  Solicitors: £250/hr. Claims firms: 30% cut.{' '}
+                  <strong>Paybacker: £4.99/mo, you keep 100%.</strong>
                 </span>
               </div>
             </Reveal>
@@ -1087,6 +1089,162 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
+      {/* ========== vs Lawyers / Claims firms ==========
+          Strategic positioning: Paybacker replaces the legal-services
+          spend (solicitors at £250/hr, claims firms taking 30%), not
+          another budgeting app. This block sits straight after the
+          case study so the reader has the proof first, then the
+          alternative-cost framing. Re-uses .pricing-grid + .price-card
+          so it inherits the responsive stacking already wired into the
+          mobile breakpoint. */}
+      <section className="pricing-section section-light" id="vs-lawyers" aria-label="Paybacker vs solicitors and claims management firms">
+        <div className="wrap">
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow">The category we replace</span>
+            <h2 style={{ margin: '12px 0' }}>
+              Why people pay solicitors and claims firms —
+              <br />
+              and why you don&rsquo;t need to.
+            </h2>
+            <p>
+              The same dispute, three ways to run it. Same UK statutes
+              cited. Wildly different price tag.
+            </p>
+          </Reveal>
+
+          <div className="pricing-grid">
+            <Reveal className="price-card" delay={0}>
+              <div className="tier">Solicitor</div>
+              <div className="price">£250<span className="per">/hour</span></div>
+              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
+              <ul>
+                <li>Books a 30-minute consultation</li>
+                <li>You repeat the facts on the call</li>
+                <li>Drafts one letter, then bills you</li>
+                <li>Forgets to chase the response</li>
+                <li>Won&rsquo;t take cases under £1,000</li>
+              </ul>
+            </Reveal>
+
+            <Reveal className="price-card" delay={80}>
+              <div className="tier">Claims management firm</div>
+              <div className="price">30%<span className="per">of recovery</span></div>
+              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
+              <ul>
+                <li>Takes a third of whatever you recover</li>
+                <li>Cherry-picks high-value cases only</li>
+                <li>Drops you if your claim is under £200</li>
+                <li>You sign over conduct of the case</li>
+                <li>Often run by ex-PPI shops, not lawyers</li>
+              </ul>
+            </Reveal>
+
+            <Reveal className="price-card featured" delay={160}>
+              <span className="ribbon">You keep 100%</span>
+              <div className="tier">Paybacker</div>
+              <div className="price">£4.99<span className="per">/month</span></div>
+              <div className="founding">Or use the free tier — 3 letters / month</div>
+              <ul>
+                <li>Drafts the letter in 30 seconds</li>
+                <li>Cites the exact UK statute, not a template</li>
+                <li>Tracks the response in your inbox automatically</li>
+                <li>Escalates to the Ombudsman when the 8-week clock hits</li>
+                <li>You keep 100% of every £ recovered</li>
+              </ul>
+              <Link className="btn btn-mint cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
+                Start free →
+              </Link>
+            </Reveal>
+          </div>
+
+          <p className="compare-footnote" style={{ marginTop: 24 }}>
+            Paybacker is not a law firm and AI-generated letters are guidance,
+            not legal advice. For complex litigation, instruct a solicitor.
+            For everyday consumer disputes — broadband, energy, parking,
+            flights, faulty goods — paying £250/hour is the part we&rsquo;re
+            replacing.
+          </p>
+        </div>
+      </section>
+
+      {/* ========== How it works (dark) ========== */}
+      <section className="how-section section-ink" id="how">
+        <div className="wrap">
+          <Reveal className="section-head">
+            <span className="eyebrow on-ink">How it works</span>
+            <h2>
+              Three steps. Ten minutes.
+              <br />
+              Usually four-figure savings.
+            </h2>
+            <p className="sub">
+              You don&rsquo;t have to connect anything to see it work. Try the
+              Disputes Centre for free — no account needed.
+            </p>
+          </Reveal>
+
+          <div className="how-steps">
+            <Reveal className="how-step" delay={0}>
+              <div className="num">01</div>
+              <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
+              <p>
+                Pick the category, type a sentence. We cite the law, you send the
+                letter.
+              </p>
+              <HeroDemo />
+            </Reveal>
+
+            <Reveal className="how-step" delay={80}>
+              <div className="num">02</div>
+              <h3>Connect your bank and email to find hidden costs.</h3>
+              <p>Open Banking via Yapily. Read-only. Never stored longer than needed.</p>
+              <div className="bank-list">
+                <div className="bank-row"><span className="n">Monzo · main</span><span className="v">Connected</span></div>
+                <div className="bank-row"><span className="n">Barclays · joint</span><span className="v">Connected</span></div>
+                <div className="bank-row"><span className="n">Chase · savings</span><span className="v">Connected</span></div>
+                <div className="bank-row"><span className="n">Gmail · inbox scan</span><span className="v orange">3 hikes</span></div>
+                <div className="bank-row"><span className="n">Outlook · work</span><span className="v orange">1 duplicate</span></div>
+              </div>
+            </Reveal>
+
+            <Reveal className="how-step" delay={160}>
+              <div className="num">03</div>
+              <h3>We escalate the dispute end-to-end — provider, then Ombudsman.</h3>
+              <p>Watchdog reads the provider&rsquo;s reply, escalates after 8 weeks if needed, and tracks every step. You keep 100% of what we recover.</p>
+              <div style={{ marginTop: 'auto' }}>
+                <div className="deal-row">
+                  <div>
+                    <div className="cat">Step 1</div>
+                    <div className="name">Provider escalation</div>
+                  </div>
+                  <div className="save">Auto</div>
+                </div>
+                <div className="deal-row">
+                  <div>
+                    <div className="cat">Step 2</div>
+                    <div className="name">Ombudsman at 8 weeks</div>
+                  </div>
+                  <div className="save">Auto</div>
+                </div>
+                <div className="deal-row">
+                  <div>
+                    <div className="cat">Step 3</div>
+                    <div className="name">Refund recovered</div>
+                  </div>
+                  <div className="save">100% yours</div>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+
+          <div className="how-cta-row">
+            <Link className="btn btn-mint" href="/auth/signup">
+              Try it free — no account needed
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* ========== Features intro ========== */}
       <section className="features-intro section-light" id="features">
         <div className="wrap">
@@ -1132,38 +1290,6 @@ export default function HomepageV3PreviewPage() {
             </Reveal>
             <Reveal className="feature-stage" delay={120}>
               <DisputesDemo />
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
-      {/* ----- 02 · Pocket Agent (dark; copy above demo) ----- */}
-      <section className="feature-section feature-section--ink" id="pocket-agent">
-        <div className="wrap">
-          <div className="feature-grid">
-            <Reveal className="feature-copy">
-              <h2 className="feature-title">Pocket Agent</h2>
-              <p className="feature-tagline">
-                Your AI money agent, in Telegram.
-              </p>
-              <p>
-                Ask anything. Fix anything. &ldquo;Is my energy bill fair?&rdquo;
-                &ldquo;Cancel my gym.&rdquo; &ldquo;Dispute my parking ticket.&rdquo;
-                Done — from your phone.
-              </p>
-              <ul className="feature-bullets">
-                <li>Reads your transactions, emails and contracts securely</li>
-                <li>Acts for you: drafts letters, queues cancellations</li>
-                <li>Telegram today · WhatsApp &amp; SMS on the roadmap</li>
-              </ul>
-              <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
-                  Connect Telegram →
-                </Link>
-              </div>
-            </Reveal>
-            <Reveal className="feature-stage" delay={120}>
-              <PocketAgentDemo />
             </Reveal>
           </div>
         </div>
@@ -1263,6 +1389,40 @@ export default function HomepageV3PreviewPage() {
             </Reveal>
             <Reveal className="feature-stage" delay={120}>
               <ExportDemo />
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ----- Pocket Agent · reframed as "personal caseworker" ----- */}
+      <section className="feature-section feature-section--ink" id="pocket-agent">
+        <div className="wrap">
+          <div className="feature-grid">
+            <Reveal className="feature-copy">
+              <h2 className="feature-title">Your personal caseworker — over WhatsApp</h2>
+              <p className="feature-tagline">
+                A solicitor takes a week to reply to email. Your Paybacker
+                caseworker is on WhatsApp 24/7.
+              </p>
+              <p>
+                It tells you when a dispute is ready to send, when the company
+                replies, and when the 8-week Ombudsman clock hits. Tap to
+                approve. Done — no chasing, no hold music.
+              </p>
+              <ul className="feature-bullets">
+                <li>Drafts ready in 30 seconds — approve with one tap</li>
+                <li>Watches your inbox for the provider&rsquo;s response</li>
+                <li>Auto-escalates to Ombudsman at the 8-week mark</li>
+                <li>Telegram on every plan · WhatsApp on Pro</li>
+              </ul>
+              <div className="feature-cta-row">
+                <Link className="btn btn-mint" href="/auth/signup">
+                  Get your caseworker →
+                </Link>
+              </div>
+            </Reveal>
+            <Reveal className="feature-stage" delay={120}>
+              <PocketAgentDemo />
             </Reveal>
           </div>
         </div>
@@ -1431,84 +1591,6 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
-      {/* ========== How it works (dark) ========== */}
-      <section className="how-section section-ink" id="how">
-        <div className="wrap">
-          <Reveal className="section-head">
-            <span className="eyebrow on-ink">How it works</span>
-            <h2>
-              Three steps. Ten minutes.
-              <br />
-              Usually four-figure savings.
-            </h2>
-            <p className="sub">
-              You don&rsquo;t have to connect anything to see it work. Try the
-              Disputes Centre for free — no account needed.
-            </p>
-          </Reveal>
-
-          <div className="how-steps">
-            <Reveal className="how-step" delay={0}>
-              <div className="num">01</div>
-              <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
-              <p>
-                Pick the category, type a sentence. We cite the law, you send the
-                letter.
-              </p>
-              <HeroDemo />
-            </Reveal>
-
-            <Reveal className="how-step" delay={80}>
-              <div className="num">02</div>
-              <h3>Connect your bank and email to find hidden costs.</h3>
-              <p>Open Banking via Yapily. Read-only. Never stored longer than needed.</p>
-              <div className="bank-list">
-                <div className="bank-row"><span className="n">Monzo · main</span><span className="v">Connected</span></div>
-                <div className="bank-row"><span className="n">Barclays · joint</span><span className="v">Connected</span></div>
-                <div className="bank-row"><span className="n">Chase · savings</span><span className="v">Connected</span></div>
-                <div className="bank-row"><span className="n">Gmail · inbox scan</span><span className="v orange">3 hikes</span></div>
-                <div className="bank-row"><span className="n">Outlook · work</span><span className="v orange">1 duplicate</span></div>
-              </div>
-            </Reveal>
-
-            <Reveal className="how-step" delay={160}>
-              <div className="num">03</div>
-              <h3>Get personalised recommendations from 53+ verified UK partners.</h3>
-              <p>We only show deals that beat your current bill. No sponsored nonsense.</p>
-              <div style={{ marginTop: 'auto' }}>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Broadband</div>
-                    <div className="name">Fibre 150 · 24mo</div>
-                  </div>
-                  <div className="save">Save £432</div>
-                </div>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Energy</div>
-                    <div className="name">Octopus Tracker</div>
-                  </div>
-                  <div className="save">Save £287</div>
-                </div>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Mobile</div>
-                    <div className="name">20GB 5G · SIM only</div>
-                  </div>
-                  <div className="save">Save £156</div>
-                </div>
-              </div>
-            </Reveal>
-          </div>
-
-          <div className="how-cta-row">
-            <Link className="btn btn-mint" href="/auth/signup">
-              Try it free — no account needed
-            </Link>
-          </div>
-        </div>
-      </section>
-
       {/* ========== Deals ========== */}
       <section className="deals-section section-mint" id="deals">
         <div className="wrap">
@@ -1616,9 +1698,9 @@ export default function HomepageV3PreviewPage() {
         <Reveal className="testimonials-head">
           <span className="eyebrow">Honest words from real users</span>
           <h2>
-            What the money
+            They skipped the solicitor.
             <br />
-            we found meant for them.
+            Kept 100% of the refund.
           </h2>
         </Reveal>
         <Testimonials />
