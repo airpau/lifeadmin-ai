@@ -13,8 +13,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
-import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import AdminPage from '@/components/admin/AdminPage';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,18 +122,12 @@ export default async function DisputeIntelligenceDashboard() {
     .from('disputes').select('id', { count: 'exact', head: true });
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6">
-      <div className="max-w-7xl mx-auto">
-        <Link href="/dashboard/admin" className="text-sm text-gray-400 hover:text-white inline-flex items-center gap-1 mb-4">
-          <ArrowLeft size={14} /> Back to admin
-        </Link>
-        <h1 className="text-3xl font-bold mb-2">Dispute Intelligence</h1>
-        <p className="text-gray-400 mb-8 max-w-2xl">
-          The flywheel. Every tagged outcome trains the engine and compounds our moat.
-        </p>
-
+    <AdminPage
+      title="Dispute Intelligence"
+      description="The flywheel. Every tagged outcome trains the engine and compounds our moat."
+    >
         {/* Headline cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card label="Total disputes" value={(totalDisputes ?? 0).toLocaleString('en-GB')} />
           <Card label="Total won" value={(overallStat?.won_count ?? 0).toLocaleString('en-GB')} />
           <Card label="Total recovered" value={gbp(overallStat?.total_recovered_gbp ?? null)} />
@@ -143,16 +136,16 @@ export default async function DisputeIntelligenceDashboard() {
         </div>
 
         {/* Dataset growth — fundraise narrative card */}
-        <div className="border-2 border-amber-500/40 bg-amber-500/5 rounded-lg p-6 mb-8">
-          <div className="text-amber-300 text-sm uppercase tracking-wider mb-1">Dataset growth</div>
+        <div className="border-2 border-amber-300 bg-amber-50 rounded-lg p-6 mb-8">
+          <div className="text-amber-700 text-sm uppercase tracking-wider mb-1">Dataset growth</div>
           <div className="text-2xl font-bold mb-1">
             {(overallStat?.total_count ?? 0).toLocaleString('en-GB')} tagged outcomes
             {' '}
-            <span className="text-gray-400 font-normal">
+            <span className="text-slate-500 font-normal">
               of {(totalDisputes ?? 0).toLocaleString('en-GB')} disputes
             </span>
           </div>
-          <div className="text-gray-300 text-sm">
+          <div className="text-slate-700 text-sm">
             Largest UK consumer dispute outcome dataset outside the Financial Ombudsman Service.
             Every confirmed outcome retrains the legal-basis selector against this merchant.
           </div>
@@ -167,11 +160,11 @@ export default async function DisputeIntelligenceDashboard() {
               .map((i) => (
                 <div key={i.scope_key} className="flex items-center gap-3 text-sm">
                   <div className="w-32 capitalize">{i.scope_key}</div>
-                  <div className="flex-1 bg-gray-800 rounded h-4 overflow-hidden">
+                  <div className="flex-1 bg-slate-200 rounded h-4 overflow-hidden">
                     <div className="h-full bg-emerald-500" style={{ width: `${(i.win_rate ?? 0) * 100}%` }} />
                   </div>
                   <div className="w-16 text-right">{pct(i.win_rate)}</div>
-                  <div className="w-20 text-right text-gray-400">n={i.total_count}</div>
+                  <div className="w-20 text-right text-slate-500">n={i.total_count}</div>
                 </div>
               ))}
             {byIndustry.length === 0 && <Empty />}
@@ -182,7 +175,7 @@ export default async function DisputeIntelligenceDashboard() {
         <Section title="Top merchants by case count">
           <Table headers={['Merchant', 'Cases', 'Win rate', 'Avg recovered']}>
             {topMerchants.map((m) => (
-              <tr key={m.scope_key} className="border-t border-gray-800">
+              <tr key={m.scope_key} className="border-t border-slate-100">
                 <td className="py-2 font-mono text-xs">{m.scope_key}</td>
                 <td className="py-2 text-right">{m.total_count}</td>
                 <td className="py-2 text-right">{pct(m.win_rate)}</td>
@@ -197,7 +190,7 @@ export default async function DisputeIntelligenceDashboard() {
         <Section title="Which legal arguments actually work? (min sample 5)">
           <Table headers={['Legal basis', 'Sample', 'Win rate', 'Avg recovered']}>
             {topLegal.map((l) => (
-              <tr key={l.scope_key} className="border-t border-gray-800">
+              <tr key={l.scope_key} className="border-t border-slate-100">
                 <td className="py-2 font-mono text-xs">{l.scope_key}</td>
                 <td className="py-2 text-right">{l.total_count}</td>
                 <td className="py-2 text-right">{pct(l.win_rate)}</td>
@@ -248,7 +241,7 @@ export default async function DisputeIntelligenceDashboard() {
         <Section title="By dispute type">
           <Table headers={['Type', 'Cases', 'Win rate', 'Avg recovered']}>
             {byType.sort((a, b) => b.total_count - a.total_count).map((t) => (
-              <tr key={t.scope_key} className="border-t border-gray-800">
+              <tr key={t.scope_key} className="border-t border-slate-100">
                 <td className="py-2 font-mono text-xs">{t.scope_key}</td>
                 <td className="py-2 text-right">{t.total_count}</td>
                 <td className="py-2 text-right">{pct(t.win_rate)}</td>
@@ -258,32 +251,31 @@ export default async function DisputeIntelligenceDashboard() {
             {byType.length === 0 && <tr><td colSpan={4}><Empty /></td></tr>}
           </Table>
         </Section>
-      </div>
-    </div>
+    </AdminPage>
   );
 }
 
 function Card({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-      <div className="text-xs uppercase tracking-wider text-gray-400">{label}</div>
-      <div className="text-2xl font-bold mt-1">{value}</div>
+    <div className="bg-white border border-slate-200 rounded-xl p-4">
+      <div className="text-xs uppercase tracking-wider text-slate-500 font-medium">{label}</div>
+      <div className="text-2xl font-bold mt-1 text-slate-900 tabular-nums">{value}</div>
     </div>
   );
 }
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="mb-8">
-      <h2 className="text-lg font-semibold mb-3">{title}</h2>
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">{children}</div>
+    <section>
+      <h2 className="text-lg font-semibold mb-3 text-slate-900">{title}</h2>
+      <div className="bg-white border border-slate-200 rounded-xl p-4 overflow-x-auto">{children}</div>
     </section>
   );
 }
 function Table({ headers, children }: { headers: string[]; children: React.ReactNode }) {
   return (
     <table className="w-full text-sm">
-      <thead className="text-gray-400 text-left">
-        <tr>{headers.map((h, i) => <th key={h} className={i === 0 ? '' : 'text-right'}>{h}</th>)}</tr>
+      <thead className="text-slate-500 text-left">
+        <tr>{headers.map((h, i) => <th key={h} className={`pb-2 font-medium uppercase tracking-wide text-xs ${i === 0 ? '' : 'text-right'}`}>{h}</th>)}</tr>
       </thead>
       <tbody>{children}</tbody>
     </table>

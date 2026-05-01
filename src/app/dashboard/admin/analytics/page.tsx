@@ -15,9 +15,9 @@
  */
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import AdminPage from '@/components/admin/AdminPage';
 import {
-  ArrowLeft, Loader2, RefreshCw, Users, TrendingDown, TrendingUp,
+  Loader2, RefreshCw, Users, TrendingDown, TrendingUp,
   Receipt, Wallet, Calendar, Scale, Layers, AlertTriangle,
   Plug, Sparkles, HeartPulse, Bot,
 } from 'lucide-react';
@@ -190,14 +190,11 @@ export default function AdminAnalyticsPage() {
 
   if (error) {
     return (
-      <div className="p-8 max-w-2xl mx-auto">
-        <Link href="/dashboard/admin" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 mb-4">
-          <ArrowLeft className="h-4 w-4" /> Back to admin
-        </Link>
+      <AdminPage title="Platform Analytics">
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
           {error}
         </div>
-      </div>
+      </AdminPage>
     );
   }
 
@@ -220,31 +217,19 @@ export default function AdminAnalyticsPage() {
   const startedSubtext = 'Month just started · transactions sync hourly';
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div>
-          <Link href="/dashboard/admin" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 mb-2">
-            <ArrowLeft className="h-4 w-4" /> Back to admin
-          </Link>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Platform Analytics</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Generated {new Date(data.generated_at).toLocaleString('en-GB')} · {data.privacy_note}
-          </p>
-          {dayOne && (
-            <p className="text-sm text-amber-700 mt-1">
-              Day {daysIntoMonth} of month — figures partial.
-            </p>
-          )}
-        </div>
+    <AdminPage
+      title="Platform Analytics"
+      description={`Generated ${new Date(data.generated_at).toLocaleString('en-GB')} · ${data.privacy_note}${dayOne ? ` · Day ${daysIntoMonth} of month — figures partial.` : ''}`}
+      actions={
         <button
           onClick={() => load({ manual: true })}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm text-slate-700 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-sm text-slate-700 disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </button>
-      </div>
+      }
+    >
 
       {/* ─ USERS ─────────────────────────────────────────────────────── */}
       <Section icon={Users} title="Users" subtitle="Who's on the platform">
@@ -481,7 +466,7 @@ export default function AdminAnalyticsPage() {
           />
         )}
       </Section>
-    </div>
+    </AdminPage>
   );
 }
 

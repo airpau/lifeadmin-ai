@@ -724,7 +724,7 @@ export default function MoneyHubPage() {
 
  if (!data?.accounts?.length) {
  return (
- <div className="max-w-7xl">
+ <div className="max-w-7xl mx-auto w-full">
  <div className="text-center py-10 mb-8">
  <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-200 mb-4">
  <Wallet className="h-8 w-8 text-emerald-600" />

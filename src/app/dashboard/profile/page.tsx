@@ -786,7 +786,7 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-7xl mx-auto w-full">
       {/* Billing update message */}
       {billingMessage && (
         <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2">

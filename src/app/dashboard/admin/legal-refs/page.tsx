@@ -805,7 +805,7 @@ export default function LegalRefsAdminPage() {
         : 'bg-white hover:border-emerald-500 text-slate-900 border-slate-200';
 
   return (
-    <div className="max-w-7xl">
+    <div className="max-w-7xl mx-auto w-full">
       {/* Compliance ops toast */}
       {opToast && (
         <div

@@ -1284,7 +1284,7 @@ export default function SubscriptionsPage() {
   }
 
   return (
-    <div className="max-w-7xl">
+    <div className="max-w-7xl mx-auto w-full">
       {/* Share Win Modal */}
       <ShareWinModal
         open={shareModal.open}
