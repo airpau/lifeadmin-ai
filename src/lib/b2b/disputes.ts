@@ -184,6 +184,22 @@ export interface DisputeResponse {
    * who don't can ignore the field entirely.
    */
   _compliance_warnings?: string[];
+  /**
+   * Historical success rate for this merchant from the Paybacker
+   * dispute outcome dataset. Populated only when sample size >= 5.
+   * Additive optional field — never breaks the public contract.
+   *
+   * Source: `dispute_intelligence_stats` (scope_kind='merchant'),
+   * computed nightly from real dispute outcomes tagged by users +
+   * AI-extracted-confirmed.
+   */
+  historical_success_rate?: {
+    merchant: string;
+    cases_evaluated: number;
+    win_rate: number;
+    avg_recovered_gbp: number | null;
+    source: 'paybacker_dispute_dataset_v1';
+  } | null;
 }
 
 export interface PreflightResult {
@@ -461,6 +477,30 @@ async function fetchVerifiedRefs(scenario: string): Promise<any[]> {
 function inferStatute(legalReferences: string[]): string {
   if (legalReferences.length === 0) return 'No primary UK statute identified for this scenario.';
   return legalReferences[0];
+}
+
+/**
+ * Cheap, non-LLM merchant extraction from a free-text scenario. We
+ * only use this to seed the historical_success_rate lookup — the LLM
+ * still drives every other field. False negatives just mean we skip
+ * the optional field; false positives just miss the dataset.
+ */
+function extractMerchantFromScenario(scenario: string): string | null {
+  const KNOWN = [
+    'Octopus Energy', 'British Gas', 'EDF', 'EON', 'E.ON', 'OVO', 'Bulb', 'Scottish Power', 'SSE',
+    'BT', 'Virgin Media', 'Sky', 'TalkTalk', 'Plusnet', 'NOW Broadband',
+    'O2', 'EE', 'Three', 'Vodafone', 'Giffgaff', 'Tesco Mobile',
+    'HSBC', 'Barclays', 'NatWest', 'Lloyds', 'Halifax', 'Santander', 'Monzo', 'Starling',
+    'Ryanair', 'easyJet', 'British Airways', 'Jet2', 'TUI',
+    'Amazon', 'Argos', 'Currys', 'John Lewis', 'ASOS',
+    'Aviva', 'Admiral', 'Direct Line', 'Churchill', 'Hastings',
+    'Thames Water', 'Severn Trent', 'Anglian Water',
+  ];
+  const lower = scenario.toLowerCase();
+  for (const m of KNOWN) {
+    if (lower.includes(m.toLowerCase())) return m;
+  }
+  return null;
 }
 
 function deriveEscalationPath(scenario: string): DisputeResponse['escalation_path'] {
@@ -834,6 +874,34 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
   };
   if (complianceWarnings.length > 0) {
     response._compliance_warnings = complianceWarnings;
+  }
+
+  // Historical success rate from the dispute outcome dataset. Best-effort:
+  // any failure here must NEVER fail the response.
+  try {
+    const merchantHint =
+      (req.context && typeof (req.context as Record<string, unknown>).merchant === 'string'
+        ? ((req.context as Record<string, unknown>).merchant as string)
+        : null) ?? extractMerchantFromScenario(req.scenario);
+    if (merchantHint) {
+      const { normaliseMerchant } = await import('@/lib/dispute-outcome/normalise');
+      const { getMerchantStat } = await import('@/lib/dispute-outcome/stats');
+      const norm = normaliseMerchant(merchantHint);
+      if (norm) {
+        const stat = await getMerchantStat(norm);
+        if (stat && stat.total_count >= 5 && stat.win_rate != null) {
+          response.historical_success_rate = {
+            merchant: merchantHint,
+            cases_evaluated: stat.total_count,
+            win_rate: stat.win_rate,
+            avg_recovered_gbp: stat.avg_recovered_gbp,
+            source: 'paybacker_dispute_dataset_v1',
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[b2b.disputes] historical_success_rate hydrate failed (non-fatal):', (err as Error).message);
   }
 
   // PR γ — fire-and-forget reverse-lookup audit. One row per cited ref
