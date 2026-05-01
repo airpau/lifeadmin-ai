@@ -771,7 +771,7 @@ export function PocketAgentDemo() {
             }}
           >
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--mint)', animation: 'demoPulse 1.6s infinite' }} />
-            Pocket Agent · Telegram
+            Pocket Agent · Telegram + WhatsApp
           </div>
           <div
             style={{

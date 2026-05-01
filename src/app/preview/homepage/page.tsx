@@ -1277,15 +1277,23 @@ export default function HomepageV3PreviewPage() {
                 Type one sentence — Paybacker writes the formal letter, cites
                 the exact regulation, and sends it on your behalf.
               </p>
+              <p className="freshness-chip">
+                <span className="freshness-chip__dot" aria-hidden="true" />
+                Every citation verified today against legislation.gov.uk, GOV.UK and Find Case Law.{' '}
+                <a className="freshness-chip__link" href="#compliance">
+                  See how &rarr;
+                </a>
+              </p>
               <ul className="feature-bullets">
                 <li>Consumer Rights Act 2015, Ofcom, Ofgem, UK261, DVSA, HMRC</li>
                 <li>Energy, broadband, parking, flight delays, council tax</li>
+                <li>Pre-send freshness gate blocks any letter citing stale law</li>
                 <li>3 free letters / month. Unlimited on Essential and Pro.</li>
                 <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan).</li>
               </ul>
               <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
-                  Try it free →
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fcomplaints">
+                  Draft your first letter →
                 </Link>
               </div>
             </Reveal>
@@ -1293,6 +1301,61 @@ export default function HomepageV3PreviewPage() {
               <DisputesDemo />
             </Reveal>
           </div>
+        </div>
+      </section>
+
+      {/* ----- 02 · Compliance pipeline (trust strip between Disputes
+              and Money Hub) ----- */}
+      <section
+        className="compliance-pipeline section-light"
+        id="compliance"
+        aria-label="How citations are kept current"
+      >
+        <div className="wrap">
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow">Compliance pipeline</span>
+            <h2 className="compliance-pipeline__title">
+              Every citation verified today.
+            </h2>
+            <p className="compliance-pipeline__lead">
+              A daily cron checks every UK statute and regulator citation in our
+              library against the canonical source, recovers dead URLs, and flags
+              anything stale &mdash; before a letter ever leaves your inbox.
+            </p>
+          </Reveal>
+
+          <Reveal className="compliance-pipeline__grid">
+            <div className="compliance-source">
+              <div className="compliance-source__name">legislation.gov.uk</div>
+              <div className="compliance-source__sub">Primary statute source</div>
+              <div className="compliance-source__detail">
+                Consumer Rights Act 2015, Consumer Credit Act 1974, UK261, every
+                regulation in scope.
+              </div>
+            </div>
+            <div className="compliance-source">
+              <div className="compliance-source__name">GOV.UK &middot; CMA</div>
+              <div className="compliance-source__sub">Regulator + market guidance</div>
+              <div className="compliance-source__detail">
+                Ofcom, Ofgem, FCA, CMA published rules and enforcement notices.
+              </div>
+            </div>
+            <div className="compliance-source">
+              <div className="compliance-source__name">Find Case Law</div>
+              <div className="compliance-source__sub">TNA case-law authority</div>
+              <div className="compliance-source__detail">
+                Tribunal and court decisions that bind the regulator and the
+                provider.
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal className="compliance-pipeline__callout">
+            <strong>Pre-send freshness gate:</strong> if any citation in your draft has
+            gone stale or its source URL has died, Paybacker blocks the send and
+            surfaces a fresh alternative &mdash; so no letter ever cites
+            yesterday&rsquo;s law.
+          </Reveal>
         </div>
       </section>
 
@@ -1316,7 +1379,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan) — ask &ldquo;did I get paid?&rdquo;, check balances, see recent transactions.</li>
               </ul>
               <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fmoney-hub">
                   Connect your bank →
                 </Link>
               </div>
@@ -1354,7 +1417,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan).</li>
               </ul>
               <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fsubscriptions">
                   See every subscription →
                 </Link>
               </div>
@@ -1385,7 +1448,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Accountant-ready annual exports for self-assessment</li>
               </ul>
               <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fexport">
                   Export your money →
                 </Link>
               </div>
@@ -1427,8 +1490,8 @@ export default function HomepageV3PreviewPage() {
                 </li>
               </ul>
               <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
-                  Get your caseworker →
+                <Link className="btn btn-mint" href="/pocket-agent">
+                  Set up your Pocket Agent →
                 </Link>
               </div>
             </Reveal>
@@ -1811,9 +1874,9 @@ export default function HomepageV3PreviewPage() {
             </div>
             <div className="footer-col">
               <h5>Product</h5>
-              <a href="#features">Disputes Centre</a>
-              <a href="#features">Money Hub</a>
-              <a href="#features">Pocket Agent</a>
+              <a href="#disputes">Disputes Centre</a>
+              <a href="#money-hub">Money Hub</a>
+              <a href="#pocket-agent">Pocket Agent</a>
               <a href="#deals">Deals</a>
               <Link href="/templates">Letter templates</Link>
               <Link href="/pricing">Pricing</Link>

@@ -2430,3 +2430,106 @@
   color: #fbbf24;
   border: 1px solid rgba(245, 158, 11, 0.4);
 }
+
+/* Freshness chip — strapline link inside the AI Disputes section
+   that anchors the credibility claim and deep-links to the
+   Compliance pipeline trust strip. */
+.m-v2-root .freshness-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 4px 0 18px;
+  line-height: 1.5;
+}
+.m-v2-root .freshness-chip__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-mint);
+  flex-shrink: 0;
+}
+.m-v2-root .freshness-chip__link {
+  color: var(--accent-mint-deep);
+  font-weight: 700;
+  text-decoration: none;
+}
+.m-v2-root .freshness-chip__link:hover { text-decoration: underline; }
+
+/* Compliance pipeline trust strip — sits between AI Disputes and
+   Money Hub sections to anchor the "exact UK law" claim with the
+   live legislation pipeline that backs it. */
+.m-v2-root .compliance-pipeline {
+  padding: 56px 0 56px;
+  background: var(--surface-base);
+  scroll-margin-top: 80px;
+}
+.m-v2-root .compliance-pipeline__title {
+  margin: 12px 0 10px;
+  font-size: 32px;
+  letter-spacing: -0.02em;
+}
+.m-v2-root .compliance-pipeline__lead {
+  font-size: 16px;
+  color: var(--text-secondary);
+  max-width: 720px;
+  margin: 0 auto 28px;
+  line-height: 1.6;
+}
+.m-v2-root .compliance-pipeline__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  max-width: 880px;
+  margin: 0 auto 24px;
+}
+.m-v2-root .compliance-source {
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  padding: 20px 22px;
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+.m-v2-root .compliance-source__name {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+.m-v2-root .compliance-source__sub {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-mint-deep);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.m-v2-root .compliance-source__detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.m-v2-root .compliance-pipeline__callout {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 14px 18px;
+  background: rgba(167, 243, 208, 0.18);
+  border: 1px solid var(--accent-mint);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  text-align: center;
+}
+.m-v2-root .compliance-pipeline__callout strong {
+  color: var(--text-primary);
+}
+@media (max-width: 760px) {
+  .m-v2-root .compliance-pipeline__grid { grid-template-columns: 1fr; gap: 12px; }
+  .m-v2-root .compliance-pipeline__title { font-size: 26px; }
+}
