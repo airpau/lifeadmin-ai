@@ -3,6 +3,18 @@
  * submitted to Meta on 2026-04-27.
  *
  * ────────────────────────────────────────────────────────────────────────
+ * LESSON LEARNT (2026-04-29) — VARIABLES AT EITHER END
+ * ────────────────────────────────────────────────────────────────────────
+ * Meta rejects templates with variables at EITHER start OR end. Always
+ * wrap variables with static text on BOTH sides. The 2026-04-27 fix only
+ * caught the trailing-variable case. On 2026-04-29 Meta re-rejected
+ * `paybacker_alert_price_increase` and `paybacker_alert_unusual_charge`
+ * (subCode 2388299, "Variables can't be at the start or end of the
+ * template.") because their bodies opened with `{{1}}`. Both are now
+ * prefixed with short static lead-ins ("Heads up —" / "Spotted something —")
+ * and remain at PENDING_RESUBMISSION for the next resubmit cycle.
+ *
+ * ────────────────────────────────────────────────────────────────────────
  * RESUBMISSION REQUIRED — see PR fix(whatsapp): trailing-variable fix
  * ────────────────────────────────────────────────────────────────────────
  *
@@ -68,8 +80,9 @@
  *   1. Run scripts/submit-whatsapp-template.ts to create + submit to Meta
  *   2. Add the entry below with the returned SID
  *   3. Add a row to whatsapp_message_templates (additive migration)
- *   4. **Never let the body end on a `{{N}}` placeholder** — always append
- *      a static CTA-style sentence after the last variable.
+ *   4. **Never let the body start OR end on a `{{N}}` placeholder** — Meta
+ *      rejects either case (subCode 2388299). Always wrap variables with
+ *      static text on BOTH sides.
  */
 
 export type TemplateCategory = 'UTILITY' | 'AUTHENTICATION' | 'MARKETING';
@@ -137,7 +150,7 @@ export const TEMPLATES = {
     vars: ['merchant', 'old_price', 'new_price', 'effective_date'] as const,
     description: 'Subscription price hike detected',
     proOnly: true,
-    body: '{{1}} is going up from £{{2}} to £{{3}} on {{4}}. Tap to switch or cancel.',
+    body: 'Heads up — {{1}} is going up from £{{2}} to £{{3}} on {{4}}. Tap to switch or cancel.',
   },
   /** Contract end ≤30 days, looks at contract_end_date on subscriptions */
   paybacker_alert_renewal: {
@@ -157,7 +170,7 @@ export const TEMPLATES = {
     vars: ['merchant', 'current_amount', 'average_amount', 'percent_higher'] as const,
     description: 'Bill anomaly detected',
     proOnly: true,
-    body: '{{1}} just charged £{{2}} vs your usual £{{3}} — that is {{4}}% higher. Tap to dispute.',
+    body: 'Spotted something — {{1}} just charged £{{2}} vs your usual £{{3}} — that is {{4}}% higher. Tap to dispute.',
   },
   /** Free trial → first auto-charge ≤3 days away */
   paybacker_alert_trial_ending: {

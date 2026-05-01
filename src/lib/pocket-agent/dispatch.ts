@@ -165,14 +165,24 @@ export async function dispatchPocketAgentAlert(args: {
       const { getTemplateSid } = await import('@/lib/whatsapp/template-sids');
       const liveSid = await getTemplateSid(templateName);
       if (!liveSid) {
+        // Pre-flight guard: template not approved by Meta yet. Skip the
+        // Twilio call entirely (it would 4xx) and dedup the log so we
+        // don't get a retry storm in business_log when the dispute-agent
+        // cron loops over many users with the same unapproved template.
         const err = `template not yet approved`;
-        await logWhatsAppDispatchOutcome({
-          session,
-          alertType,
-          ok: false,
-          error: err,
+        const skipped = await logSkippedDispatch({
           templateName,
+          userId: session.user_id,
         });
+        if (!skipped.alreadyLogged) {
+          await logWhatsAppDispatchOutcome({
+            session,
+            alertType,
+            ok: false,
+            error: err,
+            templateName,
+          });
+        }
         return { ok: false, channel: 'whatsapp', error: err };
       }
       const tpl = (TEMPLATES as Record<string, { vars: readonly string[] }>)[templateName];
@@ -309,6 +319,53 @@ async function logWhatsAppDispatchOutcome(args: {
     });
   } catch (e) {
     console.warn('[pocket-agent/dispatch] business_log insert failed:', e);
+  }
+}
+
+/**
+ * Dedup helper for "template not yet approved" skips. The dispute-agent
+ * cron can loop over hundreds of disputes per tick — without dedup, every
+ * loop iteration writes a business_log row for the same unapproved
+ * template, producing the retry storm seen on 2026-04-29 (10 rows in 11s
+ * for `paybacker_dispute_agent_action`). We piggyback on the existing
+ * compliance_alerts_sent table — its UNIQUE alert_key gives us
+ * one-log-per-(template, user, day) for free.
+ *
+ * Returns { alreadyLogged: true } when the (template_name, user_id, today)
+ * skip is already recorded for the day — caller should suppress the
+ * business_log write. Returns { alreadyLogged: false } on first write.
+ */
+async function logSkippedDispatch(args: {
+  templateName: string;
+  userId: string;
+}): Promise<{ alreadyLogged: boolean }> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return { alreadyLogged: false };
+    const sb = createClient(url, key);
+    const day = new Date().toISOString().slice(0, 10);
+    const alertKey = `wa-skip:${args.templateName}:${args.userId}:${day}`;
+    const { error } = await sb
+      .from('compliance_alerts_sent')
+      .insert({
+        alert_key: alertKey,
+        channel: 'whatsapp_skip',
+        metadata: {
+          template_name: args.templateName,
+          user_id: args.userId,
+          reason: 'template_not_approved',
+        },
+      });
+    // 23505 = unique_violation → already logged today.
+    if (error && (error.code === '23505' || /duplicate key/i.test(error.message))) {
+      return { alreadyLogged: true };
+    }
+    return { alreadyLogged: false };
+  } catch {
+    // On dedup-helper failure, fall through to regular logging — better
+    // to log twice than miss a real signal.
+    return { alreadyLogged: false };
   }
 }
 
