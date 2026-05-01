@@ -1,5 +1,6 @@
 /**
- * Consumer abandonment nurture email templates (4-email sequence).
+ * Consumer abandonment nurture email templates — migrated to canonical
+ * PaybackerEmailLayout (2026-05-01).
  *
  * Sequence:
  *   1. Soft reminder           ~T+1h     transactional-leaning
@@ -7,53 +8,21 @@
  *   3. 10% discount + code     ~T+72h    soft opt-in marketing
  *   4. Final / code expiring   ~T+7d     soft opt-in marketing
  *
- * Lawful basis: PECR reg. 22(3) "soft opt-in" — recipient gave details
- * during a sale-negotiation (Stripe checkout / pricing page subscribe),
- * marketing relates to similar products, one-click unsubscribe in every
- * footer.
- *
- * Visual style mirrors src/lib/email/dispute-reminders.ts so consumer
- * mail looks the same as transactional product mail.
+ * Lawful basis: PECR reg. 22(3) "soft opt-in" — recipient gave details during
+ * sale-negotiation (Stripe checkout / pricing page subscribe), marketing relates
+ * to similar products, one-click unsubscribe in every footer (handled by the
+ * canonical layout when `variant: 'marketing'` + `unsubscribeUrl` are set).
  */
 
-import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
-
-const wrap = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden;`;
-const header = `background:#F9FAFB;padding:24px 32px;border-bottom:1px solid #F9FAFB;text-align:center;`;
-const body = `padding:32px;`;
-const h1 = `color:#0B1220;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`;
-const p = `color:#374151;font-size:15px;line-height:1.75;margin:0 0 16px;`;
-const box = `background:#F9FAFB;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #059669;`;
-const codeBox = `background:#0B1220;color:#FFFFFF;border-radius:12px;padding:18px 24px;margin:20px 0;text-align:center;font-family:Menlo,Monaco,Consolas,monospace;font-size:22px;font-weight:700;letter-spacing:2px;`;
-const cta = `display:inline-block;background:#059669;color:#FFFFFF;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`;
-const footerBox = `padding:20px 32px 28px;border-top:1px solid #F9FAFB;`;
-const footerText = `color:#4B5563;font-size:12px;line-height:1.6;margin:0;text-align:center;`;
-const unsubLink = `color:#059669;text-decoration:underline;font-weight:600;`;
+import { sendPaybackerEmail } from './send';
+import {
+  renderPaybackerEmail,
+  card,
+  paragraph,
+  unorderedList,
+} from './PaybackerEmailLayout';
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
-
-const Logo = () => `
-  <a href="${SITE}" style="text-decoration:none;">
-    <span style="font-size:22px;font-weight:800;color:#0B1220;">Pay<span style="color:#059669;">backer</span></span>
-  </a>
-`;
-
-function Footer(unsubscribeUrl: string): string {
-  return `
-    <div style="${footerBox}">
-      <p style="${footerText}">
-        You're receiving this because you started a checkout or signup on
-        <a href="${SITE}" style="color:#059669;text-decoration:none;">paybacker.co.uk</a>.<br/>
-        <a href="${unsubscribeUrl}" style="${unsubLink}">Unsubscribe in one click</a>
-      </p>
-      <p style="${footerText};margin-top:14px;">
-        Paybacker LTD · ICO Registered · UK Company<br/>
-        <a href="${SITE}/privacy-policy" style="color:#4B5563;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
-        <a href="${SITE}/legal/terms" style="color:#4B5563;text-decoration:none;">Terms</a>
-      </p>
-    </div>
-  `;
-}
 
 export type NurtureTemplate =
   | 'email_1_soft_reminder'
@@ -102,192 +71,167 @@ function ctaUrl(ctx: NurtureContext): string {
   return ctx.recoveryUrl || `${SITE}/pricing`;
 }
 
-function greet(name: string | null): string {
-  if (!name) return 'Hi there,';
-  const first = name.split(' ')[0];
-  return `Hi ${first},`;
+function firstName(name: string | null): string {
+  if (!name) return 'there';
+  return name.split(' ')[0];
 }
 
-// ---------- Template 1 — soft reminder ----------
+const codeBoxStyle = `background:#0B1220;color:#FFFFFF;border-radius:12px;padding:18px 24px;margin:20px 0;text-align:center;font-family:Menlo,Monaco,Consolas,monospace;font-size:22px;font-weight:700;letter-spacing:2px;`;
 
-function template1(ctx: NurtureContext): { html: string; text: string } {
+interface BuiltEmail {
+  preheader: string;
+  heading: string;
+  intro?: string;
+  body: string;
+  cta?: { label: string; href: string };
+  text: string;
+}
+
+function build(template: NurtureTemplate, ctx: NurtureContext): BuiltEmail {
   const tn = tierName(ctx.intendedTier);
+  const fn = firstName(ctx.name);
+  const url = ctaUrl(ctx);
   const unsub = unsubUrl(ctx.unsubscribeToken);
-  const html = `
-    <div style="${wrap}">
-      <div style="${header}">${Logo()}</div>
-      <div style="${body}">
-        <h1 style="${h1}">${greet(ctx.name).replace(',', '')} — did you forget something?</h1>
-        <p style="${p}">You started signing up for <strong>${tn}</strong> on Paybacker but didn't quite finish. Totally understandable — life gets busy.</p>
-        <p style="${p}">If you'd like to pick up where you left off, you can finish in under a minute:</p>
-        <div style="text-align:center;margin:28px 0;">
-          <a href="${ctaUrl(ctx)}" style="${cta}">Finish setting up ${tn}</a>
-        </div>
-        <p style="${p}">If this wasn't you, just ignore this email — no account was created.</p>
-        <p style="${p}">— The Paybacker team</p>
-      </div>
-      ${Footer(unsub)}
-    </div>
-  `;
-  const text = [
-    `${greet(ctx.name)}`,
-    ``,
-    `You started signing up for ${tn} on Paybacker but didn't quite finish.`,
-    `Pick up where you left off: ${ctaUrl(ctx)}`,
-    ``,
-    `If this wasn't you, just ignore this email — no account was created.`,
-    ``,
-    `— The Paybacker team`,
-    `Unsubscribe: ${unsub}`,
-  ].join('\n');
-  return { html, text };
+
+  if (template === 'email_1_soft_reminder') {
+    return {
+      preheader: 'Pick up where you left off',
+      heading: `Hi ${fn} — did you forget something?`,
+      intro: `You started signing up for <strong>${tn}</strong> on Paybacker but didn't quite finish. Totally understandable — life gets busy.`,
+      body: [
+        paragraph("If you'd like to pick up where you left off, you can finish in under a minute."),
+        paragraph("If this wasn't you, just ignore this email — no account was created.", { muted: true }),
+        paragraph('— The Paybacker team'),
+      ].join('\n'),
+      cta: { label: `Finish setting up ${tn}`, href: url },
+      text: [
+        `Hi ${fn},`,
+        ``,
+        `You started signing up for ${tn} on Paybacker but didn't quite finish.`,
+        `Pick up where you left off: ${url}`,
+        ``,
+        `If this wasn't you, just ignore this email — no account was created.`,
+        ``,
+        `— The Paybacker team`,
+        `Unsubscribe: ${unsub}`,
+      ].join('\n'),
+    };
+  }
+
+  if (template === 'email_2_value_nudge') {
+    const isPro = ctx.intendedTier === 'pro';
+    const bullets = isPro
+      ? [
+          'Unlimited bill scanning and complaint letters',
+          'AI-drafted ombudsman escalations when companies ignore you',
+          'Auto-cancellation emails for unused subscriptions',
+          'Bank-linked overcharge detection across every direct debit',
+        ]
+      : [
+          'Unlimited bill scanning — never miss a refund opportunity',
+          'AI complaint letters drafted in your voice',
+          'Subscription tracker that flags price hikes and unused services',
+          'UK consumer-rights references baked into every letter',
+        ];
+    return {
+      preheader: `Why ${tn} pays for itself`,
+      heading: `Hi ${fn} — here's why ${tn} pays for itself`,
+      intro: 'When we ask paying members what made the difference, the same handful of things come up:',
+      body: [
+        card(unorderedList(bullets), { eyebrow: 'What members value most' }),
+        paragraph(
+          `The average member recovers £${isPro ? '180' : '90'}+ in their first 90 days. ${tn} costs ${tierPrice(ctx.intendedTier)} — usually paid back inside a month.`,
+        ),
+        paragraph('Got a question first? Just reply — a real person reads every reply.', { muted: true }),
+        paragraph('— The Paybacker team'),
+      ].join('\n'),
+      cta: { label: `Get started with ${tn}`, href: url },
+      text: [
+        `Hi ${fn},`,
+        ``,
+        `Here's why ${tn} pays for itself:`,
+        ...bullets.map((b) => `  • ${b}`),
+        ``,
+        `Average member recovers £${isPro ? '180' : '90'}+ in their first 90 days.`,
+        `${tn}: ${tierPrice(ctx.intendedTier)} — usually paid back inside a month.`,
+        ``,
+        `Get started: ${url}`,
+        ``,
+        `— The Paybacker team`,
+        `Unsubscribe: ${unsub}`,
+      ].join('\n'),
+    };
+  }
+
+  if (template === 'email_3_discount') {
+    const code = ctx.promoCode ?? 'WELCOME10';
+    const exp = ctx.promoExpiresAt
+      ? ctx.promoExpiresAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
+      : '7 days';
+    return {
+      preheader: `10% off ${tn}, single-use, expires ${exp}`,
+      heading: `Hi ${fn} — a small thank-you`,
+      intro: `We don't normally do discounts, but you've been on our list for a few days and we'd love to have you on board. Here's <strong>10% off your first month of ${tn}</strong>:`,
+      body: [
+        `<div style="${codeBoxStyle}">${code}</div>`,
+        paragraph(`Paste this code on the checkout page. Expires ${exp}.`, { muted: true }),
+        paragraph(
+          "This is a one-time, single-use code — once redeemed it's gone. No catches, no auto-renewing premium-tier nonsense.",
+        ),
+        paragraph('— The Paybacker team'),
+      ].join('\n'),
+      cta: { label: 'Redeem 10% off', href: url },
+      text: [
+        `Hi ${fn},`,
+        ``,
+        `Here's 10% off your first month of ${tn}:`,
+        ``,
+        `   ${code}`,
+        ``,
+        `Paste this code on the checkout page. Expires ${exp}.`,
+        `Single-use, one-time code.`,
+        ``,
+        `Redeem: ${url}`,
+        ``,
+        `— The Paybacker team`,
+        `Unsubscribe: ${unsub}`,
+      ].join('\n'),
+    };
+  }
+
+  // email_4_final
+  const code = ctx.promoCode ?? 'WELCOME10';
+  const exp = ctx.promoExpiresAt
+    ? ctx.promoExpiresAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
+    : 'tomorrow';
+  return {
+    preheader: `Your 10% code expires ${exp}`,
+    heading: `Hi ${fn} — your 10% code expires ${exp}`,
+    intro: "Just a quick heads-up: the 10% code we sent you is about to expire. After that, it's gone for good.",
+    body: [
+      `<div style="${codeBoxStyle}">${code}</div>`,
+      paragraph(
+        `If ${tn} isn't right for you, no worries — this is the last we'll email you about it. We won't keep nagging.`,
+      ),
+      paragraph('— The Paybacker team'),
+    ].join('\n'),
+    cta: { label: 'Use my code', href: url },
+    text: [
+      `Hi ${fn},`,
+      ``,
+      `Your 10% code expires ${exp}:`,
+      ``,
+      `   ${code}`,
+      ``,
+      `Use it: ${url}`,
+      ``,
+      `If ${tn} isn't right for you, no worries — this is the last we'll email you about it.`,
+      ``,
+      `— The Paybacker team`,
+      `Unsubscribe: ${unsub}`,
+    ].join('\n'),
+  };
 }
-
-// ---------- Template 2 — value nudge ----------
-
-function template2(ctx: NurtureContext): { html: string; text: string } {
-  const tn = tierName(ctx.intendedTier);
-  const unsub = unsubUrl(ctx.unsubscribeToken);
-  const isPro = ctx.intendedTier === 'pro';
-  const bullets = isPro
-    ? [
-        'Unlimited bill scanning and complaint letters',
-        'AI-drafted ombudsman escalations when companies ignore you',
-        'Auto-cancellation emails for unused subscriptions',
-        'Bank-linked overcharge detection across every direct debit',
-      ]
-    : [
-        'Unlimited bill scanning — never miss a refund opportunity',
-        'AI complaint letters drafted in your voice',
-        'Subscription tracker that flags price hikes and unused services',
-        'UK consumer-rights references baked into every letter',
-      ];
-  const html = `
-    <div style="${wrap}">
-      <div style="${header}">${Logo()}</div>
-      <div style="${body}">
-        <h1 style="${h1}">${greet(ctx.name).replace(',', '')} — here's why ${tn} pays for itself</h1>
-        <p style="${p}">When we ask paying members what made the difference, the same handful of things come up:</p>
-        <div style="${box}">
-          <ul style="color:#374151;margin:0;font-size:14px;line-height:1.8;padding-left:20px;">
-            ${bullets.map((b) => `<li>${b}</li>`).join('')}
-          </ul>
-        </div>
-        <p style="${p}">The average member recovers £${isPro ? '180' : '90'}+ in their first 90 days. ${tn} costs ${tierPrice(ctx.intendedTier)} — usually paid back inside a month.</p>
-        <div style="text-align:center;margin:28px 0;">
-          <a href="${ctaUrl(ctx)}" style="${cta}">Get started with ${tn}</a>
-        </div>
-        <p style="${p}">Got a question first? Just reply — a real person reads every reply.</p>
-        <p style="${p}">— The Paybacker team</p>
-      </div>
-      ${Footer(unsub)}
-    </div>
-  `;
-  const text = [
-    `${greet(ctx.name)}`,
-    ``,
-    `Here's why ${tn} pays for itself:`,
-    ...bullets.map((b) => `  • ${b}`),
-    ``,
-    `Average member recovers £${isPro ? '180' : '90'}+ in their first 90 days.`,
-    `${tn}: ${tierPrice(ctx.intendedTier)} — usually paid back inside a month.`,
-    ``,
-    `Get started: ${ctaUrl(ctx)}`,
-    ``,
-    `— The Paybacker team`,
-    `Unsubscribe: ${unsub}`,
-  ].join('\n');
-  return { html, text };
-}
-
-// ---------- Template 3 — 10% discount ----------
-
-function template3(ctx: NurtureContext): { html: string; text: string } {
-  const tn = tierName(ctx.intendedTier);
-  const unsub = unsubUrl(ctx.unsubscribeToken);
-  const code = ctx.promoCode ?? '';
-  const exp = ctx.promoExpiresAt ? ctx.promoExpiresAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : '7 days';
-  const html = `
-    <div style="${wrap}">
-      <div style="${header}">${Logo()}</div>
-      <div style="${body}">
-        <h1 style="${h1}">${greet(ctx.name).replace(',', '')} — a small thank-you</h1>
-        <p style="${p}">We don't normally do discounts, but you've been on our list for a few days and we'd love to have you on board. Here's <strong>10% off your first month of ${tn}</strong>:</p>
-        <div style="${codeBox}">${code || 'WELCOME10'}</div>
-        <p style="${p}" style="text-align:center;color:#6B7280;font-size:13px;">Paste this code on the checkout page. Expires ${exp}.</p>
-        <div style="text-align:center;margin:28px 0;">
-          <a href="${ctaUrl(ctx)}" style="${cta}">Redeem 10% off</a>
-        </div>
-        <p style="${p}">This is a one-time, single-use code — once redeemed it's gone. No catches, no auto-renewing premium-tier nonsense.</p>
-        <p style="${p}">— The Paybacker team</p>
-      </div>
-      ${Footer(unsub)}
-    </div>
-  `;
-  const text = [
-    `${greet(ctx.name)}`,
-    ``,
-    `Here's 10% off your first month of ${tn}:`,
-    ``,
-    `   ${code || 'WELCOME10'}`,
-    ``,
-    `Paste this code on the checkout page. Expires ${exp}.`,
-    `Single-use, one-time code.`,
-    ``,
-    `Redeem: ${ctaUrl(ctx)}`,
-    ``,
-    `— The Paybacker team`,
-    `Unsubscribe: ${unsub}`,
-  ].join('\n');
-  return { html, text };
-}
-
-// ---------- Template 4 — final / expiring ----------
-
-function template4(ctx: NurtureContext): { html: string; text: string } {
-  const tn = tierName(ctx.intendedTier);
-  const unsub = unsubUrl(ctx.unsubscribeToken);
-  const code = ctx.promoCode ?? '';
-  const exp = ctx.promoExpiresAt ? ctx.promoExpiresAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : 'tomorrow';
-  const html = `
-    <div style="${wrap}">
-      <div style="${header}">${Logo()}</div>
-      <div style="${body}">
-        <h1 style="${h1}">${greet(ctx.name).replace(',', '')} — your 10% code expires ${exp}</h1>
-        <p style="${p}">Just a quick heads-up: the 10% code we sent you is about to expire. After that, it's gone for good.</p>
-        <div style="${codeBox}">${code || 'WELCOME10'}</div>
-        <div style="text-align:center;margin:28px 0;">
-          <a href="${ctaUrl(ctx)}" style="${cta}">Use my code</a>
-        </div>
-        <p style="${p}">If ${tn} isn't right for you, no worries — this is the last we'll email you about it. We won't keep nagging.</p>
-        <p style="${p}">— The Paybacker team</p>
-      </div>
-      ${Footer(unsub)}
-    </div>
-  `;
-  const text = [
-    `${greet(ctx.name)}`,
-    ``,
-    `Your 10% code expires ${exp}:`,
-    ``,
-    `   ${code || 'WELCOME10'}`,
-    ``,
-    `Use it: ${ctaUrl(ctx)}`,
-    ``,
-    `If ${tn} isn't right for you, no worries — this is the last we'll email you about it.`,
-    ``,
-    `— The Paybacker team`,
-    `Unsubscribe: ${unsub}`,
-  ].join('\n');
-  return { html, text };
-}
-
-const TEMPLATE_BUILDERS: Record<NurtureTemplate, (ctx: NurtureContext) => { html: string; text: string }> = {
-  email_1_soft_reminder: template1,
-  email_2_value_nudge:   template2,
-  email_3_discount:      template3,
-  email_4_final:         template4,
-};
 
 export interface SendResult {
   ok: boolean;
@@ -297,7 +241,7 @@ export interface SendResult {
 }
 
 /**
- * Render + send a nurture email. Returns the Resend message id on success.
+ * Render + send a nurture email through the canonical layout.
  * Caller (the cron) is responsible for writing the audit log row.
  */
 export async function sendNurtureEmail(
@@ -305,27 +249,33 @@ export async function sendNurtureEmail(
   ctx: NurtureContext,
 ): Promise<SendResult> {
   const subject = SUBJECT_LINES[template](tierName(ctx.intendedTier));
-  const { html, text } = TEMPLATE_BUILDERS[template](ctx);
-  try {
-    const result = await resend.emails.send({
-      from: FROM_EMAIL,
-      to: ctx.email,
-      replyTo: REPLY_TO,
-      subject,
-      html,
-      text,
-      headers: {
-        // RFC 8058 one-click unsubscribe — Gmail/Outlook native unsub button.
-        'List-Unsubscribe': `<${unsubUrl(ctx.unsubscribeToken)}>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-      },
-    });
-    if ((result as { error?: { message?: string } }).error) {
-      return { ok: false, subject, reason: (result as { error?: { message?: string } }).error?.message };
-    }
-    const messageId = (result as { data?: { id?: string } }).data?.id;
-    return { ok: true, messageId, subject };
-  } catch (err) {
-    return { ok: false, subject, reason: err instanceof Error ? err.message : String(err) };
-  }
+  const built = build(template, ctx);
+  const result = await sendPaybackerEmail({
+    to: ctx.email,
+    subject,
+    preheader: built.preheader,
+    heading: built.heading,
+    intro: built.intro,
+    body: built.body,
+    cta: built.cta,
+    variant: 'marketing',
+    unsubscribeUrl: unsubUrl(ctx.unsubscribeToken),
+    text: built.text,
+  });
+  if (!result.ok) return { ok: false, subject, reason: result.error };
+  return { ok: true, messageId: result.messageId, subject };
+}
+
+/** Back-compat helper: render-only (used by previews / tests). */
+export function renderNurtureHtml(template: NurtureTemplate, ctx: NurtureContext): string {
+  const built = build(template, ctx);
+  return renderPaybackerEmail({
+    preheader: built.preheader,
+    heading: built.heading,
+    intro: built.intro,
+    body: built.body,
+    cta: built.cta,
+    variant: 'marketing',
+    unsubscribeUrl: unsubUrl(ctx.unsubscribeToken),
+  });
 }
