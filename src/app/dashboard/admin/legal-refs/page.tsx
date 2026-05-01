@@ -31,8 +31,37 @@ interface LegalRef {
   verification_notes: string | null;
   verified_url: string | null;
   auto_corrected?: boolean | null;
+  // Freshness pipeline columns (added 2026-05-01 — see migration
+  // 20260502000000_legal_ref_freshness.sql). Optional in the typed
+  // surface so older snapshot data still parses.
+  source_xml_hash?: string | null;
+  last_freshness_check_at?: string | null;
+  is_stale?: boolean | null;
+  unapplied_effects?: boolean | null;
+  superseded_by?: string | null;
   created_at: string;
 }
+
+/**
+ * Freshness badge tier for a ref. Green when last freshness check was
+ * within 7 days, amber 7-30, red >30 days or never checked. The check
+ * stamp is independent of `verification_status` — it tracks how
+ * recently we re-fetched the canonical source, not whether the citation
+ * passed verification.
+ */
+function freshnessTier(checkedAt: string | null | undefined): 'green' | 'amber' | 'red' {
+  if (!checkedAt) return 'red';
+  const ageDays = (Date.now() - new Date(checkedAt).getTime()) / (1000 * 60 * 60 * 24);
+  if (ageDays < 7) return 'green';
+  if (ageDays < 30) return 'amber';
+  return 'red';
+}
+
+const FRESHNESS_BADGE: Record<'green' | 'amber' | 'red', string> = {
+  green: 'bg-green-500/10 text-green-700 border-green-300',
+  amber: 'bg-amber-500/10 text-amber-700 border-amber-300',
+  red: 'bg-red-500/10 text-red-700 border-red-300',
+};
 
 const PERPLEXITY_COST_PER_ROW_GBP = 0.005 * 0.79; // sonar-pro flat rate × USD→GBP
 
@@ -174,6 +203,9 @@ export default function LegalRefsAdminPage() {
   const [lastSyncRun, setLastSyncRun] = useState<{ at: string; ok: boolean; failedPhases: string[] } | null>(null);
   const [allRefsExpanded, setAllRefsExpanded] = useState<boolean>(false);
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  // Freshness pipeline filters (added 2026-05-01).
+  const [filterStaleOnly, setFilterStaleOnly] = useState<boolean>(false);
+  const [filterUnappliedOnly, setFilterUnappliedOnly] = useState<boolean>(false);
 
   useEffect(() => {
     if (!opToast) return;
@@ -663,6 +695,8 @@ export default function LegalRefsAdminPage() {
       if (!needsReview(r)) return false;
     } else if (filterStatus !== 'all' && r.verification_status !== filterStatus) return false;
     if (filterCategory !== 'all' && r.category !== filterCategory) return false;
+    if (filterStaleOnly && !r.is_stale) return false;
+    if (filterUnappliedOnly && !r.unapplied_effects) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -1186,9 +1220,27 @@ export default function LegalRefsAdminPage() {
             <option key={cat} value={cat}>{CATEGORY_LABELS[cat] || cat}</option>
           ))}
         </select>
-        {(search || filterStatus !== 'all' || filterCategory !== 'all') && (
+        <label className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={filterStaleOnly}
+            onChange={(e) => setFilterStaleOnly(e.target.checked)}
+            className="h-4 w-4"
+          />
+          Show stale only
+        </label>
+        <label className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={filterUnappliedOnly}
+            onChange={(e) => setFilterUnappliedOnly(e.target.checked)}
+            className="h-4 w-4"
+          />
+          Unapplied effects only
+        </label>
+        {(search || filterStatus !== 'all' || filterCategory !== 'all' || filterStaleOnly || filterUnappliedOnly) && (
           <button
-            onClick={() => { setSearch(''); setFilterStatus('all'); setFilterCategory('all'); }}
+            onClick={() => { setSearch(''); setFilterStatus('all'); setFilterCategory('all'); setFilterStaleOnly(false); setFilterUnappliedOnly(false); }}
             className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:text-slate-900 text-sm transition-colors"
           >
             Clear
@@ -1207,6 +1259,7 @@ export default function LegalRefsAdminPage() {
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">Law / Section</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">Category</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">Status</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide" title="How recently the canonical source was re-fetched. Green <7d, amber 7-30d, red >30d or never.">Freshness</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide hidden lg:table-cell">Last verified</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide hidden xl:table-cell">Strength</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide hidden xl:table-cell" title="How many B2C letters / B2B disputes are currently citing this ref. Wired in PR γ.">Block effect</th>
@@ -1281,6 +1334,38 @@ export default function LegalRefsAdminPage() {
                           ⚠ Auto-corrected — verify
                         </div>
                       )}
+                    </td>
+                    <td className="px-5 py-4">
+                      {(() => {
+                        const tier = freshnessTier(ref.last_freshness_check_at);
+                        return (
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${FRESHNESS_BADGE[tier]}`}
+                              title={ref.last_freshness_check_at ? `Last freshness check: ${formatDate(ref.last_freshness_check_at)}` : 'Never checked'}
+                            >
+                              <Clock className="h-3 w-3" />
+                              {relativeTime(ref.last_freshness_check_at ?? null)}
+                            </span>
+                            {ref.unapplied_effects && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300"
+                                title="<ukm:UnappliedEffects> on legislation.gov.uk — pending change not yet incorporated."
+                              >
+                                ❗ Unapplied effects
+                              </span>
+                            )}
+                            {ref.is_stale && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-300"
+                                title="Drift detected by amendments sweep — pending correction queued for review."
+                              >
+                                ⚠️ STALE — pending correction
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-5 py-4 hidden lg:table-cell">
                       <div className="flex items-center gap-1.5 text-slate-600 text-xs">

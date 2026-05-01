@@ -1,0 +1,12 @@
+{
+  "base_path": "/cma-cases/example-merger-investigation",
+  "title": "Example Co / Other Co merger inquiry",
+  "description": "CMA Phase 1 decision on the anticipated acquisition.",
+  "document_type": "cma_case",
+  "public_updated_at": "2026-04-15T10:00:00Z",
+  "first_published_at": "2026-01-10T09:30:00Z",
+  "details": {
+    "body": "<p>The CMA has decided not to refer the merger for a Phase 2 investigation.</p>"
+  },
+  "links": {}
+}
