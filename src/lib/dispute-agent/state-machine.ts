@@ -73,12 +73,20 @@ export interface DisputeRow {
   archived_at: string | null;
 }
 
+/**
+ * Mirrors the `correspondence` table (NOT `dispute_correspondence`).
+ * `correspondence` stores the full body in `content` — that's what the
+ * AI extractor needs to spot offer figures and "final / maximum"
+ * framing. `dispute_correspondence` is a separate scanner-side table
+ * that only carries a `summary`, which loses the figures we care about.
+ */
 export interface CorrespondenceRow {
   id: string;
   dispute_id: string;
-  correspondence_type: string | null;
-  email_date: string | null;
-  subject: string | null;
+  entry_type: string | null;
+  entry_date: string | null;
+  title: string | null;
+  content: string | null;
   summary: string | null;
   created_at: string;
 }
@@ -116,7 +124,7 @@ function plus(days: number): Date {
 
 /** True when AI-extracted outcome on the latest inbound is present and reliable. */
 function isInboundFromCompany(c: CorrespondenceRow): boolean {
-  const t = (c.correspondence_type ?? '').toLowerCase();
+  const t = (c.entry_type ?? '').toLowerCase();
   return (
     t === 'company_email' ||
     t === 'company_letter' ||
@@ -129,8 +137,8 @@ function latestInbound(correspondence: CorrespondenceRow[]): CorrespondenceRow |
   const inbound = correspondence
     .filter(isInboundFromCompany)
     .sort((a, b) => {
-      const ad = Date.parse(a.email_date ?? a.created_at);
-      const bd = Date.parse(b.email_date ?? b.created_at);
+      const ad = Date.parse(a.entry_date ?? a.created_at);
+      const bd = Date.parse(b.entry_date ?? b.created_at);
       return bd - ad;
     });
   return inbound[0] ?? null;
@@ -282,7 +290,14 @@ export async function decideNextAction(
   const inbound = latestInbound(recentCorrespondence);
   if (state === 'responded' || inbound) {
     if (inbound) {
-      const inboundText = `${inbound.subject ?? ''}\n\n${inbound.summary ?? ''}`;
+      // Prefer the full body. Summary is a Haiku-generated paraphrase
+      // that strips offer figures + "final / maximum" framing — the
+      // exact signals the outcome extractor needs. Fall back only when
+      // body genuinely missing (legacy phone-call entries, manual notes
+      // captured before content was required).
+      const body = (inbound.content ?? '').trim();
+      const fallback = (inbound.summary ?? '').trim();
+      const inboundText = `${inbound.title ?? ''}\n\n${body || fallback}`;
       const inferred = await inferOutcomeFromCorrespondence(
         dispute.id,
         inboundText,
