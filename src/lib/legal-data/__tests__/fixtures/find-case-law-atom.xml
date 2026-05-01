@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:tna="https://caselaw.nationalarchives.gov.uk/schema">
+  <title>Find Case Law — recent judgments</title>
+  <updated>2026-04-30T12:00:00Z</updated>
+  <entry>
+    <id>https://caselaw.nationalarchives.gov.uk/ewca/civ/2026/123</id>
+    <title>Smith v Example Bank plc [2026] EWCA Civ 123</title>
+    <link rel="alternate" href="https://caselaw.nationalarchives.gov.uk/ewca/civ/2026/123" />
+    <updated>2026-04-29T15:30:00Z</updated>
+    <published>2026-04-29T15:30:00Z</published>
+    <tna:court>EWCA-Civil</tna:court>
+    <summary>Appeal allowed in part; consumer credit dispute over PPI charges remitted.</summary>
+  </entry>
+  <entry>
+    <id>https://caselaw.nationalarchives.gov.uk/ukut/aac/2026/45</id>
+    <title>Doe v HMRC [2026] UKUT 45 (AAC)</title>
+    <link rel="alternate" href="https://caselaw.nationalarchives.gov.uk/ukut/aac/2026/45" />
+    <updated>2026-04-20T09:15:00Z</updated>
+    <published>2026-04-20T09:15:00Z</published>
+    <tna:court>UKUT-AAC</tna:court>
+    <summary>Tax credit overpayment; appeal dismissed.</summary>
+  </entry>
+</feed>

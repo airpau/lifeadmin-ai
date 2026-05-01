@@ -493,7 +493,7 @@ async function fetchVerifiedRefs(scenario: string): Promise<any[]> {
   // /coverage page and the consumer engine's ground truth.
   const { data } = await supabase
     .from('legal_references')
-    .select('law_name, section, summary, full_text, source_url, category')
+    .select('id, law_name, section, summary, full_text, source_url, category, is_stale, last_freshness_check_at, last_verified')
     .in('verification_status', CITATION_ELIGIBLE_STATUSES as unknown as string[])
     .limit(500);
   if (!data || data.length === 0) return [];
@@ -985,6 +985,10 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
     if (matched.length > 0) {
       void supabase.from('legal_ref_usages').insert(matched);
     }
+    // Note: legal_basis_freshness is populated upstream by the Phase 4
+    // freshness gate (see `loadFreshLegalRefs`). The manual hydration
+    // path that previously lived here was removed when the gate landed
+    // — single source of truth, no double-write.
   } catch (e) {
     console.warn('[legal_ref_usages] B2B insert failed (non-fatal):', e);
   }

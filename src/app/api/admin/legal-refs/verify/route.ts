@@ -42,6 +42,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
+import { authorizeAdminOrCron } from '@/lib/admin-auth';
 import { logPerplexityCall } from '@/lib/cost-ledger';
 import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
 import {
@@ -497,19 +498,13 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
 }
 
 export async function POST(request: NextRequest) {
-  // Founder gate.
-  let userId: string | null = null;
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const allow = getAdminEmails();
-    if (!user?.email || !allow.includes(user.email.toLowerCase())) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Founder gate — accepts both founder cookie auth AND Bearer CRON_SECRET
+  // (the weekly /api/cron/legal-refs-reverify cron calls into this route).
+  const auth = await authorizeAdminOrCron(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason || 'Unauthorized' }, { status: auth.status });
   }
+  const userId: string | null = auth.userId ?? null;
 
   let body: { id?: string; ids?: string[] };
   try {

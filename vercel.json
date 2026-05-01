@@ -30,6 +30,8 @@
     { "path": "/api/cron/compare-subscriptions",     "schedule": "0 7 * * *" },
     { "path": "/api/cron/verify-legal-refs",         "schedule": "0 5 * * *" },
     { "path": "/api/cron/legal-refs-daily-reverify", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/legal-refs-amendments-sweep", "schedule": "15 3 * * *" },
+    { "path": "/api/cron/legal-refs-reverify",        "schedule": "0 4 * * 0" },
     { "path": "/api/cron/legal-refs-auto-apply-sweep", "schedule": "30 5 * * *" },
     { "path": "/api/cron/legal-updates",             "schedule": "0 6 * * *" },
     { "path": "/api/cron/consumer-law-news",         "schedule": "0 6 * * *" },

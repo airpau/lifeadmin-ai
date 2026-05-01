@@ -440,6 +440,75 @@ export function fuzzyTitleMatch(a: string, b: string): boolean {
 }
 
 /**
+ * Normalise an Akoma-Ntoso XML document for hashing. We deliberately
+ * collapse whitespace, strip XML comments, and drop volatile metadata
+ * envelopes that change between fetches without reflecting a real
+ * legal-text amendment (e.g. `<ukm:DocumentVersion>` timestamps that
+ * tick on every republish). The remaining body is what we want to
+ * fingerprint section-by-section for the daily amendments sweep.
+ *
+ * Risks this addresses:
+ *   - Legislation.gov.uk republishes the same canonical text with a
+ *     fresh `<ukm:Modified>` stamp on infra rebuilds — hashing the raw
+ *     document would yield false-positive drifts. We strip those.
+ *   - XML comments and inter-tag whitespace also vary on republish.
+ *   - We DO retain element + attribute structure so a real change to
+ *     a `<Section>` body (e.g. text amendment, repeal) does flip the
+ *     hash.
+ */
+export function normaliseXmlForHash(xml: string): string {
+  if (!xml) return '';
+  return (
+    xml
+      // Strip XML comments outright.
+      .replace(/<!--[\s\S]*?-->/g, '')
+      // Strip volatile metadata blocks — these change without a legal
+      // amendment occurring (republish noise).
+      .replace(/<ukm:DocumentVersion\b[^>]*\/?>/gi, '')
+      .replace(/<ukm:Modified\b[^>]*\/?>/gi, '')
+      .replace(/<ukm:DataMigration\b[\s\S]*?<\/ukm:DataMigration>/gi, '')
+      .replace(/<ukm:Statistics\b[\s\S]*?<\/ukm:Statistics>/gi, '')
+      .replace(/<ukm:Stats\b[\s\S]*?<\/ukm:Stats>/gi, '')
+      // Collapse whitespace between tags and inside text nodes.
+      .replace(/>\s+</g, '><')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
+}
+
+/**
+ * SHA-256 hash of normalised section content. Uses Web Crypto where
+ * available (Edge / Node 20+), falling back to `node:crypto` in
+ * old-node test runs. Returns lowercase hex.
+ */
+export async function sha256Hex(input: string): Promise<string> {
+  const data = typeof input === 'string' ? new TextEncoder().encode(input) : input;
+  // Prefer the standard subtle API.
+  const subtle = (globalThis as { crypto?: Crypto }).crypto?.subtle;
+  if (subtle) {
+    const buf = await subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  // Fallback: node:crypto.
+  const nodeCrypto: typeof import('node:crypto') = await import('node:crypto');
+  return nodeCrypto.createHash('sha256').update(data).digest('hex');
+}
+
+/**
+ * Hash the canonical body of a LegislationDoc for drift detection.
+ * Prefers the section text when a section was addressed; falls back
+ * to the full normalised XML when the doc represents a whole Act.
+ */
+export async function hashLegislationDoc(doc: LegislationDoc): Promise<string> {
+  const body = doc.sectionText && doc.sectionText.length > 0
+    ? doc.sectionText
+    : normaliseXmlForHash(doc.raw);
+  return sha256Hex(body);
+}
+
+/**
  * Convenience: returns true if the given URL is hosted by legislation.gov.uk.
  * Use this to gate the "primary statute fetcher" branch in the enrichment
  * pipeline — anything else falls through to Perplexity.
