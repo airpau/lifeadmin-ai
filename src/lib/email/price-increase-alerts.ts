@@ -60,7 +60,7 @@ export function buildPriceIncreaseEmail(
         </div>
       </div>
 
-      <p style="color: #E5E7EB; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">
+      <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">
         Hi ${userName}, we spotted ${alertArray.length === 1 ? 'a price increase' : `${alertArray.length} price increases`} on your payments${alertArray.length > 1 ? `, costing you an extra <strong style="color: #059669;">&pound;${totalAnnualImpact.toFixed(2)}/year</strong>` : ''}.
       </p>
 

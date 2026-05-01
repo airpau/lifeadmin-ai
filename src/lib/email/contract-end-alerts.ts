@@ -96,7 +96,7 @@ export function buildContractEndEmail(
       </div>
     </div>
 
-    <div style="color: #E5E7EB; font-size: 15px; margin-bottom: 20px; line-height: 1.6;">
+    <div style="color: #374151; font-size: 15px; margin-bottom: 20px; line-height: 1.6;">
       Hi ${userName},<br><br>
       ${daysUntilEnd <= 7
         ? 'Your contract is about to end. If you don\'t act now, you\'ll likely be moved to an expensive out-of-contract rate.'

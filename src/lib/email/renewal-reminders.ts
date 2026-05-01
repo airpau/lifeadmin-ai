@@ -158,7 +158,7 @@ export function buildRenewalEmail(
       <div style="color: #6B7280; font-size: 13px; margin-top: 4px;">${bannerSubtext}</div>
     </div>
 
-    <div style="color: #E5E7EB; font-size: 15px; margin-bottom: 20px; line-height: 1.6;">
+    <div style="color: #374151; font-size: 15px; margin-bottom: 20px; line-height: 1.6;">
       Hi ${userName},<br><br>
       ${bodyText}
     </div>
