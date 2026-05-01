@@ -39,10 +39,30 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
+      // "Letters written" = number of complaint-letter tasks the user has
+      // generated (each /api/complaints/generate insert is one letter).
+      // The previous query counted rows in `disputes` instead, which is
+      // a strict undercount — a single dispute often has multiple letters
+      // (initial, follow-up, escalation, ombudsman draft).
+      //
+      // "Active disputes" = anything NOT in a terminal/closed status.
+      // The previous query used `.eq('status','open')`, which is just one
+      // of several active states. Disputes in `responded`, `escalated`,
+      // `awaiting_user_input`, `still_open`, etc. were silently dropped
+      // from the count — visible to the founder as "2 Active disputes"
+      // when reality was substantially higher.
       const [letters, resolved, disputes] = await Promise.all([
-        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('type', 'complaint_letter'),
         supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
-        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'open'),
+        supabase
+          .from('disputes')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .not('status', 'in', '("resolved_won","resolved_partial","resolved_lost","closed")'),
       ]);
       setLettersWritten(letters.count || 0);
       const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);

@@ -109,11 +109,24 @@ export async function GET() {
     pocketAgentChannel,
     whatsappPhone: waRes.data?.whatsapp_phone ?? null,
     events,
-    quiet_hours_start: profileRes.data?.quiet_hours_start ?? null,
-    quiet_hours_end: profileRes.data?.quiet_hours_end ?? null,
+    // Postgres `time` columns serialise as "HH:MM:SS" but the
+    // `<input type="time">` UI control and the client-side preset
+    // comparison both want "HH:MM". Strip the seconds so the saved
+    // value re-loads cleanly into the picker on next visit (and the
+    // active preset highlights as expected). Without this trim, the
+    // user's quiet-hours selection appeared not to stick.
+    quiet_hours_start: trimTimeOfDay(profileRes.data?.quiet_hours_start),
+    quiet_hours_end: trimTimeOfDay(profileRes.data?.quiet_hours_end),
     timezone: profileRes.data?.notification_timezone ?? 'Europe/London',
     alerts_paused_until: alertPrefsRes.data?.alerts_paused_until ?? null,
   });
+}
+
+function trimTimeOfDay(value: string | null | undefined): string | null {
+  if (!value) return null;
+  // Accept "HH:MM" or "HH:MM:SS" — collapse to "HH:MM".
+  const m = /^(\d{2}:\d{2})(?::\d{2})?$/.exec(value);
+  return m ? m[1] : null;
 }
 
 /**
@@ -204,12 +217,27 @@ export async function PUT(request: Request) {
   }
 
   if (body.quiet_hours_start !== undefined || body.quiet_hours_end !== undefined) {
+    // Defensive normalisation: accept "HH:MM" / "HH:MM:SS" / null /
+    // empty string. Coerce empty string to null so Postgres clears the
+    // time column rather than rejecting it. Reject anything else so a
+    // bad value never silently overwrites the user's saved window.
+    const normalise = (v: unknown): string | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || v === '') return null;
+      if (typeof v !== 'string') return undefined;
+      const m = /^(\d{2}:\d{2})(?::\d{2})?$/.exec(v);
+      return m ? m[1] : undefined;
+    };
+    const start = normalise(body.quiet_hours_start);
+    const end = normalise(body.quiet_hours_end);
     const update: Record<string, unknown> = {};
-    if (body.quiet_hours_start !== undefined) update.quiet_hours_start = body.quiet_hours_start;
-    if (body.quiet_hours_end !== undefined) update.quiet_hours_end = body.quiet_hours_end;
-    const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (start !== undefined) update.quiet_hours_start = start;
+    if (end !== undefined) update.quiet_hours_end = end;
+    if (Object.keys(update).length > 0) {
+      const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
     }
   }
 
