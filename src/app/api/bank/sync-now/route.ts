@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import { getAccounts, getTransactions } from '@/lib/yapily';
+import { getAccounts, getTransactions, YapilyError } from '@/lib/yapily';
+import { handleYapilyError } from '@/lib/yapily/error-handler';
 import { decrypt } from '@/lib/encrypt';
 import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
@@ -218,6 +219,7 @@ export async function POST(request: NextRequest) {
       const consentToken = decrypt(conn.consent_token);
 
       let accountIds = conn.account_ids || [];
+      let consentInvalid = false;
       if (accountIds.length === 0 || !conn.bank_name) {
         try {
           const accounts = await getAccounts(consentToken);
@@ -229,9 +231,28 @@ export async function POST(request: NextRequest) {
             account_display_names: displayNames,
             account_ids: accountIds,
           }).eq('id', conn.id);
-        } catch (err: any) {
-          console.error(`Sync: Yapily account refresh error for ${conn.id}:`, err?.message || err);
+        } catch (err: unknown) {
+          const outcome = await handleYapilyError(err, {
+            source: 'sync-now.accounts',
+            connectionId: conn.id,
+          });
+          // 403 means the consent has gone — stop touching this conn,
+          // the renewal banner will pick it up on the next page load.
+          if (outcome.kind === 'reconsent') consentInvalid = true;
+          console.error(`Sync: Yapily account refresh error for ${conn.id}:`, err);
         }
+      }
+
+      if (consentInvalid) {
+        await supabase.from('bank_sync_log').insert({
+          user_id: user.id,
+          connection_id: conn.id,
+          trigger_type: 'manual',
+          status: 'failed',
+          api_calls_made: apiCallsMade,
+          error_message: 'Consent invalid (403) — reconnect required',
+        });
+        continue;
       }
 
       if (accountIds.length === 0) {
@@ -260,7 +281,11 @@ export async function POST(request: NextRequest) {
       const storedDisplayNames: string[] = Array.isArray(conn.account_display_names)
         ? conn.account_display_names
         : [];
-      const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+      // Pull a 90-day window. Apply the 5-minute back-window so any
+      // late-arriving transactions Yapily surfaces inside its 5-min
+      // historical-data window aren't missed (T11).
+      const fromMs = ninetyDaysAgo.getTime() - 5 * 60 * 1000;
+      const fromDate = new Date(fromMs).toISOString().split('T')[0];
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const toDate = tomorrow.toISOString().split('T')[0];
@@ -276,7 +301,10 @@ export async function POST(request: NextRequest) {
           continue;
         }
         try {
-          const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
+          const transactions = await getTransactions(accountId, consentToken, {
+            from: fromDate,
+            to: toDate,
+          });
           apiCallsMade++;
           transactionSyncSucceeded = true;
           if (transactions.length === 0) continue;
@@ -295,8 +323,16 @@ export async function POST(request: NextRequest) {
             transactions,
           });
           totalSynced += result.inserted;
-        } catch (err: any) {
-          console.error(`Sync: Yapily error for account ${accountId}:`, err?.message || err);
+        } catch (err: unknown) {
+          const outcome = await handleYapilyError(err, {
+            source: 'sync-now.transactions',
+            connectionId: conn.id,
+          });
+          // 403 means the consent has gone — bail out of the whole
+          // connection rather than re-trying account-by-account.
+          if (outcome.kind === 'reconsent') break;
+          if (err instanceof YapilyError && err.status === 429) break;
+          console.error(`Sync: Yapily error for account ${accountId}:`, err);
         }
       }
 

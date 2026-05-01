@@ -1,0 +1,108 @@
+cd ~/.openclaw/workspace/lifeadmin-ai
+git checkout main && git pull --ff-only
+git checkout -b feature/yapily-hosted-flow
+
+# P0-1 Hosted Pages flow
+git add \
+  supabase/migrations/20260501080000_yapily_hosted_flow.sql \
+  src/lib/yapily.ts \
+  src/lib/yapily/connection-store.ts \
+  src/app/api/auth/yapily/route.ts \
+  src/app/api/yapily/callback/route.ts
+git commit -m "feat(yapily): switch consumer connect to Hosted Pages flow
+
+T1+T2: replace POST /account-auth-requests with POST /hosted/consent-requests.
+New createHostedConsentRequest, getHostedConsentRequest, getInstitution
+helpers. Pending bank_connections row seeded so the fallback poll cron
+can promote it. Callback handles hosted-flow params, logs failures to
+business_log, surfaces error_description, snapshots institution.features.
+Migration 20260501080000 adds hosted_consent_id + polling/capability
+columns (additive only).
+
+Refs: docs/YAPILY_BUILD_REVIEW_PLAN.md"
+
+# P0-2 Structured errors + 403 re-consent
+git add \
+  src/lib/yapily/error-handler.ts \
+  src/app/api/bank/sync-now/route.ts \
+  src/app/api/cron/bank-sync/route.ts
+git commit -m "feat(yapily): structured errors + 403 to re-consent flow
+
+T6+T7: yapilyRequest throws YapilyError with status code, code, raw body.
+New handleYapilyError logs to business_log per class, on 403 flips
+bank_connections.status to expired so ConsentRenewalBanner picks it up.
+Wired into bank/sync-now and cron/bank-sync — bail on 403/429 instead of
+looping.
+
+Refs: docs/YAPILY_BUILD_REVIEW_PLAN.md"
+
+# P0-3 Three-minute fallback polling cron
+git add \
+  src/app/api/cron/yapily-consent-poll/route.ts \
+  vercel.json
+git commit -m "feat(yapily): 3-min fallback polling cron with backoff
+
+T4: when a hosted consent has been pending for >3 minutes, poll
+GET /hosted/consent-requests/{id} once per minute with exponential
+backoff (min(60s * 2^attempts, 600s)). On AUTHORIZED, run the same
+upsert path the happy callback uses and trigger initial-sync. On
+terminal REJECTED/REVOKED/FAILED/EXPIRED, mark connection revoked.
+
+Refs: docs/YAPILY_BUILD_REVIEW_PLAN.md"
+
+# P0-4 Capability gate + single-use
+git add \
+  src/app/api/cron/sync-upcoming/route.ts \
+  src/app/api/bank/renew-consent/route.ts
+git commit -m "feat(yapily): per-institution capability gate + single-use
+
+T10: gate scheduled-payments / periodic-payments / direct-debits on
+institution.features so we never invoke endpoints the institution
+doesn't advertise. Treat each as single-use per consent — once
+consumed, never call again until renewal. renew-consent clears the
+three consumed_at columns so the renewed consent gets a fresh
+allowance.
+
+Refs: docs/YAPILY_BUILD_REVIEW_PLAN.md"
+
+# P0-5 Pagination + 5-min window
+git add src/app/api/yapily/initial-sync/route.ts
+git commit -m "feat(yapily): paginated initial sync with before cursor + 5-min window
+
+T11: walk transaction pages by setting before to the earliest tx date
+in the previous batch until empty. Apply 5-min back-window on the
+lower bound so late-arriving transactions inside Yapily's documented
+5-min historical-data window aren't missed. Page-boundary dedup so
+cursor overlap doesn't double-insert.
+
+Refs: docs/YAPILY_BUILD_REVIEW_PLAN.md"
+
+# P0-6 Disconnect endpoint
+git add src/app/api/bank/disconnect/route.ts
+git commit -m "feat(yapily): disconnect calls DELETE /account-auth-requests/{id}
+
+T8: disconnect modal now revokes upstream consent on Yapily's side via
+DELETE /account-auth-requests/{id} before mutating local state.
+Best-effort — 404 treated as idempotent (already revoked), other
+failures logged but do not block the local revoke. Per Paul's 29 Apr
+email this is the contract Yapily expects.
+
+Refs: docs/YAPILY_BUILD_REVIEW_PLAN.md"
+
+# Documentation
+git add \
+  docs/YAPILY_BUILD_REVIEW_PLAN.md \
+  docs/YAPILY_BUILD_REVIEW_COMMIT_SCRIPT.sh \
+  docs/YAPILY_PUSH_NOW.txt
+git commit -m "docs(yapily): build-review plan, commit script, push notes"
+
+# Push
+git push -u origin feature/yapily-hosted-flow
+
+# Apply the migration to Supabase staging:
+npx supabase db push
+# (or paste the SQL from supabase/migrations/20260501080000_yapily_hosted_flow.sql
+#  into the Supabase dashboard SQL editor)
+
+# Open the PR:
+echo "https://github.com/airpau/lifeadmin-ai/compare/main...feature/yapily-hosted-flow?expand=1"

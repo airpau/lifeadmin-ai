@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createAccountAuthorisation } from '@/lib/yapily';
+import { createHostedConsentRequest, YapilyError } from '@/lib/yapily';
 import { UPCOMING_FEATURE_SCOPES } from '@/lib/yapily/upcoming';
 import { TIER_CONFIG, type BankTier } from '@/lib/bank-tier-config';
 
 /**
- * GET /api/auth/yapily?institutionId=xxx
+ * GET /api/auth/yapily?institutionId=xxx&returnTo=/dashboard/money-hub
  *
- * Starts the Yapily Open Banking consent flow.
- * 1. Checks user authentication
- * 2. Enforces tier-based connection limits
- * 3. Creates an account authorisation request with Yapily
- * 4. Returns the bank's authorisation URL for the frontend to redirect to
+ * Starts the Yapily Hosted-Pages consent flow (Migle's expected build-review
+ * path — see docs/YAPILY_BUILD_REVIEW_PLAN.md, T1).
+ *
+ * Steps:
+ * 1. Authenticate the user
+ * 2. Enforce tier-based connection limits
+ * 3. POST /hosted/consent-requests
+ * 4. Persist the hostedConsentId on a new bank_connections row in
+ *    consent_status='pending' so the fallback poll cron (T4) can take over
+ *    if the redirect callback doesn't arrive within 3 minutes
+ * 5. Return the hosted-page redirect URL for the frontend to navigate to
  */
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -88,36 +94,55 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_YAPILY_REDIRECT_URI ||
     'https://paybacker.co.uk/api/yapily/callback';
 
-  // ── Create authorisation request ──
+  // ── Create hosted consent request ──
   try {
-    // Encode user ID + institution ID + returnTo as state for CSRF protection + post-callback redirect
+    // Encode user ID + institution ID + returnTo as state for CSRF protection
+    // + post-callback redirect target.
     const returnTo = searchParams.get('returnTo') || '/dashboard/money-hub';
     const state = Buffer.from(
       JSON.stringify({ userId: user.id, institutionId, returnTo })
     ).toString('base64');
 
-    // Include the upcoming-payments feature scopes so new consents
-    // are granted enough access to read scheduled + periodic
-    // payments + direct debits + pending transactions. Existing
-    // bank_connections continue to work on their original consent;
-    // the expanded scope applies from the next renewal onward.
-    const authData = await createAccountAuthorisation(
+    const hosted = await createHostedConsentRequest(
       institutionId,
       `${callbackUrl}?state=${encodeURIComponent(state)}`,
       user.id,
       UPCOMING_FEATURE_SCOPES,
     );
 
+    // Persist a "pending" connection row so the fallback poll cron (T4)
+    // can pick it up if the user closes their tab mid-flow.
+    const { error: insertErr } = await supabase
+      .from('bank_connections')
+      .insert({
+        user_id: user.id,
+        institution_id: institutionId,
+        provider: 'yapily',
+        status: 'pending',
+        consent_status: 'pending',
+        hosted_consent_id: hosted.hostedConsentId,
+        pending_started_at: new Date().toISOString(),
+      });
+
+    if (insertErr) {
+      // Don't fail the redirect — the user can still complete the flow,
+      // and on callback we'll upsert by hosted_consent_id. Just log loudly.
+      console.error('[yapily.auth] failed to seed pending connection row:', insertErr);
+    }
+
     console.log(
-      `Yapily auth: created authorisation for user=${user.id} institution=${institutionId}`
+      `Yapily auth: hosted consent created user=${user.id} institution=${institutionId} hostedConsentId=${hosted.hostedConsentId}`
     );
 
     return NextResponse.json({
-      authorisationUrl: authData.authorisationUrl,
-      consentId: authData.id,
+      // Field name kept as `authorisationUrl` for frontend back-compat —
+      // the hosted page is conceptually the same destination.
+      authorisationUrl: hosted.redirectUrl,
+      hostedConsentId: hosted.hostedConsentId,
     });
   } catch (err) {
-    console.error('Yapily authorisation failed:', err);
+    const status = err instanceof YapilyError ? err.status : 500;
+    console.error('Yapily hosted consent failed:', err);
     return NextResponse.json(
       {
         error:
@@ -125,7 +150,7 @@ export async function GET(request: NextRequest) {
             ? err.message
             : 'Failed to create bank authorisation',
       },
-      { status: 500 }
+      { status: status >= 500 ? 500 : 502 }
     );
   }
 }

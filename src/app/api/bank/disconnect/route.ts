@@ -46,6 +46,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { deleteAccountAuthorisation } from '@/lib/yapily';
+import { handleYapilyError } from '@/lib/yapily/error-handler';
 
 type DisconnectMode = 'keep_history' | 'delete_transactions' | 'erase_all';
 
@@ -90,7 +92,7 @@ export async function POST(request: NextRequest) {
   const admin = getAdmin();
   const { data: conn, error: connErr } = await admin
     .from('bank_connections')
-    .select('id, user_id, bank_name, provider, status, account_ids, account_display_names')
+    .select('id, user_id, bank_name, provider, status, account_ids, account_display_names, yapily_consent_id')
     .eq('id', connectionId)
     .eq('user_id', user.id)
     .maybeSingle();
@@ -125,6 +127,29 @@ export async function POST(request: NextRequest) {
         .filter((n): n is string => n !== null)
     : [];
   const willRevokeConnection = !isAccountScoped || remainingAccountIds.length === 0;
+
+  // ── Revoke upstream consent (Migle's T8) ──
+  // Yapily expects DELETE /account-auth-requests/{id} when the user
+  // disconnects (Paul's 29 Apr email confirmed this is the disconnect-modal
+  // contract). We call this BEFORE the local mutations so an upstream
+  // 4xx surfaces immediately, but we treat it as best-effort: a 404 is
+  // idempotent (already gone) and any other failure is logged but does
+  // not block the local revoke — the user expects "disconnect" to work
+  // even if Yapily is briefly unavailable.
+  if (willRevokeConnection && conn.provider === 'yapily' && conn.yapily_consent_id) {
+    try {
+      await deleteAccountAuthorisation(conn.yapily_consent_id);
+    } catch (err) {
+      await handleYapilyError(err, {
+        source: 'disconnect.revoke',
+        connectionId: conn.id,
+      });
+      console.warn(
+        `[bank.disconnect] upstream Yapily revoke failed for ${conn.id}; proceeding with local revoke. err=`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
 
   let transactionsAffected = 0;
 

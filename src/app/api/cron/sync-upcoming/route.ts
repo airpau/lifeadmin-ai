@@ -41,7 +41,29 @@ interface BankConnection {
   consent_expires_at: string | null;
   account_ids: string[] | null;
   status: string;
+  institution_features: string[] | null;
+  scheduled_payments_consumed_at: string | null;
+  periodic_payments_consumed_at: string | null;
+  direct_debits_consumed_at: string | null;
 }
+
+/**
+ * Yapily institution.features → upcoming-endpoint capability map (T10).
+ * The institution must advertise the relevant ACCOUNT_* feature before
+ * we hit the endpoint; otherwise we'll burn an API call for a
+ * guaranteed 4xx response.
+ */
+const ENDPOINT_FEATURE_MAP: Record<'scheduled-payments' | 'periodic-payments' | 'direct-debits', string> = {
+  'scheduled-payments': 'ACCOUNT_SCHEDULED_PAYMENTS',
+  'periodic-payments':  'ACCOUNT_PERIODIC_PAYMENTS',
+  'direct-debits':      'ACCOUNT_DIRECT_DEBITS',
+};
+
+const ENDPOINT_CONSUMED_COL: Record<'scheduled-payments' | 'periodic-payments' | 'direct-debits', keyof BankConnection> = {
+  'scheduled-payments': 'scheduled_payments_consumed_at',
+  'periodic-payments':  'periodic_payments_consumed_at',
+  'direct-debits':      'direct_debits_consumed_at',
+};
 
 interface UpsertRow {
   user_id: string;
@@ -70,7 +92,10 @@ export async function GET(request: NextRequest) {
   // Pull active Yapily connections with a non-expired consent.
   const { data: connections, error: connErr } = await supabase
     .from('bank_connections')
-    .select('id, user_id, provider, provider_id, consent_token, consent_expires_at, account_ids, status')
+    .select(
+      'id, user_id, provider, provider_id, consent_token, consent_expires_at, account_ids, status, ' +
+      'institution_features, scheduled_payments_consumed_at, periodic_payments_consumed_at, direct_debits_consumed_at'
+    )
     .eq('provider', 'yapily')
     .eq('status', 'active')
     .is('archived_at', null);
@@ -106,7 +131,11 @@ export async function GET(request: NextRequest) {
   today.setUTCHours(0, 0, 0, 0);
   const yesterday = new Date(today.getTime() - 86_400_000).toISOString().slice(0, 10);
 
-  for (const conn of (connections || []) as BankConnection[]) {
+  // Cast through `unknown` because the new institution_features +
+  // *_consumed_at columns added in migration 20260501080000 may not yet
+  // be reflected in the generated Supabase types — the runtime row
+  // shape is correct after the migration is applied.
+  for (const conn of (connections || []) as unknown as BankConnection[]) {
     if (!conn.consent_token || !conn.account_ids?.length) continue;
     if (conn.consent_expires_at && new Date(conn.consent_expires_at) < today) continue;
 
@@ -123,19 +152,52 @@ export async function GET(request: NextRequest) {
       const rows: UpsertRow[] = [];
 
       // Deterministic endpoints — small wrapper so one failing
-      // source doesn't block the others.
-      const endpoints: Array<[string, () => Promise<UpcomingRow[]>]> = [
+      // source doesn't block the others. Each endpoint is gated on
+      // institution.features (T10) and single-use semantics: once
+      // we've successfully consumed an endpoint for this consent, we
+      // do not call it again until the consent is renewed.
+      const endpoints: Array<['scheduled-payments' | 'periodic-payments' | 'direct-debits', () => Promise<UpcomingRow[]>]> = [
         ['scheduled-payments', () => getScheduledPayments(accountId, decrypted)],
         ['periodic-payments',  () => getPeriodicPayments(accountId, decrypted)],
         ['direct-debits',      () => getDirectDebits(accountId, decrypted)],
       ];
 
+      const features = conn.institution_features ?? [];
+
       for (const [label, fn] of endpoints) {
+        const requiredFeature = ENDPOINT_FEATURE_MAP[label];
+        const consumedCol = ENDPOINT_CONSUMED_COL[label];
+
+        // Capability gate — skip when the institution doesn't expose the
+        // endpoint. We allow the call when features is empty (legacy row
+        // pre-dating institution_features being captured) so we don't
+        // false-negative existing connections.
+        if (features.length > 0 && !features.includes(requiredFeature)) {
+          continue;
+        }
+
+        // Single-use gate — already consumed for this consent. Renewing
+        // the consent (which writes a fresh consent_token) clears the
+        // sense in which "this consent" still applies; we treat the row
+        // as the current consent until upsertYapilyConnection rotates
+        // the row's consent_token.
+        if (conn[consumedCol]) {
+          continue;
+        }
+
         try {
           const fetched = await fn();
           for (const r of fetched) {
             rows.push(toUpsertRow(r, conn, accountId));
           }
+          // Mark consumed on first successful invocation.
+          await supabase
+            .from('bank_connections')
+            .update({ [consumedCol]: new Date().toISOString() })
+            .eq('id', conn.id);
+          // Reflect locally so a later iteration over the same conn
+          // (multi-account loop) doesn't duplicate the call.
+          (conn as unknown as Record<string, unknown>)[consumedCol] = new Date().toISOString();
         } catch (err) {
           console.error(`[sync-upcoming] ${label} failed for account=${accountId}`, err);
           summary.otherFailures++;
