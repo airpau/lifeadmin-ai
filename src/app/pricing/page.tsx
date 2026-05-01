@@ -137,27 +137,45 @@ function MarkFoot() {
 // "On a typical £216 refund" math table — figures pre-computed from the
 // percentage ranges so we don't claim anything stronger than the
 // 15–30% band that's already on the homepage.
+// Comparison: Paybacker vs lawyers vs claims management companies.
+// Numbers anchored to public norms — claims firms typically take 25–35% of
+// recovered amounts (FCA caps consumer-credit-claims management at 30% +
+// VAT under FG22/5); contingency-fee solicitors usually charge 25%+VAT
+// or £200–400/hr private-client rates.
+// TODO(founder): if there's a specific competitor we've benchmarked
+// against directly (DoNotPay, Resolver Plus, etc.), swap the generic
+// rows below for that named comparison.
 const MATH_ROWS: ReadonlyArray<{
   label: string;
   keep: string;
   note: string;
   highlight: boolean;
 }> = [
-  { label: 'Competitor A (30%)', keep: '£151.20', note: 'lost £64.80', highlight: false },
-  { label: 'Competitor B (25%)', keep: '£162.00', note: 'lost £54.00', highlight: false },
-  { label: 'Competitor C (15–20%)', keep: '£172–183', note: 'lost £32–43', highlight: false },
-  { label: 'Paybacker (0%)', keep: '£216.00', note: 'you keep £216', highlight: true },
+  { label: 'Solicitor (25% + VAT contingency)', keep: '£151.20', note: 'lost £64.80 + hourly fees risk', highlight: false },
+  { label: 'Claims management company (25–35%)', keep: '£140–162', note: 'lost £54–76 (FCA cap 30% + VAT)', highlight: false },
+  { label: 'Paybacker (0% success fee)', keep: '£216.00', note: 'you keep 100%', highlight: true },
 ];
 
+// Cells reflect src/lib/plan-limits.ts (PLAN_LIMITS) — copy follows reality,
+// not the other way round. Fix the table here if a limit changes.
 const COMPARE_ROWS: ReadonlyArray<readonly [string, string, string, string]> = [
   ['AI dispute letters', '3 / month', 'Unlimited', 'Unlimited'],
-  ['Bank sync (read-only, FCA via Yapily)', '—', '2 accounts', 'Unlimited'],
-  ['Email inbox scan', '—', '•', '•'],
-  ['Subscription tracker', 'Manual only', '•', '•'],
+  ['Bank sync (read-only, FCA via Yapily)', '2 accounts', '3 accounts', 'Unlimited'],
+  ['Email inbox scan + Watchdog reply polling', '1 inbox', '3 inboxes', 'Unlimited'],
+  ['Subscription tracker', '•', '•', '•'],
+  ['Money Hub (basic spending overview)', '•', '•', '•'],
+  ['Money Hub Budgets, Savings Goals, full categories', '—', '•', '•'],
+  ['Money Hub Top Merchants + transaction-level analysis', '—', '—', '•'],
+  ['AI cancellation emails + renewal reminders', '—', '•', '•'],
+  ['Price-increase alerts (email)', '—', '•', '•'],
   ['Public deals marketplace', '•', '•', '•'],
-  ['Pocket Agent in Telegram', '—', '•', '•'],
-  ['Deal alerts on bill changes', '—', '—', '•'],
-  ['Priority human review', '—', '—', '•'],
+  ['Telegram Pocket Agent + AI chatbot', '•', '•', '•'],
+  ['WhatsApp Pocket Agent', '—', '—', '•'],
+  ['Dispute Agent — autonomous next-step prompts', '—', '•', '•'],
+  ['Paybacker MCP (Claude Desktop)', '—', '—', '•'],
+  ['CSV / PDF export', '—', '—', '•'],
+  ['On-demand bank sync (manual refresh)', '—', '—', '•'],
+  ['Priority support', '—', '—', '•'],
   ['Success fee on refunds', '0%', '0%', '0%'],
 ];
 
@@ -263,10 +281,10 @@ export default function PricingPage() {
                   lineHeight: 1.05,
                 }}
               >
-                Three tiers. Zero success fees.
+                You keep 100% of what we recover.
               </h2>
               <p style={{ fontSize: 16.5, lineHeight: 1.6, color: 'var(--text-secondary)', margin: 0 }}>
-                Whichever tier you pick, we never take a cut of your refund. Competitors charge 15–30% on a successful dispute — on a typical £216 refund, that&apos;s up to £65 out of your pocket. Our revenue comes from the flat subscription, so the incentive stays clean: the more we help you, the longer you stay.
+                <strong>No success fee. Ever.</strong> Compare to claims-management companies (25–35% cut, capped by the FCA at 30% + VAT for consumer-credit claims) and contingency-fee solicitors (25% + VAT, or £200–400/hr private-client rates). Paybacker is a flat monthly subscription — every penny we recover stays in your pocket.
               </p>
             </div>
             <div

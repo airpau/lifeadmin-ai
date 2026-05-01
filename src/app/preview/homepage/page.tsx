@@ -1015,7 +1015,7 @@ export default function HomepageV3PreviewPage() {
             </h2>
             <p>
               Two flats. 35 days and 17 days without broadband. The provider offered
-              roughly 1.5 months&rsquo; rental as &ldquo;goodwill&rdquo;. Paybacker
+              roughly 1.5 months&rsquo; service charges as &ldquo;goodwill&rdquo;. Paybacker
               cited the Ofcom Voluntary Automatic Compensation Scheme — £10.07 per
               calendar day from day three of an outage — plus £31.19 per missed
               engineer appointment. The gap is £398.50.
@@ -1027,8 +1027,8 @@ export default function HomepageV3PreviewPage() {
               <div className="real-win__label">What the supplier offered</div>
               <div className="real-win__amount">£106.96</div>
               <ul className="real-win__list">
-                <li>1 month rental on Flat 2 — £38.65</li>
-                <li>1.5 months rental on Flat 1 — £68.31</li>
+                <li>1 month of service charges on Flat 2 — £38.65</li>
+                <li>1.5 months of service charges on Flat 1 — £68.31</li>
                 <li>Framed as &ldquo;goodwill&rdquo;, not entitlement</li>
                 <li>No mention of Ofcom Auto-Comp Scheme</li>
                 <li>No allowance for missed engineer visits</li>
@@ -1281,6 +1281,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Consumer Rights Act 2015, Ofcom, Ofgem, UK261, DVSA, HMRC</li>
                 <li>Energy, broadband, parking, flight delays, council tax</li>
                 <li>3 free letters / month. Unlimited on Essential and Pro.</li>
+                <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan).</li>
               </ul>
               <div className="feature-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
@@ -1312,6 +1313,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Transactions auto-categorised across 20+ spend buckets</li>
                 <li>Budgets, savings goals, income tracking, net worth</li>
                 <li>Daily sync on Essential. Unlimited accounts on Pro.</li>
+                <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan) — ask &ldquo;did I get paid?&rdquo;, check balances, see recent transactions.</li>
               </ul>
               <div className="feature-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
@@ -1349,6 +1351,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Auto-reply tracking — Watchdog picks up the provider&apos;s response from your inbox and progresses the dispute without you chasing</li>
                 <li>Renewal reminders 30, 14 and 7 days before charge</li>
                 <li>Contract end-date tracking for broadband, energy &amp; mobile</li>
+                <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan).</li>
               </ul>
               <div className="feature-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
@@ -1453,7 +1456,7 @@ export default function HomepageV3PreviewPage() {
                 <li>UK banks via Yapily</li>
                 <li>Gmail / Outlook inbox scan</li>
                 <li>Manual subscription add</li>
-                <li>Telegram commands</li>
+                <li>WhatsApp + Telegram commands</li>
                 <li>Dispute form (web or chat)</li>
               </ul>
             </div>
@@ -1492,7 +1495,8 @@ export default function HomepageV3PreviewPage() {
               <div className="arch-label arch-label--mint">Outputs</div>
               <ul className="arch-list">
                 <li>Web app — Money Hub + Disputes</li>
-                <li>Telegram Pocket Agent</li>
+                <li>WhatsApp Pocket Agent (Pro)</li>
+                <li>Telegram Pocket Agent (free)</li>
                 <li>Complaint letters (copy/email/PDF)</li>
                 <li>Google Sheets live sync</li>
                 <li>Deep-links to cancel / switch</li>
@@ -1552,7 +1556,7 @@ export default function HomepageV3PreviewPage() {
                   <td className="us">5+ statutes</td>
                 </tr>
                 <tr>
-                  <td>Telegram / chat agent</td>
+                  <td>WhatsApp + Telegram Pocket Agent</td>
                   <td><span className="x">—</span></td>
                   <td><span className="x">—</span></td>
                   <td><span className="x">—</span></td>
@@ -1652,7 +1656,7 @@ export default function HomepageV3PreviewPage() {
                 <li>2 bank accounts · daily auto-sync</li>
                 <li>1 email inbox · Watchdog reply monitoring</li>
                 <li>Unlimited subscription tracker</li>
-                <li>Pocket Agent + AI chatbot</li>
+                <li>Telegram Pocket Agent + AI chatbot — free on every plan</li>
               </ul>
               <Link className="btn btn-ghost cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
                 Start free →
@@ -1671,6 +1675,7 @@ export default function HomepageV3PreviewPage() {
                 <li>AI cancellation emails + renewal reminders</li>
                 <li>Full spending intelligence + budgets</li>
                 <li>Price-increase alerts by email</li>
+                <li>Telegram Pocket Agent included</li>
               </ul>
               <Link className="btn btn-mint cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
                 Get Essential →
@@ -1684,7 +1689,18 @@ export default function HomepageV3PreviewPage() {
               <ul>
                 <li>Everything in Essential</li>
                 <li>Unlimited bank &amp; email connections</li>
-                <li>Price-increase alerts via Telegram (instant)</li>
+                <li><strong>WhatsApp Pocket Agent</strong> (Pro-only) — your caseworker on chat 24/7:
+                  <ul style={{ marginTop: 6 }}>
+                    <li>Better-deal alerts when a cheaper tariff is found</li>
+                    <li>Instant price-increase alerts</li>
+                    <li>Read &amp; reply to merchant correspondence on the move</li>
+                    <li>&ldquo;Did I get paid?&rdquo; balance &amp; transaction queries</li>
+                    <li>Money-received income alerts</li>
+                    <li>Bill-due reminders + FCA 8-week clock alerts on open disputes</li>
+                    <li>Dispute Agent next-step prompts (approve / override / snooze)</li>
+                    <li>Quick search across UK consumer-rights references</li>
+                  </ul>
+                </li>
                 <li>Money Hub top merchants + transaction analysis</li>
                 <li>Paybacker MCP (Claude Desktop)</li>
                 <li>CSV / PDF export · priority support</li>
@@ -1718,14 +1734,17 @@ export default function HomepageV3PreviewPage() {
       <section className="mcp-section section-ink" id="mcp">
         <div className="wrap">
           <Reveal className="section-head">
-            <span className="pill-pro">Pro plan</span>
-            <span className="eyebrow on-ink">Developer · MCP</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+              <span className="pill-pro" style={{ marginBottom: 0 }}>Pro plan</span>
+              <span aria-hidden="true" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>·</span>
+              <span className="eyebrow on-ink" style={{ marginBottom: 0 }}>Developer tools — MCP server</span>
+            </div>
             <h2>
               Talk to your money
               <br />
               from Claude Desktop.
             </h2>
-            <p className="sub">
+            <p className="sub" style={{ color: 'var(--text-on-ink)' }}>
               The Paybacker MCP server gives Claude direct read-only access to your
               transactions, hikes, and savings opportunities. Available on Pro.
             </p>
