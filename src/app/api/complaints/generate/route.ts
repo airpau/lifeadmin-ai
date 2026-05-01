@@ -19,6 +19,7 @@ import {
   postFlightSanitise,
 } from '@/lib/legal-refs-guardrail';
 import { CITATION_PERMISSIVE_STATUSES } from '@/lib/legal-refs-statuses';
+import { loadFreshLegalRefs } from '@/lib/legal-data/freshness-gate';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
 // 120s — the engine's worst-case path is two Claude calls (citation
@@ -419,6 +420,20 @@ export async function POST(request: NextRequest) {
       guardrailFooterNote = guardrailFooterNote
         ? `${guardrailFooterNote} ${tierFooter}`
         : tierFooter;
+    }
+
+    // Phase 4 — single freshness gate. Every cited ref id passes
+    // through `loadFreshLegalRefs` so the audit log captures B2C
+    // citations alongside B2B. The cascade above has already done
+    // refresh/substitute work — we run the gate with allowStale=true
+    // so it only records provenance, never re-does work.
+    try {
+      const finalRefIds = relevantRefs.map((r) => r.id).filter((x): x is string => typeof x === 'string');
+      if (finalRefIds.length > 0) {
+        await loadFreshLegalRefs(finalRefIds, { caller: 'b2c', allowStale: true });
+      }
+    } catch (err) {
+      console.warn('[freshness-gate] B2C audit failed (non-fatal):', (err as Error).message);
     }
 
     let verifiedLegalRefs = '';

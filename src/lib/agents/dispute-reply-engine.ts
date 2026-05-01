@@ -32,6 +32,7 @@ import {
 } from './complaints-agent';
 import { CITATION_PERMISSIVE_STATUSES } from '@/lib/legal-refs-statuses';
 import { detectReplyCategories } from './dispute-reply-categories';
+import { loadFreshLegalRefs } from '@/lib/legal-data/freshness-gate';
 
 export { detectReplyCategories };
 
@@ -150,6 +151,17 @@ export async function generateDisputeReply(
         },
       });
     }
+  }
+
+  // Phase 4 — single freshness gate. Records audit rows for every ref
+  // we're about to cite, alongside the B2C and B2B paths. Best-effort.
+  try {
+    const finalRefIds = relevantRefs.map((r: any) => r.id).filter((x: unknown): x is string => typeof x === 'string');
+    if (finalRefIds.length > 0) {
+      await loadFreshLegalRefs(finalRefIds, { caller: 'b2c', allowStale: true });
+    }
+  } catch (err) {
+    console.warn('[freshness-gate] dispute-reply audit failed (non-fatal):', (err as Error).message);
   }
 
   const verifiedLegalRefs = relevantRefs.length > 0

@@ -149,3 +149,81 @@ Net effect: Perplexity moves from "decide if law changed + summarise" to just "s
 ### Source attribution
 
 All content surfaced via this client is © Crown copyright, available under the Open Government Licence v3.0. The `sourceUrl` field is preserved end-to-end so any downstream UI can render the OGL attribution.
+
+## Phase 4 — Production wiring (2026-05-01)
+
+This phase makes the freshness pipeline non-bypassable for the two
+production dispute paths.
+
+### Single freshness gate
+
+`src/lib/legal-data/freshness-gate.ts` exports `loadFreshLegalRefs`,
+the single public entry point for "is it safe to cite this
+`legal_references` row right now?" Both consumer and B2B dispute paths
+must call it before grounding a draft, and admin pages that explicitly
+need to surface stale entries (`/dashboard/admin/legal-refs`) keep
+their direct read with an explanatory `// admin-only-direct-read`
+comment.
+
+The gate:
+
+1. Reads the rows by id, gracefully degrading when the Phase 2/3
+   columns aren't merged yet (falls back to `last_verified`).
+2. Classifies each ref as fresh, stale, or missing against
+   `maxAgeDays` (default 14).
+3. For stale `legislation.gov.uk` refs, attempts an inline canonical
+   refresh. Hash drift queues a `legal_ref_corrections` proposal —
+   the gate NEVER overwrites canonical fields directly (founder-
+   approval rule).
+4. Writes one row per requested ref to `legal_ref_freshness_audit`
+   (caller, dispute_id, was_fresh, triggered_inline_refresh,
+   correction_proposed). Best-effort — never blocks the response.
+
+### Wired consumer paths
+
+- `src/app/api/complaints/generate/route.ts` (B2C complaint letters)
+- `src/lib/agents/dispute-reply-engine.ts` (Pocket Agent + dashboard
+  dispute replies)
+- `src/lib/b2b/disputes.ts` → `/api/v1/disputes` (B2B engine)
+
+The existing freshness cascade in `src/lib/legal-refs-guardrail.ts`
+remains the deep-substitute layer. The Phase 4 gate runs after it,
+captures provenance, and emits the audit row.
+
+### B2B response shape — additive only
+
+`DisputeResponse.legal_basis_freshness` is a new optional field on
+the `/v1/disputes` response. Each entry: `{ ref_id, last_verified_at,
+source, is_stale }` — surfaces the canonical-source family
+('legislation.gov.uk' | 'perplexity' | 'find-case-law' | 'cma-case'
+| 'other') and the freshness verdict for each cited reference. The
+field is optional and additive — existing integrations are untouched.
+
+### Audit table
+
+Migration: `supabase/migrations/20260502000000_legal_ref_freshness_audit.sql`.
+Service-role-only RLS. Indexed on `(ref_id, created_at)` and
+`(caller, created_at)` so the founder-only admin can answer "which
+refs are repeatedly drift-flagged" and "is the B2B caller hammering
+a particular ref" in one query.
+
+### Canonical-source rule
+
+`legislation.gov.uk` is canonical for UK statutes. Other sources
+(Perplexity verifier output, find-case-law, CMA case pages) are
+trusted by the gate but the inline refresh only attempts a hash-
+diff check against `legislation.gov.uk` URLs. Refs hosted elsewhere
+get a freshness-timestamp bump and rely on the weekly Perplexity
+reverify cron (Phase 2/3) to catch drift.
+
+### Composition with Phase 2/3
+
+The gate is forward-compatible:
+
+- Reads `last_freshness_check_at`, `source_xml_hash`, `is_stale` if
+  the columns exist (post-Phase 2/3).
+- Falls back to `last_verified` when the SELECT errors with
+  "column does not exist" (pre-Phase 2/3 / on master today).
+
+When `feat/legal-data-freshness-pipeline` merges, the gate auto-
+upgrades — no code change required.

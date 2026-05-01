@@ -33,6 +33,7 @@ import {
   sanitiseLetter,
 } from '@/lib/legal-refs-guardrail';
 import { CITATION_ELIGIBLE_STATUSES } from '@/lib/legal-refs-statuses';
+import { loadFreshLegalRefs } from '@/lib/legal-data/freshness-gate';
 
 function getAdmin() {
   return createClient(
@@ -210,6 +211,20 @@ export interface DisputeResponse {
    * this dispute, the rationale, and (when available) the historical
    * signal grounding the recommendation.
    */
+  /**
+   * Phase 4 — per-cited-ref freshness provenance from the freshness
+   * gate (`src/lib/legal-data/freshness-gate.ts`). One entry per legal
+   * reference fed into this response. Lets the integrator surface to
+   * their CX agent or compliance log when a citation was fresh,
+   * stale-with-caveat, or backed by a non-canonical source. ADDITIVE
+   * optional field — never breaks the public contract.
+   */
+  legal_basis_freshness?: Array<{
+    ref_id: string;
+    last_verified_at: string | null;
+    source: 'legislation.gov.uk' | 'perplexity' | 'find-case-law' | 'cma-case' | 'other';
+    is_stale: boolean;
+  }>;
   agent_recommendation?: {
     recommended_action:
       | 'send_initial_letter'
@@ -902,6 +917,27 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
   };
   if (complianceWarnings.length > 0) {
     response._compliance_warnings = complianceWarnings;
+  }
+
+  // Phase 4 — freshness gate provenance. Called AFTER the freshness
+  // cascade so the audit rows reflect the refs we actually shipped,
+  // not the originals. Best-effort: never fail the response.
+  try {
+    const finalRefIds = (verifiedRefs as Array<{ id?: string }>).map((r) => r?.id).filter((x): x is string => typeof x === 'string');
+    if (finalRefIds.length > 0) {
+      const gate = await loadFreshLegalRefs(finalRefIds, {
+        caller: 'b2b',
+        // We've already done deep cascade upstream — allow stale here
+        // so the gate just records audit rows + provenance without
+        // re-doing the work.
+        allowStale: true,
+      });
+      if (gate.provenance.length > 0) {
+        response.legal_basis_freshness = gate.provenance;
+      }
+    }
+  } catch (err) {
+    console.warn('[freshness-gate] B2B provenance hydrate failed (non-fatal):', (err as Error).message);
   }
 
   // Historical success rate from the dispute outcome dataset. Best-effort:
