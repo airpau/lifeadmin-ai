@@ -1,210 +1,277 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { Sparkles, Loader2, AlertCircle } from 'lucide-react';
+import {
+  getIapPlugin,
+  getPlatform,
+  type IapProduct,
+  type IapProductId,
+  type IapPurchaseResult,
+} from '@/lib/native-shell';
+
 /**
- * Native IAP upgrade buttons rendered inside the Capacitor app shell.
+ * Native IAP buttons — rendered inside the Capacitor shell only.
  *
- * Replaces the web Stripe/Pricing link with Apple-IAP-compliant native
- * purchase buttons. Cross-source check (CRITICAL): before rendering
- * buttons, fetches /api/subscription/active. If the user already has
- * an active non-IAP subscription (Stripe/web), shows a "manage on web"
- * panel instead — prevents the user from being charged twice.
+ * Loads the 4 subscription products from the device store (Apple or Google)
+ * and exposes Buy / Restore / Manage Subscriptions buttons. Each purchase
+ * triggers Apple's native Face ID / Touch ID sheet (or Google Play sheet
+ * on Android), and on success the plugin POSTs the JWS receipt to
+ * /api/iap/verify before resolving.
+ *
+ * Cross-source guard: before showing a purchase button we hit
+ * /api/subscription/active to check whether the user already has an active
+ * subscription via Stripe (web) — if so, we render an "Already subscribed"
+ * notice instead of risking a double-charge.
  */
 
-import { useEffect, useState } from 'react';
-import { ExternalLink, Loader2, Sparkles } from 'lucide-react';
-import { isNativeShell, nativeBridge, type NativePurchaseResult } from '@/lib/native-shell';
-import { createClient } from '@supabase/supabase-js';
+type CrossSourceCheck = {
+  hasActive: boolean;
+  source?: 'stripe' | 'apple_iap' | 'google_iap';
+  tier?: 'free' | 'essential' | 'pro';
+};
 
-interface ActiveSub {
-  source: 'stripe' | 'apple_iap' | 'google_play_billing';
-  tier: 'free' | 'essential' | 'pro';
-  billingPeriod: 'monthly' | 'annual';
-  productId: string | null;
-  status: string;
-  expiresAt: string | null;
-  autoRenew: boolean | null;
-}
+const TIER_DISPLAY: Record<IapProductId, { tier: 'essential' | 'pro'; period: 'month' | 'year' }> = {
+  'paybacker.essential.monthly': { tier: 'essential', period: 'month' },
+  'paybacker.essential.annual': { tier: 'essential', period: 'year' },
+  'paybacker.pro.monthly': { tier: 'pro', period: 'month' },
+  'paybacker.pro.annual': { tier: 'pro', period: 'year' },
+};
 
-interface ActiveSubsResponse {
-  ok: boolean;
-  effectiveTier: 'free' | 'essential' | 'pro';
-  primarySource: ActiveSub['source'] | null;
-  trialActive: boolean;
-  subscriptions: ActiveSub[];
-}
-
-const PRODUCTS = [
-  { id: 'paybacker.essential.monthly', tier: 'essential', period: 'monthly', priceLabel: '£4.99/mo' },
-  { id: 'paybacker.essential.annual',  tier: 'essential', period: 'annual',  priceLabel: '£44.99/yr' },
-  { id: 'paybacker.pro.monthly',       tier: 'pro',       period: 'monthly', priceLabel: '£9.99/mo' },
-  { id: 'paybacker.pro.annual',        tier: 'pro',       period: 'annual',  priceLabel: '£94.99/yr' },
-] as const;
-
-export default function NativeIapButtons({ onClose }: { onClose?: () => void }) {
-  const [active, setActive] = useState<ActiveSubsResponse | null>(null);
+export default function NativeIapButtons() {
+  const [products, setProducts] = useState<IapProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [purchasingId, setPurchasingId] = useState<IapProductId | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [crossSource, setCrossSource] = useState<CrossSourceCheck | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const plugin = getIapPlugin();
+      if (!plugin) {
+        if (!cancelled) {
+          setError('Native IAP plugin not available on this platform.');
+          setLoading(false);
+        }
+        return;
+      }
+
       try {
-        const supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        );
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) {
-          if (!cancelled) {
-            setError('Not signed in');
-            setLoading(false);
-          }
-          return;
-        }
-        const res = await fetch('/api/subscription/active', {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        const data = (await res.json()) as ActiveSubsResponse;
-        if (!cancelled) {
-          setActive(data);
-          setLoading(false);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError((err as Error).message || 'Could not check subscription state');
-          setLoading(false);
-        }
+        // Fire both lookups in parallel
+        const [productsResp, crossResp] = await Promise.all([
+          plugin.getProducts(),
+          fetch('/api/subscription/active', { credentials: 'include' })
+            .then((r) => (r.ok ? r.json() : { hasActive: false }))
+            .catch(() => ({ hasActive: false })),
+        ]);
+        if (cancelled) return;
+        setProducts(productsResp.products);
+        setCrossSource(crossResp as CrossSourceCheck);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load products');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  async function handlePurchase(productId: string) {
-    if (!isNativeShell()) {
-      setError('Not in native shell — cannot purchase');
-      return;
-    }
+  async function handlePurchase(productId: IapProductId) {
+    const plugin = getIapPlugin();
+    if (!plugin) return;
     setError(null);
-    setPurchasing(productId);
+    setSuccessMessage(null);
+    setPurchasingId(productId);
     try {
-      const bridge = nativeBridge();
-      if (!bridge.startPurchase) {
-        throw new Error('Native bridge does not support purchase');
+      const result: IapPurchaseResult = await plugin.purchase({ productId });
+      switch (result.state) {
+        case 'success':
+          setSuccessMessage('Subscription active. Welcome to ' + TIER_DISPLAY[productId].tier + '.');
+          // Refresh the cross-source state so the UI re-renders the upgraded tier
+          setCrossSource({
+            hasActive: true,
+            source: getPlatform() === 'ios' ? 'apple_iap' : 'google_iap',
+            tier: TIER_DISPLAY[productId].tier,
+          });
+          // Trigger any parent listener (e.g. close the modal)
+          window.dispatchEvent(new CustomEvent('paybacker:iap-purchased', { detail: { productId } }));
+          break;
+        case 'pending_server_verify':
+          setError(
+            "Purchase succeeded but we couldn't confirm with our servers. We'll retry automatically — check back in a minute."
+          );
+          break;
+        case 'pending':
+          setSuccessMessage('Purchase awaiting approval (Family Sharing or bank verification).');
+          break;
+        case 'cancelled':
+          // Silent — user dismissed the sheet
+          break;
       }
-      const result: NativePurchaseResult = await bridge.startPurchase(productId);
-      if (result.ok) {
-        location.reload();
-      } else if (result.error === 'cancelled') {
-        // silent
-      } else {
-        setError(result.message || `Purchase ${result.error}`);
-      }
-    } catch (err) {
-      setError((err as Error).message || 'Purchase failed');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Purchase failed');
     } finally {
-      setPurchasing(null);
+      setPurchasingId(null);
+    }
+  }
+
+  async function handleRestore() {
+    const plugin = getIapPlugin();
+    if (!plugin) return;
+    setError(null);
+    setSuccessMessage(null);
+    setRestoring(true);
+    try {
+      const { restored } = await plugin.restorePurchases();
+      if (restored.length === 0) {
+        setError('No previous purchases found on this Apple ID.');
+      } else {
+        setSuccessMessage(`Restored ${restored.length} purchase${restored.length > 1 ? 's' : ''}.`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Restore failed');
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  async function handleManage() {
+    const plugin = getIapPlugin();
+    if (!plugin) return;
+    try {
+      await plugin.openManageSubscriptions();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to open subscription management');
     }
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex items-center justify-center py-8">
         <Loader2 className="h-6 w-6 animate-spin text-mint-400" />
       </div>
     );
   }
 
-  const externalSub = active?.subscriptions.find((s) => s.source !== 'apple_iap' && s.source !== 'google_play_billing');
-  if (externalSub) {
+  if (error && products.length === 0) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-6 text-center">
-        <Sparkles className="h-8 w-8 text-mint-400 mx-auto mb-3" />
-        <h3 className="text-lg font-bold text-slate-900 mb-2">You&apos;re subscribed via the web</h3>
-        <p className="text-sm text-slate-500 mb-4">
-          Your <strong>{externalSub.tier}</strong> plan is managed on paybacker.co.uk.
-          To change or cancel it, sign in there from a browser.
-        </p>
-        <a
-          href="https://paybacker.co.uk/dashboard/billing"
-          className="inline-flex items-center gap-2 text-mint-400 font-semibold text-sm"
-        >
-          Open paybacker.co.uk <ExternalLink className="h-4 w-4" />
-        </a>
+      <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 text-sm text-rose-700">
+        <AlertCircle className="h-4 w-4 inline mr-2" />
+        {error}
       </div>
     );
   }
 
-  const iapSub = active?.subscriptions.find((s) => s.source === 'apple_iap' || s.source === 'google_play_billing');
-  if (iapSub) {
+  // Cross-source guard: user already paying via Stripe
+  if (crossSource?.hasActive && crossSource.source === 'stripe') {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-6 text-center">
-        <Sparkles className="h-8 w-8 text-mint-400 mx-auto mb-3" />
-        <h3 className="text-lg font-bold text-slate-900 mb-2">
-          You&apos;re on {iapSub.tier} ({iapSub.billingPeriod})
-        </h3>
-        <p className="text-sm text-slate-500 mb-4">
-          Manage or cancel your subscription in the App Store / Play Store.
+      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-sm text-amber-900">
+        <p className="font-semibold mb-1">You&apos;re already subscribed via the web</p>
+        <p>
+          You currently have an active {crossSource.tier} subscription paid through paybacker.co.uk. To
+          avoid being charged twice, please cancel your web subscription before subscribing through the
+          App Store.
         </p>
+      </div>
+    );
+  }
+
+  // Already subscribed via the same store — show manage instead
+  if (crossSource?.hasActive && (crossSource.source === 'apple_iap' || crossSource.source === 'google_iap')) {
+    return (
+      <div className="space-y-3">
+        <div className="bg-mint-400/10 border border-mint-400/20 rounded-xl p-4 text-sm text-slate-900">
+          <p className="font-semibold mb-1">
+            You&apos;re subscribed to {crossSource.tier === 'pro' ? 'Pro' : 'Essential'}
+          </p>
+          <p className="text-slate-600">Manage or cancel your subscription via the App Store.</p>
+        </div>
         <button
-          onClick={() => isNativeShell() && nativeBridge().openManageSubscriptions?.()}
-          className="inline-flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold text-sm px-4 py-2 rounded-lg"
+          onClick={handleManage}
+          className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold rounded-xl transition-all"
         >
-          Manage subscription <ExternalLink className="h-4 w-4" />
+          Manage subscription
         </button>
       </div>
     );
   }
+
+  // Order: Pro Annual, Pro Monthly, Essential Annual, Essential Monthly
+  const sortedProducts = [...products].sort((a, b) => {
+    const order: IapProductId[] = [
+      'paybacker.pro.annual',
+      'paybacker.pro.monthly',
+      'paybacker.essential.annual',
+      'paybacker.essential.monthly',
+    ];
+    return order.indexOf(a.id as IapProductId) - order.indexOf(b.id as IapProductId);
+  });
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-6">
-      <div className="text-center mb-5">
-        <Sparkles className="h-8 w-8 text-mint-400 mx-auto mb-2" />
-        <h3 className="text-lg font-bold text-slate-900">Choose your plan</h3>
-        <p className="text-xs text-slate-500 mt-1">Cancel anytime in App Store settings</p>
-      </div>
-
-      <div className="grid gap-3">
-        {PRODUCTS.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => handlePurchase(p.id)}
-            disabled={purchasing !== null}
-            className={`
-              w-full flex items-center justify-between gap-4 p-4 rounded-xl border transition-all
-              ${p.tier === 'pro'
-                ? 'border-mint-400 bg-mint-400/5 hover:bg-mint-400/10'
-                : 'border-slate-200 hover:bg-slate-50'}
-              disabled:opacity-50 disabled:cursor-not-allowed
-            `}
-          >
-            <div className="text-left">
-              <p className="text-sm font-bold text-slate-900 capitalize">{p.tier}</p>
-              <p className="text-xs text-slate-500 capitalize">{p.period} billing</p>
-            </div>
-            <div className="text-right">
-              {purchasing === p.id ? (
-                <Loader2 className="h-5 w-5 animate-spin text-mint-400 ml-auto" />
-              ) : (
-                <p className="text-sm font-semibold text-slate-900">{p.priceLabel}</p>
-              )}
-            </div>
-          </button>
-        ))}
-      </div>
-
+    <div className="space-y-3">
+      {successMessage && (
+        <div className="bg-mint-400/10 border border-mint-400/20 rounded-xl p-3 text-sm text-slate-900">
+          {successMessage}
+        </div>
+      )}
       {error && (
-        <div className="mt-4 text-xs text-red-600 text-center">{error}</div>
+        <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-sm text-rose-700">
+          <AlertCircle className="h-4 w-4 inline mr-2" />
+          {error}
+        </div>
       )}
+      {sortedProducts.map((product) => {
+        const meta = TIER_DISPLAY[product.id as IapProductId];
+        if (!meta) return null;
+        const isPurchasing = purchasingId === product.id;
+        const isPro = meta.tier === 'pro';
+        return (
+          <button
+            key={product.id}
+            onClick={() => handlePurchase(product.id as IapProductId)}
+            disabled={isPurchasing}
+            className={`w-full py-4 px-4 rounded-xl font-bold transition-all text-left flex items-center justify-between ${
+              isPro
+                ? 'bg-mint-400 hover:bg-mint-500 text-navy-950 disabled:bg-mint-400/50'
+                : 'bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 disabled:bg-slate-100'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              {isPro && <Sparkles className="h-4 w-4" />}
+              <span className="flex flex-col items-start">
+                <span>{product.displayName}</span>
+                <span className="text-xs font-normal opacity-70">
+                  {meta.period === 'year' ? 'Best value — billed annually' : 'Billed monthly'}
+                </span>
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              <span>{product.displayPrice}</span>
+              {isPurchasing && <Loader2 className="h-4 w-4 animate-spin" />}
+            </span>
+          </button>
+        );
+      })}
 
-      {onClose && (
+      <div className="pt-2 flex flex-col gap-2 border-t border-slate-200">
         <button
-          onClick={onClose}
-          className="mt-4 w-full text-slate-500 hover:text-slate-900 text-sm transition-colors"
+          onClick={handleRestore}
+          disabled={restoring}
+          className="text-sm text-slate-500 hover:text-slate-900 transition-colors py-2"
         >
-          Maybe later
+          {restoring ? 'Restoring…' : 'Restore previous purchases'}
         </button>
-      )}
+      </div>
+
+      <p className="text-xs text-slate-400 text-center pt-2">
+        Subscriptions auto-renew unless cancelled at least 24 hours before the period ends. Manage or
+        cancel anytime via the App Store.
+      </p>
     </div>
   );
 }

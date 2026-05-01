@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { X, Sparkles, ArrowRight } from 'lucide-react';
 import { isNativeShell } from '@/lib/native-shell';
@@ -13,15 +13,19 @@ interface UpgradePromptProps {
 
 export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) {
   const [dismissed, setDismissed] = useState(false);
-  const [native, setNative] = useState(false);
+  const [isNative, setIsNative] = useState(false);
 
-  // Inside the iOS/Android Capacitor shell the web Stripe link would
-  // violate Apple Guideline 3.1.1 / Google Play's billing policy — render
-  // the native IAP buttons instead. Cross-source double-charge prevention
-  // happens inside NativeIapButtons via /api/subscription/active.
   useEffect(() => {
-    setNative(isNativeShell());
-  }, []);
+    setIsNative(isNativeShell());
+    // Listen for successful native purchases — auto-dismiss the modal so
+    // the user lands back on the freshly-upgraded experience.
+    const onPurchased = () => {
+      setDismissed(true);
+      onClose?.();
+    };
+    window.addEventListener('paybacker:iap-purchased', onPurchased);
+    return () => window.removeEventListener('paybacker:iap-purchased', onPurchased);
+  }, [onClose]);
 
   const handleClose = () => {
     setDismissed(true);
@@ -29,20 +33,6 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
   };
 
   if (dismissed) return null;
-
-  if (native && variant === 'modal') {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={handleClose} />
-        <div className="relative max-w-md w-full">
-          <NativeIapButtons onClose={handleClose} />
-        </div>
-      </div>
-    );
-  }
-  if (native) {
-    return <NativeIapButtons onClose={onClose} />;
-  }
 
   if (variant === 'banner') {
     return (
@@ -90,12 +80,23 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
               <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Price-increase alerts by email</li>
             </ul>
           </div>
-          <div className="flex flex-col gap-3">
-            <Link href="/pricing" className="w-full py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-bold rounded-xl transition-all text-center">
-              Upgrade — from £4.99/mo
-            </Link>
-            <button onClick={handleClose} className="text-slate-500 hover:text-slate-900 text-sm transition-colors">Maybe later</button>
-          </div>
+          {isNative ? (
+            // In-app: native StoreKit 2 / Play Billing buttons
+            <NativeIapButtons />
+          ) : (
+            // Web: Stripe checkout link
+            <div className="flex flex-col gap-3">
+              <Link href="/pricing" className="w-full py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-bold rounded-xl transition-all text-center">
+                Upgrade — from £4.99/mo
+              </Link>
+              <button onClick={handleClose} className="text-slate-500 hover:text-slate-900 text-sm transition-colors">Maybe later</button>
+            </div>
+          )}
+          {isNative && (
+            <button onClick={handleClose} className="w-full text-slate-500 hover:text-slate-900 text-sm transition-colors mt-4">
+              Maybe later
+            </button>
+          )}
         </div>
       </div>
     );
