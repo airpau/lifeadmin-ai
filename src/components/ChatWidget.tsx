@@ -298,7 +298,7 @@ export default function ChatWidget() {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-slate-100 border-b border-slate-200">
             <div className="flex items-center gap-2">
-              <Image src="/logo.png" alt="Paybacker" width={24} height={24} className="rounded-lg" />
+              <Image src="/brand/paybacker-mark.png" alt="Paybacker" width={24} height={24} className="rounded-lg" />
               <div>
                 <p className="text-slate-900 text-sm font-semibold">Paybacker Support</p>
                 <p className="text-green-400 text-xs">Online</p>
@@ -327,7 +327,7 @@ export default function ChatWidget() {
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && (
               <div className="text-center py-6">
-                <Image src="/logo.png" alt="Paybacker" width={40} height={40} className="rounded-lg mx-auto mb-3" />
+                <Image src="/brand/paybacker-mark.png" alt="Paybacker" width={40} height={40} className="rounded-lg mx-auto mb-3" />
                 <p className="text-slate-900 font-medium mb-1">Hi there!</p>
                 <p className="text-slate-500 text-sm mb-3">I can help you organise your finances through conversation. Try asking me to recategorise transactions, find missing subscriptions, check your spending, or dispute a bill.</p>
                 <div className="space-y-2">
