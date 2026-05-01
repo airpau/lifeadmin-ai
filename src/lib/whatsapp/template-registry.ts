@@ -297,6 +297,19 @@ export const TEMPLATES = {
     proOnly: false,
     body: 'Your Paybacker login code is {{1}}. It expires in 5 minutes. Do not share it with anyone.',
   },
+  /** Dispute Agent recommendation push — added 2026-05-01 with the
+   *  autonomous Dispute Agent state machine. Body skeleton:
+   *  "Update on your {{merchant}} dispute: {{action_summary}}. Tap to {{cta}}."
+   *  Submit via /dashboard/admin/whatsapp Resubmit panel, then replace
+   *  PENDING_RESUBMISSION with the live SID. */
+  paybacker_dispute_agent_action: {
+    sid: PENDING_RESUBMISSION,
+    category: 'UTILITY',
+    vars: ['merchant', 'action_summary', 'cta'] as const,
+    description: 'Dispute Agent action recommendation (state machine)',
+    proOnly: true,
+    body: 'Update on your {{1}} dispute: {{2}}. Tap to {{3}} — open Paybacker to review.',
+  },
   /** Switchcraft-style cheaper-deal nudge (MARKETING — needs separate opt-in) */
   paybacker_better_deal_found: {
     // Resubmitted 2026-04-27 — first version ended with `{{3}}` URL. APPROVED — do not change.

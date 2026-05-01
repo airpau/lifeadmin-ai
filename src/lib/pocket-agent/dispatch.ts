@@ -34,7 +34,8 @@ export type AlertType =
   | 'dispute_followup'
   | 'subscription_renewing'
   | 'unusual_charge'
-  | 'money_recovered';
+  | 'money_recovered'
+  | 'dispute_agent_action';
 
 export interface ActiveSession {
   user_id: string;
@@ -328,6 +329,8 @@ function templateForAlertType(alertType: AlertType): string | null {
       return 'paybacker_dispute_reply';
     case 'budget_overrun':
       return 'paybacker_budget_alert';
+    case 'dispute_agent_action':
+      return 'paybacker_dispute_agent_action';
     default:
       return null;
   }

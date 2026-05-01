@@ -23,6 +23,7 @@ import EditDisputeDetailsModal from '@/components/dispute/EditDisputeDetailsModa
 import EmailCorrespondenceBody from '@/components/dispute/EmailCorrespondenceBody';
 import LatestSupplierReplyCard from '@/components/dispute/LatestSupplierReplyCard';
 import WatchdogCard from '@/components/dispute/WatchdogCard';
+import { DisputeAgentBanner } from '@/components/disputes/DisputeAgentBanner';
 
 // ============================================================
 // Types
@@ -1399,6 +1400,9 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
   return (
     <div className="max-w-4xl">
+      <div className="mb-4">
+        <DisputeAgentBanner disputeId={disputeId} />
+      </div>
       {letterModal && (
         <LetterModal
           content={letterModal.content}
