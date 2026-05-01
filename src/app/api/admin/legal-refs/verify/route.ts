@@ -44,6 +44,11 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { logPerplexityCall } from '@/lib/cost-ledger';
 import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
+import {
+  fetchStatuteByUri,
+  isLegislationGovUkUrl,
+  type LegislationDoc,
+} from '@/lib/legal-data/legislation-gov-uk';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -266,6 +271,39 @@ function deriveProposal(
   };
 }
 
+/**
+ * Build a PerplexityVerdict-shaped object from a canonical legislation.gov.uk
+ * document. We reuse the existing verdict shape so the rest of the pipeline
+ * (deriveProposal / corrections insert / auto-apply gates) is unchanged —
+ * the only difference is the verifier label on the audit trail.
+ */
+function verdictFromLegislationDoc(
+  ref: LegalRefRow,
+  doc: LegislationDoc,
+): PerplexityVerdict {
+  // Same-host citation that resolves with a body and matching title is
+  // by definition still valid. We never claim "superseded" from this
+  // client; supersession is detected by the per-Act effects feed cron.
+  const sameUrl = normaliseUrl(doc.sourceUrl) === normaliseUrl(ref.source_url) ||
+    normaliseUrl(doc.sourceUrl).replace(/\/data\.xml$/, '') === normaliseUrl(ref.source_url);
+  const titleMatches = doc.title.trim().toLowerCase() === ref.law_name.trim().toLowerCase();
+  return {
+    valid: true,
+    // Strip /data.xml when proposing the canonical URL — we want the
+    // human-readable URL on the row, not the XML representation.
+    current_url: doc.sourceUrl.replace(/\/data\.xml$/, ''),
+    superseded_by: null,
+    confidence: titleMatches && sameUrl ? 'high' : doc.hasUnappliedEffects ? 'medium' : 'high',
+    notes: [
+      `Verified against legislation.gov.uk canonical XML.`,
+      titleMatches ? null : `Title differs: canonical='${doc.title}', stored='${ref.law_name}'.`,
+      doc.hasUnappliedEffects ? `Note: <ukm:UnappliedEffects> flagged — pending change not yet incorporated.` : null,
+      doc.lastAmended ? `Last amended: ${doc.lastAmended}.` : null,
+      `Source: legislation.gov.uk (Crown Copyright, OGL v3.0).`,
+    ].filter(Boolean).join(' '),
+  };
+}
+
 async function verifyOne(id: string, userId: string | null): Promise<VerifyResult> {
   const admin = getAdmin();
   const { data: ref, error } = await admin
@@ -278,11 +316,29 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
     return { id, status: 'error', current_url: null, notes: '', error: 'Reference not found' };
   }
 
-  const verdict = await askPerplexity(buildPrompt(ref as LegalRefRow));
+  // PRIMARY SOURCE: legislation.gov.uk.
+  // Per docs/legal-data-api-research-2026-05-01.md, every UK statute we
+  // cite is hosted on legislation.gov.uk and can be fetched canonically
+  // as Akoma-Ntoso XML. If the stored source_url is on that host, we
+  // try the canonical fetcher FIRST and only fall back to Perplexity
+  // when the fetch fails or returns no body.
+  let verdict: PerplexityVerdict | null = null;
+  let verifierLabel: 'legislation-gov-uk' | 'perplexity-sonar-pro' = 'perplexity-sonar-pro';
+  if (isLegislationGovUkUrl((ref as LegalRefRow).source_url)) {
+    const doc = await fetchStatuteByUri((ref as LegalRefRow).source_url);
+    if (doc && doc.title) {
+      verdict = verdictFromLegislationDoc(ref as LegalRefRow, doc);
+      verifierLabel = 'legislation-gov-uk';
+    }
+  }
+
+  if (!verdict) {
+    verdict = await askPerplexity(buildPrompt(ref as LegalRefRow));
+  }
   if (!verdict) {
     void admin.from('legal_ref_verifications').insert({
       ref_id: id,
-      verifier: 'perplexity-sonar-pro',
+      verifier: verifierLabel,
       triggered_by: userId ? 'manual-admin' : 'unknown',
       before_status: (ref as any).verification_status ?? null,
       after_status: 'error',
@@ -291,24 +347,26 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       changes: null,
       cost_gbp: null,
       perplexity_response: null,
-      notes: 'Perplexity call failed',
+      notes: 'Verification call failed (legislation.gov.uk + Perplexity)',
     });
     return {
       id,
       status: 'error',
       current_url: null,
       notes: '',
-      error: 'Perplexity call failed',
+      error: 'Verification call failed',
     };
   }
 
-  // Log spend (fire-and-forget).
-  logPerplexityCall({
-    model: PERPLEXITY_MODEL,
-    endpoint: '/api/admin/legal-refs/verify',
-    userId,
-    metadata: { legal_reference_id: id },
-  });
+  // Log spend (fire-and-forget) — only when we actually paid Perplexity.
+  if (verifierLabel === 'perplexity-sonar-pro') {
+    logPerplexityCall({
+      model: PERPLEXITY_MODEL,
+      endpoint: '/api/admin/legal-refs/verify',
+      userId,
+      metadata: { legal_reference_id: id },
+    });
+  }
 
   const refRow = ref as LegalRefRow;
   const proposal = deriveProposal(refRow, verdict);
@@ -331,14 +389,14 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
   if (!proposal.hasProposal) {
     void admin.from('legal_ref_verifications').insert({
       ref_id: id,
-      verifier: 'perplexity-sonar-pro',
+      verifier: verifierLabel,
       triggered_by: userId ? 'manual-admin' : 'unknown',
       before_status: refRow.verification_status,
       after_status: refRow.verification_status,
       before_url: refRow.source_url,
       after_url: refRow.source_url,
       changes: { no_change: true },
-      cost_gbp: COST_PER_CALL_GBP * 0.79,
+      cost_gbp: verifierLabel === 'perplexity-sonar-pro' ? COST_PER_CALL_GBP * 0.79 : 0,
       perplexity_response: verdict as any,
       notes: notes || null,
     });
@@ -366,7 +424,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
     .from('legal_ref_corrections')
     .insert({
       ref_id: id,
-      proposer: 'perplexity-sonar-pro',
+      proposer: verifierLabel,
       before_law_name: refRow.law_name,
       before_source_url: refRow.source_url,
       before_status: refRow.verification_status,
@@ -377,7 +435,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       reasoning: notes || null,
       raw_response: verdict as any,
       confidence: verdict.confidence,
-      cost_gbp: COST_PER_CALL_GBP,
+      cost_gbp: verifierLabel === 'perplexity-sonar-pro' ? COST_PER_CALL_GBP : 0,
       status: 'pending',
     })
     .select('id')
@@ -398,7 +456,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
   // Audit row in legal_ref_verifications.
   void admin.from('legal_ref_verifications').insert({
     ref_id: id,
-    verifier: 'perplexity-sonar-pro',
+    verifier: verifierLabel,
     triggered_by: userId ? 'manual-admin' : 'unknown',
     before_status: refRow.verification_status,
     after_status: 'pending-correction-queued',
@@ -411,7 +469,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       proposed_source_url: proposal.proposed_source_url,
       proposed_status: proposal.proposed_status,
     },
-    cost_gbp: COST_PER_CALL_GBP * 0.79,
+    cost_gbp: verifierLabel === 'perplexity-sonar-pro' ? COST_PER_CALL_GBP * 0.79 : 0,
     perplexity_response: verdict as any,
     notes: notes || null,
   });
