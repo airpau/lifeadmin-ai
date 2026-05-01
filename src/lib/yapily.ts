@@ -9,6 +9,31 @@ import type {
 
 const YAPILY_BASE_URL = 'https://api.yapily.com';
 
+// ──────────────────────────────────────────────────────────────────────
+//  Structured error class (P0-2)
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * YapilyError surfaces the upstream HTTP status so callers can branch
+ * on it (403 → re-consent, 429 → backoff, 5xx → retry, etc.) instead
+ * of string-matching on `.message`. The Yapily API returns its own
+ * error code/message inside `error.{code,message}` — both are kept
+ * here for logging.
+ */
+export class YapilyError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly raw?: unknown;
+
+  constructor(message: string, status: number, code?: string, raw?: unknown) {
+    super(message);
+    this.name = 'YapilyError';
+    this.status = status;
+    this.code = code;
+    this.raw = raw;
+  }
+}
+
 // ── Auth Helper ──
 
 function getAuthHeader(): string {
@@ -50,16 +75,23 @@ async function yapilyRequest<T>(
   });
 
   if (!res.ok) {
-    let errorMessage = `Yapily API error: ${res.status} ${res.statusText}`;
+    let message = `Yapily API error: ${res.status} ${res.statusText}`;
+    let code: string | undefined;
+    let raw: unknown;
     try {
       const errorBody = (await res.json()) as YapilyErrorResponse;
+      raw = errorBody;
       if (errorBody.error?.message) {
-        errorMessage = `Yapily API error: ${errorBody.error.message} (${res.status})`;
+        message = `Yapily API error: ${errorBody.error.message} (${res.status})`;
       }
+      // Yapily error bodies sometimes carry a `code`; preserve it for
+      // structured handling (e.g. CONSENT_EXPIRED, INVALID_CONSENT_TOKEN).
+      const maybeCode = (errorBody as unknown as { error?: { code?: string } }).error?.code;
+      if (typeof maybeCode === 'string') code = maybeCode;
     } catch {
-      // Body not parseable — use default message
+      // Body not parseable — keep default message
     }
-    throw new Error(errorMessage);
+    throw new YapilyError(message, res.status, code, raw);
   }
 
   return res.json() as Promise<T>;
@@ -83,18 +115,112 @@ export async function getInstitutions(): Promise<YapilyInstitution[]> {
   );
 }
 
-// ── Account Authorisation ──
+/**
+ * Fetches a single institution by id (used by the capability gate before
+ * invoking single-use endpoints — scheduled-payments / periodic-payments
+ * / direct-debits — so we only call them when the institution advertises
+ * support).
+ */
+export async function getInstitution(institutionId: string): Promise<YapilyInstitution | null> {
+  try {
+    const response = await yapilyRequest<YapilyApiResponse<YapilyInstitution>>(
+      `/institutions/${encodeURIComponent(institutionId)}`
+    );
+    return response.data || null;
+  } catch (err) {
+    if (err instanceof YapilyError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+//  Hosted-Pages consent flow (P0-1) — Migle's expected build review path
+//  Reference: https://docs.yapily.com/tools-and-services/hosted-pages/payment-tutorial-hosted-data
+// ──────────────────────────────────────────────────────────────────────
+
+export interface HostedConsentRequest {
+  /** Yapily-issued ID for the hosted consent request (used by polling) */
+  hostedConsentId: string;
+  /** Hosted consent page URL the user is redirected to */
+  redirectUrl: string;
+  /** Application user UUID echoed back */
+  applicationUserId: string;
+  /** Status — typically "AWAITING_USER_ACTION" on creation */
+  status: string;
+}
 
 /**
- * Creates an account authorisation request.
- * Returns the authorisation URL the user must be redirected to.
+ * POST /hosted/consent-requests — creates a hosted consent request and
+ * returns the URL we must redirect the user to. Replaces the direct
+ * /account-auth-requests flow for the consumer connect path.
+ */
+export async function createHostedConsentRequest(
+  institutionId: string,
+  callbackUrl: string,
+  userUuid: string,
+  featureScope?: readonly string[]
+): Promise<HostedConsentRequest> {
+  const body: Record<string, unknown> = {
+    applicationUserId: userUuid,
+    institutionId,
+    callback: callbackUrl,
+  };
+  if (featureScope && featureScope.length) {
+    body.featureScope = Array.from(featureScope);
+  }
+
+  const response = await yapilyRequest<YapilyApiResponse<HostedConsentRequest>>(
+    '/hosted/consent-requests',
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }
+  );
+
+  const data = response.data;
+  if (!data?.redirectUrl || !data?.hostedConsentId) {
+    throw new YapilyError(
+      'Yapily hosted consent response missing redirectUrl/hostedConsentId',
+      500,
+      'MALFORMED_RESPONSE',
+      response
+    );
+  }
+  return data;
+}
+
+/**
+ * GET /hosted/consent-requests/{hostedConsentId} — polled by the fallback
+ * cron when no redirect callback arrives within 3 minutes (T4).
  *
- * Optional `featureScope` lists the Yapily feature scopes we want
- * included in the consent — used by the Upcoming Payments feature
- * to request ACCOUNT_SCHEDULED_PAYMENTS / ACCOUNT_PERIODIC_PAYMENTS /
- * ACCOUNT_DIRECT_DEBITS alongside the default account + transactions.
- * Omitted for existing bank links so their consent shape doesn't
- * change on rerun.
+ * Status is one of: AWAITING_USER_ACTION (intermediate), AUTHORIZED,
+ * REJECTED, REVOKED, FAILED, EXPIRED (terminal).
+ */
+export async function getHostedConsentRequest(
+  hostedConsentId: string
+): Promise<{ status: string; consentId?: string; consentToken?: string; raw: unknown }> {
+  const response = await yapilyRequest<YapilyApiResponse<{
+    status: string;
+    consent?: { id?: string; consentToken?: string };
+  }>>(
+    `/hosted/consent-requests/${encodeURIComponent(hostedConsentId)}`
+  );
+  const data = response.data;
+  return {
+    status: data?.status || 'UNKNOWN',
+    consentId: data?.consent?.id,
+    consentToken: data?.consent?.consentToken,
+    raw: response,
+  };
+}
+
+// ── Account Authorisation (legacy direct flow — kept for back-compat) ──
+
+/**
+ * Creates a direct account authorisation request. Retained for any
+ * server-side callers that don't go through the user-facing hosted flow.
+ *
+ * For consumer connect flows use createHostedConsentRequest instead.
  */
 export async function createAccountAuthorisation(
   institutionId: string,
@@ -130,6 +256,10 @@ export async function createAccountAuthorisation(
 /**
  * Fetches all accounts for a given consent token.
  * The consent token is passed in the `consent` header as required by Yapily.
+ *
+ * Throws YapilyError on non-2xx — callers should branch on `.status`:
+ *   403 → consent expired/invalid → flip connection.status to 'expired'
+ *         and surface ConsentRenewalBanner (T6).
  */
 export async function getAccounts(
   consentToken: string
@@ -148,19 +278,46 @@ export async function getAccounts(
 
 // ── Transactions ──
 
+export interface TransactionPaginationOpts {
+  /** Inclusive lower bound, ISO-8601 (e.g. last_synced_at - 5min) */
+  from?: string;
+  /** Exclusive upper bound, ISO-8601 — Yapily's cursor for prior pages */
+  before?: string;
+  /** Inclusive upper bound, ISO-8601 (rarely used — `before` is preferred) */
+  to?: string;
+}
+
 /**
  * Fetches transactions for a specific account.
- * Optionally filter by date range (ISO 8601 format).
+ *
+ * Pagination per Migle's T11: callers walk pages by passing `before` set
+ * to the earliest transaction date returned on the previous page, until
+ * the response is empty.
+ *
+ * The 5-minute historical-data window is a Yapily soft constraint: rows
+ * may be re-stated up to 5 min after they appear. Incremental syncs
+ * should set `from = max(last_synced_at - 5min, account_opened_at)` to
+ * tolerate that without missing late-arriving rows.
  */
 export async function getTransactions(
   accountId: string,
   consentToken: string,
-  from?: string,
-  to?: string
+  optsOrFrom?: TransactionPaginationOpts | string,
+  legacyTo?: string
 ): Promise<YapilyTransaction[]> {
+  // Backwards-compat shim: the previous signature was
+  // (accountId, consentToken, from, to). Accept either shape.
+  let opts: TransactionPaginationOpts = {};
+  if (typeof optsOrFrom === 'string' || typeof legacyTo === 'string') {
+    opts = { from: typeof optsOrFrom === 'string' ? optsOrFrom : undefined, to: legacyTo };
+  } else if (optsOrFrom) {
+    opts = optsOrFrom;
+  }
+
   const params = new URLSearchParams();
-  if (from) params.set('from', from);
-  if (to) params.set('to', to);
+  if (opts.from) params.set('from', opts.from);
+  if (opts.before) params.set('before', opts.before);
+  if (opts.to) params.set('to', opts.to);
 
   const queryString = params.toString();
   const path = `/accounts/${accountId}/transactions${queryString ? `?${queryString}` : ''}`;
@@ -210,6 +367,26 @@ export async function getConsent(
     `/account-auth-requests/${consentId}`,
   );
   return response.data;
+}
+
+/**
+ * DELETE /account-auth-requests/{id} — revokes the consent on Yapily's
+ * side. Used by /api/bank/disconnect when the user clicks Disconnect (T8).
+ *
+ * Returns true on success. Treats 404 as "already gone" and resolves
+ * (idempotent) so a duplicate disconnect doesn't error.
+ */
+export async function deleteAccountAuthorisation(consentId: string): Promise<boolean> {
+  try {
+    await yapilyRequest<YapilyApiResponse<unknown>>(
+      `/account-auth-requests/${encodeURIComponent(consentId)}`,
+      { method: 'DELETE' }
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof YapilyError && err.status === 404) return true;
+    throw err;
+  }
 }
 
 // ── Account-identity helpers ──

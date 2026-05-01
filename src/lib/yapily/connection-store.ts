@@ -75,6 +75,10 @@ export interface ConnectionUpsertInput {
   yapilyConsentId: string;
   consentExpiresAt: string;
   accounts: AccountSnapshot[];
+  /** Hosted-flow id used to match the pending row created at /api/auth/yapily */
+  hostedConsentId?: string;
+  /** Snapshot of institution.features, cached for the capability gate (T10) */
+  institutionFeatures?: string[];
 }
 
 export interface ConnectionUpsertResult {
@@ -111,32 +115,50 @@ export async function upsertYapilyConnection(
   const incomingDisplayNames = input.accounts.map((a) => a.displayName);
 
   // 1. Find every live connection at this institution for this user.
+  //    Also include rows in 'pending' status — those are hosted-flow
+  //    placeholders created at /api/auth/yapily that we want to promote
+  //    in place rather than leave orphaned.
   const { data: existing } = await admin
     .from('bank_connections')
-    .select('id, status, account_ids, account_identifications_hashes, yapily_consent_id, deleted_at')
+    .select('id, status, account_ids, account_identifications_hashes, yapily_consent_id, hosted_consent_id, deleted_at')
     .eq('user_id', input.userId)
     .eq('institution_id', input.institutionId)
     .is('deleted_at', null);
 
   const live = (existing ?? []).filter(
-    (c: { status: string }) => c.status !== 'revoked' && c.status !== 'revoked_duplicate' && c.status !== 'archived',
+    (c: { status: string }) =>
+      c.status !== 'revoked' &&
+      c.status !== 'revoked_duplicate' &&
+      c.status !== 'archived',
   ) as Array<{
     id: string;
     status: string;
     account_ids: string[] | null;
     account_identifications_hashes: string[] | null;
     yapily_consent_id: string | null;
+    hosted_consent_id: string | null;
   }>;
 
-  // 2. Pick a row to merge into. Prefer hash-overlap; else pick the
-  //    most recently-updated live row at this institution; else null.
-  const overlapMatch = live.find((c) => {
+  // 2. Pick a row to merge into. Order of preference:
+  //    a) Row with the same hosted_consent_id we just got back from the
+  //       hosted page — guaranteed to be the placeholder we created in
+  //       /api/auth/yapily, even before the user has any accounts on it.
+  //    b) Row whose stored account hashes overlap incoming hashes.
+  //    c) Row at this institution sharing a yapily_consent_id.
+  //    d) Any live row at this institution (legacy migration helper).
+  const hostedMatch = input.hostedConsentId
+    ? live.find((c) => c.hosted_consent_id === input.hostedConsentId)
+    : undefined;
+  const overlapMatch = !hostedMatch && live.find((c) => {
     const stored = c.account_identifications_hashes ?? [];
     return stored.some((h) => h && incomingHashes.includes(h));
   });
-  const consentMatch = !overlapMatch && live.find((c) => c.yapily_consent_id === input.yapilyConsentId);
-  const fallbackLive = !overlapMatch && !consentMatch ? live[0] : null;
-  const target = overlapMatch ?? consentMatch ?? fallbackLive ?? null;
+  const consentMatch = !hostedMatch && !overlapMatch
+    && live.find((c) => c.yapily_consent_id === input.yapilyConsentId);
+  const fallbackLive = !hostedMatch && !overlapMatch && !consentMatch
+    ? live[0]
+    : null;
+  const target = hostedMatch ?? overlapMatch ?? consentMatch ?? fallbackLive ?? null;
 
   const now = new Date().toISOString();
   const previousConnectionIds: string[] = [];
@@ -153,13 +175,16 @@ export async function upsertYapilyConnection(
         bank_name: input.bankName,
         consent_token: encrypt(input.consentToken),
         yapily_consent_id: input.yapilyConsentId,
+        hosted_consent_id: input.hostedConsentId ?? target.hosted_consent_id ?? null,
         consent_granted_at: now,
         consent_expires_at: input.consentExpiresAt,
+        consent_status: 'AUTHORIZED',
         account_ids: incomingAccountIds,
         account_display_names: incomingDisplayNames,
         account_identifications_hashes: incomingHashes.length === incomingAccountIds.length
           ? incomingHashes
           : input.accounts.map((a) => a.accountIdentificationsHash ?? ''),
+        institution_features: input.institutionFeatures ?? null,
         status: 'active',
         connected_at: now,
         updated_at: now,
@@ -208,11 +233,14 @@ export async function upsertYapilyConnection(
       bank_name: input.bankName,
       consent_token: encrypt(input.consentToken),
       yapily_consent_id: input.yapilyConsentId,
+      hosted_consent_id: input.hostedConsentId ?? null,
       consent_granted_at: now,
       consent_expires_at: input.consentExpiresAt,
+      consent_status: 'AUTHORIZED',
       account_ids: incomingAccountIds,
       account_display_names: incomingDisplayNames,
       account_identifications_hashes: input.accounts.map((a) => a.accountIdentificationsHash ?? ''),
+      institution_features: input.institutionFeatures ?? null,
       status: 'active',
       connected_at: now,
     })
