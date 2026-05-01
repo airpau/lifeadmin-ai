@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getTransactions } from '@/lib/yapily';
+import { getTransactions, YapilyError } from '@/lib/yapily';
+import { handleYapilyError } from '@/lib/yapily/error-handler';
+import type { YapilyTransaction } from '@/types/yapily';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
@@ -52,7 +54,10 @@ export async function POST(request: NextRequest) {
 
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
-  const fromDate = twelveMonthsAgo.toISOString().split('T')[0];
+  // Apply the 5-min back-window so any late-arriving transactions in
+  // Yapily's historical-data window aren't missed (T11).
+  const fromMs = twelveMonthsAgo.getTime() - 5 * 60 * 1000;
+  const fromDate = new Date(fromMs).toISOString().split('T')[0];
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -63,23 +68,71 @@ export async function POST(request: NextRequest) {
   let totalNoHashSkipped = 0;
   let apiCallsMade = 0;
 
+  // Pagination per Migle's T11: walk pages by setting `before` to the
+  // earliest transaction date returned on the previous page until the
+  // response is empty. Cap iterations to avoid an infinite loop if the
+  // upstream ever returns a stuck cursor.
+  const MAX_PAGES = 40; // 40 pages × ~250 rows = 10k tx ceiling
+
   for (const account of accountSnapshots) {
     try {
-      const transactions = await getTransactions(account.yapilyAccountId, consentToken, fromDate, toDate);
-      apiCallsMade++;
-      if (transactions.length === 0) continue;
+      let before: string | undefined = undefined;
+      const seen = new Set<string>();
+      const collected: YapilyTransaction[] = [];
+
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const batch: YapilyTransaction[] = await getTransactions(
+          account.yapilyAccountId,
+          consentToken,
+          { from: fromDate, to: toDate, before }
+        );
+        apiCallsMade++;
+        if (batch.length === 0) break;
+
+        // Find the earliest tx date in this batch; that becomes the
+        // next page's `before` cursor.
+        let earliest: string | null = null;
+        for (const tx of batch) {
+          const dt: string | undefined = tx.bookingDateTime || tx.date;
+          if (!dt) continue;
+          if (!earliest || dt < earliest) earliest = dt;
+          // Dedup at the page boundary — Yapily can include a row at
+          // exactly the cursor on the next page.
+          const key = `${tx.id}|${dt}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            collected.push(tx);
+          }
+        }
+
+        if (!earliest) break;
+
+        // Walk strictly backwards: if `earliest` is the same as the
+        // current `before`, the cursor is stuck — bail.
+        if (earliest === before) break;
+        before = earliest;
+      }
+
+      if (collected.length === 0) continue;
 
       const result = await upsertYapilyTransactions({
         userId,
         connectionId,
         account,
-        transactions,
+        transactions: collected,
       });
       totalInserted += result.inserted;
       totalDuplicateSkipped += result.skippedAsDuplicate;
       totalNoHashSkipped += result.skippedNoHash;
     } catch (err) {
+      const outcome = await handleYapilyError(err, {
+        source: 'yapily.initial-sync',
+        connectionId,
+      });
       console.error(`[yapily.initial-sync] account ${account.yapilyAccountId} failed:`, err);
+      // 403 means the consent has gone — stop touching this connection.
+      if (outcome.kind === 'reconsent') break;
+      if (err instanceof YapilyError && err.status === 429) break;
     }
   }
 
