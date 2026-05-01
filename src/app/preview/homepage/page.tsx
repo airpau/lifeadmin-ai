@@ -1292,8 +1292,8 @@ export default function HomepageV3PreviewPage() {
                 <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan).</li>
               </ul>
               <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
-                  Try it free →
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fcomplaints">
+                  Draft your first letter →
                 </Link>
               </div>
             </Reveal>
@@ -1379,7 +1379,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan) — ask &ldquo;did I get paid?&rdquo;, check balances, see recent transactions.</li>
               </ul>
               <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fmoney-hub">
                   Connect your bank →
                 </Link>
               </div>
@@ -1417,7 +1417,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan).</li>
               </ul>
               <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fsubscriptions">
                   See every subscription →
                 </Link>
               </div>
@@ -1448,7 +1448,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Accountant-ready annual exports for self-assessment</li>
               </ul>
               <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fexport">
                   Export your money →
                 </Link>
               </div>
@@ -1490,8 +1490,8 @@ export default function HomepageV3PreviewPage() {
                 </li>
               </ul>
               <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
-                  Get your caseworker →
+                <Link className="btn btn-mint" href="/pocket-agent">
+                  Set up your Pocket Agent →
                 </Link>
               </div>
             </Reveal>
@@ -1874,9 +1874,9 @@ export default function HomepageV3PreviewPage() {
             </div>
             <div className="footer-col">
               <h5>Product</h5>
-              <a href="#features">Disputes Centre</a>
-              <a href="#features">Money Hub</a>
-              <a href="#features">Pocket Agent</a>
+              <a href="#disputes">Disputes Centre</a>
+              <a href="#money-hub">Money Hub</a>
+              <a href="#pocket-agent">Pocket Agent</a>
               <a href="#deals">Deals</a>
               <Link href="/templates">Letter templates</Link>
               <Link href="/pricing">Pricing</Link>
