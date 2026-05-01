@@ -502,7 +502,7 @@
    instead of growing tall. Only kick in below 480px so most phones
    keep the wrapped layout. */
 @media (max-width: 480px) {
-  .shell-v2 .main-inner > .flex.flex-wrap.items-center.gap-2.mb-6 {
+  .shell-v2 .main-inner .flex.flex-wrap.items-center.gap-2.mb-6 {
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
