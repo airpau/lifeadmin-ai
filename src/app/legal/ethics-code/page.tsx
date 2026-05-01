@@ -26,6 +26,7 @@ const TOC = [
 export default function LegalEthicsCodePage() {
   return (
     <PostShell
+      section="legal"
       category="Legal"
       title="Code of Ethics"
       dek="The principles that govern how Paybacker uses generative AI, primary UK legal sources, and user data when drafting consumer complaint and dispute letters."

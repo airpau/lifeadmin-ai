@@ -25,6 +25,7 @@ const TOC = [
 export default function LegalMethodologyPage() {
   return (
     <PostShell
+      section="legal"
       category="Legal"
       title="Methodology"
       dek="How Paybacker retrieves, scores, cites and verifies primary UK legal sources — including Find Case Law (TNA) records — when drafting consumer complaint and dispute letters."

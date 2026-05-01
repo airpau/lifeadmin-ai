@@ -169,6 +169,8 @@ export default function NotFound() {
         <Link href="/about" style={{ color: '#6B7280', textDecoration: 'none' }}>About</Link>
         <Link href="/privacy-policy" style={{ color: '#6B7280', textDecoration: 'none' }}>Privacy</Link>
         <Link href="/terms-of-service" style={{ color: '#6B7280', textDecoration: 'none' }}>Terms</Link>
+        <Link href="/legal/methodology" style={{ color: '#6B7280', textDecoration: 'none' }}>Methodology</Link>
+        <Link href="/legal/ethics-code" style={{ color: '#6B7280', textDecoration: 'none' }}>Ethics Code</Link>
       </footer>
     </div>
   );
