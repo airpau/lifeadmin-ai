@@ -104,8 +104,15 @@ export async function POST(request: NextRequest) {
       .from('bank_connections')
       .update({
         status: 'active',
+        consent_status: 'AUTHORIZED',
         consent_granted_at: now.toISOString(),
         consent_expires_at: expiresAt.toISOString(),
+        // Reset single-use endpoint trackers — the renewed consent
+        // gets a fresh allowance per Yapily's per-consent semantics
+        // (T10). See bank_connections column comments for rationale.
+        scheduled_payments_consumed_at: null,
+        periodic_payments_consumed_at: null,
+        direct_debits_consumed_at: null,
         updated_at: now.toISOString(),
       })
       .eq('id', connectionId);
