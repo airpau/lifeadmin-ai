@@ -115,5 +115,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/terms-of-service`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
     { url: `${baseUrl}/cookie-policy`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
     { url: `${baseUrl}/ico-notice`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
+    { url: `${baseUrl}/legal/methodology`, lastModified: now, changeFrequency: 'monthly', priority: 0.3 },
+    { url: `${baseUrl}/legal/ethics-code`, lastModified: now, changeFrequency: 'monthly', priority: 0.3 },
   ];
 }
