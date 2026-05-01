@@ -86,7 +86,7 @@ export function buildTargetedEmail(
     <div style="padding: 24px 32px;">
       ${urgencyBanner}
 
-      <div style="color: #E5E7EB; font-size: 15px; line-height: 1.7; margin-bottom: 20px;">
+      <div style="color: #374151; font-size: 15px; line-height: 1.7; margin-bottom: 20px;">
         Hi ${userName},<br><br>
         We have analysed your ${totalMonthlySpend > 0 ? `£${totalMonthlySpend.toFixed(0)}/month in tracked bills` : 'bills'} and identified these specific opportunities:
       </div>
