@@ -309,7 +309,7 @@ async function sendEmailFallback(args: {
   const firstName = (profile as { first_name?: string } | null)?.first_name?.trim() || 'there';
   const merchant =
     dispute.provider_name || dispute.merchant_normalised || 'your dispute';
-  const recommended = humanizeAction(decision.action);
+  const recommended = ctaFor(decision.action);
   const dashboardUrl = `https://paybacker.co.uk/dashboard/disputes/${dispute.id}`;
 
   const body = [
