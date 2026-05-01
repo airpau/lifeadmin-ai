@@ -142,18 +142,6 @@ async function processRef(
   const proposedTitle = doc.title || ref.law_name;
   const proposedUrl = doc.sourceUrl.replace(/\/data\.xml$/, '');
 
-  // Mark prior pending corrections for this ref as superseded so the
-  // queue only ever shows the latest proposal per ref.
-  await admin
-    .from('legal_ref_corrections')
-    .update({
-      status: 'superseded_by_newer',
-      reviewed_at: nowIso,
-      reviewed_by: 'amendments-sweep-new-proposal',
-    })
-    .eq('ref_id', ref.id)
-    .eq('status', 'pending');
-
   const reasoningParts = [
     `Section text on legislation.gov.uk has changed since last sweep.`,
     `Old hash: ${ref.source_xml_hash.slice(0, 12)}…`,
@@ -205,6 +193,25 @@ async function processRef(
 
   if (insErr) {
     return { errors: 1 };
+  }
+
+  // Only AFTER a successful insert do we mark prior pending
+  // corrections superseded. If the insert had failed transiently we
+  // would have left the existing actionable proposal in place. (Codex
+  // P2 #426.) Best-effort — supersede failure doesn't roll back the
+  // new proposal; the queue just briefly shows two for this ref.
+  const newCorrectionId = insertedRows?.[0]?.id ?? null;
+  if (newCorrectionId) {
+    await admin
+      .from('legal_ref_corrections')
+      .update({
+        status: 'superseded_by_newer',
+        reviewed_at: nowIso,
+        reviewed_by: 'amendments-sweep-new-proposal',
+      })
+      .eq('ref_id', ref.id)
+      .eq('status', 'pending')
+      .neq('id', newCorrectionId);
   }
 
   // Flag the canonical row as stale so the admin UI surfaces a
