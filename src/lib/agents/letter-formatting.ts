@@ -60,7 +60,7 @@ export function stripSenderAddressBlock(text: string): string {
   const lines = text.split(/\r?\n/);
   const ukPostcode = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
   const anchor =
-    /^(\s*)(re:|dear\b|account\b|reference\b|ref\b|to:\b|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{1,2})/i;
+    /^(\s*)(re:|dear\b|account\b|reference\b|ref\b|to:\b|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{1,2}|\d{4}-\d{1,2}-\d{1,2}\b|\d{1,2}\/\d{1,2}\/\d{2,4}\b|\d{1,2}\.\d{1,2}\.\d{2,4}\b)/i;
   let anchorIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     if (anchor.test(lines[i])) {

@@ -68,6 +68,71 @@ describe('stripSenderAddressBlock', () => {
     const letter = '1 May 2026\n\nDear Octopus,\n\nBody.';
     assert.equal(stripSenderAddressBlock(letter), letter);
   });
+
+  it('treats ISO numeric date (YYYY-MM-DD) as an anchor and preserves the date line', () => {
+    const letter = [
+      'Paul Airey',
+      '12 Example Road',
+      'London SW1A 1AA',
+      '',
+      '2026-05-01',
+      '',
+      'Dear Octopus Energy,',
+    ].join('\n');
+    const out = stripSenderAddressBlock(letter);
+    assert.ok(!/SW1A 1AA/.test(out), 'postcode removed');
+    assert.ok(!/Example Road/.test(out), 'street removed');
+    assert.ok(/2026-05-01/.test(out), 'ISO date preserved');
+    assert.ok(/Dear Octopus/.test(out), 'salutation preserved');
+  });
+
+  it('treats UK slash numeric date (DD/MM/YYYY) as an anchor and preserves the date line', () => {
+    const letter = [
+      'Paul Airey',
+      '12 Example Road',
+      'London SW1A 1AA',
+      '',
+      '01/05/2026',
+      '',
+      'Dear Octopus Energy,',
+    ].join('\n');
+    const out = stripSenderAddressBlock(letter);
+    assert.ok(!/SW1A 1AA/.test(out), 'postcode removed');
+    assert.ok(/01\/05\/2026/.test(out), 'slash date preserved');
+    assert.ok(/Dear Octopus/.test(out), 'salutation preserved');
+  });
+
+  it('treats short UK slash numeric date (D/M/YYYY) as an anchor', () => {
+    const letter = [
+      'Paul Airey',
+      '12 Example Road',
+      'London SW1A 1AA',
+      '',
+      '1/5/2026',
+      '',
+      'Dear Octopus Energy,',
+    ].join('\n');
+    const out = stripSenderAddressBlock(letter);
+    assert.ok(!/SW1A 1AA/.test(out), 'postcode removed');
+    assert.ok(/1\/5\/2026/.test(out), 'short slash date preserved');
+    assert.ok(/Dear Octopus/.test(out), 'salutation preserved');
+  });
+
+  it('treats UK dot numeric date (DD.MM.YYYY) as an anchor and preserves the date line', () => {
+    const letter = [
+      'Paul Airey',
+      '12 Example Road',
+      'London SW1A 1AA',
+      '',
+      '01.05.2026',
+      '',
+      'Dear Octopus Energy,',
+    ].join('\n');
+    const out = stripSenderAddressBlock(letter);
+    assert.ok(!/SW1A 1AA/.test(out), 'postcode removed');
+    assert.ok(/01\.05\.2026/.test(out), 'dot date preserved');
+    assert.ok(/Dear Octopus/.test(out), 'salutation preserved');
+  });
 });
 
 describe('stripLetterFormatting (combined)', () => {
