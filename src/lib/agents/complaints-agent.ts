@@ -181,6 +181,17 @@ export interface ComplaintInput {
    * as the addressee).
    */
   customerName?: string;
+  /**
+   * Optional historical-data steer from the dispute intelligence
+   * flywheel. Callers can hydrate this from
+   * `getTopLegalRefsForMerchant(...)` in `src/lib/dispute-outcome/stats.ts`
+   * — the engine surfaces it to the LLM as "customers with disputes
+   * against this merchant won at these rates per legal basis" so the
+   * model can prefer those bases where they fit the case facts.
+   *
+   * Additive — every existing call site continues to work without it.
+   */
+  historicalSteer?: Array<{ legalRef: string; winRate: number; sample: number }>;
 }
 
 export interface CitationGuaranteeOutcome {
@@ -271,6 +282,7 @@ ${input.threadContext || ''}
 
 ${input.threadContext ? 'IMPORTANT: This is a follow-up letter in an ongoing dispute. Reference the previous correspondence dates and key points. Open with "Further to my letter dated..." or "Following our correspondence regarding..." as appropriate. Build on the previous arguments and escalate the tone appropriately.' : ''}
 
+${input.historicalSteer && input.historicalSteer.length > 0 ? `\nHISTORICAL DATA (Paybacker dispute outcome dataset):\nCustomers with disputes against ${input.companyName} won at these rates per legal basis (only bases with sample >=5 shown):\n${input.historicalSteer.map((s) => `- ${s.legalRef}: ${(s.winRate * 100).toFixed(0)}% win rate (n=${s.sample})`).join('\n')}\nPrefer these bases where they fit the case facts. Choose based on the case, but use the data as a tie-breaker.\n` : ''}
 ${input.verifiedLegalRefs ? `\nRELEVANT UK CONSUMER LAW (verified against official sources):
 ${input.verifiedLegalRefs}
 

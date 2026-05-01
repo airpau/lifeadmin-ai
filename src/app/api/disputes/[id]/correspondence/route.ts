@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { inferOutcomeFromCorrespondence } from '@/lib/dispute-outcome/ai-extract';
 
 // POST /api/disputes/[id]/correspondence — add an entry to the thread
 export async function POST(
@@ -11,10 +12,10 @@ export async function POST(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Verify dispute ownership
+  // Verify dispute ownership + grab outcome for the AI extractor
   const { data: dispute } = await supabase
     .from('disputes')
-    .select('id')
+    .select('id, outcome')
     .eq('id', disputeId)
     .eq('user_id', user.id)
     .single();
@@ -60,7 +61,28 @@ export async function POST(
     .update({ updated_at: new Date().toISOString() })
     .eq('id', disputeId);
 
-  return NextResponse.json(entry, { status: 201 });
+  // Run the outcome extractor on incoming COMPANY correspondence only.
+  // The user's own notes / actions don't carry resolution language.
+  // AI proposes — user clicks Confirm in the UI to lock the outcome
+  // via /api/disputes/[id]/outcome with outcome_set_by='ai_extracted'.
+  let outcomeSuggestion = null;
+  if (
+    body.entry_type === 'company_email' ||
+    body.entry_type === 'company_letter' ||
+    body.entry_type === 'company_response'
+  ) {
+    try {
+      outcomeSuggestion = await inferOutcomeFromCorrespondence(
+        disputeId,
+        String(body.content),
+        (dispute as { outcome: string | null }).outcome ?? null,
+      );
+    } catch (err) {
+      console.warn('[correspondence] outcome extract failed (non-fatal):', (err as Error).message);
+    }
+  }
+
+  return NextResponse.json({ ...entry, outcome_suggestion: outcomeSuggestion }, { status: 201 });
 }
 
 // DELETE /api/disputes/[id]/correspondence — delete an entry

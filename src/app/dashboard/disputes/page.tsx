@@ -854,6 +854,20 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
       });
       if (!res.ok) throw new Error('Failed to resolve');
       capture('dispute_resolved', { outcome, money_recovered: moneyRecovered });
+      // Fire-and-forget: also tag the dataset-aware /outcome endpoint so
+      // dispute_outcome_events + the merchant/industry/dispute_type
+      // normalised fields populate. Failure is non-fatal — the user-facing
+      // resolution already succeeded above.
+      fetch(`/api/disputes/${disputeId}/outcome`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          outcome,
+          source: 'user',
+          recovered_amount_gbp: showMoneyField && moneyRecovered ? Number(moneyRecovered) : null,
+          notes: notes || null,
+        }),
+      }).catch(() => {});
       onResolved();
       onClose();
     } catch {

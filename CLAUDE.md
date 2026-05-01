@@ -542,6 +542,17 @@ phase the cron chains must follow the same pattern.
 - Pro AI chatbot with dashboard customisation (pie charts, bar charts via conversation)
 - Dynamic widget generation through AI conversation
 
+### 12. Dispute outcome intelligence (the flywheel)
+- **Strategic premise:** every dispute outcome (won / partial / lost / withdrawn / timeout / still_open) is training data competitors can't buy. The dataset compounds with usage and is the moat.
+- **Dataset:** `disputes` row tagged with `outcome`, `recovered_amount_gbp`, `resolution_time_days`, `merchant_normalised`, `merchant_industry`, `dispute_type`, `escalation_path`, `closed_by`. Per-tag-event log in `dispute_outcome_events` (every change in outcome state, with the AI evidence excerpt when source='ai_extracted'). Migration: `supabase/migrations/20260501090000_dispute_outcome_dataset.sql` — strictly additive.
+- **Capture:** existing ResolveDisputeModal in `/dashboard/disputes` now fires `POST /api/disputes/[id]/outcome` (fire-and-forget) alongside the existing PATCH so the dataset metadata is populated without changing legacy semantics.
+- **AI extraction:** `src/lib/dispute-outcome/ai-extract.ts` runs Claude Haiku over incoming `company_email | company_letter | company_response` correspondence. Returns `{suggested_outcome, recovered_amount_gbp, confidence, evidence_excerpt, reasoning}`. **Human-in-loop is non-negotiable** — the model PROPOSES; user clicks Confirm to lock in via the same `/outcome` endpoint with `source='ai_extracted'`. We never auto-write a terminal outcome.
+- **Stats cron:** `/api/cron/compute-dispute-intelligence` (daily 02:00 UTC, before compliance-sync at 03:00). Computes scopes: `overall`, `merchant`, `industry`, `dispute_type`, `legal_ref` (joined via `legal_ref_usages.artefact_kind='dispute_letter'`), `merchant_x_legal_ref`. Appends snapshots — never overwrites — so the trend chart sees history. Cap 1000 rows / run.
+- **Engine feedback loop:** `ComplaintInput.historicalSteer` is an additive optional field on `generateComplaintLetter`. Callers hydrate it from `getTopLegalRefsForMerchant(merchantNormalised)` (top 3 by win rate, min sample 5). Trigger condition: caller has identified a merchant AND `dispute_intelligence_stats` has >=5 cases at `scope_kind='merchant_x_legal_ref'` for `(merchant, legal_ref)`. The engine surfaces these to the LLM as historical win-rate context — the model still chooses based on case facts.
+- **B2B exposure:** `DisputeResponse.historical_success_rate` — additive optional field. Populated only when the resolver can identify the merchant AND sample size >=5 at `scope_kind='merchant'`. Includes `{merchant, cases_evaluated, win_rate, avg_recovered_gbp, source: 'paybacker_dispute_dataset_v1'}`. Backward-compatible (Codex review: never required, never breaking).
+- **Admin dashboard:** `/dashboard/admin/dispute-intelligence` — founder-gated. 5 headline cards (total disputes, total won, total recovered £, overall win rate, avg resolution days), industry win-rate bars, top-10 merchants table, top legal arguments by win rate (min sample 5), merchant×legal_ref heatmap, dataset growth narrative card with the "largest UK consumer dispute outcome dataset outside FOS" framing.
+- **Public moat surface:** `/dispute-success-rates` — anonymised aggregates, `noindex` until dataset is mature (>=1000 cases). Only publishes rows with sample >=5.
+
 ---
 
 ## AI AGENT TEAM — HONEST STATE (verified 17 April 2026)
