@@ -182,13 +182,14 @@ function isWon(status: string): boolean {
  *
  * Source of truth = a `letter_sent` correspondence row whose content
  * matches the letter content (the /letter-sent endpoint inserts one of
- * these whenever the user clicks "I've sent it"). We compare by a
- * normalised prefix because the user may have edited the draft before
- * clicking Send — the row stores `workingContent`, which can diverge
- * from the AI's original `content`. A 200-char whitespace-collapsed
- * prefix match is tight enough to distinguish two genuinely different
- * letters on the same dispute (e.g. an opener and a follow-up) but
- * loose enough to survive trailing-edit jitter.
+ * these whenever the user clicks "I've sent it"). We compare by full
+ * whitespace-normalised content equality. An earlier version compared
+ * only a 200-char prefix, but follow-up drafts that reuse the same
+ * opening (a common pattern — same address block, same greeting) then
+ * diverge later would be incorrectly flagged as already sent, leaving
+ * the "I've sent it" button permanently disabled for genuinely new
+ * letters. Full-content equality is correct and the perf cost is
+ * negligible for the <50 correspondence rows we ever load per dispute.
  *
  * Without this check the LetterModal's "I've sent it — track the
  * reply" button reset to enabled every remount, so users could
@@ -196,7 +197,7 @@ function isWon(status: string): boolean {
  */
 function letterAlreadyLogged(dispute: Dispute | null, letterContent: string): boolean {
   if (!dispute || !letterContent) return false;
-  const normalise = (s: string) => s.replace(/\s+/g, ' ').trim().slice(0, 200);
+  const normalise = (s: string) => s.replace(/\s+/g, ' ').trim();
   const target = normalise(letterContent);
   if (target.length < 50) return false;
   return (dispute.correspondence ?? []).some(
