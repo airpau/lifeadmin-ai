@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { deriveRecurringGroup } from '@/lib/subscription-key';
-import { researchCancellationForProvider } from '@/lib/cancellation-provider';
+import { providerKey, researchCancellationForProvider } from '@/lib/cancellation-provider';
 
 export async function GET() {
   try {
@@ -70,7 +70,41 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json(deduped);
+    // Batch-attach provider_cancellation_info so the client doesn't
+    // have to issue an N+1 lookup per provider. One query for all
+    // unique providers in this user's list; rows that don't have a
+    // matching info row get cancellation_info: null and the legacy
+    // research path will populate it asynchronously.
+    const providerKeys = Array.from(
+      new Set(
+        deduped
+          .map((sub: any) => providerKey(sub.provider_name || ''))
+          .filter((k: string) => !!k),
+      ),
+    );
+
+    let infoByKey: Record<string, any> = {};
+    if (providerKeys.length > 0) {
+      const { data: infoRows } = await supabase
+        .from('provider_cancellation_info')
+        .select('provider, display_name, city, method, email, phone, url, tips, notice_period_days, last_verified_at, confidence, data_source')
+        .in('provider', providerKeys);
+      for (const row of infoRows || []) {
+        infoByKey[row.provider] = row;
+      }
+    }
+
+    const enriched = deduped.map((sub: any) => {
+      const key = providerKey(sub.provider_name || '');
+      const info = key ? infoByKey[key] || null : null;
+      return {
+        ...sub,
+        cancellation_info: info,
+        has_cancellation_info: !!(info && (info.url || info.email || info.phone)),
+      };
+    });
+
+    return NextResponse.json(enriched);
   } catch (error: any) {
     console.error('Error fetching subscriptions:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -276,6 +276,19 @@ export default function SubscriptionsPage() {
       if (subsRes.ok) {
         const data = await subsRes.json();
         setSubscriptions(data);
+        // Seed providerCancelInfo from inline cancellation_info attached
+        // by /api/subscriptions. Prevents an N+1 follow-up fetch per
+        // provider — the lazy-load useEffect below now only fires for
+        // providers whose info is genuinely missing server-side.
+        const seeded: Record<string, any> = {};
+        for (const sub of data) {
+          if (sub?.provider_name && sub.cancellation_info) {
+            seeded[sub.provider_name] = sub.cancellation_info;
+          }
+        }
+        if (Object.keys(seeded).length > 0) {
+          setProviderCancelInfo((prev) => ({ ...prev, ...seeded }));
+        }
       }
       if (totalsRes) {
         setRpcTotals(totalsRes);
