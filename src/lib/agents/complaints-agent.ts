@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AI_LETTER_DISCLAIMER } from '@/lib/legal-disclaimer';
 import { checkCitations, type CitationCheckResult } from './citation-guarantee';
+import { stripLetterFormatting } from './letter-formatting';
+export { stripLetterFormatting, stripMarkdownEmphasis, stripSenderAddressBlock } from './letter-formatting';
 
 // Lazy singleton — defer construction to first call so Next.js build-time
 // page-data collection doesn't throw when ANTHROPIC_API_KEY is absent in
@@ -52,12 +54,14 @@ IMPORTANT: Only cite legislation that is DIRECTLY relevant to the specific indus
 - Debt harassment: report to Trading Standards, complain to FCA, consider police report under Protection from Harassment Act
 
 ## Writing rules:
-- CRITICAL: Include ALL specific details the user has provided. Names, dates, amounts, addresses, account numbers, reference numbers, email content they pasted. The letter must be specific to THEIR situation, not generic.
+- CRITICAL: Include ALL specific details the user has provided. Names, dates, amounts, account numbers, reference numbers, email content they pasted. The letter must be specific to THEIR situation, not generic.
+- PLAIN TEXT ONLY. Do NOT use any markdown formatting in the letter body. No asterisks (*, **) for bold or emphasis, no underscores (_, __) for italics, no backticks, no markdown headings (#). The letter must be plain prose the user can copy-paste directly into an email or print on letterhead.
+- PRIVACY: Do NOT include the customer's postal/home address anywhere in the letter. The customer wants privacy. Identify the customer to the merchant only by their account/reference number (and name in the sign-off). Omit the sender-address block at the top entirely.
 - Write as a natural, flowing letter that reads as if written by an intelligent human — NOT a template or legal document
 - DO NOT use section headings, bold headers, or CAPS LOCK headings like "WHY THIS IS INADEQUATE" or "MY LEGAL RIGHTS". These make the letter feel robotic and AI-generated. Instead, use natural paragraph transitions
 - DO NOT use bullet points or numbered lists in the letter body. Write in continuous prose with clear paragraphs
 - The letter should feel like a well-written personal email or formal letter, not a legal brief
-- Formal UK letter format: sender details (top-right), then date, then addressee, then subject line, THEN the salutation, THEN body. The subject line uses "Re:" prefix (NOT "Subject:") and is placed BEFORE "Dear …" — never after. Keep subject lines under 12 words. Do NOT include the subject line as a separate paragraph after "Dear Sir or Madam," — that breaks UK letter convention.
+- Formal UK letter format: date at the top, then addressee (the merchant), then the account/reference number, then a "Re:" subject line, THEN the salutation, THEN body. The subject line uses "Re:" prefix (NOT "Subject:") and is placed BEFORE "Dear …" — never after. Keep subject lines under 12 words. Do NOT include the subject line as a separate paragraph after "Dear Sir or Madam," — that breaks UK letter convention. Do NOT print the customer's postal address at the top.
 - State facts chronologically in natural paragraphs
 - Weave legal references naturally into sentences (e.g. "Under the Consumer Rights Act 2015, I am entitled to..." NOT a separate "LEGAL BASIS" section)
 - State the specific remedy required and set a 14-day deadline
@@ -383,7 +387,7 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
     if (!jsonMatch) throw new Error('Could not parse JSON from Claude response');
     const parsed = parseLenientJson(jsonMatch[0]);
     return {
-      letter: parsed.letter,
+      letter: stripLetterFormatting(parsed.letter),
       legalReferences: parsed.legalReferences || [],
       estimatedSuccess: parsed.estimatedSuccess || 70,
       nextSteps: parsed.nextSteps || [],
