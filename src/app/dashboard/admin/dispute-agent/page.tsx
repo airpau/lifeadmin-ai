@@ -11,7 +11,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import AdminPage from '@/components/admin/AdminPage';
 
 export const dynamic = 'force-dynamic';
 const ADMIN_EMAIL = 'aireypaul@googlemail.com';
@@ -101,21 +101,19 @@ export default async function DisputeAgentAdminPage() {
   const firingNow = decs.filter((d) => Date.parse(d.decided_at) > cutoff);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-6xl p-6">
-        <Link href="/dashboard/admin" className="inline-flex items-center gap-1 text-sm text-amber-400 hover:underline">
-          <ArrowLeft className="h-4 w-4" /> Back to admin
+    <AdminPage
+      title="Dispute Agent"
+      description="Autonomous state-machine driving every open dispute. Companion to Dispute Intelligence."
+    >
+      <div className="text-sm text-slate-600 -mt-4">
+        See also{' '}
+        <Link href="/dashboard/admin/dispute-intelligence" className="text-emerald-700 underline">
+          Dispute Intelligence
         </Link>
-        <h1 className="mt-2 text-2xl font-bold">Dispute Agent</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Autonomous state-machine driving every open dispute. Companion to{' '}
-          <Link href="/dashboard/admin/dispute-intelligence" className="text-amber-400 underline">
-            Dispute Intelligence
-          </Link>
-          .
-        </p>
+        .
+      </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Card label="Active managed disputes" value={String(totalActive)} hint={`${managedCount ?? 0} ever managed`} />
           <Card label="Decisions / dispute" value={decisionsPerDispute.toFixed(1)} />
           <Card label="Approve rate" value={`${(approveRate * 100).toFixed(0)}%`} hint={`${approveCount} of ${userActed.length} actioned`} />
@@ -126,10 +124,10 @@ export default async function DisputeAgentAdminPage() {
           <ul className="space-y-1 text-sm">
             {firingNow.length === 0 && <li className="text-slate-500">Nothing in the last hour.</li>}
             {firingNow.slice(0, 20).map((d) => (
-              <li key={d.id} className="text-slate-300">
+              <li key={d.id} className="text-slate-700">
                 <span className="text-slate-500">{new Date(d.decided_at).toLocaleString('en-GB')}</span>{' '}
-                <span className="text-amber-300">{d.recommended_action}</span> →{' '}
-                <span className="text-slate-400">dispute {d.dispute_id.slice(0, 8)}</span>
+                <span className="text-amber-700">{d.recommended_action}</span> →{' '}
+                <span className="text-slate-500">dispute {d.dispute_id.slice(0, 8)}</span>
               </li>
             ))}
           </ul>
@@ -137,12 +135,12 @@ export default async function DisputeAgentAdminPage() {
 
         <Section title="Recommendations by action type">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-slate-400"><th>Action</th><th>Count</th></tr></thead>
+            <thead><tr className="text-left text-slate-500"><th>Action</th><th>Count</th></tr></thead>
             <tbody>
               {actionRows.map(([action, count]) => (
-                <tr key={action} className="border-t border-slate-800">
-                  <td className="py-1 text-slate-200">{action}</td>
-                  <td className="py-1 text-slate-300">{count}</td>
+                <tr key={action} className="border-t border-slate-100">
+                  <td className="py-1 text-slate-700">{action}</td>
+                  <td className="py-1 text-slate-700">{count}</td>
                 </tr>
               ))}
             </tbody>
@@ -150,18 +148,18 @@ export default async function DisputeAgentAdminPage() {
         </Section>
 
         <Section title="Effectiveness by recommendation (key feedback signal)">
-          <p className="mb-2 text-xs text-slate-400">
+          <p className="mb-2 text-xs text-slate-500">
             Of disputes whose latest recommendation was X, what share ended <code>outcome=won</code>?
           </p>
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-slate-400"><th>Action</th><th>Wins</th><th>Resolved</th><th>Win rate</th></tr></thead>
+            <thead><tr className="text-left text-slate-500"><th>Action</th><th>Wins</th><th>Resolved</th><th>Win rate</th></tr></thead>
             <tbody>
               {[...effectivenessAgg.entries()].sort((a, b) => b[1].total - a[1].total).map(([action, agg]) => (
-                <tr key={action} className="border-t border-slate-800">
-                  <td className="py-1 text-slate-200">{action}</td>
-                  <td className="py-1 text-slate-300">{agg.wins}</td>
-                  <td className="py-1 text-slate-300">{agg.total}</td>
-                  <td className="py-1 text-amber-300">{((agg.wins / Math.max(1, agg.total)) * 100).toFixed(0)}%</td>
+                <tr key={action} className="border-t border-slate-100">
+                  <td className="py-1 text-slate-700">{action}</td>
+                  <td className="py-1 text-slate-700">{agg.wins}</td>
+                  <td className="py-1 text-slate-700">{agg.total}</td>
+                  <td className="py-1 text-amber-700">{((agg.wins / Math.max(1, agg.total)) * 100).toFixed(0)}%</td>
                 </tr>
               ))}
               {effectivenessAgg.size === 0 && (
@@ -170,16 +168,15 @@ export default async function DisputeAgentAdminPage() {
             </tbody>
           </table>
         </Section>
-      </div>
-    </div>
+    </AdminPage>
   );
 }
 
 function Card({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-amber-300">{value}</div>
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="text-xs uppercase tracking-wide text-slate-500 font-medium">{label}</div>
+      <div className="mt-1 text-2xl font-semibold text-slate-900 tabular-nums">{value}</div>
       {hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}
     </div>
   );
@@ -187,8 +184,8 @@ function Card({ label, value, hint }: { label: string; value: string; hint?: str
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mt-8 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">{title}</h2>
+    <div className="rounded-xl border border-slate-200 bg-white p-4 overflow-x-auto">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">{title}</h2>
       {children}
     </div>
   );

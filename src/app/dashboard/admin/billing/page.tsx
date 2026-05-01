@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
-import AdminBackLink from '@/components/admin/AdminBackLink';
+import AdminPage from '@/components/admin/AdminPage';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,27 +62,19 @@ export default async function AdminBillingPage() {
 
   if (!summary) {
     return (
-      <div className="p-8 text-white">
-        <AdminBackLink className="!text-slate-400 hover:!text-white" />
-        <h1 className="text-2xl font-bold">Billing</h1>
-        <p className="text-red-400 mt-4">{fetchErr || 'No data.'}</p>
-      </div>
+      <AdminPage title="API Billing">
+        <p className="text-rose-600">{fetchErr || 'No data.'}</p>
+      </AdminPage>
     );
   }
 
   const maxDaily = Math.max(0.01, ...summary.dailyTrend.map((d) => d.cost_gbp));
 
   return (
-    <div className="p-6 md:p-8 text-white space-y-8 max-w-6xl">
-      <AdminBackLink className="!text-slate-400 hover:!text-white !mb-0" />
-      <header>
-        <h1 className="text-2xl md:text-3xl font-bold">API Billing</h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Internal cost ledger — actual paid third-party API spend across Anthropic, Perplexity, Resend, Stripe, TrueLayer.
-          Generated {new Date(summary.generatedAt).toLocaleString('en-GB')}.
-        </p>
-      </header>
-
+    <AdminPage
+      title="API Billing"
+      description={`Internal cost ledger — actual paid third-party API spend across Anthropic, Perplexity, Resend, Stripe, TrueLayer. Generated ${new Date(summary.generatedAt).toLocaleString('en-GB')}.`}
+    >
       <section className="grid md:grid-cols-3 gap-4">
         <Card label="This month so far" value={gbp(summary.monthSoFar.total_gbp)} />
         <Card label="Last 30 days" value={gbp(summary.last30Days.total_gbp)} />
@@ -149,31 +141,31 @@ export default async function AdminBillingPage() {
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold mb-3">Daily cost trend (last 30 days)</h2>
-        <div className="space-y-1 bg-slate-900/40 border border-slate-700 rounded p-4">
+        <h2 className="text-lg font-semibold mb-3 text-slate-900">Daily cost trend (last 30 days)</h2>
+        <div className="space-y-1 bg-slate-50 border border-slate-200 rounded-lg p-4">
           {summary.dailyTrend.map((d) => (
             <div key={d.date} className="flex items-center gap-3 text-xs">
-              <span className="w-20 shrink-0 text-slate-400">{d.date}</span>
-              <div className="flex-1 bg-slate-800 rounded h-3 overflow-hidden">
+              <span className="w-20 shrink-0 text-slate-500">{d.date}</span>
+              <div className="flex-1 bg-slate-200 rounded h-3 overflow-hidden">
                 <div
                   className="h-full bg-amber-500"
                   style={{ width: `${Math.max(2, (d.cost_gbp / maxDaily) * 100)}%` }}
                 />
               </div>
-              <span className="w-20 text-right tabular-nums">{gbp(d.cost_gbp)}</span>
+              <span className="w-20 text-right tabular-nums text-slate-700">{gbp(d.cost_gbp)}</span>
             </div>
           ))}
         </div>
       </section>
-    </div>
+    </AdminPage>
   );
 }
 
 function Card({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-slate-900/60 border border-slate-700 rounded-lg p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="text-2xl font-bold mt-1">{value}</div>
+    <div className="bg-white border border-slate-200 rounded-xl p-4">
+      <div className="text-xs uppercase tracking-wide text-slate-500 font-medium">{label}</div>
+      <div className="text-2xl font-bold mt-1 text-slate-900 tabular-nums">{value}</div>
     </div>
   );
 }
@@ -186,23 +178,23 @@ interface Col {
 
 function Table({ rows, cols }: { rows: Array<Record<string, unknown>>; cols: Col[] }) {
   if (!rows || rows.length === 0) {
-    return <p className="text-sm text-slate-400">No data.</p>;
+    return <p className="text-sm text-slate-500">No data.</p>;
   }
   return (
-    <div className="overflow-x-auto bg-slate-900/40 border border-slate-700 rounded">
+    <div className="overflow-x-auto -mx-1 bg-white border border-slate-200 rounded-lg">
       <table className="w-full text-sm">
-        <thead className="bg-slate-800/60 text-slate-300">
+        <thead className="bg-slate-50 text-slate-600">
           <tr>
             {cols.map((c) => (
-              <th key={c.key} className="text-left px-3 py-2 font-medium">{c.label}</th>
+              <th key={c.key} className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">{c.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} className="border-t border-slate-800">
+            <tr key={i} className="border-t border-slate-100">
               {cols.map((c) => (
-                <td key={c.key} className="px-3 py-2 text-slate-200 tabular-nums">
+                <td key={c.key} className="px-4 py-3 text-slate-700 tabular-nums">
                   {c.render ? c.render(row[c.key]) : String(row[c.key] ?? '')}
                 </td>
               ))}

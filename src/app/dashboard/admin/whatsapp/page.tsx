@@ -3,8 +3,8 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, RefreshCw, Loader2, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
+import { RefreshCw, Loader2, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
+import AdminPage from '@/components/admin/AdminPage';
 
 interface SidRow {
   template_name: string;
@@ -109,21 +109,15 @@ export default function WhatsAppTemplatesAdminPage() {
   const byName = new Map(rows.map((r) => [r.template_name, r]));
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
-      <div className="max-w-5xl mx-auto">
-        <Link href="/dashboard/admin" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 mb-4">
-          <ArrowLeft className="w-4 h-4" /> Back to admin
-        </Link>
-        <h1 className="text-2xl font-semibold mb-2">WhatsApp templates</h1>
-        <p className="text-sm text-slate-400 mb-6">
-          Server-side resubmit + daily Meta status poll. The dispatch path skips templates whose status is not <code>approved</code>.
-        </p>
-
-        <div className="flex flex-wrap gap-3 mb-6">
+    <AdminPage
+      title="WhatsApp templates"
+      description="Server-side resubmit + daily Meta status poll. The dispatch path skips templates whose status is not approved."
+      actions={
+        <>
           <button
             onClick={onResubmit}
             disabled={busy !== null}
-            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-4 py-2 rounded-md text-sm"
+            className="inline-flex items-center gap-2 bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-medium"
           >
             {busy === 'resubmit' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             Resubmit pending
@@ -131,54 +125,54 @@ export default function WhatsAppTemplatesAdminPage() {
           <button
             onClick={onRefresh}
             disabled={busy !== null}
-            className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 px-4 py-2 rounded-md text-sm border border-slate-700"
+            className="inline-flex items-center gap-2 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-medium border border-slate-200"
           >
             {busy === 'refresh' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             Refresh status
           </button>
-        </div>
+        </>
+      }
+    >
+      {message && (
+        <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700">{message}</div>
+      )}
 
-        {message && (
-          <div className="mb-4 p-3 rounded-md border border-slate-700 bg-slate-900 text-sm">{message}</div>
-        )}
-
-        <div className="border border-slate-800 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900 text-slate-400">
-              <tr>
-                <th className="text-left px-3 py-2">Template</th>
-                <th className="text-left px-3 py-2">Live SID</th>
-                <th className="text-left px-3 py-2">Status</th>
-                <th className="text-left px-3 py-2">Last check</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && (
-                <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-400">Loading…</td></tr>
-              )}
-              {!loading && registry.map((r) => {
-                const live = byName.get(r.name);
-                const sidDisplay = live?.sid ?? (r.is_pending_resubmission ? '— (pending resubmission)' : r.fallback_sid);
-                const status: SidRow['approval_status'] = live?.approval_status
-                  ?? (r.is_pending_resubmission ? 'pending' : 'approved');
-                return (
-                  <tr key={r.name} className="border-t border-slate-800">
-                    <td className="px-3 py-2 font-mono text-xs">{r.name}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-slate-300">{sidDisplay}</td>
-                    <td className="px-3 py-2"><StatusPill status={status} /></td>
-                    <td className="px-3 py-2 text-xs text-slate-400">
-                      {live?.last_status_check_at ? new Date(live.last_status_check_at).toLocaleString('en-GB') : '—'}
-                      {live?.last_error && (
-                        <div className="text-rose-300 mt-1">{live.last_error}</div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Template</th>
+              <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Live SID</th>
+              <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Status</th>
+              <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Last check</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && (
+              <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500">Loading…</td></tr>
+            )}
+            {!loading && registry.map((r) => {
+              const live = byName.get(r.name);
+              const sidDisplay = live?.sid ?? (r.is_pending_resubmission ? '— (pending resubmission)' : r.fallback_sid);
+              const status: SidRow['approval_status'] = live?.approval_status
+                ?? (r.is_pending_resubmission ? 'pending' : 'approved');
+              return (
+                <tr key={r.name} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-mono text-xs text-slate-800">{r.name}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-600">{sidDisplay}</td>
+                  <td className="px-4 py-3"><StatusPill status={status} /></td>
+                  <td className="px-4 py-3 text-xs text-slate-500">
+                    {live?.last_status_check_at ? new Date(live.last_status_check_at).toLocaleString('en-GB') : '—'}
+                    {live?.last_error && (
+                      <div className="text-rose-600 mt-1">{live.last_error}</div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-    </div>
+    </AdminPage>
   );
 }
