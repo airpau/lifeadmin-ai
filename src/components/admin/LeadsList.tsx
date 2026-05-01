@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Loader2, MessageCircle, Instagram, Facebook, Filter, RefreshCw, ChevronDown } from 'lucide-react';
+import { Loader2, MessageCircle, Instagram, Facebook, Filter, RefreshCw, ChevronDown, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 
 interface Lead {
   id: string;
@@ -93,6 +94,26 @@ export default function LeadsList() {
 
   return (
     <div>
+      {/* Source clarifier — the founder previously saw two Leads
+          tabs and couldn't tell what each held. This banner makes
+          the split explicit: this view is social-DM only; cart-
+          abandonment & pricing-page leads live in Consumer Leads. */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+        <div className="text-slate-700">
+          <span className="font-semibold text-slate-900">Source: Social DM funnel</span>
+          <span className="ml-2 text-slate-500">
+            Leads captured from Facebook / Instagram DMs &amp; comments. Stripe cart-abandonment
+            and pricing-page leads are tracked separately.
+          </span>
+        </div>
+        <Link
+          href="/dashboard/admin/consumer-leads"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 border border-slate-200 hover:border-slate-300 transition-all"
+        >
+          Open Consumer Leads <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white border border-slate-200 rounded-xl p-4">

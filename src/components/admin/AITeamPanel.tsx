@@ -134,6 +134,45 @@ export default function AITeamPanel() {
 
   return (
     <div>
+      {/* Honest-state primer — 17 Apr 2026 audit revealed the
+          legacy executive C-suite (Casey/Charlie/Sam/Alex/etc) is
+          dormant, the Railway agent-server was disabled around
+          5 Apr, and the nine Claude Managed Agents are configured
+          but not yet wired to a Vercel cron. Reflect that here so
+          the founder isn't misled by the names without status. */}
+      <div className="rounded-2xl border border-slate-200 bg-amber-50 p-4 mb-4 text-sm text-slate-800">
+        <p className="font-semibold mb-1">Honest state (per CLAUDE.md, 17 Apr 2026 audit)</p>
+        <ul className="list-disc pl-5 space-y-0.5 text-xs text-slate-700">
+          <li>
+            <span className="font-medium">Active workers:</span> complaint_writer (on-demand),
+            riley-support-agent, discover_features_cron, dev-sprint-runner,
+            analyze_chatbot_gaps_cron, paperclip-business-monitor, plus the new
+            compliance / nurture / dispute-agent crons.
+          </li>
+          <li>
+            <span className="font-medium">Claude Managed Agents</span> (alert-tester,
+            digest-compiler, support-triager, email-marketer, ux-auditor, feature-tester,
+            bug-triager, reviewer, builder) are <em>configured but not firing</em> —
+            <code className="mx-1 bg-slate-100 px-1 rounded">agent_messages</code> has 0 rows
+            in the last 30 days. They need a Vercel cron entry pointing at
+            <code className="mx-1 bg-slate-100 px-1 rounded">/api/cron/managed-agents</code>.
+          </li>
+          <li>
+            <span className="font-medium">Dormant:</span> Casey / Charlie / Sam / Alex / Jordan /
+            Morgan / Jamie / Taylor / Drew / Pippa / Leo / Nico / Bella / Finn — Railway
+            disabled, no replacement schedule.
+          </li>
+        </ul>
+        <a
+          href="https://claude.ai/code/agents"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-white border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 hover:border-slate-300 transition-all"
+        >
+          Open Claude Managed Agents console ↗
+        </a>
+      </div>
+
       {/* Health summary bar */}
       {summary && (
         <div className="rounded-2xl border border-slate-200 bg-[#0a1628]/60 p-4 mb-4">

@@ -8,6 +8,7 @@ import {
   ShieldAlert, Users, CreditCard, TrendingUp, BarChart3,
   Building2, FileText, Bot, Loader2, ChevronRight, ArrowLeft,
   Banknote, Clock, Mail, Database, Ticket, Brain, Shield, Tag, RefreshCw, Briefcase, UserPlus,
+  Gavel, Activity, MessageSquare, PoundSterling,
 } from 'lucide-react';
 import TicketList from '@/components/admin/TicketList';
 import AITeamPanel from '@/components/admin/AITeamPanel';
@@ -277,9 +278,37 @@ export default function AdminPage() {
         <Link
           href="/dashboard/admin/consumer-leads"
           className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-          title="Consumer abandonment nurture funnel"
+          title="Consumer abandonment nurture funnel — cart-abandonment / pricing-page leads (separate table from social-DM Leads tab above)"
         >
           <UserPlus className="h-4 w-4" /> Consumer Leads
+        </Link>
+        <Link
+          href="/dashboard/admin/dispute-intelligence"
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
+          title="Dispute outcome dataset — funnel, win rates, merchant × legal-ref heatmap"
+        >
+          <Activity className="h-4 w-4" /> Dispute Intel
+        </Link>
+        <Link
+          href="/dashboard/admin/dispute-agent"
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
+          title="Autonomous dispute-agent decisions, approve/override rate, recommendation effectiveness"
+        >
+          <Gavel className="h-4 w-4" /> Dispute Agent
+        </Link>
+        <Link
+          href="/dashboard/admin/whatsapp"
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
+          title="WhatsApp template SIDs + Meta approval status"
+        >
+          <MessageSquare className="h-4 w-4" /> WhatsApp
+        </Link>
+        <Link
+          href="/dashboard/admin/billing"
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
+          title="API cost ledger — Anthropic / Perplexity / Resend / Stripe / TrueLayer spend"
+        >
+          <PoundSterling className="h-4 w-4" /> Billing
         </Link>
         <Link
           href="/dashboard/admin/legal-refs"
