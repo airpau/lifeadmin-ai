@@ -37,9 +37,15 @@ export default function PublicNavbar() {
   return (
     <header className="fixed top-0 w-full z-50 bg-navy-950/80 backdrop-blur-xl border-b border-navy-700/50">
       <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
-          <span className="text-xl font-bold text-white">Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span></span>
+        <Link href="/" className="flex items-center" aria-label="Paybacker home">
+          <Image
+            src="/brand/paybacker-lockup.png"
+            alt="Paybacker"
+            width={459}
+            height={143}
+            priority
+            className="h-9 w-auto max-w-[160px] rounded-md"
+          />
         </Link>
 
         {/* Desktop nav */}
