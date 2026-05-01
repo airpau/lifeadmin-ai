@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAccounts, getTransactions } from '@/lib/yapily';
+import { getAccounts, getTransactions, YapilyError } from '@/lib/yapily';
+import { handleYapilyError } from '@/lib/yapily/error-handler';
 import { decrypt } from '@/lib/encrypt';
 import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
@@ -250,6 +251,7 @@ export async function GET(request: NextRequest) {
         // Backfill bank name if missing
         let accountIds = connection.account_ids || [];
 
+        let consentInvalid = false;
         if (accountIds.length === 0 || !connection.bank_name) {
           try {
             const accounts = await getAccounts(consentToken);
@@ -264,9 +266,21 @@ export async function GET(request: NextRequest) {
               account_display_names: displayNames,
               account_ids: accountIds,
             }).eq('id', connection.id);
-          } catch {
-            // Non-fatal
+          } catch (err) {
+            const outcome = await handleYapilyError(err, {
+              source: 'cron.bank-sync.accounts',
+              connectionId: connection.id,
+            });
+            if (outcome.kind === 'reconsent') consentInvalid = true;
+            // Non-fatal otherwise
           }
+        }
+        if (consentInvalid) {
+          // handleYapilyError already flipped status to 'expired' and
+          // logged. Skip this connection — the renewal banner will
+          // pick up where we left off when the user next visits.
+          totalApiCalls += connectionApiCalls;
+          continue;
         }
 
         if (accountIds.length === 0) {
@@ -284,7 +298,14 @@ export async function GET(request: NextRequest) {
         const storedDisplayNames: string[] = Array.isArray(connection.account_display_names)
           ? connection.account_display_names
           : [];
-        const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+        // Apply the 5-minute back-window so any late-arriving transactions
+        // Yapily surfaces inside its 5-min historical-data window aren't
+        // missed (T11). For first-ever syncs we fall back to ninety_days_ago.
+        const lastSync = connection.last_synced_at ? new Date(connection.last_synced_at).getTime() : null;
+        const fromMs = lastSync
+          ? Math.max(lastSync - 5 * 60 * 1000, ninetyDaysAgo.getTime())
+          : ninetyDaysAgo.getTime();
+        const fromDate = new Date(fromMs).toISOString().split('T')[0];
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         const toDate = tomorrow.toISOString().split('T')[0];
@@ -297,7 +318,10 @@ export async function GET(request: NextRequest) {
             continue;
           }
           try {
-            const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
+            const transactions = await getTransactions(accountId, consentToken, {
+              from: fromDate,
+              to: toDate,
+            });
             connectionApiCalls++;
             transactionSyncSucceeded = true;
             if (transactions.length === 0) continue;
@@ -316,8 +340,17 @@ export async function GET(request: NextRequest) {
               transactions,
             });
             totalSynced += result.inserted;
-          } catch (err: any) {
-            console.error(`Bank sync: error on account ${accountId}:`, err.message);
+          } catch (err) {
+            const outcome = await handleYapilyError(err, {
+              source: 'cron.bank-sync.transactions',
+              connectionId: connection.id,
+            });
+            if (outcome.kind === 'reconsent') {
+              // Connection now flipped to expired; bail out of this conn.
+              break;
+            }
+            if (err instanceof YapilyError && err.status === 429) break;
+            console.error(`Bank sync: error on account ${accountId}:`, err);
           }
         }
       }
