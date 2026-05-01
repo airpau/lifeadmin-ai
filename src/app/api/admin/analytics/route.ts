@@ -34,6 +34,19 @@ function monthKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// Day-of-month in Europe/London — matches the tz logic introduced in PR #418.
+// We need this so the dashboard can flag "month just started" empty states
+// without misinterpreting a Day-1 zero as broken data.
+function londonDayOfMonth(d = new Date()): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    day: 'numeric',
+  }).formatToParts(d);
+  const dayPart = parts.find((p) => p.type === 'day')?.value;
+  const n = dayPart ? Number(dayPart) : NaN;
+  return Number.isFinite(n) ? n : d.getUTCDate();
+}
+
 function startOfMonth(d = new Date()) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
@@ -484,5 +497,6 @@ export async function GET() {
     },
     this_month: thisMonth,
     last_month: lastMonth,
+    days_into_month: londonDayOfMonth(now),
   });
 }
