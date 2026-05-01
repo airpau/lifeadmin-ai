@@ -18,6 +18,7 @@ import {
   type NotificationEventType,
 } from '@/lib/notifications/events';
 import { getEffectiveTier } from '@/lib/plan-limits';
+import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -1243,6 +1244,7 @@ async function draftDisputeLetter(
   const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  void anthropic; // legacy fallback path retained as dead code below
 
   const likeForLikeBlock = [
     `LIKE-FOR-LIKE MODE (overrides tone length targets and any instruction to add substantive content).`,
@@ -1293,16 +1295,44 @@ async function draftDisputeLetter(
       : ``,
   ].filter(Boolean).join('\n');
 
-  const letterResponse = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1400,
-    messages: [{ role: 'user', content: letterPrompt }],
-  });
-
-  const letterText = letterResponse.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('');
+  // ARCHITECTURAL RULE — every dispute reply (and every initial complaint
+  // letter) MUST be grounded in verified UK statute citations from the
+  // legal_references table. Plain-prose replies are a product failure.
+  // Route through the unified engine in src/lib/agents/dispute-reply-engine.ts.
+  // The only exception is LIKE-FOR-LIKE mode where the user has dictated
+  // the exact reply text — there, citations would distort their intent,
+  // so we keep the local prompt path that respects the brief verbatim.
+  let letterText: string;
+  if (likeForLikeMode) {
+    const letterResponse = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1400,
+      messages: [{ role: 'user', content: letterPrompt }],
+    });
+    letterText = letterResponse.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('');
+  } else {
+    const toneForEngine: 'friendly' | 'balanced' | 'firm' | 'auto' =
+      tone === 'friendly' || tone === 'balanced' || tone === 'firm' ? tone : 'auto';
+    const unified = await generateDisputeReply(getAdmin(), {
+      providerName: params.provider,
+      customerName: fullName,
+      customerAddress: [profile?.address, profile?.postcode].filter(Boolean).join(', ') || null,
+      issueSummary: params.issue_description,
+      desiredOutcome: params.desired_outcome,
+      issueType: params.issue_type ?? null,
+      providerType: null,
+      supplierLatestMessage: hasSupplierContext ? supplierMsg : null,
+      lastOutboundLetter: null,
+      userTweakBrief: userBrief || null,
+      tone: toneForEngine,
+      userId,
+      surface: channel,
+    });
+    letterText = unified.letter;
+  }
 
   const pendingAction: PendingAction = {
     type: 'dispute_letter',

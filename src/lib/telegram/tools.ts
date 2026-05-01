@@ -532,7 +532,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'draft_dispute_letter',
     description:
-      "Draft a letter from a UK consumer to a company — either a fresh complaint, or a reply to a message the company just sent. Reads the supplier's last message (when provided) and calibrates tone: if they just asked a scheduling or info question, the reply stays short and cooperative; if they rejected the complaint or offered a settlement, the tone sharpens. Returns a preview the user must approve.",
+      "Draft a letter from a UK consumer to a company — either a fresh complaint, or a reply to a message the company just sent. EVERY draft is auto-grounded in UK statute and regulator citations pulled from the Paybacker legal_references compliance index — the reply will read like a UK consumer-rights solicitor's letter, never as plain prose. Use this for ALL dispute drafts and ALL dispute replies; never write replies yourself in chat. Reads the supplier's last message (when provided) and calibrates tone. Returns a preview the user must approve.",
     input_schema: {
       type: 'object' as const,
       properties: {

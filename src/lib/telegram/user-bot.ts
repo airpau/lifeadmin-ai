@@ -15,6 +15,7 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { telegramTools } from './tools';
 import { executeToolCall, type PendingAction } from './tool-handlers';
+import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
 import { handleConfirmationReply, isAwaitingConfirmation } from '@/lib/support/confirmation-reply';
 
 // ============================================================
@@ -114,6 +115,8 @@ const SESSION_EXPIRY_DAYS = 90;
 const SYSTEM_PROMPT = `You are Paybacker's Pocket Agent — a fully connected financial assistant for UK consumers. You have access to EVERYTHING the user can see on the Paybacker website. This includes Money Hub, Subscriptions, Contracts, Disputes, Scanner, Rewards, Profile, Tasks, and all financial data. Never say you can't access something — if there's a tool for it, use it.
 
 CITATION RULE — NON-NEGOTIABLE: When the user references their own email or letter ("my email", "my last letter", "my 16th letter", "what I demanded", "what I requested", "what I wrote", "what I quoted", "the amount I asked for", "confirm the figure I cited", or anything that asks for the content/amount/date/wording of correspondence on a dispute), you MUST call quote_email_from_thread BEFORE answering. The same rule applies if they ask what the company actually said in their reply ("their last email", "what they wrote", "what date did they give"). Do not calculate, infer, or summarise from offer figures, dispute metadata, prior assistant turns, or earlier conversation context. Read the actual body via the tool and quote verbatim. If the body doesn't contain the answer, say "I couldn't find that figure in the linked thread" rather than inferring. This rule overrides any urge to answer faster from context — correctness wins.
+
+DRAFTING RULE — NON-NEGOTIABLE: When the user asks you to draft, redraft, respond to, reply to, follow up on, escalate, or write back about ANY dispute or company correspondence, you MUST call the draft_dispute_letter tool. NEVER write the reply yourself in chat prose. The tool grounds every reply in UK statute and regulator citations from the legal_references compliance index — that is the lawyer-replacement product. Plain-prose replies without citations are a product failure. If the user asks "is there any legal citation needed?" or "can you redraft with legal references?", that is a signal you should have called the tool the first time — call it now. Do not produce a reply outside the tool.
 
 COMPLETE TOOL REFERENCE (always call the tool — never make up data or say "I can't"):
 
@@ -1311,6 +1314,10 @@ Return JSON: { "subject": "...", "body": "..." }`;
 
       const supplierExcerpt = String(supplierMsg.content || '').slice(0, 4000);
       const category = (supplierMsg.ai_category as string | null) || 'unknown';
+      // category is referenced only by the legacy tone block below — kept
+      // for log parity but not consulted now that the unified engine
+      // grounds on legal_references rather than the classifier label.
+      void category;
 
       // Tone-specific directives. 'auto' lets the classifier's category
       // (info_request / holding_reply / settlement_offer / rejection /
@@ -1360,53 +1367,42 @@ Return JSON: { "subject": "...", "body": "..." }`;
         }
       })();
 
-      const prompt = [
-        "Write a UK consumer's REPLY to a supplier's latest message on an ongoing dispute.",
-        '',
-        `Customer name: ${fullName}`,
-        `Customer address: ${addrLine}`,
-        `Today's date: ${today}`,
-        `Supplier: ${providerName}`,
-        `Dispute summary: ${dispute?.issue_summary || '(see thread)'}`,
-        `Desired outcome: ${dispute?.desired_outcome || '(see thread)'}`,
-        '',
-        `Supplier's latest message (the one we are replying to), received ${new Date(supplierMsg.entry_date).toLocaleDateString('en-GB')}:`,
-        '"""',
-        supplierExcerpt,
-        '"""',
-        '',
-        `Paybacker's read of the supplier's message: ${supplierMsg.ai_rationale || 'n/a'}`,
-        `Short hint on what the reply should cover: ${supplierMsg.ai_suggested_reply_context || 'n/a'}`,
-        `Supplier message category (from our classifier): ${category}`,
-        '',
-        'What the user previously wrote to this supplier (background context only — do NOT quote or paraphrase):',
-        '"""',
-        lastOutboundBody,
-        '"""',
-        '',
-        toneBlock,
-        '',
-        'Hard rules (apply regardless of tone):',
-        '- UK English. Reads as intelligent human writing, not AI.',
-        '- Start with `Dear ' + providerName + ' Customer Services,` and end with `Yours sincerely,\\n' + fullName + '`.',
-        "- Directly address what the supplier asked / said. Don't invent facts the user hasn't supplied.",
-        '- If the supplier asked for info the user hasn\'t provided, use square-bracket placeholders ([account number], [meter reading], etc.).',
-        "- Keep any reference / ticket number from the supplier's email in a short `Reference:` line after the salutation.",
-        '- No section headings. No bullet points. No CAPS.',
-        '- Plain letter body only — no subject line, no envelope headers.',
-      ].join('\n');
+      // ARCHITECTURAL RULE — every dispute reply MUST be grounded in
+      // verified UK statute citations from the legal_references table.
+      // Plain-prose replies without citations are a product failure
+      // (the lawyer-replacement positioning depends on this). The
+      // unified engine in src/lib/agents/dispute-reply-engine.ts owns
+      // category detection → ref retrieval → citation guarantee →
+      // letter generation. Do not bypass it.
+      const toneForEngine: 'friendly' | 'balanced' | 'firm' | 'auto' =
+        tone === 'friendly' || tone === 'balanced' || tone === 'firm' ? tone : 'auto';
 
-      const draft = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1400,
-        messages: [{ role: 'user', content: prompt }],
+      const unified = await generateDisputeReply(supabase, {
+        providerName: providerName,
+        customerName: fullName,
+        customerAddress: addrLine,
+        issueSummary: dispute?.issue_summary || supplierMsg.title || 'See thread context',
+        desiredOutcome: dispute?.desired_outcome || 'Resolve the dispute fairly under UK consumer law',
+        issueType: dispute?.issue_type ?? null,
+        providerType: dispute?.provider_type ?? null,
+        supplierLatestMessage: supplierExcerpt,
+        lastOutboundLetter: lastOutboundBody,
+        userTweakBrief: null,
+        tone: toneForEngine,
+        userId: supplierMsg.user_id,
+        surface: 'telegram',
       });
 
-      const draftText = draft.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('')
-        .trim();
+      const draftText = unified.letter.trim();
+
+      // The legacy in-line Anthropic prompt builder that lived here was
+      // removed when the unified engine landed. It bypassed the
+      // legal-grounding pipeline (no legal_references lookup, no
+      // citation guarantee, no freshness check) and produced
+      // freehand prose. If you find yourself wanting to add
+      // letter-generation logic here, add it to
+      // src/lib/agents/dispute-reply-engine.ts instead.
+      void toneBlock;
 
       const { data: savedDraft } = await supabase
         .from('correspondence')

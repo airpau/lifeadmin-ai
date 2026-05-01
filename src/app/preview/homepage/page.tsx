@@ -1399,10 +1399,10 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <h2 className="feature-title">Your personal caseworker — over WhatsApp</h2>
+              <h2 className="feature-title">Your personal caseworker — over WhatsApp &amp; Telegram</h2>
               <p className="feature-tagline">
                 A solicitor takes a week to reply to email. Your Paybacker
-                caseworker is on WhatsApp 24/7.
+                caseworker is on chat 24/7.
               </p>
               <p>
                 It tells you when a dispute is ready to send, when the company
@@ -1413,7 +1413,15 @@ export default function HomepageV3PreviewPage() {
                 <li>Drafts ready in 30 seconds — approve with one tap</li>
                 <li>Watches your inbox for the provider&rsquo;s response</li>
                 <li>Auto-escalates to Ombudsman at the 8-week mark</li>
-                <li>Telegram on every plan · WhatsApp on Pro</li>
+                <li>
+                  <strong>Telegram Pocket Agent</strong>{' '}
+                  <span className="tier-chip tier-chip--free">Free</span> — across all plans.
+                </li>
+                <li>
+                  <strong>WhatsApp Pocket Agent</strong>{' '}
+                  <span className="tier-chip tier-chip--pro">Pro</span> — £9.99/month.
+                  Same caseworker, different chat.
+                </li>
               </ul>
               <div className="feature-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">

@@ -2407,3 +2407,26 @@
   .m-v2-root .real-win__roi-multiple { font-size: 44px; }
   .m-v2-root .real-win__equivalents ul { grid-template-columns: 1fr; }
 }
+
+/* Tier chips on the Pocket Agent feature bullets */
+.tier-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  margin: 0 2px;
+}
+.tier-chip--free {
+  background: rgba(94, 234, 212, 0.18);
+  color: #5eead4;
+  border: 1px solid rgba(94, 234, 212, 0.4);
+}
+.tier-chip--pro {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
