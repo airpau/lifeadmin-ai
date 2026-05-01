@@ -246,15 +246,68 @@ export default function NotificationsSettingsPage() {
 
       {/* Quiet hours */}
       <section className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="p-2 rounded-lg bg-slate-100">
-            <Moon className="h-5 w-5 text-slate-700" />
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-slate-100">
+              <Moon className="h-5 w-5 text-slate-700" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Quiet hours</h2>
+              <p className="text-xs text-slate-500">We hold push, Telegram and WhatsApp during this window. Emails still land in your inbox. Urgent alerts override.</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Quiet hours</h2>
-            <p className="text-xs text-slate-500">We hold push, Telegram and WhatsApp during these hours. Emails still land in your inbox.</p>
-          </div>
+          <span
+            className={
+              data.quiet_hours_start && data.quiet_hours_end
+                ? 'text-[11px] uppercase tracking-wider bg-emerald-100 text-emerald-700 font-semibold px-2 py-1 rounded'
+                : 'text-[11px] uppercase tracking-wider bg-slate-100 text-slate-500 font-semibold px-2 py-1 rounded'
+            }
+          >
+            {data.quiet_hours_start && data.quiet_hours_end ? 'On' : 'Off'}
+          </span>
         </div>
+
+        {/* Presets */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          {[
+            { label: 'Sleep (22:00 – 07:00)', start: '22:00', end: '07:00' },
+            { label: 'Late nights (23:00 – 08:00)', start: '23:00', end: '08:00' },
+            { label: 'Work hours only (09:00 – 18:00)', start: '18:00', end: '09:00' },
+          ].map((preset) => {
+            const active = data.quiet_hours_start === preset.start && data.quiet_hours_end === preset.end;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => {
+                  setQuietHour('quiet_hours_start', preset.start);
+                  setQuietHour('quiet_hours_end', preset.end);
+                }}
+                className={
+                  'text-xs px-3 py-1.5 rounded-full border transition-colors ' +
+                  (active
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700 font-semibold'
+                    : 'bg-white border-slate-300 text-slate-700 hover:border-slate-400')
+                }
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+          {(data.quiet_hours_start || data.quiet_hours_end) && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuietHour('quiet_hours_start', '');
+                setQuietHour('quiet_hours_end', '');
+              }}
+              className="text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+            >
+              Disable quiet hours
+            </button>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 gap-3 max-w-md">
           <label className="text-sm">
             <span className="block text-slate-500 text-xs mb-1">Start</span>
@@ -275,8 +328,17 @@ export default function NotificationsSettingsPage() {
             />
           </label>
         </div>
-        <p className="text-xs text-slate-500 mt-2">
-          Timezone: {data.timezone} · Leave blank for 24/7 delivery.
+
+        <p className="text-xs text-slate-500 mt-3">
+          Timezone: <span className="font-semibold text-slate-700">{data.timezone}</span>{' '}
+          {data.quiet_hours_start && data.quiet_hours_end ? (
+            <>
+              · We&rsquo;ll hold non-urgent push, Telegram and WhatsApp messages between{' '}
+              <strong>{data.quiet_hours_start}</strong> and <strong>{data.quiet_hours_end}</strong>.
+            </>
+          ) : (
+            <>· Both fields blank = 24/7 delivery (no quiet window).</>
+          )}
         </p>
       </section>
 
