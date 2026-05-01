@@ -5,16 +5,15 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
-  ShieldAlert, Users, CreditCard, TrendingUp, BarChart3,
+  ShieldAlert, Users, CreditCard, TrendingUp,
   Building2, FileText, Bot, Loader2, ChevronRight, ArrowLeft,
-  Banknote, Clock, Mail, Database, Ticket, Brain, Shield, Tag, RefreshCw, Briefcase, UserPlus,
-  Gavel, Activity, MessageSquare, PoundSterling,
+  Banknote, Mail, Database, BarChart3, Tag, RefreshCw,
 } from 'lucide-react';
 import TicketList from '@/components/admin/TicketList';
 import AITeamPanel from '@/components/admin/AITeamPanel';
 import MeetingRoom from '@/components/admin/MeetingRoom';
 import LeadsList from '@/components/admin/LeadsList';
-import Link from 'next/link';
+import AdminTabStrip from '@/components/admin/AdminTabStrip';
 
 // Server-side gate now lives in src/app/dashboard/admin/layout.tsx —
 // a non-admin can't reach this component. The client-side check below
@@ -253,102 +252,17 @@ export default function AdminPage() {
 
       {meetingOpen && <MeetingRoom onClose={() => setMeetingOpen(false)} />}
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6">
-        <button onClick={() => { setTab('overview'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'overview' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
-          Overview
-        </button>
-        <button onClick={() => { setTab('members'); loadMembers(); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'members' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
-          Members
-        </button>
-        <button onClick={() => { setTab('tickets'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'tickets' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
-          <Ticket className="h-4 w-4" /> Tickets
-        </button>
-        <button onClick={() => { setTab('leads'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'leads' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
-          <Users className="h-4 w-4" /> Leads
-        </button>
-        <button onClick={() => { setTab('ai_team'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
-          <Brain className="h-4 w-4" /> AI Team
-        </button>
-        <Link
-          href="/dashboard/admin/consumer-leads"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-          title="Consumer abandonment nurture funnel — cart-abandonment / pricing-page leads (separate table from social-DM Leads tab above)"
-        >
-          <UserPlus className="h-4 w-4" /> Consumer Leads
-        </Link>
-        <Link
-          href="/dashboard/admin/dispute-intelligence"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-          title="Dispute outcome dataset — funnel, win rates, merchant × legal-ref heatmap"
-        >
-          <Activity className="h-4 w-4" /> Dispute Intel
-        </Link>
-        <Link
-          href="/dashboard/admin/dispute-agent"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-          title="Autonomous dispute-agent decisions, approve/override rate, recommendation effectiveness"
-        >
-          <Gavel className="h-4 w-4" /> Dispute Agent
-        </Link>
-        <Link
-          href="/dashboard/admin/whatsapp"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-          title="WhatsApp template SIDs + Meta approval status"
-        >
-          <MessageSquare className="h-4 w-4" /> WhatsApp
-        </Link>
-        <Link
-          href="/dashboard/admin/billing"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-          title="API cost ledger — Anthropic / Perplexity / Resend / Stripe / TrueLayer spend"
-        >
-          <PoundSterling className="h-4 w-4" /> Billing
-        </Link>
-        <Link
-          href="/dashboard/admin/legal-refs"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-        >
-          <Shield className="h-4 w-4" /> Legal Refs
-        </Link>
-        <Link
-          href="/dashboard/admin/crons"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-        >
-          <Clock className="h-4 w-4" /> Crons
-        </Link>
-        <Link
-          href="/dashboard/admin/analytics"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-        >
-          <BarChart3 className="h-4 w-4" /> Analytics
-        </Link>
-        <Link
-          href="/dashboard/admin/cancel-info"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-        >
-          <Tag className="h-4 w-4" /> Cancel Info
-        </Link>
-        <Link
-          href="/dashboard/admin/b2b"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-          title="B2B waitlist + API keys"
-        >
-          <Briefcase className="h-4 w-4" /> B2B
-        </Link>
-        <Link
-          href="/dashboard/admin/restore-bank-data"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-          title="Restore a user's soft-deleted bank transactions (within 30-day window)"
-        >
-          <RefreshCw className="h-4 w-4" /> Restore data
-        </Link>
-      </div>
+      {/* Tabs — primary row stays visible (the daily drivers); the
+          long tail of admin sub-pages moves into a "More" popover so
+          the strip never overflows horizontally. Founder feedback
+          (Apr 2026): 14+ tabs were getting cut off / unclickable on
+          narrow laptop screens. */}
+      <AdminTabStrip
+        tab={tab}
+        setTab={setTab}
+        loadMembers={loadMembers}
+        setSelectedMember={setSelectedMember}
+      />
 
       {/* OVERVIEW TAB */}
       {tab === 'overview' && metrics && (
