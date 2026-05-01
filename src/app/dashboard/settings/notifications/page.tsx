@@ -94,8 +94,18 @@ export default function NotificationsSettingsPage() {
   };
 
   const setQuietHour = (key: 'quiet_hours_start' | 'quiet_hours_end', value: string) => {
-    if (!data) return;
-    setData({ ...data, [key]: value || null });
+    // Functional updater so back-to-back calls (preset chips, "Disable
+    // quiet hours") compose correctly. With `setData({ ...data, ... })`
+    // both calls in the same event read the same captured `data`
+    // snapshot and the second overwrites the first — leaving start/end
+    // out of sync and saving an unintended window.
+    setData((prev) => (prev ? { ...prev, [key]: value || null } : prev));
+  };
+
+  const setQuietWindow = (start: string | null, end: string | null) => {
+    setData((prev) =>
+      prev ? { ...prev, quiet_hours_start: start, quiet_hours_end: end } : prev,
+    );
   };
 
   const switchPocketAgent = async (target: PocketAgentChannel) => {
@@ -279,10 +289,7 @@ export default function NotificationsSettingsPage() {
               <button
                 key={preset.label}
                 type="button"
-                onClick={() => {
-                  setQuietHour('quiet_hours_start', preset.start);
-                  setQuietHour('quiet_hours_end', preset.end);
-                }}
+                onClick={() => setQuietWindow(preset.start, preset.end)}
                 className={
                   'text-xs px-3 py-1.5 rounded-full border transition-colors ' +
                   (active
@@ -297,10 +304,7 @@ export default function NotificationsSettingsPage() {
           {(data.quiet_hours_start || data.quiet_hours_end) && (
             <button
               type="button"
-              onClick={() => {
-                setQuietHour('quiet_hours_start', '');
-                setQuietHour('quiet_hours_end', '');
-              }}
+              onClick={() => setQuietWindow(null, null)}
               className="text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
             >
               Disable quiet hours
