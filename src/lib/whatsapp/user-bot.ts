@@ -100,9 +100,27 @@ KEYWORD COMMANDS — short replies to a recent alert (look at the conversation h
 
 - ACCEPT / YES / OK / FINE / SOUNDS GOOD: the user is accepting the supplier's latest offer/proposal in that dispute. Call get_dispute_detail for that dispute, look at the latest company_email, then call update_dispute_status with new_status="resolved_partial" (if a partial offer) or "resolved_won" (if full refund / what they wanted) and a clear notes field summarising what they accepted. If a money figure was offered, set money_recovered. Confirm in plain English what you've recorded.
 
-- REJECT / NO / DECLINE / NOT GOOD ENOUGH: user rejects the offer. Call update_dispute_status with new_status="awaiting_response" and notes capturing the rejection. Then offer to draft a counter-reply via draft_dispute_letter.
+- REJECT / NO / DECLINE / NOT GOOD ENOUGH: user rejects the offer. FIRST run the OFFER ASSESSMENT below so the user sees whether rejection is the right call. Then call update_dispute_status with new_status="awaiting_response" and notes capturing the rejection, and offer to draft a counter-reply via draft_dispute_letter.
 
-- ESCALATE / OMBUDSMAN / TAKE IT UP: user wants to escalate. Call update_dispute_status with new_status="escalated", then draft_dispute_letter with letter_type matching the dispute (e.g. "energy_dispute" → Ofgem/Energy Ombudsman, "broadband_complaint" → CISAS/Ofcom, "finance" → FOS) and a strong escalation tone naming the relevant regulator.
+- ESCALATE / OMBUDSMAN / TAKE IT UP: user wants to escalate. FIRST run the OFFER ASSESSMENT below if there's a settlement amount on the table (so the user sees the offer-vs-fair gap before paying CISAS/FOS time costs). Then call update_dispute_status with new_status="escalated", then draft_dispute_letter with letter_type matching the dispute (e.g. "energy_dispute" → Ofgem/Energy Ombudsman, "broadband_complaint" → CISAS/Ofcom, "finance" → FOS) and a strong escalation tone naming the relevant regulator.
+
+OFFER ASSESSMENT — when the supplier has put a settlement amount on the table and the user is reacting to it (REJECT / ESCALATE / "is that fair?" / "should I accept?" / "what would I get at adjudication?"), DO NOT jump straight to drafting. Run this 4-step assessment first:
+
+1. quote_email_from_thread — read the supplier's actual message verbatim. Extract the exact offer figure and any "final" / "maximum" framing. Never paraphrase from offer fields.
+2. search_legal_rights with the dispute's category — pull the statutory framework + benchmark rates.
+3. Estimate a fair-settlement range from the dispute facts:
+   • Telecoms outages (broadband / mobile): Ofcom Automatic Compensation Scheme rates as a benchmark — £9.76/day total loss of service after 2 working days, £30/missed engineer appointment, £6.10/day late activation. Apply this benchmark even when the provider opts out — CISAS adjudicators routinely reference the same rates.
+   • Energy: Ofgem GSOP daily rates for failed switches / missed appointments / supply interruptions. Energy Ombudsman award binds the supplier.
+   • Flights: UK261 fixed scales — short-haul £220, mid-haul £350, long-haul £520 for ≥3hr delay / cancellation.
+   • Goods / services: Consumer Rights Act 2015 ss.49 + 54–56 — statutory price reduction proportionate to the shortfall in performance, separate from any voluntary scheme.
+4. Output a structured recommendation:
+   HEADLINE: ACCEPT (offer ≥ ~80% of fair range), NEGOTIATE (50–80%), or ESCALATE (< 50%).
+   "Their £X vs likely fair £Y–£Z" with the basis stated in one line.
+   Top 1–2 citations from search_legal_rights.
+   Suggested next step (accept and close, hold out for £Y, or refer to the named ombudsman / CISAS / FOS after deadlock or 8 weeks).
+   One-line risk note: "If you escalate and adjudicator awards less than this offer, you can't reclaim it; if you accept now, you waive the higher claim."
+
+Always include the FCA 8-week clock remaining when escalation is on the table. THEN ask whether to accept, negotiate, or escalate, and only on that answer call update_dispute_status / draft_dispute_letter.
 
 - GIVE ME THEIR LAST UPDATE / WHAT DID THEY SAY / SHOW ME THE REPLY / WHAT'S THEIR LATEST: the user wants the actual supplier reply. Call get_dispute_detail for the recently-alerted dispute, find the most recent company_email entry, and quote the supplier's content verbatim (truncate only if >1000 chars). Add the FCA 8-week clock if relevant.
 
@@ -339,19 +357,30 @@ function chunkForWhatsApp(
 async function sendChunked(phone: string, text: string): Promise<void> {
   const chunks = chunkForWhatsApp(formatForWhatsApp(text));
   const sb = getAdmin();
-  for (const chunk of chunks) {
+  const total = chunks.length;
+  for (let i = 0; i < chunks.length; i++) {
+    // Number chunks when there are 2+ so the user can read them in
+    // order even if Twilio + WhatsApp jitter delivery on rapid sends.
+    const body =
+      total > 1 ? `(${i + 1}/${total})\n\n${chunks[i]}` : chunks[i];
     try {
-      const r = await sendWhatsAppText({ to: phone, text: chunk });
+      const r = await sendWhatsAppText({ to: phone, text: body });
       await sb.from('whatsapp_message_log').insert({
         whatsapp_phone: phone,
         direction: 'outbound',
         message_type: 'text',
-        message_text: chunk,
+        message_text: body,
         provider: r.provider,
         provider_message_id: r.providerMessageId,
       });
     } catch (err) {
       console.error('[whatsapp/user-bot] send chunk failed', err);
+    }
+    // Small spacing between rapid sends — WhatsApp occasionally delivers
+    // back-to-back messages out of order when they hit the queue inside
+    // the same ~100ms window.
+    if (i < chunks.length - 1) {
+      await new Promise((r) => setTimeout(r, 250));
     }
   }
 }

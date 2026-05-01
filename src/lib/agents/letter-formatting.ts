@@ -32,7 +32,90 @@ export function stripLetterFormatting(letter: string | undefined | null): string
   if (!letter) return '';
   let out = stripMarkdownEmphasis(letter);
   out = stripSenderAddressBlock(out);
+  out = reorderHeaderToTop(out);
   return out;
+}
+
+/**
+ * The model is told to put date + recipient + Re: + Dear at the top,
+ * then body. Confirmed in production twice on 2026-05-01 (OneStream
+ * broadband drafts) it produces the body first and stuffs the header
+ * block somewhere not-at-the-top — sometimes the very END, sometimes
+ * the MIDDLE with arguing paragraphs both before and after. Once
+ * chunked over WhatsApp the user receives body paragraphs first and
+ * the actual letter opening later, which reads as several scrambled
+ * messages instead of one cohesive letter.
+ *
+ * Algorithm:
+ *   1. Find the salutation paragraph ("Dear Sir or Madam," / "Dear
+ *      <Name>,") — anchored at start of paragraph so body references
+ *      like "Dear customer note: …" don't match.
+ *   2. If salutation is already at index 0, return unchanged.
+ *   3. Walk backwards up to LOOKBACK_BACK paragraphs for a date or
+ *      "Re:" anchor — that's the header block START.
+ *   4. Walk forwards up to LOOKBACK_FORWARD paragraphs for
+ *      conventional UK letter openings ("Further to…", "I am
+ *      writing…", "Your message confirms…", etc.) — these belong
+ *      with the header. The block END extends to cover them.
+ *   5. Splice headerStart..headerEnd to position 0.
+ *
+ * Conservative: requires both a salutation AND a date/Re: anchor in
+ * the lookback window, so a real letter that just isn't a complaint
+ * letter (no date / Re:) is never touched.
+ */
+export function reorderHeaderToTop(text: string): string {
+  if (!text) return text;
+  const paragraphs = text.split(/\n\n+/);
+  if (paragraphs.length < 2) return text;
+
+  const salutation = /^\s*Dear\s+(Sir\b|Madam\b|Sirs\b|[A-Z][a-z]+)/;
+  const ukDate =
+    /^\s*\d{1,2}\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/i;
+  const subjectLine = /^\s*Re:\s+/i;
+  // Conventional UK letter openings that always immediately follow
+  // the salutation. We sweep these forward into the header block so
+  // they end up adjacent to "Dear …" in the reordered letter.
+  const opening =
+    /^\s*(Further to\b|I am writing\b|I write\b|I refer\b|Following\b|With reference\b|Re:\s|Your\s+(message|email|letter|response|reply)\b|This\s+(letter|email|message)\b|Thank you for your\b)/i;
+
+  const salutationIdx = paragraphs.findIndex((p) => salutation.test(p));
+  if (salutationIdx <= 0) return text; // already at top, or none found
+
+  const LOOKBACK_BACK = 5;
+  const LOOKBACK_FORWARD = 3;
+
+  let headerStart = salutationIdx;
+  for (let i = salutationIdx - 1; i >= Math.max(0, salutationIdx - LOOKBACK_BACK); i--) {
+    if (ukDate.test(paragraphs[i]) || subjectLine.test(paragraphs[i])) {
+      headerStart = i;
+    }
+  }
+
+  // No date / Re: line found anywhere in the lookback window — the
+  // bare "Dear …" alone isn't a strong enough signal to risk reordering.
+  if (headerStart === salutationIdx) return text;
+  if (headerStart === 0) return text; // already at top
+
+  // Forward sweep: the conventional opening paragraph ("Further to…",
+  // "Your message confirms…") always sits right after Dear in a UK
+  // letter. Without this, the body paragraphs that originally
+  // preceded the header would land between Dear and "Further to…",
+  // which reads jarringly even though every paragraph is correct.
+  let headerEnd = salutationIdx;
+  for (
+    let i = salutationIdx + 1;
+    i < Math.min(paragraphs.length, salutationIdx + 1 + LOOKBACK_FORWARD);
+    i++
+  ) {
+    if (opening.test(paragraphs[i])) {
+      headerEnd = i;
+    } else {
+      break;
+    }
+  }
+
+  const block = paragraphs.splice(headerStart, headerEnd - headerStart + 1);
+  return [...block, ...paragraphs].join('\n\n');
 }
 
 export function stripMarkdownEmphasis(text: string): string {
