@@ -901,10 +901,10 @@ export default function LegalRefsAdminPage() {
           <div>
             <h1 className="text-4xl font-bold text-slate-900 mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
               <Shield className="h-9 w-9 text-emerald-600" />
-              Legal References
+              Compliance Centre
             </h1>
             <p className="text-slate-600">
-              {counts.dbTotal} references across {categories.length} categories
+              {counts.dbTotal} legal references · {categories.length} categories · cross-referenced against canonical UK government sources
               {counts.dbTotal !== counts.total && (
                 <span className="text-amber-600"> · {counts.total} loaded</span>
               )}
@@ -922,6 +922,65 @@ export default function LegalRefsAdminPage() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Canonical sources card — explains the four fetchers the
+          Compliance Centre rotates through, in the order they're tried.
+          The chips next to each ref in the Review queue match these
+          labels (legislation.gov.uk / gov-uk-content / find-case-law /
+          perplexity) so the founder can see at a glance which fetcher
+          owns each citation. */}
+      <div className="mb-6 bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm">
+        <div className="flex items-start gap-3 mb-4">
+          <Shield className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Canonical sources</h2>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Every citation in this library is verified against at least one of the four sources below. Daily 03:00 UTC `compliance-sync` cron probes for dead URLs, audits authority, runs Perplexity discovery, enriches new candidates, auto-rejects non-authority sources, auto-applies low-risk mechanical fixes, and emails a punch-list of anything that needs a founder click.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-800">legislation.gov.uk</span>
+            </div>
+            <p className="text-xs text-slate-700 leading-snug">
+              Open Data API → canonical UK statute text + amendments + retained EU law. Hash-checked nightly so a Westminster amendment flips the citation to <span className="font-mono text-[11px]">stale</span> within 24 hours.
+            </p>
+          </div>
+          <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-sky-500" />
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-sky-800">gov-uk-content</span>
+            </div>
+            <p className="text-xs text-slate-700 leading-snug">
+              GOV.UK Content API → CMA, ASA, ICO, and HMRC guidance. Scoped to publishing-application allowlist so blog drafts and DDoS pages can&apos;t be cited as authority.
+            </p>
+          </div>
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-violet-500" />
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-violet-800">find-case-law</span>
+            </div>
+            <p className="text-xs text-slate-700 leading-snug">
+              The National Archives → judgments + case citations. Pending licence (CAS-329011-J5F7H9) — flips on once approved without code changes.
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-slate-500" />
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-700">perplexity sonar pro</span>
+            </div>
+            <p className="text-xs text-slate-700 leading-snug">
+              Discovery + cross-check. Proposes corrections to the staging table; never overwrites canonical fields directly. Non-authority hits are auto-rejected before they reach the founder queue.
+            </p>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
+          Hard rule: AI proposes, founder approves. No code path mutates a citation&apos;s law name, source URL, source type or verification status to a non-pending value without passing through <span className="font-mono">legal_ref_corrections</span> and a founder approval click — except the same-host redirect fast-path (e.g. <span className="font-mono">legislation.gov.uk/x/y → /x/y/contents</span>) where no semantic change is possible by definition.
+        </p>
       </div>
 
       {/* Section A — "What needs your attention". Daily-driver summary
