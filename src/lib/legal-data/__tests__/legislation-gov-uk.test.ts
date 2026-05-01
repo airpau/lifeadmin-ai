@@ -15,6 +15,8 @@ import { dirname, join } from 'node:path';
 
 import {
   fetchStatuteByUri,
+  fuzzyTitleMatch,
+  isLegislationDocAuthoritative,
   isLegislationGovUkUrl,
   parseAtomFeed,
   parseLegislationXml,
@@ -195,6 +197,88 @@ describe('fetchStatuteByUri — mocked fetch', () => {
     );
     assert.ok(a && b);
     assert.equal(calls, 1, 'second call should hit cache');
+  });
+});
+
+describe('isLegislationDocAuthoritative — Codex P1 #415 guard', () => {
+  const sectionUrl = 'https://www.legislation.gov.uk/ukpga/2015/15/section/9/data.xml';
+  const wholeActUrl = 'https://www.legislation.gov.uk/ukpga/2015/15';
+
+  it('(a) section URI with parser hit → authoritative', () => {
+    const doc = parseLegislationXml(FIXTURE_XML, sectionUrl);
+    const ref = {
+      source_url: sectionUrl,
+      law_name: 'Consumer Rights Act 2015',
+    };
+    const result = isLegislationDocAuthoritative(doc, ref);
+    assert.equal(result.authoritative, true, result.reason);
+    assert.equal(result.reason, 'doc:section-match');
+  });
+
+  it('(b) section URI with parser miss → NOT authoritative (fallback to Perplexity)', () => {
+    // Strip the <Section>…</Section> block so the parser cannot find s.9.
+    const xmlMissingSection = FIXTURE_XML.replace(
+      /<Section>[\s\S]*?<\/Section>/,
+      '<!-- section removed for test -->',
+    );
+    const doc = parseLegislationXml(xmlMissingSection, sectionUrl);
+    // Sanity: parse still extracted the title, but section text is null.
+    assert.equal(doc.title, 'Consumer Rights Act 2015');
+    assert.equal(doc.sectionText, null);
+    const ref = {
+      source_url: sectionUrl,
+      law_name: 'Consumer Rights Act 2015',
+    };
+    const result = isLegislationDocAuthoritative(doc, ref);
+    assert.equal(result.authoritative, false);
+    assert.equal(result.reason, 'doc:section-text-missing');
+  });
+
+  it('(c) whole-Act URI with matching title → authoritative', () => {
+    const doc = parseLegislationXml(FIXTURE_XML, wholeActUrl);
+    const ref = {
+      source_url: wholeActUrl,
+      // Stored title may include the chapter suffix; fuzzy match handles it.
+      law_name: 'Consumer Rights Act 2015 (c. 15)',
+    };
+    const result = isLegislationDocAuthoritative(doc, ref);
+    assert.equal(result.authoritative, true, result.reason);
+    assert.equal(result.reason, 'doc:title-match');
+  });
+
+  it('whole-Act URI with mismatched title → NOT authoritative', () => {
+    const doc = parseLegislationXml(FIXTURE_XML, wholeActUrl);
+    const ref = {
+      source_url: wholeActUrl,
+      law_name: 'Equality Act 2010',
+    };
+    const result = isLegislationDocAuthoritative(doc, ref);
+    assert.equal(result.authoritative, false);
+    assert.match(result.reason, /title-mismatch/);
+  });
+
+  it('null doc → NOT authoritative', () => {
+    const result = isLegislationDocAuthoritative(null, {
+      source_url: sectionUrl,
+      law_name: 'Consumer Rights Act 2015',
+    });
+    assert.equal(result.authoritative, false);
+    assert.equal(result.reason, 'doc:null');
+  });
+});
+
+describe('fuzzyTitleMatch', () => {
+  it('matches identical titles after normalisation', () => {
+    assert.equal(fuzzyTitleMatch('Consumer Rights Act 2015', 'consumer rights act 2015'), true);
+  });
+  it('matches when one contains the other (chapter suffix)', () => {
+    assert.equal(
+      fuzzyTitleMatch('Consumer Rights Act 2015', 'Consumer Rights Act 2015 (c. 15)'),
+      true,
+    );
+  });
+  it('rejects unrelated titles', () => {
+    assert.equal(fuzzyTitleMatch('Consumer Rights Act 2015', 'Equality Act 2010'), false);
   });
 });
 

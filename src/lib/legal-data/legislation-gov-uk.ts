@@ -350,6 +350,96 @@ export function parseAtomFeed(xml: string): LegislationSearchResult[] {
 }
 
 /**
+ * Decide whether a fetched LegislationDoc is authoritative enough to skip
+ * the Perplexity fallback in the verify pipeline.
+ *
+ * A canonical fetch returning XML with a non-empty <dc:title> is NOT, on
+ * its own, sufficient — the parser may have missed the requested section
+ * (mismatched id, SI-only `<P1para>` shape we don't recognise, etc.) or
+ * the URL may target a whole Act whose title doesn't actually match the
+ * ref's stored statute name. In either case we'd silently mark the row
+ * as `no_change` even though we never confirmed the cited provision.
+ *
+ * Authoritative iff:
+ *   - doc.title is non-empty, AND
+ *   - if the source URL targets a /section/<n>: doc.sectionText non-empty
+ *     AND doc.sectionNumber matches the URL's section, OR
+ *   - if the source URL targets a whole Act (no /section/...): the
+ *     canonical title fuzzy-matches the ref's stored law_name.
+ *
+ * Returns `{ authoritative: boolean, reason: string }` so callers can log
+ * exactly why they fell back to Perplexity.
+ */
+export function isLegislationDocAuthoritative(
+  doc: LegislationDoc | null | undefined,
+  ref: { source_url: string; law_name: string },
+): { authoritative: boolean; reason: string } {
+  if (!doc) return { authoritative: false, reason: 'doc:null' };
+  if (!doc.title || !doc.title.trim()) {
+    return { authoritative: false, reason: 'doc:no-title' };
+  }
+
+  const urlSection = parseSectionNumberFromUrlExternal(ref.source_url);
+  if (urlSection) {
+    if (!doc.sectionText || !doc.sectionText.trim()) {
+      return { authoritative: false, reason: 'doc:section-text-missing' };
+    }
+    if (!doc.sectionNumber) {
+      return { authoritative: false, reason: 'doc:section-number-missing' };
+    }
+    if (doc.sectionNumber.trim().toLowerCase() !== urlSection.trim().toLowerCase()) {
+      return {
+        authoritative: false,
+        reason: `doc:section-mismatch(url=${urlSection},doc=${doc.sectionNumber})`,
+      };
+    }
+    return { authoritative: true, reason: 'doc:section-match' };
+  }
+
+  // Whole-Act URI — require fuzzy title match against ref.law_name.
+  if (!fuzzyTitleMatch(doc.title, ref.law_name)) {
+    return {
+      authoritative: false,
+      reason: `doc:title-mismatch(doc='${doc.title}',ref='${ref.law_name}')`,
+    };
+  }
+  return { authoritative: true, reason: 'doc:title-match' };
+}
+
+/** Same logic as `parseSectionNumberFromUrl` but tolerant of bare URIs. */
+function parseSectionNumberFromUrlExternal(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = url.match(/\/section\/([^/?#]+)/i);
+  return m ? m[1] : null;
+}
+
+/** Strip punctuation & collapse whitespace; lowercase. */
+function normaliseTitle(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Loose title match used by `isLegislationDocAuthoritative` for whole-Act
+ * URIs. Accepts either an exact normalised match or a containment relation
+ * (one side fully contains the other after normalisation) — that handles
+ * things like canonical "Consumer Rights Act 2015" vs stored
+ * "Consumer Rights Act 2015 (c. 15)" without false positives across
+ * unrelated statutes.
+ */
+export function fuzzyTitleMatch(a: string, b: string): boolean {
+  const na = normaliseTitle(a);
+  const nb = normaliseTitle(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  return false;
+}
+
+/**
  * Convenience: returns true if the given URL is hosted by legislation.gov.uk.
  * Use this to gate the "primary statute fetcher" branch in the enrichment
  * pipeline — anything else falls through to Perplexity.

@@ -46,6 +46,7 @@ import { logPerplexityCall } from '@/lib/cost-ledger';
 import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
 import {
   fetchStatuteByUri,
+  isLegislationDocAuthoritative,
   isLegislationGovUkUrl,
   type LegislationDoc,
 } from '@/lib/legal-data/legislation-gov-uk';
@@ -326,9 +327,21 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
   let verifierLabel: 'legislation-gov-uk' | 'perplexity-sonar-pro' = 'perplexity-sonar-pro';
   if (isLegislationGovUkUrl((ref as LegalRefRow).source_url)) {
     const doc = await fetchStatuteByUri((ref as LegalRefRow).source_url);
-    if (doc && doc.title) {
+    // We must NOT treat the canonical fetch as authoritative just because
+    // the XML parsed and had a title. If the URL targets a section but the
+    // parser didn't find that section, OR the URL targets a whole Act but
+    // the title doesn't match the stored law_name, we have to fall through
+    // to Perplexity — otherwise an unmatched fetch silently masquerades as
+    // "no_change" and never gets re-grounded. (Codex P1 #415)
+    const auth = isLegislationDocAuthoritative(doc, ref as LegalRefRow);
+    if (doc && auth.authoritative) {
       verdict = verdictFromLegislationDoc(ref as LegalRefRow, doc);
       verifierLabel = 'legislation-gov-uk';
+    } else {
+      console.warn(
+        '[legal-refs/verify] legislation.gov.uk fetch not authoritative; falling back to Perplexity',
+        { ref_id: id, source_url: (ref as LegalRefRow).source_url, reason: auth.reason },
+      );
     }
   }
 
