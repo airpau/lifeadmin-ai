@@ -706,6 +706,39 @@ export default function HomepageV2Preview() {
             <p style={{ fontSize: '17px', margin: 0 }}>
               Cite exact UK consumer law. Send from your inbox. AI monitors the reply thread.
             </p>
+            <p
+              style={{
+                fontSize: '13px',
+                margin: '12px 0 0',
+                color: 'var(--text-secondary)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: 'var(--accent-mint)',
+                  flexShrink: 0,
+                }}
+              />
+              Every citation verified today against legislation.gov.uk, GOV.UK and Find Case Law.
+              <a
+                href="#compliance"
+                style={{
+                  color: 'var(--accent-mint-deep)',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                }}
+              >
+                See how &rarr;
+              </a>
+            </p>
           </div>
 
           <div
@@ -950,6 +983,148 @@ export default function HomepageV2Preview() {
           </div>
         </div>
 
+        {/* 01a · Compliance pipeline trust block — anchors the AI
+            Disputes claim that every citation is current. Sourced from
+            the daily compliance-sync cron (legislation.gov.uk +
+            GOV.UK CMA + Find Case Law) and the pre-send freshness
+            gate. */}
+        <div
+          id="compliance"
+          className="wrap"
+          style={{
+            paddingTop: '64px',
+            paddingBottom: '32px',
+            scrollMarginTop: '80px',
+          }}
+        >
+          <div
+            className="section-head reveal"
+            style={{ marginBottom: '32px', textAlign: 'center' }}
+          >
+            <span
+              className="eyebrow"
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '14px',
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                color: 'var(--accent-mint-deep)',
+              }}
+            >
+              Compliance pipeline
+            </span>
+            <h2 style={{ margin: '12px 0 10px', fontSize: '32px' }}>
+              Every citation verified today.
+            </h2>
+            <p
+              style={{
+                fontSize: '16px',
+                margin: '0 auto',
+                maxWidth: '720px',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              A daily cron checks every UK statute and regulator citation in our library against the canonical source, recovers dead URLs, and flags anything stale &mdash; before a letter ever leaves your inbox.
+            </p>
+          </div>
+
+          <div
+            className="reveal"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gap: '16px',
+              maxWidth: '880px',
+              margin: '0 auto 24px',
+            }}
+          >
+            {[
+              {
+                name: 'legislation.gov.uk',
+                sub: 'Primary statute source',
+                detail:
+                  'Consumer Rights Act 2015, Consumer Credit Act 1974, UK261, every regulation in scope.',
+              },
+              {
+                name: 'GOV.UK · CMA',
+                sub: 'Regulator + market guidance',
+                detail:
+                  'Ofcom, Ofgem, FCA, CMA published rules and enforcement notices.',
+              },
+              {
+                name: 'Find Case Law',
+                sub: 'TNA case-law authority',
+                detail:
+                  'Tribunal and court decisions that bind the regulator and the provider.',
+              },
+            ].map((src, i) => (
+              <div
+                key={i}
+                style={{
+                  background: '#fff',
+                  border: '1px solid var(--divider)',
+                  borderRadius: '12px',
+                  padding: '20px',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: '14px',
+                    fontWeight: 800,
+                    marginBottom: '4px',
+                    color: 'var(--text-primary)',
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  {src.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: '11px',
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    color: 'var(--accent-mint-deep)',
+                    fontWeight: 700,
+                    marginBottom: '8px',
+                  }}
+                >
+                  {src.sub}
+                </div>
+                <div
+                  style={{
+                    fontSize: '13px',
+                    color: 'var(--text-secondary)',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {src.detail}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="reveal"
+            style={{
+              maxWidth: '720px',
+              margin: '0 auto',
+              padding: '14px 18px',
+              background: 'var(--accent-mint-wash)',
+              border: '1px solid var(--accent-mint)',
+              borderRadius: '12px',
+              fontSize: '13px',
+              color: 'var(--text-secondary)',
+              textAlign: 'center',
+              lineHeight: 1.5,
+            }}
+          >
+            <strong style={{ color: 'var(--text-primary)' }}>
+              Pre-send freshness gate:
+            </strong>{' '}
+            if any citation in your draft has gone stale or its source URL has died, Paybacker blocks the send and surfaces a fresh alternative &mdash; so no letter ever cites yesterday&rsquo;s law.
+          </div>
+        </div>
+
         {/* 02 · Pocket Agent (dark) */}
         <div
           id="pocket-agent"
@@ -976,11 +1151,50 @@ export default function HomepageV2Preview() {
                 Pocket Agent
               </span>
               <h2 style={{ margin: '12px 0 10px', fontSize: '36px', color: 'var(--text-on-ink)' }}>
-                Telegram chat-first agent
+                Telegram + WhatsApp chat-first agent
               </h2>
-              <p style={{ fontSize: '17px', margin: 0, color: '#9CA3AF' }}>
-                Proactive hike alerts, draft rebuttals, action suggestions. Direct to your phone.
+              <p style={{ fontSize: '17px', margin: '0 0 14px', color: '#9CA3AF' }}>
+                Hike alerts, draft rebuttals, one-tap actions &mdash; direct to your phone.
               </p>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  flexWrap: 'wrap',
+                  gap: '10px',
+                  justifyContent: 'center',
+                  fontSize: '13px',
+                  color: '#D1D5DB',
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 12px',
+                    background: 'rgba(167, 243, 208, 0.10)',
+                    border: '1px solid rgba(110, 231, 183, 0.45)',
+                    borderRadius: '999px',
+                  }}
+                >
+                  <strong style={{ color: 'var(--accent-mint)', fontWeight: 800 }}>Telegram</strong>
+                  <span style={{ opacity: 0.85 }}>&middot; free on every plan</span>
+                </span>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 12px',
+                    background: 'rgba(251, 191, 36, 0.10)',
+                    border: '1px solid rgba(251, 191, 36, 0.45)',
+                    borderRadius: '999px',
+                  }}
+                >
+                  <strong style={{ color: 'var(--accent-orange)', fontWeight: 800 }}>WhatsApp</strong>
+                  <span style={{ opacity: 0.85 }}>&middot; Pro upgrade</span>
+                </span>
+              </div>
             </div>
 
             <div
