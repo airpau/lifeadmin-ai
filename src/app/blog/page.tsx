@@ -65,7 +65,12 @@ const GRADIENTS = [
 ];
 
 // Hand-coded SEO posts that already exist as live pages under /blog/*.
-const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
+// Each post pins its own gradient + emoji so the icon stays on-topic
+// regardless of how many dynamic posts precede it. Without this the
+// (dynamicPosts.length + i) % GRADIENTS.length cycle handed flight an
+// energy/radio mast icon and energy a plane icon — the founder spotted
+// the mismatch on /blog after the dynamic feed grew.
+const STATIC_POSTS: ReadonlyArray<Post> = [
   {
     title: 'How to Claim Flight Delay Compensation UK — Up to £520',
     excerpt:
@@ -73,6 +78,8 @@ const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
     href: '/blog/how-to-claim-flight-delay-compensation-uk',
     date: '25 March 2026',
     cat: 'Guides',
+    gradient: 'linear-gradient(135deg, #3B82F6, #2563EB)',
+    emoji: '✈',
   },
   {
     title: 'Are You Overpaying on Energy in 2026? Here\'s How to Find Out',
@@ -81,6 +88,8 @@ const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
     href: '/blog/are-you-overpaying-on-energy',
     date: '23 March 2026',
     cat: 'Guides',
+    gradient: 'linear-gradient(135deg, #F59E0B, #D97706)',
+    emoji: '⚡',
   },
   {
     title: 'Your Broadband Contract Has Ended — You\'re Probably Being Overcharged',
@@ -89,6 +98,8 @@ const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
     href: '/blog/broadband-contract-ended',
     date: '23 March 2026',
     cat: 'Guides',
+    gradient: 'linear-gradient(135deg, #14B8A6, #0F766E)',
+    emoji: '📡',
   },
 ];
 
@@ -145,11 +156,7 @@ async function fetchDynamicPosts(): Promise<Post[]> {
 
 export default async function BlogIndexPage() {
   const dynamicPosts = await fetchDynamicPosts();
-  const staticWithArt: Post[] = STATIC_POSTS.map((p, i) => {
-    const g = GRADIENTS[(dynamicPosts.length + i) % GRADIENTS.length];
-    return { ...p, gradient: g.bg, emoji: g.emoji };
-  });
-  const allPosts: Post[] = [...dynamicPosts, ...staticWithArt];
+  const allPosts: Post[] = [...dynamicPosts, ...STATIC_POSTS];
   const [featured, ...rest] = allPosts;
 
   return (

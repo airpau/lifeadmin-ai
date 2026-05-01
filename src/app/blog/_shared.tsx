@@ -130,6 +130,13 @@ export type PostShellProps = {
   children: ReactNode;
   /** Optional JSON-LD block to place at the top of the root. */
   jsonLd?: Record<string, unknown>;
+  /**
+   * Which top-level section this page belongs to. Drives the breadcrumb
+   * and which nav item is highlighted. Defaults to 'blog' so the existing
+   * post pages keep their Blog / Category breadcrumb. Standalone legal
+   * pages pass 'legal' so they don't appear nested under Blog.
+   */
+  section?: 'blog' | 'legal';
 };
 
 export function PostShell({
@@ -142,6 +149,7 @@ export function PostShell({
   aside,
   children,
   jsonLd,
+  section = 'blog',
 }: PostShellProps) {
   const defaultAside: PostAsideCTAProps = {
     eyebrow: 'Try Paybacker',
@@ -160,14 +168,24 @@ export function PostShell({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       ) : null}
-      <MarkNav active="Blog" />
+      <MarkNav active={section === 'blog' ? 'Blog' : undefined} />
       <main>
         <section className="section-light" style={{ paddingTop: 64 }}>
           <div className="wrap">
             <div className="post-breadcrumb">
-              <Link href="/blog">Blog</Link>
-              <span>/</span>
-              {category ? <span className="cat">{category}</span> : <span>{title.length > 48 ? title.slice(0, 48) + '…' : title}</span>}
+              {section === 'blog' ? (
+                <>
+                  <Link href="/blog">Blog</Link>
+                  <span>/</span>
+                  {category ? (
+                    <span className="cat">{category}</span>
+                  ) : (
+                    <span>{title.length > 48 ? title.slice(0, 48) + '…' : title}</span>
+                  )}
+                </>
+              ) : (
+                <span className="cat">{category ?? 'Legal'}</span>
+              )}
             </div>
             <h1 className="post-headline">{title}</h1>
             {dek ? <p className="post-dek">{dek}</p> : null}
