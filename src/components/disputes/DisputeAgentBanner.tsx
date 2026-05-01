@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { Sparkles, Info, ChevronDown, Check, Hand, Clock, ShieldCheck } from 'lucide-react';
 
 interface HistoricalSignal {
   merchant_win_rate: number;
@@ -55,8 +56,18 @@ const ACTION_LABELS: Record<string, string> = {
   manual_review: 'Manual review needed',
   send_letter_before_action: 'Send a Letter Before Action',
   small_claims: 'Open a small-claims case',
-  wait: 'Wait for the next update',
+  wait: 'Wait — nothing to do right now',
 };
+
+const USER_ACTION_LABELS: Record<string, string> = {
+  approved: 'You approved',
+  overridden: 'You overrode',
+  snoozed: 'You snoozed',
+};
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
   const [data, setData] = useState<ApiResponse | null>(null);
@@ -64,6 +75,7 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
+  const [showWhat, setShowWhat] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,14 +122,14 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-4 text-sm text-slate-400">
-        Loading agent recommendation…
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-emerald-700 mb-4">
+        Loading Dispute Agent…
       </div>
     );
   }
   if (err) {
     return (
-      <div className="rounded-lg border border-amber-700 bg-amber-900/20 p-4 text-sm text-amber-300">
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 mb-4">
         {err}
       </div>
     );
@@ -127,90 +139,184 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
   const { latest, history, dispute } = data;
   const merchant = dispute.provider_name ?? dispute.merchant_normalised ?? 'this merchant';
 
-  if (!latest) {
-    return (
-      <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-4 text-sm text-slate-300">
-        <div className="font-semibold text-slate-100">Dispute Agent</div>
-        <div className="mt-1 text-slate-400">
-          No pending recommendation. The agent will check again on its next tick (every 6 hours).
-        </div>
-        {history.length > 0 && (
+  // Wait recommendations that the user has already approved (or that have no
+  // pending action) shouldn't shout for attention — they're "all caught up".
+  const isWaitingQuiet = latest && latest.recommended_action === 'wait' && !!latest.user_action;
+  const showActionable = latest && !isWaitingQuiet;
+
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-white p-5 mb-4 shadow-sm">
+      <Header showWhat={showWhat} setShowWhat={setShowWhat} />
+
+      {showWhat && <WhatExplainer />}
+
+      {showActionable && latest && (
+        <ActionableCard
+          latest={latest}
+          merchant={merchant}
+          busy={busy}
+          onAct={act}
+        />
+      )}
+
+      {!showActionable && (
+        <CaughtUpCard latest={latest} />
+      )}
+
+      {history.length > 0 && (
+        <div className="mt-4 border-t border-slate-200 pt-3">
           <button
             type="button"
-            className="mt-2 text-xs text-amber-300 underline"
+            className="text-xs font-medium text-emerald-700 hover:text-emerald-900 inline-flex items-center gap-1"
             onClick={() => setShowLog((s) => !s)}
           >
+            <ChevronDown className={`h-3 w-3 transition-transform ${showLog ? 'rotate-180' : ''}`} />
             {showLog ? 'Hide' : 'Show'} past decisions ({history.length})
           </button>
-        )}
-        {showLog && <DecisionLog history={history} />}
-      </div>
-    );
-  }
+          {showLog && <DecisionLog history={history} />}
+        </div>
+      )}
+    </div>
+  );
+}
 
+function Header({ showWhat, setShowWhat }: { showWhat: boolean; setShowWhat: (v: boolean) => void }) {
+  return (
+    <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+          <Sparkles className="h-4 w-4" />
+        </span>
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">Dispute Agent</h3>
+          <p className="text-xs text-slate-500">Your AI caseworker for this dispute</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        className="text-xs text-slate-500 hover:text-emerald-700 inline-flex items-center gap-1"
+        onClick={() => setShowWhat(!showWhat)}
+      >
+        <Info className="h-3 w-3" />
+        {showWhat ? 'Hide' : 'What is this?'}
+      </button>
+    </div>
+  );
+}
+
+function WhatExplainer() {
+  return (
+    <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 mb-3 text-xs text-slate-700 leading-relaxed">
+      <p className="font-semibold text-slate-900 mb-1">What does the Dispute Agent do?</p>
+      <p className="mb-2">
+        Every 6 hours it reviews this dispute — your letters, any replies, deadlines,
+        and how similar disputes have been won by other Paybacker users — and decides
+        what to do next.
+      </p>
+      <ul className="space-y-1 list-disc pl-4">
+        <li>If it&apos;s time to act, it surfaces a recommendation here for you to approve, override or snooze.</li>
+        <li>If the supplier is still inside their reply window, it waits and checks again later.</li>
+        <li>It never auto-sends letters or contacts the supplier. You stay in control.</li>
+      </ul>
+    </div>
+  );
+}
+
+function ActionableCard({
+  latest,
+  merchant,
+  busy,
+  onAct,
+}: {
+  latest: Decision;
+  merchant: string;
+  busy: boolean;
+  onAct: (a: 'approve' | 'override' | 'snooze') => void;
+}) {
   const label = ACTION_LABELS[latest.recommended_action] ?? latest.recommended_action;
   const sig = latest.historical_signal;
 
   return (
-    <div className="rounded-lg border border-amber-600/60 bg-amber-900/10 p-4 text-sm">
+    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-wide text-amber-400">Agent recommendation</div>
-          <div className="mt-1 text-base font-semibold text-amber-100">{label}</div>
+          <div className="text-[10px] uppercase tracking-wider text-amber-700 font-semibold">
+            Recommended next step
+          </div>
+          <div className="mt-0.5 text-base font-semibold text-slate-900">{label}</div>
         </div>
         {latest.data_grounded && (
-          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-300">
-            Data-grounded
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[10px] font-semibold"
+            title="Backed by Paybacker's dispute outcome dataset"
+          >
+            <ShieldCheck className="h-3 w-3" /> Data-grounded
           </span>
         )}
       </div>
-      <p className="mt-2 text-slate-200">{latest.rationale}</p>
+
+      <p className="mt-2 text-sm text-slate-800 leading-relaxed">{latest.rationale}</p>
+
       {sig && (
-        <div className="mt-3 rounded-md border border-amber-600/40 bg-slate-900/40 p-3 text-slate-200">
-          <div className="text-xs uppercase tracking-wide text-amber-400">Historical signal</div>
-          <div className="mt-1">
-            <strong>{(sig.merchant_win_rate * 100).toFixed(0)}%</strong> of similar disputes against{' '}
-            <strong>{merchant}</strong> were won using <em>{sig.top_legal_basis}</em>{' '}
-            <span className="text-slate-400">({sig.sample_size} cases, Paybacker dataset)</span>
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-white p-3 text-xs text-slate-700">
+          <div className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1">
+            What works against {merchant}
+          </div>
+          <div>
+            <strong>{(sig.merchant_win_rate * 100).toFixed(0)}%</strong> of Paybacker users won their{' '}
+            {merchant} dispute by citing <em>{sig.top_legal_basis}</em>{' '}
+            <span className="text-slate-500">({sig.sample_size} similar cases)</span>.
           </div>
         </div>
       )}
+
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
           disabled={busy}
-          onClick={() => act('approve')}
-          className="rounded-md bg-amber-500 px-3 py-1.5 text-sm font-semibold text-slate-900 hover:bg-amber-400 disabled:opacity-50"
+          onClick={() => onAct('approve')}
+          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
         >
+          <Check className="h-3.5 w-3.5" />
           Approve
         </button>
         <button
           type="button"
           disabled={busy}
-          onClick={() => act('override')}
-          className="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+          onClick={() => onAct('override')}
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 px-3 py-1.5 text-sm text-slate-800 disabled:opacity-50"
         >
-          Override
+          <Hand className="h-3.5 w-3.5" />
+          I&apos;ll do something else
         </button>
         <button
           type="button"
           disabled={busy}
-          onClick={() => act('snooze')}
-          className="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+          onClick={() => onAct('snooze')}
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 px-3 py-1.5 text-sm text-slate-800 disabled:opacity-50"
         >
-          Snooze 7d
+          <Clock className="h-3.5 w-3.5" />
+          Snooze 7 days
         </button>
       </div>
-      {history.length > 1 && (
-        <button
-          type="button"
-          className="mt-3 text-xs text-amber-300 underline"
-          onClick={() => setShowLog((s) => !s)}
-        >
-          {showLog ? 'Hide' : 'Show'} past decisions ({history.length - 1})
-        </button>
-      )}
-      {showLog && <DecisionLog history={history.filter((h) => h.id !== latest.id)} />}
+    </div>
+  );
+}
+
+function CaughtUpCard({ latest }: { latest: Decision | null }) {
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+      <div className="flex items-start gap-2">
+        <Check className="h-4 w-4 text-emerald-700 mt-0.5 flex-shrink-0" />
+        <div>
+          <div className="font-semibold text-emerald-900">All caught up — no action needed</div>
+          <p className="mt-1 text-slate-700 text-xs leading-relaxed">
+            {latest
+              ? `The agent reviewed this dispute on ${formatDate(latest.decided_at)} and decided to wait. ${latest.rationale}`
+              : 'The agent will review this dispute again at the next 6-hour check. We’ll surface a recommendation if anything changes.'}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -218,15 +324,27 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
 function DecisionLog({ history }: { history: Decision[] }) {
   if (history.length === 0) return null;
   return (
-    <ul className="mt-3 space-y-2 border-t border-slate-700 pt-3 text-xs text-slate-400">
-      {history.map((h) => (
-        <li key={h.id}>
-          <span className="text-slate-500">{new Date(h.decided_at).toLocaleString('en-GB')}</span>{' '}
-          <span className="text-slate-300">{h.recommended_action}</span>
-          {h.user_action && <span className="ml-1 text-amber-400">({h.user_action})</span>}
-          <div className="text-slate-500">{h.rationale}</div>
-        </li>
-      ))}
+    <ul className="mt-3 space-y-3">
+      {history.map((h) => {
+        const label = ACTION_LABELS[h.recommended_action] ?? h.recommended_action;
+        const userActionLabel = h.user_action ? USER_ACTION_LABELS[h.user_action] ?? h.user_action : null;
+        return (
+          <li key={h.id} className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs">
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <div>
+                <div className="text-slate-500">{formatDate(h.decided_at)}</div>
+                <div className="font-semibold text-slate-900 mt-0.5">{label}</div>
+              </div>
+              {userActionLabel && (
+                <span className="inline-block rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">
+                  {userActionLabel}
+                </span>
+              )}
+            </div>
+            <p className="text-slate-600 leading-relaxed">{h.rationale}</p>
+          </li>
+        );
+      })}
     </ul>
   );
 }
