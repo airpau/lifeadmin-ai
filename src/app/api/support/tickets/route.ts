@@ -121,7 +121,11 @@ export async function GET(request: NextRequest) {
 
   if (status) {
     if (status === 'active') {
-      query = query.in('status', ['open', 'in_progress']);
+      // "Needs action" = anything not yet resolved/closed.
+      // Previous mapping omitted 'awaiting_reply', which made the
+      // default Tickets tab show 0 even when the awaiting-reply queue
+      // had real items the founder needed to chase.
+      query = query.in('status', ['open', 'in_progress', 'awaiting_reply']);
     } else {
       query = query.eq('status', status);
     }
