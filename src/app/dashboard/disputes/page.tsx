@@ -177,6 +177,34 @@ function isWon(status: string): boolean {
   return ['resolved_won', 'resolved_partial'].includes(status);
 }
 
+/**
+ * Has THIS letter already been logged as sent on this dispute?
+ *
+ * Source of truth = a `letter_sent` correspondence row whose content
+ * matches the letter content (the /letter-sent endpoint inserts one of
+ * these whenever the user clicks "I've sent it"). We compare by full
+ * whitespace-normalised content equality. An earlier version compared
+ * only a 200-char prefix, but follow-up drafts that reuse the same
+ * opening (a common pattern — same address block, same greeting) then
+ * diverge later would be incorrectly flagged as already sent, leaving
+ * the "I've sent it" button permanently disabled for genuinely new
+ * letters. Full-content equality is correct and the perf cost is
+ * negligible for the <50 correspondence rows we ever load per dispute.
+ *
+ * Without this check the LetterModal's "I've sent it — track the
+ * reply" button reset to enabled every remount, so users could
+ * accidentally double-log the same send.
+ */
+function letterAlreadyLogged(dispute: Dispute | null, letterContent: string): boolean {
+  if (!dispute || !letterContent) return false;
+  const normalise = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const target = normalise(letterContent);
+  if (target.length < 50) return false;
+  return (dispute.correspondence ?? []).some(
+    (c) => c.entry_type === 'letter_sent' && normalise(c.content || '') === target,
+  );
+}
+
 // Dispute summary type
 interface DisputeSummary {
   total_open: number;
@@ -214,7 +242,7 @@ function timeAgo(d: string) {
 // ============================================================
 // Letter Modal (reused from before)
 // ============================================================
-function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeId, providerName, onSentMarked, threadReply }: {
+function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeId, providerName, onSentMarked, threadReply, alreadySent }: {
   content: string;
   title: string;
   legalRefs: string[];
@@ -228,6 +256,14 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
    * Provider tells us which mail app to label. Undefined = no
    * Watchdog thread linked yet, button is hidden. */
   threadReply?: { webLink: string; senderAddress?: string | null; provider: 'google' | 'outlook' | 'imap' | null };
+  /** True if this letter has already been logged as sent — either via
+   * the "I've sent it" button on a prior visit, or via the dispute's
+   * tracking_status flipping to 'sent' / 'awaiting_response'. When
+   * true, the CTA renders as a disabled "Sent ✓" indicator instead of
+   * an actionable button so the user doesn't double-log it. Bug:
+   * before this prop existed the button reset to enabled every time
+   * the modal remounted, even though the row already existed. */
+  alreadySent?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [providerEmail, setProviderEmail] = useState<string | null>(null);
@@ -581,14 +617,27 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
             </p>
           )}
           {disputeId && !sentNote && (
-            <button
-              onClick={handleMarkSent}
-              disabled={sending}
-              className="w-full flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 border border-emerald-500/30 py-3 rounded-lg transition-all font-medium disabled:opacity-60"
-            >
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              I&apos;ve sent it — track the reply
-            </button>
+            alreadySent ? (
+              <button
+                type="button"
+                disabled
+                aria-disabled="true"
+                title="This letter is already logged as sent — we're tracking the reply."
+                className="w-full flex items-center justify-center gap-2 bg-emerald-500/10 text-emerald-700 border border-emerald-500/30 py-3 rounded-lg font-medium opacity-70 cursor-not-allowed"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Sent &#10003; — tracking the reply
+              </button>
+            ) : (
+              <button
+                onClick={handleMarkSent}
+                disabled={sending}
+                className="w-full flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 border border-emerald-500/30 py-3 rounded-lg transition-all font-medium disabled:opacity-60"
+              >
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                I&apos;ve sent it — track the reply
+              </button>
+            )
           )}
         </div>
       </div>
@@ -1414,6 +1463,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           onSentMarked={fetchDispute}
           onClose={() => setLetterModal(null)}
           threadReply={threadReplyContext}
+          alreadySent={letterAlreadyLogged(dispute, letterModal.content)}
         />
       )}
 
