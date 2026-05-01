@@ -200,6 +200,34 @@ export interface DisputeResponse {
     avg_recovered_gbp: number | null;
     source: 'paybacker_dispute_dataset_v1';
   } | null;
+  /**
+   * Optional Dispute Agent recommendation — only populated when the
+   * caller has registered the dispute with Paybacker's autonomous
+   * agent (per-active-case pricing tier). Backward-compatible
+   * additive field; never required, never breaking.
+   *
+   * Tells the integrator what the agent thinks the next step is for
+   * this dispute, the rationale, and (when available) the historical
+   * signal grounding the recommendation.
+   */
+  agent_recommendation?: {
+    recommended_action:
+      | 'send_initial_letter'
+      | 'send_followup'
+      | 'escalate_ombudsman'
+      | 'accept_partial'
+      | 'send_letter_before_action'
+      | 'small_claims'
+      | 'mark_won'
+      | 'mark_partial'
+      | 'mark_lost'
+      | 'manual_review'
+      | 'wait';
+    rationale: string;
+    next_review_in_days: number;
+    data_grounded: boolean;
+    historical_signal?: { merchant_win_rate: number; sample_size: number };
+  } | null;
 }
 
 export interface PreflightResult {
