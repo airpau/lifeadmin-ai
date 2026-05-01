@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
+import AdminBackLink from '@/components/admin/AdminBackLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +63,7 @@ export default async function AdminBillingPage() {
   if (!summary) {
     return (
       <div className="p-8 text-white">
+        <AdminBackLink className="!text-slate-400 hover:!text-white" />
         <h1 className="text-2xl font-bold">Billing</h1>
         <p className="text-red-400 mt-4">{fetchErr || 'No data.'}</p>
       </div>
@@ -72,6 +74,7 @@ export default async function AdminBillingPage() {
 
   return (
     <div className="p-6 md:p-8 text-white space-y-8 max-w-6xl">
+      <AdminBackLink className="!text-slate-400 hover:!text-white !mb-0" />
       <header>
         <h1 className="text-2xl md:text-3xl font-bold">API Billing</h1>
         <p className="text-sm text-slate-400 mt-1">
