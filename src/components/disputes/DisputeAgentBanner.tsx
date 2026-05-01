@@ -58,12 +58,28 @@ const ACTION_LABELS: Record<string, string> = {
   wait: 'Wait for the next update',
 };
 
+// Order matches the natural escalation ladder so the picker reads top-
+// to-bottom in increasing severity. Keep `wait` last as the no-op.
+const OVERRIDE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'send_initial_letter', label: 'Review and send your letter' },
+  { value: 'send_followup', label: 'Send a followup' },
+  { value: 'accept_partial', label: 'Accept the partial offer' },
+  { value: 'mark_won', label: 'Mark this dispute as won' },
+  { value: 'escalate_ombudsman', label: 'Escalate to the ombudsman' },
+  { value: 'send_letter_before_action', label: 'Send a Letter Before Action' },
+  { value: 'small_claims', label: 'Open a small-claims case' },
+  { value: 'manual_review', label: 'Flag for manual review' },
+  { value: 'wait', label: 'Wait for the next update' },
+];
+
 export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
+  const [overridePickerOpen, setOverridePickerOpen] = useState(false);
+  const [overrideTarget, setOverrideTarget] = useState<string>('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,19 +105,31 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
     void load();
   }, [load]);
 
-  async function act(action: 'approve' | 'override' | 'snooze') {
+  async function act(action: 'approve' | 'override' | 'snooze', overrideAction?: string) {
     if (!data?.latest) return;
+    // Override needs an explicit target — without it the engine learns
+    // "user disagreed" but not what they wanted, which is most of the
+    // signal we care about.
+    if (action === 'override' && !overrideAction) {
+      setOverridePickerOpen(true);
+      return;
+    }
     setBusy(true);
     try {
       const body: Record<string, unknown> = { decision_id: data.latest.id, action };
       if (action === 'snooze') {
         body.snooze_until = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       }
+      if (action === 'override' && overrideAction) {
+        body.override_target_action = overrideAction;
+      }
       await fetch(`/api/disputes/${disputeId}/agent-decision`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      setOverridePickerOpen(false);
+      setOverrideTarget('');
       await load();
     } finally {
       setBusy(false);
@@ -187,10 +215,10 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
         <button
           type="button"
           disabled={busy}
-          onClick={() => act('override')}
+          onClick={() => setOverridePickerOpen((v) => !v)}
           className="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700 disabled:opacity-50"
         >
-          Override
+          {overridePickerOpen ? 'Cancel override' : 'Override'}
         </button>
         <button
           type="button"
@@ -201,6 +229,42 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
           Snooze 7d
         </button>
       </div>
+      {overridePickerOpen && (
+        <div className="mt-3 rounded-md border border-slate-600 bg-slate-900/60 p-3">
+          <div className="text-xs uppercase tracking-wide text-amber-400">
+            What would you do instead?
+          </div>
+          <p className="mt-1 text-xs text-slate-400">
+            Tells the agent which action you actually wanted — not just that you disagreed —
+            so future recommendations against {merchant} learn from it.
+          </p>
+          <select
+            value={overrideTarget}
+            onChange={(e) => setOverrideTarget(e.target.value)}
+            disabled={busy}
+            className="mt-2 w-full rounded-md border border-slate-600 bg-slate-800 px-2 py-1.5 text-sm text-slate-100 disabled:opacity-50"
+          >
+            <option value="">Pick an action…</option>
+            {OVERRIDE_OPTIONS
+              .filter((o) => o.value !== latest.recommended_action)
+              .map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+          </select>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={busy || !overrideTarget}
+              onClick={() => act('override', overrideTarget)}
+              className="rounded-md bg-amber-500 px-3 py-1.5 text-sm font-semibold text-slate-900 hover:bg-amber-400 disabled:opacity-50"
+            >
+              Confirm override
+            </button>
+          </div>
+        </div>
+      )}
       {history.length > 1 && (
         <button
           type="button"

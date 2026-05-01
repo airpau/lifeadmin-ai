@@ -120,10 +120,16 @@ async function runAgent() {
     }
 
     // Load the last 30 days of correspondence.
+    //
+    // Read `correspondence` (the dispute thread, with full body in
+    // `content`) NOT `dispute_correspondence` (the email-scanner index,
+    // which only stores a `summary` and loses offer figures). The state
+    // machine's company-reply filter matches the `correspondence.entry_type`
+    // values (company_email / company_letter / company_response).
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: corrRows } = await sb
-      .from('dispute_correspondence')
-      .select('id,dispute_id,correspondence_type,email_date,subject,summary,created_at')
+      .from('correspondence')
+      .select('id,dispute_id,entry_type,entry_date,title,content,summary,created_at')
       .eq('dispute_id', d.id)
       .gte('created_at', since)
       .order('created_at', { ascending: false })
