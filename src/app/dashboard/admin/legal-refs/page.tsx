@@ -11,6 +11,31 @@ import {
 import Link from 'next/link';
 import { AutoAppliedPanel } from './AutoAppliedPanel';
 import PendingCorrectionsSection from './PendingCorrectionsSection';
+import { pickCanonicalSource, SOURCE_LABEL } from '@/lib/legal-data/source-router';
+
+/**
+ * Phase 5 (2026-05-01): canonical-source chip. Lets the founder
+ * eyeball at a glance which fetcher will be tried first for each ref
+ * (legislation.gov.uk, gov-uk-content, find-case-law, perplexity).
+ */
+function SourceKindChip({ url }: { url: string | null | undefined }) {
+  const kind = pickCanonicalSource(url ?? '');
+  const palette: Record<string, string> = {
+    legislation: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    'gov-uk-content': 'bg-sky-50 text-sky-700 border-sky-200',
+    'find-case-law': 'bg-violet-50 text-violet-700 border-violet-200',
+    perplexity: 'bg-slate-100 text-slate-600 border-slate-200',
+  };
+  const label = SOURCE_LABEL[kind];
+  return (
+    <span
+      className={`inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded border ${palette[kind]}`}
+      title={`Canonical source: ${label}`}
+    >
+      {label}
+    </span>
+  );
+}
 
 const ADMIN_EMAIL = 'aireypaul@googlemail.com';
 
@@ -1613,7 +1638,10 @@ export default function LegalRefsAdminPage() {
                         <tr key={ref.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
                           <td className="px-5 py-4">
                             <p className="text-slate-900 text-sm font-medium">{ref.law_name}</p>
-                            <p className="text-slate-600 text-xs mt-0.5">{ref.source_type || '—'}{ref.section ? ` · ${ref.section}` : ''}</p>
+                            <p className="text-slate-600 text-xs mt-0.5 flex flex-wrap items-center gap-1.5">
+                              <span>{ref.source_type || '—'}{ref.section ? ` · ${ref.section}` : ''}</span>
+                              <SourceKindChip url={ref.source_url} />
+                            </p>
                           </td>
                           <td className="px-5 py-4 text-slate-700 text-sm hidden md:table-cell">{year}</td>
                           <td className="px-5 py-4 hidden md:table-cell">

@@ -35,6 +35,11 @@ import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
 import { logPerplexityCall } from '@/lib/cost-ledger';
 import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
+import { searchByDocumentType } from '@/lib/legal-data/gov-uk-content';
+import {
+  searchByQuery as searchFindCaseLaw,
+  isProductionEnabled as findCaseLawEnabled,
+} from '@/lib/legal-data/find-case-law';
 
 const CITATION_SOURCE_RULE = [
   'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
@@ -251,6 +256,18 @@ export async function GET(request: NextRequest) {
       ? 'category_coverage'
       : 'recent_updates';
 
+  // Phase 5: alternate non-Perplexity discovery sources. When
+  // `?source=cma` or `?source=tna` is set, seed candidates from the
+  // gov-uk-content / find-case-law clients respectively. These never
+  // call Perplexity so they sidestep the cost cap entirely and produce
+  // structurally-clean candidates that go straight to the founder
+  // review queue.
+  const sourceParam = (url.searchParams.get('source') || '').toLowerCase();
+  const sourceQuery = url.searchParams.get('query') || '';
+  if (sourceParam === 'cma' || sourceParam === 'tna') {
+    return discoverFromAlternateSource(sourceParam, sourceQuery);
+  }
+
   const queueSize = await pendingQueueSize();
   if (queueSize > MAX_PENDING_QUEUE) {
     const notes = `queue full — review pending first (${queueSize} pending)`;
@@ -393,6 +410,164 @@ export async function GET(request: NextRequest) {
     rejected_non_authority: rejectedNonAuthority,
     secondary: secondaryFlagged,
     cost_gbp: Number(costGbp.toFixed(6)),
+  });
+}
+
+/**
+ * Phase 5: alternate-source discovery (no Perplexity). Seeds
+ * `legal_ref_candidates` from gov.uk CMA cases (source=cma) or Find
+ * Case Law (source=tna). Find Case Law is licence-gated and returns a
+ * no-op when `FIND_CASE_LAW_LICENCE_ACCEPTED!=='true'`.
+ */
+async function discoverFromAlternateSource(
+  source: 'cma' | 'tna',
+  query: string,
+): Promise<NextResponse> {
+  const trimmedQuery = (query || '').trim();
+  if (!trimmedQuery) {
+    return NextResponse.json(
+      { ok: false, error: 'query parameter required for ?source=cma|tna' },
+      { status: 400 },
+    );
+  }
+
+  if (source === 'tna' && !findCaseLawEnabled()) {
+    console.info(
+      '[discover-legal-refs] Find Case Law source skipped — licence env-gate not enabled (FIND_CASE_LAW_LICENCE_ACCEPTED)',
+      { query: trimmedQuery },
+    );
+    await logRun({
+      leg: 'recent_updates',
+      found: 0,
+      added: 0,
+      skipped: 0,
+      costGbp: 0,
+      notes: `source=tna skipped: licence env-gate not enabled`,
+    });
+    return NextResponse.json({
+      ok: true,
+      source,
+      skipped: true,
+      reason: 'licence-env-not-set',
+      candidates_found: 0,
+      candidates_added: 0,
+      candidates_skipped_duplicate: 0,
+    });
+  }
+
+  const queueSize = await pendingQueueSize();
+  if (queueSize > MAX_PENDING_QUEUE) {
+    return NextResponse.json({
+      ok: true,
+      source,
+      skipped: true,
+      reason: 'queue-full',
+      candidates_found: 0,
+      candidates_added: 0,
+      candidates_skipped_duplicate: 0,
+    });
+  }
+
+  type Candidate = PerplexityCandidate;
+  const candidates: Candidate[] = [];
+
+  if (source === 'cma') {
+    const hits = await searchByDocumentType(trimmedQuery, {
+      documentType: 'cma_case',
+      limit: 15,
+    });
+    for (const h of hits) {
+      candidates.push({
+        title: h.title,
+        source_url: h.webUrl,
+        source_type: 'cma_case',
+        summary: h.description,
+        category: null,
+        jurisdiction: 'UK',
+        published_at: h.publicUpdatedAt,
+        confidence: 'high',
+      });
+    }
+  } else {
+    const hits = await searchFindCaseLaw(trimmedQuery);
+    for (const h of hits.slice(0, 15)) {
+      candidates.push({
+        title: h.title,
+        source_url: h.uri,
+        source_type: 'case_law',
+        summary: h.summary,
+        category: null,
+        jurisdiction: 'UK',
+        published_at: h.publishedAt,
+        confidence: 'high',
+      });
+    }
+  }
+
+  const runId = await logRun({
+    leg: 'recent_updates',
+    found: candidates.length,
+    added: 0,
+    skipped: 0,
+    costGbp: 0,
+    notes: `source=${source} query="${trimmedQuery.slice(0, 80)}"`,
+  });
+
+  const admin = getAdmin();
+  let added = 0;
+  let skipped = 0;
+  let rejectedNonAuthority = 0;
+
+  for (const item of candidates) {
+    if (await isDuplicate(item)) {
+      skipped++;
+      continue;
+    }
+    if (item.source_url) {
+      const authority = checkUkLegalAuthority(item.source_url);
+      if (!authority.ok) {
+        rejectedNonAuthority++;
+        skipped++;
+        continue;
+      }
+    }
+    const { error } = await admin.from('legal_ref_candidates').insert({
+      title: item.title.slice(0, 500),
+      source_url: item.source_url?.toString().slice(0, 1000) || null,
+      source_type: item.source_type?.toString().slice(0, 80) || null,
+      summary: item.summary?.toString().slice(0, 4000) || null,
+      category: item.category?.toString().slice(0, 80) || null,
+      jurisdiction: item.jurisdiction || 'UK',
+      confidence: item.confidence || 'high',
+      status: 'pending',
+      discovery_run_id: runId,
+    });
+    if (error) {
+      skipped++;
+      continue;
+    }
+    added++;
+  }
+
+  if (runId !== null) {
+    await admin
+      .from('legal_ref_discovery_runs')
+      .update({
+        candidates_added: added,
+        candidates_skipped_duplicate: skipped,
+      })
+      .eq('id', runId);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    source,
+    query: trimmedQuery,
+    candidates_found: candidates.length,
+    candidates_added: added,
+    candidates_skipped_duplicate: skipped,
+    rejected_non_authority: rejectedNonAuthority,
+    cost_gbp: 0,
   });
 }
 

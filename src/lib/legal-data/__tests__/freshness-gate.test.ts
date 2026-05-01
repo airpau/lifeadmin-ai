@@ -27,8 +27,12 @@ describe('classifySource', () => {
   it('detects find-case-law', () => {
     assert.equal(classifySource('https://caselaw.nationalarchives.gov.uk/id/uksc/2024/15'), 'find-case-law');
   });
-  it('detects cma-case', () => {
-    assert.equal(classifySource('https://www.gov.uk/cma-cases/abc'), 'cma-case');
+  it('detects gov-uk-content (renamed from cma-case in Phase 5)', () => {
+    assert.equal(classifySource('https://www.gov.uk/cma-cases/abc'), 'gov-uk-content');
+    assert.equal(
+      classifySource('https://www.gov.uk/government/publications/example'),
+      'gov-uk-content',
+    );
   });
   it('falls back to other', () => {
     assert.equal(classifySource('https://example.com/x'), 'other');

@@ -195,3 +195,49 @@ export function isFindCaseLawUrl(url: string | null | undefined): boolean {
     return false;
   }
 }
+
+/**
+ * Backward-compat alias for the discovery cron — searches the Atom
+ * feed by query string. Wraps `searchAtom` and so respects the same
+ * licence env-gate.
+ */
+export async function searchByQuery(
+  query: string,
+  opts: { signal?: AbortSignal; bypassLicenceGate?: boolean } = {},
+): Promise<CaseLawHit[]> {
+  return searchAtom(query, opts);
+}
+
+/**
+ * Hash a Find Case Law judgment (or atom-feed hit) for drift
+ * detection. Includes the canonical URI, title, court, and any
+ * summary excerpt. The Atom feed itself is the only stable
+ * fingerprint surface — the full HTML pages get republished with
+ * navigation chrome changes that we don't want to false-positive on.
+ * SHA-256 lowercase hex.
+ */
+export async function hashFindCaseLawDoc(
+  doc: Pick<CaseLawHit, 'uri' | 'title' | 'court' | 'summary'>,
+): Promise<string> {
+  const summary = (doc.summary || '').replace(/\s+/g, ' ').trim();
+  const payload = [
+    `uri:${doc.uri}`,
+    `title:${(doc.title || '').trim()}`,
+    `court:${doc.court || ''}`,
+    `summary:${summary}`,
+  ].join('\n');
+  return sha256Hex(payload);
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const subtle = (globalThis as { crypto?: Crypto }).crypto?.subtle;
+  if (subtle) {
+    const buf = await subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  const nodeCrypto: typeof import('node:crypto') = await import('node:crypto');
+  return nodeCrypto.createHash('sha256').update(data).digest('hex');
+}

@@ -33,9 +33,17 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import {
   fetchStatuteByUri,
   hashLegislationDoc,
-  isLegislationGovUkUrl,
   type LegislationDoc,
 } from '@/lib/legal-data/legislation-gov-uk';
+import {
+  fetchContent,
+  hashGovUkContentDoc,
+  type GovUkContent,
+} from '@/lib/legal-data/gov-uk-content';
+import {
+  pickCanonicalSource,
+  type CanonicalSourceKind,
+} from '@/lib/legal-data/source-router';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -252,6 +260,152 @@ async function processRef(
 }
 
 /**
+ * Phase 5: gov.uk content (CMA cases / regulator pubs) drift detector.
+ * Same shape as `processRef` but uses gov-uk-content's typed fetcher
+ * + hash function. Drift queues a `legal_ref_corrections` row exactly
+ * like the legislation.gov.uk path; the founder approves before any
+ * canonical write.
+ */
+async function processGovUkContentRef(
+  admin: ReturnType<typeof getAdmin>,
+  ref: LegalRefRow,
+): Promise<Partial<SweepCounts>> {
+  const nowIso = new Date().toISOString();
+
+  let doc: GovUkContent | null = null;
+  try {
+    doc = await fetchContent(ref.source_url);
+  } catch {
+    doc = null;
+  }
+  if (!doc) {
+    return { fetch_failed: 1 };
+  }
+
+  let newHash: string;
+  try {
+    newHash = await hashGovUkContentDoc(doc);
+  } catch {
+    return { errors: 1 };
+  }
+
+  if (!ref.source_xml_hash) {
+    await admin
+      .from('legal_references')
+      .update({
+        source_xml_hash: newHash,
+        last_freshness_check_at: nowIso,
+      })
+      .eq('id', ref.id);
+    return { hashed_first_time: 1 };
+  }
+
+  if (newHash === ref.source_xml_hash) {
+    await admin
+      .from('legal_references')
+      .update({ last_freshness_check_at: nowIso })
+      .eq('id', ref.id);
+    return { unchanged: 1 };
+  }
+
+  // Drift detected — propose a correction.
+  const proposedTitle = doc.title || ref.law_name;
+  const proposedUrl = doc.web_url;
+
+  const reasoningParts = [
+    `gov.uk content has changed since last sweep (document_type='${doc.document_type}').`,
+    `Old hash: ${ref.source_xml_hash.slice(0, 12)}…`,
+    `New hash: ${newHash.slice(0, 12)}…`,
+    doc.public_updated_at ? `Last updated: ${doc.public_updated_at}.` : null,
+    'Source: gov.uk (Crown Copyright, OGL v3.0).',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const { data: insertedRows, error: insErr } = await admin
+    .from('legal_ref_corrections')
+    .insert({
+      ref_id: ref.id,
+      proposer: 'gov-uk-content-amendments-sweep',
+      before_law_name: ref.law_name,
+      before_source_url: ref.source_url,
+      before_status: ref.verification_status,
+      proposed_law_name:
+        proposedTitle.trim().toLowerCase() === ref.law_name.trim().toLowerCase()
+          ? null
+          : proposedTitle,
+      proposed_source_url:
+        proposedUrl.replace(/\/$/, '').toLowerCase() ===
+        (ref.source_url || '').replace(/\/$/, '').toLowerCase()
+          ? null
+          : proposedUrl,
+      proposed_status: 'updated',
+      superseded_by: null,
+      reasoning: reasoningParts,
+      raw_response: {
+        body_excerpt: (doc.body || '').slice(0, 4000),
+        public_updated_at: doc.public_updated_at,
+        first_published_at: doc.first_published_at,
+        document_type: doc.document_type,
+        web_url: doc.web_url,
+      },
+      confidence: 'high',
+      cost_gbp: 0,
+      status: 'pending',
+      source_xml_hash: newHash,
+      source_host: 'gov-uk-content',
+    })
+    .select('id')
+    .limit(1);
+
+  if (insErr) {
+    return { errors: 1 };
+  }
+
+  const newCorrectionId = insertedRows?.[0]?.id ?? null;
+  if (newCorrectionId) {
+    await admin
+      .from('legal_ref_corrections')
+      .update({
+        status: 'superseded_by_newer',
+        reviewed_at: nowIso,
+        reviewed_by: 'amendments-sweep-new-proposal',
+      })
+      .eq('ref_id', ref.id)
+      .eq('status', 'pending')
+      .neq('id', newCorrectionId);
+  }
+
+  await admin
+    .from('legal_references')
+    .update({
+      is_stale: true,
+      last_freshness_check_at: nowIso,
+    })
+    .eq('id', ref.id);
+
+  void admin.from('legal_ref_verifications').insert({
+    ref_id: ref.id,
+    verifier: 'gov-uk-content-amendments-sweep',
+    triggered_by: 'cron',
+    before_status: ref.verification_status,
+    after_status: 'pending-correction-queued',
+    before_url: ref.source_url,
+    after_url: proposedUrl,
+    changes: {
+      queued_correction: true,
+      correction_id: insertedRows?.[0]?.id ?? null,
+      old_hash: ref.source_xml_hash,
+      new_hash: newHash,
+    },
+    cost_gbp: 0,
+    notes: reasoningParts,
+  });
+
+  return { drift_queued: 1 };
+}
+
+/**
  * Pool runner — caps concurrency to N. Returns when every task settles.
  * Used to keep the legislation.gov.uk fetch fan-out polite (≤5 in-flight)
  * while still finishing 100 rows in a reasonable cron window.
@@ -290,15 +444,15 @@ export async function GET(request: NextRequest) {
 
   const admin = getAdmin();
 
-  // Order: never-checked first (NULLs), then oldest last_freshness_check_at.
-  // Filter to legislation.gov.uk hosts only — non-legislation refs fall
-  // under the weekly reverify cron.
+  // Phase 5: bucket by canonical source. Sweep legislation.gov.uk
+  // (existing) AND gov-uk-content refs (new). Skip find-case-law here
+  // — case law is published, not amended, so the weekly reverify cron
+  // is enough.
   const { data, error } = await admin
     .from('legal_references')
     .select(
       'id, law_name, section, source_url, source_type, category, verification_status, source_xml_hash, last_freshness_check_at, is_stale, unapplied_effects',
     )
-    .ilike('source_url', '%legislation.gov.uk%')
     .order('last_freshness_check_at', { ascending: true, nullsFirst: true })
     .limit(HARD_CAP);
 
@@ -309,9 +463,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const queue = (data || []).filter((r): r is LegalRefRow =>
-    isLegislationGovUkUrl((r as { source_url?: string }).source_url),
-  );
+  const allRefs = (data || []) as LegalRefRow[];
+  const legQueue: LegalRefRow[] = [];
+  const govQueue: LegalRefRow[] = [];
+  for (const r of allRefs) {
+    const kind: CanonicalSourceKind = pickCanonicalSource(r.source_url);
+    if (kind === 'legislation') legQueue.push(r);
+    else if (kind === 'gov-uk-content') govQueue.push(r);
+    // find-case-law + perplexity refs deliberately skipped here.
+  }
 
   const counts: SweepCounts = {
     scanned: 0,
@@ -323,13 +483,16 @@ export async function GET(request: NextRequest) {
     errors: 0,
   };
 
-  await runWithConcurrency(queue, CONCURRENCY, async (ref) => {
+  const tally = (delta: Partial<SweepCounts>) => {
+    for (const k of Object.keys(delta) as Array<keyof SweepCounts>) {
+      counts[k] += delta[k] ?? 0;
+    }
+  };
+
+  await runWithConcurrency(legQueue, CONCURRENCY, async (ref) => {
     counts.scanned += 1;
     try {
-      const delta = await processRef(admin, ref);
-      for (const k of Object.keys(delta) as Array<keyof SweepCounts>) {
-        counts[k] += delta[k] ?? 0;
-      }
+      tally(await processRef(admin, ref));
     } catch (err) {
       counts.errors += 1;
       console.warn(
@@ -340,5 +503,27 @@ export async function GET(request: NextRequest) {
     }
   });
 
-  return NextResponse.json({ ok: true, queue: queue.length, counts });
+  await runWithConcurrency(govQueue, CONCURRENCY, async (ref) => {
+    counts.scanned += 1;
+    try {
+      tally(await processGovUkContentRef(admin, ref));
+    } catch (err) {
+      counts.errors += 1;
+      console.warn(
+        '[amendments-sweep] processGovUkContentRef threw',
+        ref.id,
+        (err as Error)?.message,
+      );
+    }
+  });
+
+  return NextResponse.json({
+    ok: true,
+    queue: legQueue.length + govQueue.length,
+    queue_breakdown: {
+      legislation: legQueue.length,
+      'gov-uk-content': govQueue.length,
+    },
+    counts,
+  });
 }

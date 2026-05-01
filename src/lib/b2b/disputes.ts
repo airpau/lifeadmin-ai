@@ -222,7 +222,24 @@ export interface DisputeResponse {
   legal_basis_freshness?: Array<{
     ref_id: string;
     last_verified_at: string | null;
-    source: 'legislation.gov.uk' | 'perplexity' | 'find-case-law' | 'cma-case' | 'other';
+    /**
+     * Phase 5 (2026-05-01): the `'cma-case'` literal is RENAMED to
+     * `'gov-uk-content'` to align with the canonical-source router
+     * taxonomy (`src/lib/legal-data/source-router.ts`). gov.uk pages
+     * under `/cma-cases/` AND `/government/publications/` both map to
+     * the `'gov-uk-content'` family, so a CMA-case-only literal was
+     * misleading. This is technically a breaking change in the union;
+     * the field is 5 days old at rename time so no external integrator
+     * is expected to be discriminating on `'cma-case'` yet. If you
+     * need to be defensive: `source.startsWith('gov-uk') ||
+     * source === 'legislation.gov.uk'`.
+     */
+    source:
+      | 'legislation.gov.uk'
+      | 'perplexity'
+      | 'find-case-law'
+      | 'gov-uk-content'
+      | 'other';
     is_stale: boolean;
   }>;
   agent_recommendation?: {

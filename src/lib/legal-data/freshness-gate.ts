@@ -94,7 +94,12 @@ export interface FreshnessGateResult {
   provenance: Array<{
     ref_id: string;
     last_verified_at: string | null;
-    source: 'legislation.gov.uk' | 'perplexity' | 'find-case-law' | 'cma-case' | 'other';
+    source:
+      | 'legislation.gov.uk'
+      | 'perplexity'
+      | 'find-case-law'
+      | 'gov-uk-content'
+      | 'other';
     is_stale: boolean;
   }>;
 }
@@ -114,7 +119,10 @@ export function classifySource(url: string | null | undefined): FreshnessGateRes
   const u = url.toLowerCase();
   if (u.includes('legislation.gov.uk')) return 'legislation.gov.uk';
   if (u.includes('caselaw.nationalarchives.gov.uk') || u.includes('find-case-law')) return 'find-case-law';
-  if (u.includes('gov.uk/cma-cases') || u.includes('cma-cases')) return 'cma-case';
+  // Phase 5 (2026-05-01): rename `'cma-case'` → `'gov-uk-content'`. The
+  // `/cma-cases/` and `/government/publications/` paths share the same
+  // gov.uk Content API surface and now classify under one family.
+  if (u.includes('gov.uk/cma-cases') || u.includes('cma-cases') || u.includes('gov.uk/government/publications')) return 'gov-uk-content';
   if (u.includes('perplexity')) return 'perplexity';
   return 'other';
 }
