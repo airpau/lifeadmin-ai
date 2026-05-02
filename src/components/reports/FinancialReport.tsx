@@ -210,7 +210,13 @@ export default function FinancialReport({ data, type }: FinancialReportProps) {
   // user who clicked "Generate Annual Report" still saw the locked
   // sample overlay even though their real data had loaded. Now derived
   // from the prop (the only legit way to enter the SAMPLE state).
-  const isSample = type === 'sample' || !data;
+  //
+  // The Quick Summary button passes `type='on_demand'` with an
+  // OnDemandReportData payload, but this component is shaped entirely
+  // around AnnualReportData (monthlyTrends, toolUsage, etc.). Render
+  // the sample for that case until on-demand has its own renderer —
+  // matches the legacy pre-fix behaviour for that path.
+  const isSample = type === 'sample' || type === 'on_demand' || !data;
   const report: AnnualReportData = (data as AnnualReportData) || SAMPLE_ANNUAL;
 
   const handleDownloadPdf = async () => {

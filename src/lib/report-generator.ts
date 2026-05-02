@@ -1299,7 +1299,10 @@ export async function generateAnnualReportData(
         topCitedRefs,
       },
       moneyHub: {
-        connectedBanks: bankConns.length,
+        // Match the active-only filter used for `connectedBanks` above
+        // (line ~1073) — bank_connections is queried unfiltered, so a
+        // disconnected/expired link would otherwise overstate usage.
+        connectedBanks: bankConns.filter((b) => b.status === 'active').length,
         connectedEmails: emailConns.length,
         transactionsAnalysed: transactions.length,
         monthsOfData: dataMonths,
