@@ -119,13 +119,14 @@ export async function GET() {
     quiet_hours_end: trimTimeOfDay(profileRes.data?.quiet_hours_end),
     timezone: profileRes.data?.notification_timezone ?? 'Europe/London',
     alerts_paused_until: alertPrefsRes.data?.alerts_paused_until ?? null,
-    // Newsletter (Thu 11:00 UTC) opt-in. Source of truth is
-    //   user_metadata.marketing_opt_in === true
-    //   AND profiles.newsletter_unsubscribed_at IS NULL.
-    // Either signal flipping off => unsubscribed.
-    newsletter_opted_in:
-      ((user.user_metadata as { marketing_opt_in?: boolean } | null)?.marketing_opt_in ?? false) === true
-      && !profileRes.data?.newsletter_unsubscribed_at,
+    // Newsletter (Thu 11:00 UTC) is opt-OUT by default — the
+    // newsletter_audience view sends to every confirmed user unless
+    // they've set newsletter_unsubscribed_at. So the toggle reads
+    // "subscribed" unless explicitly opted out. The signup-time
+    // marketing_opt_in flag is no longer load-bearing for the
+    // newsletter audience (kept on user_metadata for the consent
+    // audit trail and for any future opt-IN-only marketing).
+    newsletter_opted_in: !profileRes.data?.newsletter_unsubscribed_at,
   });
 }
 
