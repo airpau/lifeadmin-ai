@@ -214,9 +214,11 @@ export default function NotificationsSettingsPage() {
         Pick where each kind of alert lands. Turn off the channels you don&apos;t want — leave Paybacker to reach you how you prefer.
       </p>
 
-      {/* Weekly newsletter opt-in — saved to user_metadata + profiles
-          on click (no Save button needed). The cron at Thu 11:00 UTC
-          reads from `newsletter_audience` view which gates on both. */}
+      {/* Weekly newsletter — opt-OUT by default. Every confirmed
+          Paybacker user is in the audience unless they flip this off
+          (or use the one-click footer link in any send). The toggle
+          writes profiles.newsletter_unsubscribed_at and the
+          newsletter_audience view filters on it. */}
       <section className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-lg bg-emerald-100 flex-shrink-0">
@@ -227,7 +229,7 @@ export default function NotificationsSettingsPage() {
               <div>
                 <h2 className="text-base font-semibold text-slate-900">Weekly newsletter</h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Every Thursday at 11:00 UTC. UK consumer-rights wins, recent law changes, the Paybacker Index, and one quick action you can take that week.
+                  Every Thursday morning. UK consumer-rights wins, recent law changes, the Paybacker Index, and one quick action you can take that week. Free for every Paybacker member.
                 </p>
               </div>
               <button
@@ -251,8 +253,8 @@ export default function NotificationsSettingsPage() {
             </div>
             <p className="text-[11px] text-slate-400 mt-2">
               {data.newsletter_opted_in
-                ? "Subscribed. We'll never share your email and you can unsubscribe in one click from any newsletter."
-                : 'Not subscribed. Flip the switch to start receiving the Thursday newsletter.'}
+                ? "You're subscribed. Toggle off to opt out — every send also has a one-click unsubscribe link in the footer."
+                : 'Opted out. Toggle on to start receiving the Thursday newsletter.'}
             </p>
           </div>
         </div>
