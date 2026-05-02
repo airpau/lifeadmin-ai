@@ -21,6 +21,7 @@
 
 export type NotificationEventType =
   | 'price_increase'         // Bill detected going up
+  | 'income_received'        // Money landed in user's account (Emma-style)
   | 'dispute_reply'          // Provider replied to an active dispute
   | 'dispute_reminder'       // Dispute escalation milestones (14/28/56d)
   | 'renewal_reminder'       // Contract renewing in 30/14/7 days
@@ -107,6 +108,21 @@ export const EVENT_CATALOG: EventMeta[] = [
     group: 'alerts',
     scheduleKind: 'system',
     critical: true,
+  },
+  {
+    event: 'income_received',
+    label: 'Money received',
+    description: 'A salary, refund, transfer-in, or other income has landed in one of your connected accounts. Emma-style "Good news" buzz. Paid plans only.',
+    // Telegram + WhatsApp + push by default — short positive nudges
+    // that only need a buzz on the user's preferred Pocket Agent.
+    // Email defaults OFF so we don't clog the inbox with one mail per
+    // credit. WhatsApp default false because per-message cost adds up
+    // fast on high-frequency events; users can flip it on if they want.
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'system',
+    proOnly: true,
   },
   {
     event: 'dispute_reply',
