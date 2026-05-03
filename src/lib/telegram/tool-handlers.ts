@@ -473,6 +473,38 @@ export async function executeToolCall(
     case 'get_failed_payments': return getFailedPayments(supabase, userId);
     case 'get_legal_coverage_status': return getLegalCoverageStatus(supabase, userId);
     case 'get_managed_agent_run_status': return getManagedAgentRunStatus(supabase, userId);
+    // ===== Phase 5 — dispute write parity =====
+    case 'update_dispute':
+      return updateDispute(supabase, userId, {
+        provider: toolInput.provider as string,
+        claim_amount: toolInput.claim_amount as number | undefined,
+        category: toolInput.category as string | undefined,
+        evidence_summary: toolInput.evidence_summary as string | undefined,
+        provider_name: toolInput.provider_name as string | undefined,
+      });
+    case 'record_dispute_outcome':
+      return recordDisputeOutcome(supabase, userId, {
+        provider: toolInput.provider as string,
+        outcome: toolInput.outcome as string,
+        recovered_amount_gbp: toolInput.recovered_amount_gbp as number | undefined,
+        evidence_excerpt: toolInput.evidence_excerpt as string | undefined,
+      });
+    case 'mark_dispute_read':
+      return markDisputeRead(supabase, userId, {
+        provider: toolInput.provider as string,
+      });
+    case 'attach_evidence_to_dispute':
+      return attachEvidenceToDispute(supabase, userId, {
+        provider: toolInput.provider as string,
+        evidence_text: toolInput.evidence_text as string,
+        source: (toolInput.source as 'telegram_chat' | 'whatsapp_chat' | undefined) ?? 'telegram_chat',
+      });
+    case 'edit_correspondence_entry':
+      return editCorrespondenceEntry(supabase, userId, {
+        correspondence_id: toolInput.correspondence_id as string,
+        title: toolInput.title as string | undefined,
+        content: toolInput.content as string | undefined,
+      });
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -6592,4 +6624,404 @@ async function getManagedAgentRunStatus(supabase: ReturnType<typeof getAdmin>, u
   let text = `*Managed agents (last 24h):*\n`;
   for (const r of data) text += `\n• ${fmtDate(r.created_at)} — *${r.created_by}*: ${r.title}`;
   return { text };
+}
+
+// ============================================================
+// PHASE 5 HANDLERS — dispute write parity
+// ============================================================
+// Each mirrors a website route under /api/disputes/[id]/* but writes
+// in-process via the admin client. We do NOT HTTP-fetch our own routes
+// (PR #463 fix — those routes are cookie-auth and 401 from a bot).
+//
+// All writes resolve the dispute via resolveActiveDisputeForBot first
+// so the user can pass a fuzzy provider name and we surface a useful
+// error if they have multiple active disputes for the same provider.
+
+const VALID_DISPUTE_ISSUE_TYPES = new Set([
+  'complaint',
+  'energy_dispute',
+  'broadband_complaint',
+  'flight_compensation',
+  'parking_appeal',
+  'debt_dispute',
+  'refund_request',
+  'hmrc_tax_rebate',
+  'council_tax_band',
+  'dvla_vehicle',
+  'nhs_complaint',
+]);
+
+async function updateDispute(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider: string;
+    claim_amount?: number;
+    category?: string;
+    evidence_summary?: string;
+    provider_name?: string;
+  },
+): Promise<ToolResult> {
+  if (!params.provider || typeof params.provider !== 'string') {
+    return { text: 'Error: provider is required.' };
+  }
+
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const dispute = resolved.dispute;
+
+  // Mirror PATCH /api/disputes/[id] writable-field allowlist (the
+  // non-resolve branch). Only fields the website allows go through.
+  const updates: Record<string, unknown> = {};
+
+  if (params.claim_amount !== undefined && params.claim_amount !== null) {
+    const amt = Number(params.claim_amount);
+    if (!Number.isFinite(amt) || amt < 0) {
+      return { text: 'Error: claim_amount must be a non-negative number.' };
+    }
+    updates.disputed_amount = amt;
+  }
+
+  if (params.category !== undefined) {
+    if (!VALID_DISPUTE_ISSUE_TYPES.has(params.category)) {
+      return { text: `Error: invalid category "${params.category}". Allowed: ${Array.from(VALID_DISPUTE_ISSUE_TYPES).join(', ')}.` };
+    }
+    updates.issue_type = params.category;
+  }
+
+  if (params.evidence_summary !== undefined) {
+    const summary = String(params.evidence_summary).trim();
+    if (!summary) {
+      return { text: 'Error: evidence_summary cannot be empty.' };
+    }
+    updates.issue_summary = summary;
+  }
+
+  if (params.provider_name !== undefined) {
+    const newName = String(params.provider_name).trim();
+    if (!newName) {
+      return { text: 'Error: provider_name cannot be empty.' };
+    }
+    updates.provider_name = newName;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return { text: 'Error: nothing to update — pass at least one of claim_amount, category, evidence_summary, provider_name.' };
+  }
+
+  updates.updated_at = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('disputes')
+    .update(updates)
+    .eq('id', dispute.id)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[updateDispute] update failed', error);
+    return { text: `Error: failed to update dispute — ${error.message}` };
+  }
+
+  const changed = Object.keys(updates).filter((k) => k !== 'updated_at');
+  return {
+    text: `✓ Updated *${dispute.provider_name}* dispute (${changed.join(', ')}).`,
+  };
+}
+
+async function recordDisputeOutcome(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider: string;
+    outcome: string;
+    recovered_amount_gbp?: number;
+    evidence_excerpt?: string;
+  },
+): Promise<ToolResult> {
+  const VALID_OUTCOMES = ['won', 'partial', 'lost', 'withdrawn', 'timeout', 'still_open'];
+  if (!params.provider || typeof params.provider !== 'string') {
+    return { text: 'Error: provider is required.' };
+  }
+  if (!params.outcome || !VALID_OUTCOMES.includes(params.outcome)) {
+    return { text: `Error: outcome must be one of: ${VALID_OUTCOMES.join(', ')}.` };
+  }
+
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const dispute = resolved.dispute;
+
+  // Load full row so we can normalise merchant + industry + dispute type
+  // exactly the same way POST /api/disputes/[id]/outcome does.
+  const { data: full, error: loadErr } = await supabase
+    .from('disputes')
+    .select('id, user_id, provider_name, provider_type, issue_type, issue_summary, created_at')
+    .eq('id', dispute.id)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (loadErr || !full) {
+    return { text: `Error: dispute not found.` };
+  }
+
+  const recovered =
+    params.recovered_amount_gbp == null
+      ? null
+      : Number.isFinite(Number(params.recovered_amount_gbp))
+        ? Number(params.recovered_amount_gbp)
+        : null;
+
+  const resolutionDays = Math.max(
+    0,
+    Math.round(
+      (Date.now() - new Date(full.created_at as string).getTime()) /
+        (1000 * 60 * 60 * 24),
+    ),
+  );
+
+  // Same helpers the website's outcome route uses to populate the
+  // intelligence dataset columns (so the bot-driven outcomes show up
+  // in /dashboard/admin/dispute-intelligence rollups).
+  const { inferDisputeType, inferIndustry, normaliseMerchant } = await import(
+    '@/lib/dispute-outcome/normalise'
+  );
+  const merchantNorm = normaliseMerchant(full.provider_name as string | null);
+  const industry =
+    inferIndustry(full.provider_name as string | null) ||
+    (full.provider_type as string | null) ||
+    null;
+  const disputeType = inferDisputeType(
+    full.issue_type as string | null,
+    full.issue_summary as string | null,
+  );
+
+  const outcome = params.outcome;
+  const isTerminal = outcome !== 'still_open';
+  const nowIso = new Date().toISOString();
+
+  const updatePatch: Record<string, unknown> = {
+    outcome,
+    outcome_set_at: nowIso,
+    outcome_set_by: 'user',
+    recovered_amount_gbp: recovered,
+    resolution_time_days: resolutionDays,
+    merchant_normalised: merchantNorm,
+    merchant_industry: industry,
+    dispute_type: disputeType,
+    closed_by: isTerminal ? 'user' : null,
+    updated_at: nowIso,
+  };
+  if (isTerminal) {
+    updatePatch.resolved_at = nowIso;
+    updatePatch.money_recovered = recovered ?? 0;
+    if (outcome === 'won') updatePatch.status = 'resolved_won';
+    else if (outcome === 'partial') updatePatch.status = 'resolved_partial';
+    else if (outcome === 'lost') updatePatch.status = 'resolved_lost';
+    else updatePatch.status = 'closed';
+  }
+
+  const { error: updErr } = await supabase
+    .from('disputes')
+    .update(updatePatch)
+    .eq('id', dispute.id)
+    .eq('user_id', userId);
+  if (updErr) {
+    console.error('[recordDisputeOutcome] update failed', updErr);
+    return { text: `Error: failed to record outcome — ${updErr.message}` };
+  }
+
+  // Append to the outcome event log (intelligence flywheel). Non-fatal
+  // if it fails — we don't want the user-facing flow to error just
+  // because the audit row didn't insert.
+  const { error: evErr } = await supabase.from('dispute_outcome_events').insert({
+    dispute_id: dispute.id,
+    source: 'user',
+    outcome,
+    recovered_amount_gbp: recovered,
+    notes: null,
+    ai_evidence_excerpt: params.evidence_excerpt ?? null,
+    user_id: userId,
+  });
+  if (evErr) {
+    console.warn('[recordDisputeOutcome] event-log insert failed (non-fatal):', evErr.message);
+  }
+
+  let text = `✓ Recorded *${dispute.provider_name}* outcome: *${outcome.replace(/_/g, ' ')}*`;
+  if (recovered !== null) text += ` · recovered ${fmt(recovered)}`;
+  if (outcome === 'won') text += `\n\n🎉 Logged to your dispute intelligence dataset.`;
+  return { text };
+}
+
+async function markDisputeRead(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider: string },
+): Promise<ToolResult> {
+  if (!params.provider || typeof params.provider !== 'string') {
+    return { text: 'Error: provider is required.' };
+  }
+
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const dispute = resolved.dispute;
+
+  const { data: row, error: fetchErr } = await supabase
+    .from('disputes')
+    .select('id, unread_reply_count')
+    .eq('id', dispute.id)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (fetchErr || !row) {
+    return { text: `Error: dispute not found.` };
+  }
+
+  if ((row.unread_reply_count ?? 0) === 0) {
+    return { text: `✓ *${dispute.provider_name}* — no unread replies to clear.` };
+  }
+
+  const { error: updErr } = await supabase
+    .from('disputes')
+    .update({ unread_reply_count: 0 })
+    .eq('id', dispute.id)
+    .eq('user_id', userId);
+
+  if (updErr) {
+    console.error('[markDisputeRead] update failed', updErr);
+    return { text: `Error: failed to clear badge — ${updErr.message}` };
+  }
+
+  // Mirror the website's mark-read route — also clear the matching
+  // bell-badge notifications so unread counts stay in sync.
+  await supabase
+    .from('user_notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('dispute_id', dispute.id)
+    .is('read_at', null)
+    .in('type', ['dispute_reply', 'dispute_reply_action']);
+
+  return { text: `✓ Cleared unread badge on *${dispute.provider_name}* dispute.` };
+}
+
+async function attachEvidenceToDispute(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider: string;
+    evidence_text: string;
+    source: 'telegram_chat' | 'whatsapp_chat';
+  },
+): Promise<ToolResult> {
+  if (!params.provider || typeof params.provider !== 'string') {
+    return { text: 'Error: provider is required.' };
+  }
+  const text = (params.evidence_text || '').trim();
+  if (!text) {
+    return { text: 'Error: evidence_text cannot be empty.' };
+  }
+
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  if (!resolved.ok) return { text: resolved.text };
+  const dispute = resolved.dispute;
+
+  const today = new Date();
+  const sourceLabel = params.source === 'whatsapp_chat' ? 'WhatsApp chat' : 'Telegram chat';
+  // entry_type='evidence_note' isn't in the correspondence_entry_type
+  // CHECK constraint — the website uses user_note for free-text user
+  // evidence (see POST /api/disputes/[id]/correspondence). We tag the
+  // title so the timeline UI still highlights it as evidence.
+  const title = `Evidence — ${sourceLabel} (${today.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })})`;
+
+  const { error: insertErr } = await supabase.from('correspondence').insert({
+    dispute_id: dispute.id,
+    user_id: userId,
+    entry_type: 'user_note',
+    title,
+    content: text,
+    summary: text.slice(0, 200),
+    entry_date: today.toISOString(),
+    detected_from_email: false,
+  });
+
+  if (insertErr) {
+    console.error('[attachEvidenceToDispute] insert failed', insertErr);
+    return { text: `Error: failed to save evidence — ${insertErr.message}` };
+  }
+
+  // Bump the dispute's updated_at so list ordering reflects the new entry.
+  await supabase
+    .from('disputes')
+    .update({ updated_at: today.toISOString() })
+    .eq('id', dispute.id)
+    .eq('user_id', userId);
+
+  return {
+    text: `✓ Saved evidence to *${dispute.provider_name}* dispute timeline (${text.length} chars). Photo / PDF uploads still go through the website at paybacker.co.uk/dashboard/disputes.`,
+  };
+}
+
+async function editCorrespondenceEntry(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    correspondence_id: string;
+    title?: string;
+    content?: string;
+  },
+): Promise<ToolResult> {
+  if (!params.correspondence_id || typeof params.correspondence_id !== 'string') {
+    return { text: 'Error: correspondence_id is required.' };
+  }
+
+  // Verify ownership + check entry_type — mirrors the website's PATCH
+  // route. AI-generated letters are read-only.
+  const { data: existing, error: fetchErr } = await supabase
+    .from('correspondence')
+    .select('id, user_id, entry_type, dispute_id')
+    .eq('id', params.correspondence_id)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (fetchErr) {
+    console.error('[editCorrespondenceEntry] fetch failed', fetchErr);
+    return { text: `Error: database error — ${fetchErr.message}` };
+  }
+  if (!existing) {
+    return { text: `Error: correspondence entry not found (or not yours).` };
+  }
+  if (existing.entry_type === 'ai_letter') {
+    return { text: `Error: AI-generated letters cannot be edited.` };
+  }
+
+  const updates: Record<string, unknown> = {};
+  if (params.title !== undefined) {
+    const trimmed = String(params.title).trim();
+    updates.title = trimmed.length > 0 ? trimmed : null;
+  }
+  if (params.content !== undefined) {
+    const trimmed = String(params.content).trim();
+    if (!trimmed) {
+      return { text: 'Error: content must be a non-empty string.' };
+    }
+    updates.content = trimmed;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return { text: 'Error: nothing to update — pass at least one of title or content.' };
+  }
+
+  const { error: updErr } = await supabase
+    .from('correspondence')
+    .update(updates)
+    .eq('id', params.correspondence_id)
+    .eq('user_id', userId);
+
+  if (updErr) {
+    console.error('[editCorrespondenceEntry] update failed', updErr);
+    return { text: `Error: failed to save changes — ${updErr.message}` };
+  }
+
+  return {
+    text: `✓ Updated correspondence entry (${Object.keys(updates).join(', ')}).`,
+  };
 }

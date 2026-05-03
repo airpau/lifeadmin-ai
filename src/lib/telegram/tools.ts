@@ -1976,4 +1976,144 @@ export const telegramTools: Tool[] = [
     description: "[FOUNDER ONLY] Recent managed-agent session activity (alert-tester, support-triager, bug-triager, etc.) — last run time, status.",
     input_schema: { type: 'object' as const, properties: {}, required: [] },
   },
+
+  // ============================================================
+  // PHASE 5 — dispute write parity (mirrors website /dashboard/disputes
+  // edit / outcome / mark-read / evidence / correspondence-edit flows
+  // so users can drive the full dispute workflow from chat).
+  // ============================================================
+  {
+    name: 'update_dispute',
+    description:
+      "Patch editable fields on an existing dispute (claim amount, category/issue type, evidence summary, provider name). Mirrors the website's PATCH /api/disputes/[id] non-resolve path. Use when the user says 'update the amount to £X', 'change the category to broadband_complaint', 'rename the dispute to <provider>', or wants to edit the issue summary mid-flight. For terminal outcomes (won / lost / partial / withdrawn) call record_dispute_outcome instead.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description: 'Provider name of the dispute to update (case-insensitive partial match — same shape as get_dispute_detail).',
+        },
+        claim_amount: {
+          type: 'number',
+          description: "New disputed_amount in GBP (positive number). Optional.",
+        },
+        category: {
+          type: 'string',
+          enum: [
+            'complaint',
+            'energy_dispute',
+            'broadband_complaint',
+            'flight_compensation',
+            'parking_appeal',
+            'debt_dispute',
+            'refund_request',
+            'hmrc_tax_rebate',
+            'council_tax_band',
+            'dvla_vehicle',
+            'nhs_complaint',
+          ],
+          description: 'New issue_type for the dispute. Optional.',
+        },
+        evidence_summary: {
+          type: 'string',
+          description: "New issue_summary text — the plain-English description shown on the dispute card. Optional.",
+        },
+        provider_name: {
+          type: 'string',
+          description: "New provider_name (rename the dispute, e.g. 'British Gas' → 'British Gas Trading Ltd'). Optional.",
+        },
+      },
+      required: ['provider'],
+    },
+  },
+  {
+    name: 'record_dispute_outcome',
+    description:
+      "Tag a terminal outcome on a dispute and write a row to dispute_outcome_events for the intelligence flywheel. Mirrors POST /api/disputes/[id]/outcome. Use when the user confirms a result — won / partial / lost / withdrawn / timeout / still_open. Always pass recovered_amount_gbp when outcome is won or partial. The matching subscription auto-cancel only fires for 'won' on cancellation-type disputes — same guards as the website.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description: 'Provider name of the dispute (case-insensitive partial match).',
+        },
+        outcome: {
+          type: 'string',
+          enum: ['won', 'partial', 'lost', 'withdrawn', 'timeout', 'still_open'],
+          description: "Terminal outcome to record. 'still_open' keeps the dispute active but tags the dataset row.",
+        },
+        recovered_amount_gbp: {
+          type: 'number',
+          description: 'Money recovered in GBP. Required for won/partial; ignored otherwise.',
+        },
+        evidence_excerpt: {
+          type: 'string',
+          description: "Optional short quote from the supplier's reply that proves the outcome — stored on dispute_outcome_events.ai_evidence_excerpt for the intelligence dataset.",
+        },
+      },
+      required: ['provider', 'outcome'],
+    },
+  },
+  {
+    name: 'mark_dispute_read',
+    description:
+      "Clear the unread-replies badge on a dispute (zero out unread_reply_count). Mirrors POST /api/disputes/[id]/mark-read. Use when the user has read or quoted from the latest supplier reply in chat and you want the dashboard 'NEW REPLY · N' badge to clear.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description: 'Provider name of the dispute (case-insensitive partial match).',
+        },
+      },
+      required: ['provider'],
+    },
+  },
+  {
+    name: 'attach_evidence_to_dispute',
+    description:
+      "Save a free-text evidence note to the dispute timeline. Use when the user pastes an excerpt, observation, or proof point from chat (e.g. 'add this to my Sky dispute: meter read on 14 Apr was 12345'). The bot only handles text — for photo / PDF uploads tell the user to use the website upload flow at /dashboard/disputes. Inserts a user_note row tagged 'Evidence — <source>' so it stands out in the timeline alongside ai_letter and company_email entries.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description: 'Provider name of the dispute (case-insensitive partial match).',
+        },
+        evidence_text: {
+          type: 'string',
+          description: 'The full evidence text to save. Must be a non-empty string — the bot does not handle file uploads.',
+        },
+        source: {
+          type: 'string',
+          enum: ['telegram_chat', 'whatsapp_chat'],
+          description: "Which channel the evidence came from. Used to label the timeline entry. Defaults to telegram_chat.",
+        },
+      },
+      required: ['provider', 'evidence_text'],
+    },
+  },
+  {
+    name: 'edit_correspondence_entry',
+    description:
+      "Edit the title or content of an existing correspondence entry (the user's own notes / pasted supplier responses). Mirrors PATCH /api/disputes/[id]/correspondence/[entryId]. Use when the user wants to fix a typo or update text on a previously-saved entry. AI-generated letters cannot be edited (engine refuses). Pass the correspondence_id from get_dispute_detail or quote_email_from_thread output.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        correspondence_id: {
+          type: 'string',
+          description: 'UUID of the correspondence row to edit. Must belong to the calling user (security predicate is enforced server-side).',
+        },
+        title: {
+          type: 'string',
+          description: 'New title for the entry. Optional — pass empty string to clear.',
+        },
+        content: {
+          type: 'string',
+          description: 'New content body for the entry. Optional. Must be non-empty if provided.',
+        },
+      },
+      required: ['correspondence_id'],
+    },
+  },
 ];
