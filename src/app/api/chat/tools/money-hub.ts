@@ -38,6 +38,7 @@ async function getClassifiedTransactions(userId: string, months: number = 1) {
     admin.from('bank_transactions')
       .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
       .eq('user_id', userId)
+      .eq('is_cross_account_duplicate', false)
       .gte('timestamp', startDate.toISOString())
       .order('timestamp', { ascending: false })
       .limit(10000),
@@ -217,6 +218,7 @@ const searchTransactions: ChatTool = {
       .from('bank_transactions')
       .select('id, amount, description, merchant_name, category, timestamp, user_category')
       .eq('user_id', userId)
+      .eq('is_cross_account_duplicate', false)
       .gte('timestamp', startDate.toISOString())
       .or(`merchant_name.ilike.${pattern},description.ilike.${pattern}`)
       .order('timestamp', { ascending: false })

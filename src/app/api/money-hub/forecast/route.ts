@@ -72,6 +72,7 @@ export async function GET() {
       .from('bank_transactions')
       .select('merchant_name, description, amount')
       .eq('user_id', user.id)
+      .eq('is_cross_account_duplicate', false)
       .lt('amount', 0)
       .gte('timestamp', startOfMonth);
 

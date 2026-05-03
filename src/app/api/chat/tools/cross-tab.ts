@@ -210,6 +210,7 @@ const generateComplaintWithContext: ChatTool = {
       .from('bank_transactions')
       .select('amount, description, timestamp')
       .eq('user_id', userId)
+      .eq('is_cross_account_duplicate', false)
       .ilike('description', `%${args.provider_name}%`)
       .order('timestamp', { ascending: false })
       .limit(5);

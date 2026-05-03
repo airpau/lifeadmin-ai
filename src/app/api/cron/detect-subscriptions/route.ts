@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
       .from('bank_transactions')
       .select('merchant_name, amount, timestamp, description, category')
       .eq('user_id', userId)
+      .eq('is_cross_account_duplicate', false)
       .not('merchant_name', 'is', null)
       .lt('amount', 0) // Only outgoing
       .gte('timestamp', sixMonthsAgo.toISOString())

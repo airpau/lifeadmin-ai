@@ -234,6 +234,9 @@ export async function POST(request: NextRequest) {
       await supabase.rpc('auto_categorise_transactions', { p_user_id: connection.user_id });
     } catch { /* Non-fatal */ }
     try {
+      await supabase.rpc('detect_cross_account_duplicates', { p_user_id: connection.user_id });
+    } catch { /* Non-fatal */ }
+    try {
       await supabase.rpc('detect_and_sync_recurring_transactions', { p_user_id: connection.user_id });
     } catch { /* Non-fatal */ }
     await detectRecurring(connection.user_id, supabase);

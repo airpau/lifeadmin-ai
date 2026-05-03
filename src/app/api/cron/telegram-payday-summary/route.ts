@@ -118,6 +118,7 @@ export async function GET(request: NextRequest) {
         .from('bank_transactions')
         .select('id, merchant_name, description, amount, timestamp, category, income_type')
         .eq('user_id', userId)
+        .eq('is_cross_account_duplicate', false)
         .gt('amount', MIN_SALARY_AMOUNT) // Large credits only
         .gte('timestamp', twoDaysAgo)
         .lt('timestamp', tomorrowStart);

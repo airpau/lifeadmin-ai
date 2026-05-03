@@ -105,7 +105,7 @@ export async function GET(request: Request) {
       { data: rpcSpendingCategories },
       { data: rpcIncomeCategories },
     ] = await Promise.all([
-      admin.from('bank_transactions').select('*').eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }).limit(20000),
+      admin.from('bank_transactions').select('*').eq('user_id', user.id).eq('is_cross_account_duplicate', false).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }).limit(20000),
       admin.from('bank_connections').select('id, bank_name, status, last_synced_at, account_ids, account_display_names').eq('user_id', user.id),
       admin.from('money_hub_budgets').select('*').eq('user_id', user.id),
       admin.from('money_hub_assets').select('*').eq('user_id', user.id),

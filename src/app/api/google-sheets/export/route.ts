@@ -217,6 +217,7 @@ export async function POST(req: NextRequest) {
             .eq('user_id', conn.user_id)
             .eq('account_id', accountId)
             .eq('is_pending', false)
+            .eq('is_cross_account_duplicate', false)
             .order('timestamp', { ascending: true })
 
           // Incremental sync: only new transactions

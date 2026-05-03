@@ -90,6 +90,7 @@ export async function GET() {
         .from('bank_transactions')
         .select('id, amount, user_category, description, category, merchant_name, income_type, timestamp')
         .eq('user_id', user.id)
+        .eq('is_cross_account_duplicate', false)
         .gte('timestamp', sixMonthsAgo)
         .limit(10000),
       admin

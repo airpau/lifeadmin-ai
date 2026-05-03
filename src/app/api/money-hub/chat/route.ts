@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   const [txns, subs, budgets, goals, alerts] = await Promise.all([
     admin.from('bank_transactions').select('amount, description, category, timestamp, user_category, income_type, merchant_name')
-      .eq('user_id', user.id).gte('timestamp', startOfMonth).order('timestamp', { ascending: false }).limit(100),
+      .eq('user_id', user.id).eq('is_cross_account_duplicate', false).gte('timestamp', startOfMonth).order('timestamp', { ascending: false }).limit(100),
     admin.from('subscriptions').select('provider_name, amount, billing_cycle, category, status')
       .eq('user_id', user.id).is('dismissed_at', null).eq('status', 'active'),
     admin.from('money_hub_budgets').select('category, monthly_limit').eq('user_id', user.id),

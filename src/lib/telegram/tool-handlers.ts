@@ -21,8 +21,9 @@ const CATEGORY_LABELS: Record<string, string> = {
 async function classifyTransactions(supabase: ReturnType<typeof getAdmin>, userId: string, startDate: string, endDate: string) {
   const [{ data: txns }, { data: overrideRows }] = await Promise.all([
     supabase.from('bank_transactions')
-      .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
+      .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type, account_id, is_cross_account_duplicate')
       .eq('user_id', userId)
+      .eq('is_cross_account_duplicate', false)
       .gte('timestamp', startDate)
       .lt('timestamp', endDate)
       .order('timestamp', { ascending: false })
@@ -726,6 +727,7 @@ async function getBudgetStatus(
       .from('bank_transactions')
       .select('id, merchant_name, description, amount, user_category')
       .eq('user_id', userId)
+      .eq('is_cross_account_duplicate', false)
       .lt('amount', 0)
       .gte('timestamp', startDate)
       .lt('timestamp', endDate)
@@ -1278,7 +1280,7 @@ async function getFinancialOverview(
     supabase.from('bank_connections').select('bank_name, status', { count: 'exact' })
       .eq('user_id', userId),
     supabase.from('bank_transactions').select('amount, category')
-      .eq('user_id', userId).gte('timestamp', monthStart).lt('timestamp', monthEnd),
+      .eq('user_id', userId).eq('is_cross_account_duplicate', false).gte('timestamp', monthStart).lt('timestamp', monthEnd),
     supabase.from('money_hub_budgets').select('category, monthly_limit')
       .eq('user_id', userId),
     supabase.from('verified_savings').select('amount_saved, annual_saving')
@@ -1498,8 +1500,9 @@ async function getMonthlyTrends(
 
   const { data, error } = await supabase
     .from('bank_transactions')
-    .select('amount, timestamp')
+    .select('amount, timestamp, user_category, income_type')
     .eq('user_id', userId)
+    .eq('is_cross_account_duplicate', false)
     .gte('timestamp', startDate)
     .order('timestamp', { ascending: true });
 
@@ -1507,8 +1510,11 @@ async function getMonthlyTrends(
     return { text: `No transaction data found for the last ${lookback} months.` };
   }
 
+  const EXCLUDE = new Set(['transfers']);
   const monthlyData: Record<string, { income: number; spending: number }> = {};
   data.forEach((txn: any) => {
+    if (EXCLUDE.has(txn.user_category ?? '')) return;
+    if (['transfer', 'credit_loan'].includes(txn.income_type ?? '')) return;
     const m = txn.timestamp.slice(0, 7);
     const key = `${m}-01`;
     const amt = Number(txn.amount);
@@ -2226,6 +2232,7 @@ async function getUpcomingPayments(
       .from('bank_transactions')
       .select('merchant_name, description, amount, timestamp')
       .eq('user_id', userId)
+      .eq('is_cross_account_duplicate', false)
       .lt('amount', 0)
       .gte('timestamp', startOfMonth)
       .lt('timestamp', endOfMonth),
@@ -2651,6 +2658,7 @@ async function getUnusedSubscriptions(
       .from('bank_transactions')
       .select('merchant_name, description, amount')
       .eq('user_id', userId)
+      .eq('is_cross_account_duplicate', false)
       .lt('amount', 0)
       .gte('timestamp', ninetyDaysAgo),
   ]);
@@ -2927,6 +2935,7 @@ async function getExpectedBills(
       .from('bank_transactions')
       .select('id, merchant_name, description, amount, timestamp')
       .eq('user_id', userId)
+      .eq('is_cross_account_duplicate', false)
       .lt('amount', 0)  // debits only
       .gte('timestamp', startOfMonth)
       .lt('timestamp', endOfMonth)

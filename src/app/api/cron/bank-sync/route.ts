@@ -522,6 +522,7 @@ export async function GET(request: NextRequest) {
       const enrichmentFunctions = [
         { name: 'fix_ee_card_merchant_names', args: { p_user_id: connection.user_id } },
         { name: 'auto_categorise_transactions', args: { p_user_id: connection.user_id } },
+        { name: 'detect_cross_account_duplicates', args: { p_user_id: connection.user_id } },
         { name: 'detect_and_sync_recurring_transactions', args: { p_user_id: connection.user_id } },
       ] as const;
 

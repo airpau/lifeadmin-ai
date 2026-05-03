@@ -100,6 +100,9 @@ export async function POST(request: NextRequest) {
   try {
     await supabase.rpc('auto_categorise_transactions', { p_user_id: userId });
   } catch { /* non-fatal */ }
+  try {
+    await supabase.rpc('detect_cross_account_duplicates', { p_user_id: userId });
+  } catch { /* non-fatal */ }
 
   // Update connection sync timestamp
   const now = new Date().toISOString();

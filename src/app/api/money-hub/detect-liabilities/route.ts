@@ -45,6 +45,7 @@ export async function GET() {
       admin.from('bank_transactions')
         .select('merchant_name, description, amount, timestamp, user_category')
         .eq('user_id', user.id)
+        .eq('is_cross_account_duplicate', false)
         .in('user_category', ['loans'])
         .lt('amount', 0)
         .gte('timestamp', twelveMonthsAgo.toISOString())

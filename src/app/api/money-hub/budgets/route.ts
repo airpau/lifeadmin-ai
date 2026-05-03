@@ -11,6 +11,7 @@ export async function GET() {
     supabase.from('bank_transactions')
       .select('amount, description, category, user_category, merchant_name')
       .eq('user_id', user.id)
+      .eq('is_cross_account_duplicate', false)
       .lt('amount', 0)
       .gte('timestamp', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
       .limit(10000),

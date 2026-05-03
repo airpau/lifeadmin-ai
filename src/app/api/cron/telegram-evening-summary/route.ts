@@ -303,6 +303,7 @@ export async function GET(request: NextRequest) {
         .from('bank_transactions')
         .select('description, merchant_name, amount, user_category, timestamp')
         .eq('user_id', userId)
+        .eq('is_cross_account_duplicate', false)
         .lt('amount', 0)
         .gte('timestamp', sevenDaysAgo.toISOString())
         .order('amount', { ascending: true }) // most negative first = biggest spend

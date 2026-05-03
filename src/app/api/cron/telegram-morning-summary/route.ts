@@ -210,6 +210,7 @@ export async function GET(request: NextRequest) {
         .from('bank_transactions')
         .select('user_category, amount')
         .eq('user_id', userId)
+        .eq('is_cross_account_duplicate', false)
         .lt('amount', 0)
         .gte('timestamp', yesterdayStart.toISOString())
         .lt('timestamp', todayStart.toISOString());

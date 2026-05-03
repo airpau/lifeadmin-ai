@@ -284,6 +284,7 @@ export async function GET(request: NextRequest) {
         .from('bank_transactions')
         .select('category, amount')
         .eq('user_id', userId)
+        .eq('is_cross_account_duplicate', false)
         .lt('amount', 0)
         .gte('timestamp', monthStart)
         .lt('timestamp', monthEnd),

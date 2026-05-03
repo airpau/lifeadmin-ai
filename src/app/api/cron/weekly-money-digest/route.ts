@@ -98,6 +98,7 @@ export async function GET(request: NextRequest) {
         .from('bank_transactions')
         .select('amount, description, category, timestamp')
         .eq('user_id', userId)
+        .eq('is_cross_account_duplicate', false)
         .gte('timestamp', weekStart.toISOString())
         .lt('amount', 0);
 
@@ -106,6 +107,7 @@ export async function GET(request: NextRequest) {
         .from('bank_transactions')
         .select('amount')
         .eq('user_id', userId)
+        .eq('is_cross_account_duplicate', false)
         .gte('timestamp', lastWeekStart.toISOString())
         .lt('timestamp', weekStart.toISOString())
         .lt('amount', 0);
@@ -165,6 +167,7 @@ export async function GET(request: NextRequest) {
         .from('bank_transactions')
         .select('amount, category')
         .eq('user_id', userId)
+        .eq('is_cross_account_duplicate', false)
         .gte('timestamp', monthStart)
         .lt('amount', 0);
 

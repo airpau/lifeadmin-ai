@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
   const query = admin.from('bank_transactions')
     .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type, account_id')
     .eq('user_id', user.id)
+    .eq('is_cross_account_duplicate', false)
     .gte('timestamp', start.toISOString())
     .lte('timestamp', end.toISOString())
     .order('timestamp', { ascending: false })
