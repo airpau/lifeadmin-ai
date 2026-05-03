@@ -39,7 +39,16 @@ export default function DashboardPage() {
   const [bankConnected, setBankConnected] = useState(false);
   const [expiringContracts, setExpiringContracts] = useState(0);
   const [userTier, setUserTier] = useState('free');
+  // Effective tier mirrors `getEffectiveTier(userId)` server-side: stored
+  // subscription_tier, with an active onboarding trial flipping the user
+  // to 'pro' for the trial window. Used for the WhatsApp Pocket Agent
+  // gate so trial Pros (who pass `canUseWhatsApp`) actually see the CTA.
+  const [effectiveTier, setEffectiveTier] = useState('free');
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
+  // Pocket Agent connection state — null until loaded so the card
+  // doesn't flash. Card hides if either telegram or whatsapp is
+  // already connected, otherwise shows two CTAs (WhatsApp Pro-only).
+  const [pocketAgentConnected, setPocketAgentConnected] = useState<{ telegram: boolean; whatsapp: boolean } | null>(null);
   // Number of tasks the user has snoozed (snooze_until > now via the
   // bot's snooze_task tool). Surfaced as a small badge under the
   // Action items header so users know how many are hidden.
@@ -302,7 +311,7 @@ export default function DashboardPage() {
         if (!user) { setLoading(false); return; }
 
         const [profile, subs, tasks, banks, userTasks] = await Promise.all([
-          supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).maybeSingle(),
+          supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at').eq('id', user.id).maybeSingle(),
           supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('disputes').select('id', { count: 'exact', head: true })
@@ -314,7 +323,19 @@ export default function DashboardPage() {
             .order('created_at', { ascending: false }).limit(50),
         ]);
 
-        setUserTier(profile.data?.subscription_tier || 'free');
+        const storedTier = profile.data?.subscription_tier || 'free';
+        setUserTier(storedTier);
+        // Mirror `getEffectiveTier` (src/lib/plan-limits.ts): an active
+        // onboarding trial promotes the user to 'pro' for the trial
+        // window. The WhatsApp CTA gate below honours `canUseWhatsApp`,
+        // which checks the effective tier — without this, trial Pros
+        // pass the server-side `/api/whatsapp/opt-in` check but never
+        // see the CTA on the dashboard.
+        const onboardingTrialActive = !!profile.data?.trial_ends_at
+          && new Date(profile.data.trial_ends_at) > new Date()
+          && !profile.data?.trial_converted_at
+          && !profile.data?.trial_expired_at;
+        setEffectiveTier(onboardingTrialActive ? 'pro' : storedTier);
         hasBankConnection = (banks.data || []).length > 0;
         setBankConnected(hasBankConnection);
         setBankAccounts(banks.data || []);
@@ -342,6 +363,30 @@ export default function DashboardPage() {
             setEmailConnected(true);
             setEmailAddress(gmailToken.email);
           }
+        }
+
+        // Pocket Agent connection state — fetched from a privileged
+        // server route. The browser Supabase client can't read
+        // telegram_sessions / whatsapp_sessions directly under RLS,
+        // so we delegate the lookup to /api/pocket-agent/connection-status
+        // which verifies the user server-side and uses the service-role
+        // client. Mirrors the active-session predicates in
+        // src/lib/pocket-agent/dispatch.ts.
+        try {
+          const res = await fetch('/api/pocket-agent/connection-status', {
+            cache: 'no-store',
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setPocketAgentConnected({
+              telegram: Boolean(data?.telegram),
+              whatsapp: Boolean(data?.whatsapp),
+            });
+          } else {
+            setPocketAgentConnected({ telegram: false, whatsapp: false });
+          }
+        } catch {
+          setPocketAgentConnected({ telegram: false, whatsapp: false });
         }
 
         // Load saved email scan opportunities from the centralised email_scan_findings table
@@ -1923,22 +1968,36 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Pocket Agent */}
-          <div className="card">
-            <h3>Pocket Agent</h3>
-            <p style={{ fontSize: 12.5, color: 'var(--text-2)', margin: '0 0 10px', lineHeight: 1.45 }}>
-              Chat on Telegram. Ask about your subs, dispute status, or start a new letter.
-            </p>
-            <a
-              className="cta-ghost"
-              href="https://t.me/PaybackerCoUkBot"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ width: '100%', justifyContent: 'center', fontSize: 12 }}
-            >
-              Open @PaybackerCoUkBot →
-            </a>
-          </div>
+          {/* Pocket Agent — hide once connected on either channel.
+              Renders nothing until state loads to avoid a flash. */}
+          {pocketAgentConnected !== null && !pocketAgentConnected.telegram && !pocketAgentConnected.whatsapp && (
+            <div className="card">
+              <h3>Pocket Agent</h3>
+              <p style={{ fontSize: 12.5, color: 'var(--text-2)', margin: '0 0 10px', lineHeight: 1.45 }}>
+                Chat to your Pocket Agent on Telegram or WhatsApp. Ask about your subs, dispute status, or start a new letter.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <a
+                  className="cta-ghost"
+                  href="https://t.me/PaybackerCoUkBot"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ width: '100%', justifyContent: 'center', fontSize: 12 }}
+                >
+                  Connect on Telegram →
+                </a>
+                {effectiveTier === 'pro' && (
+                  <Link
+                    href="/dashboard/settings/whatsapp"
+                    className="cta-ghost"
+                    style={{ width: '100%', justifyContent: 'center', fontSize: 12 }}
+                  >
+                    Connect on WhatsApp →
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Getting started — only while incomplete */}
           {!(bankConnected && emailConnected && complaintsGenerated > 0) && (
