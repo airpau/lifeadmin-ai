@@ -8,10 +8,17 @@
  * `whatsapp_template_sids` (Supabase) along with the Meta approval status.
  *
  * Dispatch paths should call `getTemplateSid(name)` instead of reading
- * `TEMPLATES[name].sid` directly. The resolver returns:
- *   - the DB SID if the row exists AND `approval_status === 'approved'`,
- *   - the registry fallback SID if the registry has a real (non-PENDING) SID,
- *   - null when nothing is approved yet (caller should skip the send).
+ * `TEMPLATES[name].sid` directly. The resolver mirrors the same SID
+ * resolution order the Twilio provider uses, so a preflight skip-check
+ * by the cron can never incorrectly suppress a send the provider would
+ * have completed:
+ *   1. `TWILIO_TEMPLATE_<NAME>` env override — lets ops pin a SID
+ *      without a code deploy if Meta force-resubmits one.
+ *   2. DB SID from `whatsapp_template_sids` when the row exists AND
+ *      `approval_status === 'approved'`.
+ *   3. The registry fallback SID, if the registry has a real
+ *      (non-PENDING) SID.
+ *   4. `null` when nothing usable is configured (caller should skip).
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -42,8 +49,20 @@ function adminClient() {
  * Resolve the live, send-safe SID for a template name. Returns null when
  * the template isn't approved (caller MUST skip the send rather than
  * pass a pending/rejected SID to Twilio).
+ *
+ * Order matches `TwilioWhatsAppProvider.sendTemplate` so a preflight
+ * caller (e.g. the morning-brief cron) sees the same SID the provider
+ * would actually use — no false skips when ops has pinned a SID via
+ * env override or via the /dashboard/admin/whatsapp Resubmit panel.
  */
 export async function getTemplateSid(name: string): Promise<string | null> {
+  // 1. Env override wins — this is how ops pins a SID without a deploy
+  //    when Meta force-resubmits a template. The Twilio provider checks
+  //    this first too; the preflight must mirror it or the cron will
+  //    skip every send while the override is the only working source.
+  const envOverride = process.env[`TWILIO_TEMPLATE_${name.toUpperCase()}`];
+  if (envOverride) return envOverride;
+
   const sb = adminClient();
   if (sb) {
     const { data } = await sb
