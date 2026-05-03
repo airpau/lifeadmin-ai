@@ -235,6 +235,40 @@ export const TEMPLATES = {
     // who's enabled WhatsApp 2FA gets them.
     proOnly: false,
   },
+  /**
+   * Income-received notification — fires when bank-sync detects a
+   * positive transaction matching salary/income heuristics.
+   *
+   * ⚠️ PENDING_RESUBMISSION (2026-04-29) ⚠️
+   *
+   * The Twilio Content + Meta approval submission for this template is
+   * not yet complete — the SID below is a placeholder and the
+   * sendWhatsAppTemplate call will 400 with `Content with sid
+   * PENDING_RESUBMISSION not found` if attempted.
+   *
+   * Why we ship the entry now anyway:
+   *   1. The cron at /api/cron/income-received uses the unified
+   *      pocket-agent dispatcher. Inside the user's 24h customer-
+   *      service window the dispatcher substitutes the free-form
+   *      text rendered by renderAlertText('income_received', …) and
+   *      never touches the SID — so for active Pocket Agent users
+   *      this works today, no Meta approval needed.
+   *   2. Outside the window the dispatcher will skip the send and
+   *      surface "send failed" in the cron's whatsapp.skipped count
+   *      — no spam, no crash.
+   *
+   * **Founder follow-up after merge:** submit this template via the
+   * Twilio Content API (or via /dashboard/admin/whatsapp once that
+   * surface exists), update the SID + meta_status + twilio_status
+   * via the same migration pattern as the other approved templates.
+   */
+  paybacker_income_received: {
+    sid: 'PENDING_RESUBMISSION',
+    category: 'UTILITY',
+    vars: ['amount', 'merchant', 'lifetime_received'] as const,
+    description: 'Income / salary received — pending Meta approval',
+    proOnly: true,
+  },
   /** Switchcraft-style cheaper-deal nudge (MARKETING — needs separate opt-in) */
   paybacker_better_deal_found: {
     // Resubmitted 2026-04-27 — first version ended with `{{3}}` URL.
