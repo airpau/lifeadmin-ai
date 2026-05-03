@@ -59,6 +59,12 @@ export default function DashboardPage() {
   const [emailScanning, setEmailScanning] = useState(false);
   const [emailScanResults, setEmailScanResults] = useState<number | null>(null);
   const [emailOpportunities, setEmailOpportunities] = useState<any[]>([]);
+  // Set when emailOpportunities was hydrated from the legacy `tasks`-table
+  // fallback (Gmail accounts whose findings predate the email_scan_findings
+  // table). The same rows are also loaded into `pendingTasks` from `tasks`,
+  // so we must exclude them from `combinedActions` to avoid double-counting
+  // in the Action Centre headline.
+  const [emailOpportunitiesFromLegacy, setEmailOpportunitiesFromLegacy] = useState(false);
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null; status: string }>>([]);
   const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email_address: string; provider_type: string }>>([]);
@@ -358,6 +364,7 @@ export default function DashboardPage() {
           });
           setEmailOpportunities(mapped);
           setEmailScanResults(mapped.length);
+          setEmailOpportunitiesFromLegacy(false);
         } else {
           // Fallback: try legacy tasks table for older scan results
           const { data: savedOpps } = await supabase
@@ -387,6 +394,12 @@ export default function DashboardPage() {
             });
             setEmailOpportunities(mapped);
             setEmailScanResults(mapped.length);
+            // These rows came from the `tasks` table — `pendingTasks`
+            // also reads from `tasks`, so the same items appear in both
+            // arrays. Flag so combinedActions can exclude them from the
+            // sum (preferring the pendingTasks count, which is the
+            // canonical user-facing view).
+            setEmailOpportunitiesFromLegacy(true);
           }
         }
 
@@ -597,6 +610,9 @@ export default function DashboardPage() {
       });
       setEmailOpportunities(mapped);
       setEmailScanResults(mapped.length);
+      // Rescan reads from the canonical email_scan_findings table, so any
+      // prior legacy-tasks fallback no longer applies.
+      setEmailOpportunitiesFromLegacy(false);
 
       if (refreshedConns && refreshedConns.length > 0) {
         // Pick the most-recently-scanned timestamp so the UI shows the
@@ -755,11 +771,14 @@ export default function DashboardPage() {
   // the Action Centre pill can't say "0 ITEMS" while 30 email opps + 26 tasks
   // sit immediately below. The £ headline still gates on price-detector data
   // (deals/disputes) because email opps + tasks don't carry an annual £ figure.
+  // When emailOpportunities was hydrated from the legacy tasks-table fallback,
+  // those same rows are also in `pendingTasks` (both query `tasks`), so we
+  // skip the emailOpportunities term to avoid double-counting.
   const combinedActions =
     primaryActions.length +
     trackOnlyRows.length +
     unknownDisputeRows.length +
-    emailOpportunities.length +
+    (emailOpportunitiesFromLegacy ? 0 : emailOpportunities.length) +
     pendingTasks.length;
   // Backwards-compat alias for downstream KPI cards that read actionRows.
   const actionRows = primaryActions;
@@ -1010,7 +1029,21 @@ export default function DashboardPage() {
                 fontSize: 13,
               }}
             >
-              Ready to find your first saving? Connect a bank account to scan transactions for forgotten subscriptions and silent price rises — we&apos;ll flag every one automatically.
+              {emailOpportunities.length > 0 || pendingTasks.length > 0 ? (
+                // Headline above says "${combinedActions} things to review" but
+                // the rendered list (deals + disputes only) is empty. Point the
+                // user to the Email Scanner / Action Items cards lower down so
+                // the count and the visible content line up.
+                `${combinedActions} thing${combinedActions === 1 ? '' : 's'} to review — see ${
+                  emailOpportunities.length > 0 && pendingTasks.length > 0
+                    ? 'Email Scanner & Action Items'
+                    : emailOpportunities.length > 0
+                      ? 'Email Scanner'
+                      : 'Action Items'
+                } below.`
+              ) : (
+                <>Ready to find your first saving? Connect a bank account to scan transactions for forgotten subscriptions and silent price rises — we&apos;ll flag every one automatically.</>
+              )}
             </div>
           ) : (
             actionRowsTop.map((r, i) => (
