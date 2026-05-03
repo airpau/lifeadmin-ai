@@ -5743,7 +5743,7 @@ async function syncRepliesNow(
   // pointless and misleading — the LLM was surfacing those 401s as
   // "authorisation error" and telling users their email/bank connection had
   // expired. Mirror the route's logic in-process instead.
-  const { data: link } = await supabase
+  const { data: link, error } = await supabase
     .from('dispute_watchdog_links')
     .select('id')
     .eq('dispute_id', resolved.dispute.id)
@@ -5751,6 +5751,9 @@ async function syncRepliesNow(
     .eq('sync_enabled', true)
     .maybeSingle();
 
+  if (error) {
+    return { text: `Couldn't check the linked email thread — DB error. The watchdog cron will retry on its next 30-min run.` };
+  }
   if (!link) {
     return { text: `No linked email thread for *${resolved.dispute.provider_name}* yet. Link one via /dashboard/disputes first.` };
   }
