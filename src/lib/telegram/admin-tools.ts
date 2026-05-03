@@ -194,8 +194,12 @@ export async function executeAdminTool(
 async function runSqlQuery(rawQuery: string): Promise<ToolResult> {
   const query = rawQuery.trim();
   if (!query) return { text: 'Error: empty query.' };
-  if (!/^select\b/i.test(query)) {
-    return { text: 'Error: only SELECT queries are allowed. Got: ' + query.slice(0, 60) };
+  // Mirror the RPC's accepted shapes: leading SELECT or WITH (CTE).
+  // Codex P2 (PR #454): LLMs commonly write CTE-prefixed analytics
+  // queries; rejecting them here would cause avoidable tool failures
+  // even though the underlying RPC accepts them.
+  if (!/^(select|with)\b/i.test(query)) {
+    return { text: 'Error: only SELECT or WITH queries are allowed. Got: ' + query.slice(0, 60) };
   }
   // Reject multi-statement queries — semicolons inside string literals
   // would be a false positive, but ad-hoc admin queries don't need
