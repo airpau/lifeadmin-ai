@@ -6590,7 +6590,7 @@ async function renewBankConsent(
   if (error || !data || data.length === 0) {
     return { text: bankName
       ? `No bank connection matches "${bankName}". Try get_bank_connections to see what's connected.`
-      : `No bank accounts connected. Connect one at ${SITE()}/dashboard/profile?connect=bank` };
+      : `No bank accounts connected. Connect one at ${SITE()}/dashboard/subscriptions?connectBank=true` };
   }
 
   // Prefer connections that actually need renewal
@@ -6606,9 +6606,14 @@ async function renewBankConsent(
     return { text: `You have ${data.length} bank connections:\n${list}\n\nSay "renew consent for [bank name]" so I know which one.` };
   }
 
-  const url = `${SITE()}/dashboard/profile?renew_bank=${encodeURIComponent(target.id)}`;
+  // Send users to the subscriptions page — this is the canonical bank-management
+  // surface that lists expired connections with a Reconnect button per row, and
+  // ?connectBank=true auto-opens the bank-picker modal so the OAuth re-auth flow
+  // starts immediately. (The dashboard/profile page does NOT handle renew_bank.)
+  const url = `${SITE()}/dashboard/subscriptions?connectBank=true`;
   const expiry = target.consent_expires_at ? ` (consent expires ${fmtDate(target.consent_expires_at)})` : '';
-  return { text: `Renew consent for ${target.bank_name ?? 'your bank'} here: ${url}${expiry}\n\nUK Open Banking requires a 90-day re-auth — takes ~30 seconds via your bank app.` };
+  const bankLabel = target.bank_name ?? 'your bank';
+  return { text: `Renew consent for ${bankLabel} here: ${url}${expiry}\n\nThis opens the bank picker — pick ${bankLabel} again to re-authorise. UK Open Banking requires a 90-day re-auth and takes ~30 seconds via your bank app.` };
 }
 
 async function dismissContractAlert(
