@@ -576,11 +576,19 @@ export default function DashboardPage() {
       // hit the same endpoint twice (the endpoints loop over all the
       // user's connections of their type internally).
       const seen = new Set<string>();
-      const calls = targets
-        .filter(({ endpoint }) => (seen.has(endpoint) ? false : (seen.add(endpoint), true)))
-        .map(({ endpoint }) => fetch(endpoint, { method: 'POST' }).catch(() => null));
+      const dedupedTargets = targets.filter(({ endpoint }) =>
+        seen.has(endpoint) ? false : (seen.add(endpoint), true)
+      );
+      const calls = dedupedTargets.map(({ endpoint }) =>
+        fetch(endpoint, { method: 'POST' }).catch(() => null)
+      );
 
-      await Promise.all(calls);
+      // Track per-call success so we can distinguish "scan ran clean,
+      // 0 findings" from "every endpoint blew up (revoked OAuth → 401/
+      // 500)". Without this, the success banner fires even when nothing
+      // actually scanned — Codex P1.
+      const results = await Promise.all(calls);
+      const okCount = results.filter((r): r is Response => !!r && r.ok).length;
 
       // Always refresh state from the canonical tables, regardless of
       // per-endpoint success. Fixes the "scan-now button doesn't seem
@@ -625,17 +633,29 @@ export default function DashboardPage() {
       // Visible completion signal — addresses "spins and items don't
       // update — is it working?". A same-count scan (30 → 30) used to
       // leave the user without any signal at all.
-      const total = mapped.length;
-      const delta = total - priorCount;
-      let message: string;
-      if (total === 0) {
-        message = 'Scan complete · 0 findings — your inbox looks clean';
-      } else if (delta > 0) {
-        message = `Scan complete · ${delta} new finding${delta === 1 ? '' : 's'} (${total} total)`;
+      //
+      // BUT: if every scan call failed (e.g. revoked OAuth → 401/500
+      // across all endpoints), we must NOT show "scan complete" — that
+      // misleads the user into thinking their inbox is clean when in
+      // reality nothing scanned. Codex P1.
+      if (dedupedTargets.length > 0 && okCount === 0) {
+        setScanFeedback({
+          kind: 'error',
+          message: 'Scan failed — please re-link your email or try again.',
+        });
       } else {
-        message = `Scan complete · no new findings (${total} total)`;
+        const total = mapped.length;
+        const delta = total - priorCount;
+        let message: string;
+        if (total === 0) {
+          message = 'Scan complete · 0 findings — your inbox looks clean';
+        } else if (delta > 0) {
+          message = `Scan complete · ${delta} new finding${delta === 1 ? '' : 's'} (${total} total)`;
+        } else {
+          message = `Scan complete · no new findings (${total} total)`;
+        }
+        setScanFeedback({ kind: 'success', message });
       }
-      setScanFeedback({ kind: 'success', message });
 
       if (refreshedConns && refreshedConns.length > 0) {
         // Pick the most-recently-scanned timestamp so the UI shows the
