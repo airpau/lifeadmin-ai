@@ -150,7 +150,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'get_savings_goals',
     description:
-      "Get the user's savings goals from Money Hub — name, target amount, current progress, target date, and emoji. Use when they ask about savings targets, goals, or how much they've saved towards something.",
+      "Get the user's savings goals from Money Hub — name, target amount, current progress, target date, emoji, and id. Use when they ask about savings targets, goals, or how much they've saved towards something. Each row's id can be passed to delete_savings_goal.",
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -452,7 +452,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'get_net_worth',
     description:
-      "Get the user's net worth breakdown from Money Hub — total assets (property, savings, investments, vehicles) vs total liabilities (mortgages, loans, credit cards), with an overall net worth figure. Use when they ask about net worth, total assets, total debts, or their financial position.",
+      "Get the user's net worth breakdown from Money Hub — total assets (property, savings, investments, vehicles) vs total liabilities (mortgages, loans, credit cards), with an overall net worth figure. Each asset/liability row also includes its id, which can be passed to delete_net_worth_entry. Use when they ask about net worth, total assets, total debts, or their financial position.",
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -2314,6 +2314,121 @@ export const telegramTools: Tool[] = [
       type: 'object' as const,
       properties: {},
       required: [],
+    },
+  },
+
+  // ============================================================
+  // Money Hub write parity (2026-05-03) — bot-side counterparts to
+  // /api/money-hub/{net-worth,goals,forecast,detect-liabilities}.
+  // Each handler talks to Supabase in-process via the admin client —
+  // never HTTP-fetches our own API (PR #463 was for this mistake).
+  // ============================================================
+  {
+    name: 'add_net_worth_entry',
+    description:
+      "Add an asset or liability to the user's Money Hub Net Worth. Use when the user says things like \"add my house worth £350k\", \"track my £5k credit card balance\", or \"log my pension at £42,000\". Mirrors the Money Hub Net Worth page.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['asset', 'liability'],
+          description: 'Whether this is an asset (something you own) or a liability (something you owe).',
+        },
+        label: {
+          type: 'string',
+          description: 'Friendly name for the entry (e.g. "Family home", "Barclaycard", "Workplace pension").',
+        },
+        value_gbp: {
+          type: 'number',
+          description: 'Value in GBP. Assets: estimated value. Liabilities: outstanding balance.',
+        },
+        category: {
+          type: 'string',
+          description: 'Optional sub-type. Assets: "property", "savings", "investment", "pension", "vehicle", "crypto", "other". Liabilities: "mortgage", "loan", "credit_card", "car_finance", "overdraft", "student_loan", "other". Defaults to "other".',
+        },
+      },
+      required: ['kind', 'label', 'value_gbp'],
+    },
+  },
+  {
+    name: 'delete_net_worth_entry',
+    description:
+      "Remove an asset or liability from the user's Money Hub Net Worth by id. Get the id from get_net_worth.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        entry_id: {
+          type: 'string',
+          description: 'The id of the asset/liability row to delete.',
+        },
+        kind: {
+          type: 'string',
+          enum: ['asset', 'liability'],
+          description: 'Whether the entry is an asset or a liability — required so we hit the right table.',
+        },
+      },
+      required: ['entry_id', 'kind'],
+    },
+  },
+  {
+    name: 'delete_savings_goal',
+    description:
+      "Remove a savings goal from Money Hub by id. Use when the user wants to drop a goal entirely (separate from updating progress on it).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal_id: {
+          type: 'string',
+          description: 'The id of the savings goal to delete. Get it from get_savings_goals.',
+        },
+      },
+      required: ['goal_id'],
+    },
+  },
+  {
+    name: 'get_cashflow_forecast',
+    description:
+      "Get a forward-looking cashflow forecast — projected income, projected spending, expected bills still to land, and net position. Mirrors the Money Hub forecast widget. Use for questions like 'how is my month going to land?', 'can I afford X this month?', 'what bills are still due?'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        days: {
+          type: 'number',
+          enum: [30, 60, 90],
+          description: 'Forecast horizon in days. Defaults to 30.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'detect_liabilities',
+    description:
+      "Run the bank-transaction-based liability detector to find recurring debt payments (loans, credit cards, car finance) that aren't yet tracked in Net Worth. Returns the list of detected lenders (each row includes a lender_key) so the user can add them via add_net_worth_entry, or dismiss them via dismiss_detected_liability (pass lender_key as liability_id). Mirrors the Money Hub \"Detect liabilities\" action.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'dismiss_detected_liability',
+    description:
+      "Dismiss a detected liability so it no longer appears in detect_liabilities results. Use when the user says \"ignore that one\", \"that's not a debt\", or \"don't keep flagging this\". Pass the lender_key from detect_liabilities as liability_id.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        liability_id: {
+          type: 'string',
+          description: 'The lender_key of the detected liability to dismiss (returned by detect_liabilities).',
+        },
+        lender_name: {
+          type: 'string',
+          description: 'Display name of the lender being dismissed (returned by detect_liabilities as "lender").',
+        },
+      },
+      required: ['liability_id', 'lender_name'],
     },
   },
 ];
