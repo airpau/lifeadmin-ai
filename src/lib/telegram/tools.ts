@@ -2180,4 +2180,76 @@ export const telegramTools: Tool[] = [
       required: ['correspondence_id'],
     },
   },
+
+  // ============================================================
+  // Letters + Reports parity (mirrors /api/complaints/generate,
+  // /api/reports/generate, /api/reports). All call lib functions
+  // in-process via admin Supabase — never HTTP-fetches our own API.
+  // ============================================================
+  {
+    name: 'generate_complaint_letter',
+    description:
+      "Generate a formal UK complaint letter citing exact consumer law (Consumer Rights Act 2015, sector regulator rules, etc.). Mirrors the headline product feature at /dashboard/complaints. Free tier is capped at 3 letters per calendar month — over-cap calls return an upgrade nudge. Use when the user asks 'write me a letter to <provider>', 'complain to <provider>', or describes an unresolved billing / service issue and wants a formal letter to send.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider_name: {
+          type: 'string',
+          description: 'The company / provider the letter is addressed to (e.g. "British Gas", "EE", "Octopus Energy").',
+        },
+        issue_description: {
+          type: 'string',
+          description: "Plain-English description of what went wrong — what was charged, when, what the user has already tried.",
+        },
+        desired_outcome: {
+          type: 'string',
+          description: "What the user wants — refund, cancellation without fee, apology, etc. Defaults to 'Full refund and resolution of the issue' if omitted.",
+        },
+        evidence_excerpt: {
+          type: 'string',
+          description: "Optional short quote / reference from a bill, contract, or email the user wants the letter to lean on.",
+        },
+      },
+      required: ['provider_name', 'issue_description'],
+    },
+  },
+  {
+    name: 'generate_report',
+    description:
+      "Generate a Pro financial report. 'annual' produces a full rolling-12-month report (saved to /dashboard/insights/annual); 'on_demand' produces a fresh financial-health snapshot (not saved). Pro plan only — Free / Essential users get an upgrade nudge. Use when the user asks 'generate my annual report', 'how am I doing this month', 'give me a financial summary'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['annual', 'on_demand'],
+          description: "'annual' = full year recap saved to DB; 'on_demand' = quick current-state snapshot.",
+        },
+        period_start: {
+          type: 'string',
+          description: "Optional ISO date — currently informational only; the underlying report-generator picks its own window.",
+        },
+        period_end: {
+          type: 'string',
+          description: "Optional ISO date — currently informational only.",
+        },
+      },
+      required: ['type'],
+    },
+  },
+  {
+    name: 'list_reports',
+    description:
+      "List the user's saved financial reports (annual + any other report_types stored on annual_reports). Returns date, type, and the URL where the user can open it. Use when the user asks 'show me my reports', 'what reports have I generated', 'open my annual report'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Max rows to return (default 10).',
+        },
+      },
+      required: [],
+    },
+  },
 ];

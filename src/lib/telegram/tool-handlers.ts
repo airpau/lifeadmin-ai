@@ -17,9 +17,11 @@ import {
   getEventMeta,
   type NotificationEventType,
 } from '@/lib/notifications/events';
-import { getEffectiveTier } from '@/lib/plan-limits';
+import { getEffectiveTier, checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
 import { syncLinkedThread } from '@/lib/dispute-sync/sync-runner';
+import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
+import { generateAnnualReportData, generateOnDemandReportData } from '@/lib/report-generator';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -517,6 +519,20 @@ export async function executeToolCall(
         title: toolInput.title as string | undefined,
         content: toolInput.content as string | undefined,
       });
+    // ===== Letters + Reports parity =====
+    case 'generate_complaint_letter':
+      return generateComplaintLetterTool(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        issue_description: toolInput.issue_description as string,
+        desired_outcome: toolInput.desired_outcome as string | undefined,
+        evidence_excerpt: toolInput.evidence_excerpt as string | undefined,
+      });
+    case 'generate_report':
+      return generateReportTool(supabase, userId, {
+        type: toolInput.type as 'annual' | 'on_demand',
+      });
+    case 'list_reports':
+      return listReportsTool(supabase, userId, toolInput.limit as number | undefined);
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -7298,4 +7314,212 @@ async function editCorrespondenceEntry(
   return {
     text: `✓ Updated correspondence entry (${Object.keys(updates).join(', ')}).`,
   };
+}
+
+// ============================================================
+// LETTERS + REPORTS PARITY HANDLERS
+// All call lib functions in-process via the admin Supabase client.
+// We never HTTP-fetch our own /api routes from here (recent fix in
+// PR #463 — bot tools must stay in-process so we don't double-auth
+// or burn cold-start latency).
+// ============================================================
+
+async function generateComplaintLetterTool(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider_name: string;
+    issue_description: string;
+    desired_outcome?: string;
+    evidence_excerpt?: string;
+  },
+): Promise<ToolResult> {
+  const provider = (params.provider_name || '').trim();
+  const issue = (params.issue_description || '').trim();
+  if (!provider || !issue) {
+    return { text: 'I need a provider name and an issue description to draft the letter.' };
+  }
+
+  // Free tier is capped at 3 letters/month. checkUsageLimit reads the
+  // same usage_logs counter that /api/complaints/usage exposes — it's
+  // the single source of truth for `complaints_generated_this_month`.
+  const usage = await checkUsageLimit(userId, 'complaint_generated');
+  if (!usage.allowed) {
+    return {
+      text: `You've used ${usage.used} of ${usage.limit} free letters this month on the ${usage.tier} plan. Upgrade to Essential or Pro for unlimited letters: paybacker.co.uk/pricing`,
+    };
+  }
+
+  const desiredOutcome = (params.desired_outcome || '').trim() || 'Full refund and resolution of the issue';
+  const evidence = (params.evidence_excerpt || '').trim();
+  const issueWithEvidence = evidence
+    ? `${issue}\n\nEvidence the user wants the letter to lean on:\n"""\n${evidence.slice(0, 2000)}\n"""`
+    : issue;
+
+  // Pull legal refs the same way /api/complaints/generate does — we
+  // keep this lean (general + finance is the catch-all set used for
+  // the 'complaint' letterType) so the bot can render quickly.
+  const { data: legalRefs } = await supabase
+    .from('legal_references')
+    .select('law_name, section, summary, source_url, escalation_body, verification_status')
+    .in('category', ['general', 'finance'])
+    .in('verification_status', ['current', 'updated', 'needs_review']);
+
+  const verifiedLegalRefs = (legalRefs || [])
+    .map((r) => `- ${r.law_name}${r.section ? `, ${r.section}` : ''}: ${r.summary}${r.escalation_body ? ` (Escalate to: ${r.escalation_body})` : ''} [Source: ${r.source_url}]`)
+    .join('\n');
+
+  let result;
+  try {
+    result = await generateComplaintLetter({
+      companyName: provider,
+      issueDescription: issueWithEvidence,
+      desiredOutcome,
+      letterType: 'complaint',
+      verifiedLegalRefs,
+    });
+  } catch (err) {
+    return { text: `Couldn't generate the letter — ${err instanceof Error ? err.message : 'unknown error'}.` };
+  }
+
+  // Auto-fill profile placeholders, mirroring the API route.
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, email, phone, mobile_number, address, postcode')
+    .eq('id', userId)
+    .single();
+
+  if (profile && result.letter) {
+    const name = profile.full_name || '';
+    const email = profile.email || '';
+    const phone = profile.phone || profile.mobile_number || '';
+    const addr = profile.address || '';
+    const pc = profile.postcode || '';
+    const fullAddress = addr && pc ? `${addr}, ${pc}` : addr || pc || '';
+    result.letter = result.letter
+      .replace(/\[YOUR NAME\]/gi, name)
+      .replace(/\[YOUR FULL NAME\]/gi, name)
+      .replace(/\[YOUR EMAIL\]/gi, email)
+      .replace(/\[YOUR EMAIL ADDRESS\]/gi, email)
+      .replace(/\[YOUR PHONE\]/gi, phone)
+      .replace(/\[YOUR PHONE NUMBER\]/gi, phone)
+      .replace(/\[YOUR TELEPHONE\]/gi, phone)
+      .replace(/\[YOUR ADDRESS\]/gi, fullAddress || '[Address not provided]')
+      .replace(/\[YOUR POSTCODE\]/gi, pc || '[Postcode not provided]');
+  }
+
+  // Persist the letter as a task so it shows up in /dashboard/complaints
+  // alongside letters generated from the web app.
+  const { data: task } = await supabase
+    .from('tasks')
+    .insert({
+      user_id: userId,
+      type: 'complaint_letter',
+      title: `Complaint to ${provider}`,
+      description: issue,
+      provider_name: provider,
+      status: 'pending_review',
+    })
+    .select('id')
+    .single();
+
+  if (task) {
+    await supabase.from('agent_runs').insert({
+      task_id: task.id,
+      user_id: userId,
+      agent_type: 'complaint_writer',
+      model_name: 'claude-sonnet-4-6',
+      status: 'completed',
+      input_data: { provider_name: provider, issue_description: issue, desired_outcome: desiredOutcome, source: 'pocket_agent' },
+      output_data: result,
+      legal_references: result.legalReferences,
+      input_tokens: result.usage?.input_tokens || null,
+      output_tokens: result.usage?.output_tokens || null,
+      completed_at: new Date().toISOString(),
+    });
+  }
+
+  await incrementUsage(userId, 'complaint_generated');
+
+  const excerpt = (result.letter || '').slice(0, 400);
+  const taskRef = task?.id ? task.id.slice(0, 8) : '—';
+  const link = task?.id
+    ? `/dashboard/complaints/${task.id}`
+    : '/dashboard/complaints';
+  const remaining = usage.limit === null ? 'unlimited' : `${Math.max(0, (usage.limit ?? 0) - usage.used - 1)} left this month`;
+
+  return {
+    text: `✓ Generated letter ID ${taskRef} — see ${link}\n\n${excerpt}${result.letter && result.letter.length > 400 ? '…' : ''}\n\n_${remaining} on the ${usage.tier} plan._`,
+  };
+}
+
+async function generateReportTool(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { type: 'annual' | 'on_demand' },
+): Promise<ToolResult> {
+  const type = params.type;
+  if (type !== 'annual' && type !== 'on_demand') {
+    return { text: "Report type must be 'annual' or 'on_demand'." };
+  }
+
+  // Pro-only — same gate as POST /api/reports/generate.
+  const tier = await getEffectiveTier(userId);
+  if (tier !== 'pro') {
+    return {
+      text: `Financial reports are a Pro feature. You're on the ${tier} plan — upgrade at paybacker.co.uk/pricing to unlock.`,
+    };
+  }
+
+  try {
+    if (type === 'on_demand') {
+      const data = await generateOnDemandReportData(userId);
+      const month = data.currentMonth || new Date().toISOString().slice(0, 7);
+      return {
+        text: `✓ Quick snapshot ready for ${month} — net position ${fmt(data.netPosition)} (income ${fmt(data.currentMonthIncome)} − spend ${fmt(data.currentMonthSpend)}). Open /dashboard/insights to view the full breakdown.`,
+      };
+    }
+
+    const reportYear = new Date().getFullYear();
+    const data = await generateAnnualReportData(userId, reportYear);
+    await supabase.from('annual_reports').insert({
+      user_id: userId,
+      report_type: 'annual',
+      year: reportYear,
+      data,
+    });
+    return {
+      text: `✓ Report generated — open /dashboard/insights/annual to view. Rolling 12-month total: income ${fmt(data.totalIncome)}, spend ${fmt(data.totalOutgoings)}, net ${fmt(data.netPosition)}.`,
+    };
+  } catch (err) {
+    return { text: `Report generation failed — ${err instanceof Error ? err.message : 'unknown error'}.` };
+  }
+}
+
+async function listReportsTool(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  limit?: number,
+): Promise<ToolResult> {
+  const cap = Math.max(1, Math.min(50, limit ?? 10));
+  const { data, error } = await supabase
+    .from('annual_reports')
+    .select('id, report_type, year, month, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(cap);
+
+  if (error) return { text: `Couldn't load reports: ${error.message}` };
+  if (!data || data.length === 0) return { text: 'No saved reports yet. Ask me to generate an annual or on-demand report.' };
+
+  const lines = data.map((r) => {
+    const url = r.report_type === 'annual'
+      ? `/dashboard/insights/annual${r.year ? `?year=${r.year}` : ''}`
+      : '/dashboard/insights';
+    const periodLabel = r.year
+      ? `${r.report_type} ${r.year}${r.month ? `-${String(r.month).padStart(2, '0')}` : ''}`
+      : r.report_type;
+    return `• ${fmtDate(r.created_at)} — ${periodLabel} — ${url}`;
+  });
+  return { text: `*Your reports (${data.length}):*\n${lines.join('\n')}` };
 }
