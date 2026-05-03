@@ -40,6 +40,7 @@ import {
   DealsDemo,
   McpDemo,
 } from './demos';
+import { createClient } from '@/lib/supabase/client';
 import './styles.css';
 
 // React.CSSProperties doesn't know about CSS custom properties.
@@ -173,8 +174,43 @@ function Counter({
 // ---------------------------------------------------------------------------
 // Nav — pill nav with scroll-shrink + scroll-progress bar
 // ---------------------------------------------------------------------------
+// Client-side auth probe used by the marketing nav / mobile drawer to
+// swap "Sign in / Start free" → "Open Dashboard" for users who already
+// have a valid Supabase session. Without this, signed-in users land
+// here in a new tab, see the prominent "Sign in" button, and assume
+// their session has expired — even though the cookie is still valid
+// (proxy.ts has been refreshing it on every request). Returns:
+//   null  → not yet resolved (initial server-matched render)
+//   true  → logged in
+//   false → logged out
+function useIsLoggedIn(): boolean | null {
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (cancelled) return;
+      setIsLoggedIn(!!data.user);
+    }).catch(() => {
+      if (cancelled) return;
+      setIsLoggedIn(false);
+    });
+    // Pick up sign-in / sign-out that happened in another tab.
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      if (cancelled) return;
+      setIsLoggedIn(!!session?.user);
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+  return isLoggedIn;
+}
+
 function Nav() {
   const [scrolled, setScrolled] = useState(false);
+  const isLoggedIn = useIsLoggedIn();
 
   useEffect(() => {
     let rafId = 0;
@@ -251,12 +287,37 @@ function Nav() {
             )}
           </div>
           <div className="nav-cta-row">
-            <Link className="nav-signin" href="/auth/login">
-              Sign in
-            </Link>
-            <Link className="nav-start" href="/auth/signup">
-              Start free
-            </Link>
+            {/*
+              While the auth probe is in flight (`isLoggedIn === null`)
+              we render the logged-out CTAs but visually hide them so
+              the slot reserves layout (matches SSR + prevents layout
+              shift) and signed-in users don't see a flash of
+              "Sign in / Start free" before the probe resolves. Codex
+              P2 on PR #450 — the whole point of this hook is to kill
+              that flash.
+            */}
+            {isLoggedIn === true ? (
+              <Link className="nav-start" href="/dashboard">
+                Open Dashboard
+              </Link>
+            ) : isLoggedIn === false ? (
+              <>
+                <Link className="nav-signin" href="/auth/login">
+                  Sign in
+                </Link>
+                <Link className="nav-start" href="/auth/signup">
+                  Start free
+                </Link>
+              </>
+            ) : (
+              <span
+                aria-hidden="true"
+                style={{ visibility: 'hidden', display: 'inline-flex', gap: 'var(--m-v2-cta-gap, 8px)' }}
+              >
+                <span className="nav-signin">Sign in</span>
+                <span className="nav-start">Start free</span>
+              </span>
+            )}
             <button
               type="button"
               className="nav-burger"
@@ -305,12 +366,27 @@ function Nav() {
               )}
             </div>
             <div className="nav-drawer-ctas">
-              <Link className="btn btn-ghost" href="/auth/login" onClick={() => setMenuOpen(false)}>
-                Sign in
-              </Link>
-              <Link className="btn btn-mint" href="/auth/signup" onClick={() => setMenuOpen(false)}>
-                Sign up free
-              </Link>
+              {isLoggedIn === true ? (
+                <Link className="btn btn-mint" href="/dashboard" onClick={() => setMenuOpen(false)}>
+                  Open Dashboard
+                </Link>
+              ) : isLoggedIn === false ? (
+                <>
+                  <Link className="btn btn-ghost" href="/auth/login" onClick={() => setMenuOpen(false)}>
+                    Sign in
+                  </Link>
+                  <Link className="btn btn-mint" href="/auth/signup" onClick={() => setMenuOpen(false)}>
+                    Sign up free
+                  </Link>
+                </>
+              ) : (
+                // Same null-state guard as the desktop nav — reserve
+                // layout but stay invisible until the probe resolves.
+                <span aria-hidden="true" style={{ visibility: 'hidden' }}>
+                  <span className="btn btn-ghost">Sign in</span>
+                  <span className="btn btn-mint">Sign up free</span>
+                </span>
+              )}
             </div>
           </div>
         </>
