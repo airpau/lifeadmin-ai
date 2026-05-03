@@ -7470,9 +7470,14 @@ async function generateComplaintLetterTool(
 
   const excerpt = (result.letter || '').slice(0, 400);
   const taskRef = task?.id ? task.id.slice(0, 8) : '—';
+  // Telegram only auto-links absolute http(s) URLs — Codex P2 (round 2)
+  // flagged that the bot returned a relative `/dashboard/...` path which
+  // surfaced as plain text. Mirror the SITE() pattern used by every other
+  // browser-handoff handler in this file.
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
   const link = task?.id
-    ? `/dashboard/complaints/${task.id}`
-    : '/dashboard/complaints';
+    ? `${origin}/dashboard/complaints/${task.id}`
+    : `${origin}/dashboard/complaints`;
   const remaining = usage.limit === null ? 'unlimited' : `${Math.max(0, (usage.limit ?? 0) - usage.used - 1)} left this month`;
 
   return {
@@ -7509,14 +7514,22 @@ async function generateReportTool(
 
     const reportYear = new Date().getFullYear();
     const data = await generateAnnualReportData(userId, reportYear);
-    await supabase.from('annual_reports').insert({
+    // Codex P2 (round 2) — capture insert error so we don't claim a save
+    // succeeded when the DB rejected it (RLS, schema drift, transient
+    // outage). Mirror the error-surfacing pattern used by listReportsTool
+    // above instead of silently returning the success copy.
+    const { error: insertError } = await supabase.from('annual_reports').insert({
       user_id: userId,
       report_type: 'annual',
       year: reportYear,
       data,
     });
+    if (insertError) {
+      return { text: `Couldn't save the report — ${insertError.message}` };
+    }
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
     return {
-      text: `✓ Report generated — open /dashboard/insights/annual to view. Rolling 12-month total: income ${fmt(data.totalIncome)}, spend ${fmt(data.totalOutgoings)}, net ${fmt(data.netPosition)}.`,
+      text: `✓ Report generated — open ${origin}/dashboard/insights/annual to view. Rolling 12-month total: income ${fmt(data.totalIncome)}, spend ${fmt(data.totalOutgoings)}, net ${fmt(data.netPosition)}.`,
     };
   } catch (err) {
     return { text: `Report generation failed — ${err instanceof Error ? err.message : 'unknown error'}.` };
