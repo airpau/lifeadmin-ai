@@ -40,6 +40,11 @@ interface Correction {
   } | null;
   enrichment_data?: { risk_score?: 'low' | 'medium' | 'high' | null } | null;
   enriched_at?: string | null;
+  // Phase 3 of compliance UX overhaul: AI-written one-line founder
+  // instruction for stuck items (e.g. "Search legislation.gov.uk for
+  // 'Consumer Rights Act 2015 s.9' and paste the new URL"). NULL on
+  // normal proposed-change corrections. Phase 1 will render this inline.
+  action_instructions?: string | null;
 }
 
 const CONFIDENCE_CLASS: Record<string, string> = {
