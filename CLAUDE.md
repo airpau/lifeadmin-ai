@@ -370,7 +370,8 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 - UK-specific copy (£ symbols, British spelling)
 
 ### Git Workflow & Deployment Safety
-- Main branch is production — every commit is a backup point
+- **Production branch is `master`, not `main`.** All PRs MUST target `master`. The repo also contains an `origin/main` ref but it is stale / unused — diffing against `main` will report thousands of unrelated changed files. Always `git fetch origin master` and base PRs on `master`.
+- Master branch is production — every commit is a backup point
 - Feature branches: feature/description
 - Commit messages: Conventional Commits format
 - Always include Co-Authored-By: Claude when pair programming
