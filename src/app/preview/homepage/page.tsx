@@ -1074,253 +1074,6 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
-      {/* ========== Real win — OneStream broadband ========== */}
-      {/* Real Paybacker case used here as social-proof + ROI proof
-          point. Sits after the trust band so credentials → real proof
-          → product features in the homepage flow. Don't claim the
-          dispute is settled — frame as "what was offered vs what UK
-          law entitles you to" and let the gap speak for itself. */}
-      <section className="real-win section-mint" id="real-win" aria-label="Real Paybacker case — broadband outage compensation">
-        <div className="wrap">
-          <Reveal className="section-head section-head--center">
-            <span className="eyebrow">A real Paybacker win — this week</span>
-            <h2>
-              Their offer: £106.96.
-              <br />
-              <span style={{ color: 'var(--accent-orange-deep)' }}>What the law actually said: £505.46.</span>
-            </h2>
-            <p>
-              Two flats. 35 days and 17 days without broadband. The provider offered
-              roughly 1.5 months&rsquo; service charges as &ldquo;goodwill&rdquo;. Paybacker
-              cited the Ofcom Voluntary Automatic Compensation Scheme — £10.07 per
-              calendar day from day three of an outage — plus £31.19 per missed
-              engineer appointment. The gap is £398.50.
-            </p>
-          </Reveal>
-
-          <div className="real-win__grid">
-            <Reveal className="real-win__card real-win__card--lose">
-              <div className="real-win__label">What the supplier offered</div>
-              <div className="real-win__amount">£106.96</div>
-              <ul className="real-win__list">
-                <li>1 month of service charges on Flat 2 — £38.65</li>
-                <li>1.5 months of service charges on Flat 1 — £68.31</li>
-                <li>Framed as &ldquo;goodwill&rdquo;, not entitlement</li>
-                <li>No mention of Ofcom Auto-Comp Scheme</li>
-                <li>No allowance for missed engineer visits</li>
-              </ul>
-              <div className="real-win__caption">What most people would just accept.</div>
-            </Reveal>
-
-            <div className="real-win__arrow" aria-hidden="true">
-              <svg viewBox="0 0 64 24" fill="none">
-                <path d="M2 12 H56 M48 4 L60 12 L48 20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-
-            <Reveal className="real-win__card real-win__card--win">
-              <div className="real-win__label">What UK law actually says</div>
-              <div className="real-win__amount">£505.46</div>
-              <ul className="real-win__list">
-                <li>£312.17 — Auto-Comp on Flat 1 (31 days × £10.07)</li>
-                <li>£130.91 — Auto-Comp on Flat 2 (13 days × £10.07)</li>
-                <li>£62.38 — 2 missed engineer appointments × £31.19</li>
-                <li>Plus journey costs &amp; tenant losses on top</li>
-                <li>Cited from Ofcom GC C3.13, CRA 2015 s.49 + s.62</li>
-              </ul>
-              <div className="real-win__caption">What Paybacker&rsquo;s letter demanded — in 30 seconds.</div>
-            </Reveal>
-          </div>
-
-          <Reveal className="real-win__roi">
-            <div className="real-win__roi-headline">
-              <span className="real-win__roi-multiple">~4&times;</span>
-              <span>your annual Pro subscription, recovered on a single dispute.</span>
-            </div>
-            <p className="real-win__roi-detail">
-              Pro is £94.99/year. The gap on this one case alone (£398.50) is more
-              than 4× the cost of a year&rsquo;s Pro membership — recovered from one
-              outage, one letter, one click.
-            </p>
-            <div className="real-win__equivalents">
-              <div className="real-win__equivalents-label">£398 is about:</div>
-              <ul>
-                <li>🏖️ A long weekend in Lisbon</li>
-                <li>☕ 130 flat whites at your local</li>
-                <li>📡 A whole year of broadband</li>
-                <li>🎬 40 cinema tickets</li>
-                <li>🏋️ A year of Pure Gym</li>
-                <li>🛒 4 weeks of family food shopping</li>
-              </ul>
-            </div>
-          </Reveal>
-
-          <Reveal className="real-win__footnote">
-            Real Paybacker case. Provider name and figures from the actual provider
-            email, dated 28 April 2026. Compensation rates published by Ofcom and
-            effective from 1 April 2026. Final settlement may differ — Paybacker
-            cites the law and tracks the case through the provider&rsquo;s formal
-            complaint process and Ombudsman Services if needed.
-          </Reveal>
-        </div>
-      </section>
-
-      {/* ========== vs Lawyers / Claims firms ==========
-          Strategic positioning: Paybacker replaces the legal-services
-          spend (solicitors at £250/hr, claims firms taking 30%), not
-          another budgeting app. This block sits straight after the
-          case study so the reader has the proof first, then the
-          alternative-cost framing. Re-uses .pricing-grid + .price-card
-          so it inherits the responsive stacking already wired into the
-          mobile breakpoint. */}
-      <section className="pricing-section section-light" id="vs-lawyers" aria-label="Paybacker vs solicitors and claims management firms">
-        <div className="wrap">
-          <Reveal className="section-head section-head--center">
-            <span className="eyebrow">The category we replace</span>
-            <h2 style={{ margin: '12px 0' }}>
-              Why people pay solicitors and claims firms —
-              <br />
-              and why you don&rsquo;t need to.
-            </h2>
-            <p>
-              The same dispute, three ways to run it. Same UK statutes
-              cited. Wildly different price tag.
-            </p>
-          </Reveal>
-
-          <div className="pricing-grid">
-            <Reveal className="price-card" delay={0}>
-              <div className="tier">Solicitor</div>
-              <div className="price">£250<span className="per">/hour</span></div>
-              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
-              <ul>
-                <li>Books a 30-minute consultation</li>
-                <li>You repeat the facts on the call</li>
-                <li>Drafts one letter, then bills you</li>
-                <li>Forgets to chase the response</li>
-                <li>Won&rsquo;t take cases under £1,000</li>
-              </ul>
-            </Reveal>
-
-            <Reveal className="price-card" delay={80}>
-              <div className="tier">Claims management firm</div>
-              <div className="price">30%<span className="per">of recovery</span></div>
-              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
-              <ul>
-                <li>Takes a third of whatever you recover</li>
-                <li>Cherry-picks high-value cases only</li>
-                <li>Drops you if your claim is under £200</li>
-                <li>You sign over conduct of the case</li>
-                <li>Often run by ex-PPI shops, not lawyers</li>
-              </ul>
-            </Reveal>
-
-            <Reveal className="price-card featured" delay={160}>
-              <span className="ribbon">You keep 100%</span>
-              <div className="tier">Paybacker</div>
-              <div className="price">£4.99<span className="per">/month</span></div>
-              <div className="founding">Or use the free tier — 3 letters / month</div>
-              <ul>
-                <li>Drafts the letter in 30 seconds</li>
-                <li>Cites the exact UK statute, not a template</li>
-                <li>Tracks the response in your inbox automatically</li>
-                <li>Escalates to the Ombudsman when the 8-week clock hits</li>
-                <li>You keep 100% of every £ recovered</li>
-              </ul>
-              <Link className="btn btn-mint cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
-                Start free →
-              </Link>
-            </Reveal>
-          </div>
-
-          <p className="compare-footnote" style={{ marginTop: 24 }}>
-            Paybacker is not a law firm and AI-generated letters are guidance,
-            not legal advice. For complex litigation, instruct a solicitor.
-            For everyday consumer disputes — broadband, energy, parking,
-            flights, faulty goods — paying £250/hour is the part we&rsquo;re
-            replacing.
-          </p>
-        </div>
-      </section>
-
-      {/* ========== How it works (dark) ========== */}
-      <section className="how-section section-ink" id="how">
-        <div className="wrap">
-          <Reveal className="section-head">
-            <span className="eyebrow on-ink">How it works</span>
-            <h2>
-              Three steps. Ten minutes.
-              <br />
-              Usually four-figure savings.
-            </h2>
-            <p className="sub">
-              You don&rsquo;t have to connect anything to see it work. Try the
-              Disputes Centre for free — no account needed.
-            </p>
-          </Reveal>
-
-          <div className="how-steps">
-            <Reveal className="how-step" delay={0}>
-              <div className="num">01</div>
-              <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
-              <p>
-                Pick the category, type a sentence. We cite the law, you send the
-                letter.
-              </p>
-              <HeroDemo />
-            </Reveal>
-
-            <Reveal className="how-step" delay={80}>
-              <div className="num">02</div>
-              <h3>Connect your bank and email to find hidden costs.</h3>
-              <p>Open Banking via Yapily. Read-only. Never stored longer than needed.</p>
-              <div className="bank-list">
-                <div className="bank-row"><span className="n">Monzo · main</span><span className="v">Connected</span></div>
-                <div className="bank-row"><span className="n">Barclays · joint</span><span className="v">Connected</span></div>
-                <div className="bank-row"><span className="n">Chase · savings</span><span className="v">Connected</span></div>
-                <div className="bank-row"><span className="n">Gmail · inbox scan</span><span className="v orange">3 hikes</span></div>
-                <div className="bank-row"><span className="n">Outlook · work</span><span className="v orange">1 duplicate</span></div>
-              </div>
-            </Reveal>
-
-            <Reveal className="how-step" delay={160}>
-              <div className="num">03</div>
-              <h3>We escalate the dispute end-to-end — provider, then Ombudsman.</h3>
-              <p>Watchdog reads the provider&rsquo;s reply, escalates after 8 weeks if needed, and tracks every step. You keep 100% of what we recover.</p>
-              <div style={{ marginTop: 'auto' }}>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Step 1</div>
-                    <div className="name">Provider escalation</div>
-                  </div>
-                  <div className="save">Auto</div>
-                </div>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Step 2</div>
-                    <div className="name">Ombudsman at 8 weeks</div>
-                  </div>
-                  <div className="save">Auto</div>
-                </div>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Step 3</div>
-                    <div className="name">Refund recovered</div>
-                  </div>
-                  <div className="save">100% yours</div>
-                </div>
-              </div>
-            </Reveal>
-          </div>
-
-          <div className="how-cta-row">
-            <Link className="btn btn-mint" href="/auth/signup">
-              Try it free — no account needed
-            </Link>
-          </div>
-        </div>
-      </section>
-
       {/* ========== Features intro ========== */}
       <section className="features-intro section-light" id="features">
         <div className="wrap">
@@ -1574,6 +1327,253 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="feature-stage" delay={120}>
               <PocketAgentDemo />
             </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ========== Real win — OneStream broadband ========== */}
+      {/* Real Paybacker case used here as social-proof + ROI proof
+          point. Sits after the trust band so credentials → real proof
+          → product features in the homepage flow. Don't claim the
+          dispute is settled — frame as "what was offered vs what UK
+          law entitles you to" and let the gap speak for itself. */}
+      <section className="real-win section-mint" id="real-win" aria-label="Real Paybacker case — broadband outage compensation">
+        <div className="wrap">
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow">A real Paybacker win — this week</span>
+            <h2>
+              Their offer: £106.96.
+              <br />
+              <span style={{ color: 'var(--accent-orange-deep)' }}>What the law actually said: £505.46.</span>
+            </h2>
+            <p>
+              Two flats. 35 days and 17 days without broadband. The provider offered
+              roughly 1.5 months&rsquo; service charges as &ldquo;goodwill&rdquo;. Paybacker
+              cited the Ofcom Voluntary Automatic Compensation Scheme — £10.07 per
+              calendar day from day three of an outage — plus £31.19 per missed
+              engineer appointment. The gap is £398.50.
+            </p>
+          </Reveal>
+
+          <div className="real-win__grid">
+            <Reveal className="real-win__card real-win__card--lose">
+              <div className="real-win__label">What the supplier offered</div>
+              <div className="real-win__amount">£106.96</div>
+              <ul className="real-win__list">
+                <li>1 month of service charges on Flat 2 — £38.65</li>
+                <li>1.5 months of service charges on Flat 1 — £68.31</li>
+                <li>Framed as &ldquo;goodwill&rdquo;, not entitlement</li>
+                <li>No mention of Ofcom Auto-Comp Scheme</li>
+                <li>No allowance for missed engineer visits</li>
+              </ul>
+              <div className="real-win__caption">What most people would just accept.</div>
+            </Reveal>
+
+            <div className="real-win__arrow" aria-hidden="true">
+              <svg viewBox="0 0 64 24" fill="none">
+                <path d="M2 12 H56 M48 4 L60 12 L48 20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+
+            <Reveal className="real-win__card real-win__card--win">
+              <div className="real-win__label">What UK law actually says</div>
+              <div className="real-win__amount">£505.46</div>
+              <ul className="real-win__list">
+                <li>£312.17 — Auto-Comp on Flat 1 (31 days × £10.07)</li>
+                <li>£130.91 — Auto-Comp on Flat 2 (13 days × £10.07)</li>
+                <li>£62.38 — 2 missed engineer appointments × £31.19</li>
+                <li>Plus journey costs &amp; tenant losses on top</li>
+                <li>Cited from Ofcom GC C3.13, CRA 2015 s.49 + s.62</li>
+              </ul>
+              <div className="real-win__caption">What Paybacker&rsquo;s letter demanded — in 30 seconds.</div>
+            </Reveal>
+          </div>
+
+          <Reveal className="real-win__roi">
+            <div className="real-win__roi-headline">
+              <span className="real-win__roi-multiple">~4&times;</span>
+              <span>your annual Pro subscription, recovered on a single dispute.</span>
+            </div>
+            <p className="real-win__roi-detail">
+              Pro is £94.99/year. The gap on this one case alone (£398.50) is more
+              than 4× the cost of a year&rsquo;s Pro membership — recovered from one
+              outage, one letter, one click.
+            </p>
+            <div className="real-win__equivalents">
+              <div className="real-win__equivalents-label">£398 is about:</div>
+              <ul>
+                <li>🏖️ A long weekend in Lisbon</li>
+                <li>☕ 130 flat whites at your local</li>
+                <li>📡 A whole year of broadband</li>
+                <li>🎬 40 cinema tickets</li>
+                <li>🏋️ A year of Pure Gym</li>
+                <li>🛒 4 weeks of family food shopping</li>
+              </ul>
+            </div>
+          </Reveal>
+
+          <Reveal className="real-win__footnote">
+            Real Paybacker case. Provider name and figures from the actual provider
+            email, dated 28 April 2026. Compensation rates published by Ofcom and
+            effective from 1 April 2026. Final settlement may differ — Paybacker
+            cites the law and tracks the case through the provider&rsquo;s formal
+            complaint process and Ombudsman Services if needed.
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ========== vs Lawyers / Claims firms ==========
+          Strategic positioning: Paybacker replaces the legal-services
+          spend (solicitors at £250/hr, claims firms taking 30%), not
+          another budgeting app. This block sits straight after the
+          case study so the reader has the proof first, then the
+          alternative-cost framing. Re-uses .pricing-grid + .price-card
+          so it inherits the responsive stacking already wired into the
+          mobile breakpoint. */}
+      <section className="pricing-section section-light" id="vs-lawyers" aria-label="Paybacker vs solicitors and claims management firms">
+        <div className="wrap">
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow">The category we replace</span>
+            <h2 style={{ margin: '12px 0' }}>
+              Why people pay solicitors and claims firms —
+              <br />
+              and why you don&rsquo;t need to.
+            </h2>
+            <p>
+              The same dispute, three ways to run it. Same UK statutes
+              cited. Wildly different price tag.
+            </p>
+          </Reveal>
+
+          <div className="pricing-grid">
+            <Reveal className="price-card" delay={0}>
+              <div className="tier">Solicitor</div>
+              <div className="price">£250<span className="per">/hour</span></div>
+              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
+              <ul>
+                <li>Books a 30-minute consultation</li>
+                <li>You repeat the facts on the call</li>
+                <li>Drafts one letter, then bills you</li>
+                <li>Forgets to chase the response</li>
+                <li>Won&rsquo;t take cases under £1,000</li>
+              </ul>
+            </Reveal>
+
+            <Reveal className="price-card" delay={80}>
+              <div className="tier">Claims management firm</div>
+              <div className="price">30%<span className="per">of recovery</span></div>
+              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
+              <ul>
+                <li>Takes a third of whatever you recover</li>
+                <li>Cherry-picks high-value cases only</li>
+                <li>Drops you if your claim is under £200</li>
+                <li>You sign over conduct of the case</li>
+                <li>Often run by ex-PPI shops, not lawyers</li>
+              </ul>
+            </Reveal>
+
+            <Reveal className="price-card featured" delay={160}>
+              <span className="ribbon">You keep 100%</span>
+              <div className="tier">Paybacker</div>
+              <div className="price">£4.99<span className="per">/month</span></div>
+              <div className="founding">Or use the free tier — 3 letters / month</div>
+              <ul>
+                <li>Drafts the letter in 30 seconds</li>
+                <li>Cites the exact UK statute, not a template</li>
+                <li>Tracks the response in your inbox automatically</li>
+                <li>Escalates to the Ombudsman when the 8-week clock hits</li>
+                <li>You keep 100% of every £ recovered</li>
+              </ul>
+              <Link className="btn btn-mint cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
+                Start free →
+              </Link>
+            </Reveal>
+          </div>
+
+          <p className="compare-footnote" style={{ marginTop: 24 }}>
+            Paybacker is not a law firm and AI-generated letters are guidance,
+            not legal advice. For complex litigation, instruct a solicitor.
+            For everyday consumer disputes — broadband, energy, parking,
+            flights, faulty goods — paying £250/hour is the part we&rsquo;re
+            replacing.
+          </p>
+        </div>
+      </section>
+
+      {/* ========== How it works (dark) ========== */}
+      <section className="how-section section-ink" id="how">
+        <div className="wrap">
+          <Reveal className="section-head">
+            <span className="eyebrow on-ink">How it works</span>
+            <h2>
+              Three steps. Ten minutes.
+              <br />
+              Usually four-figure savings.
+            </h2>
+            <p className="sub">
+              You don&rsquo;t have to connect anything to see it work. Try the
+              Disputes Centre for free — no account needed.
+            </p>
+          </Reveal>
+
+          <div className="how-steps">
+            <Reveal className="how-step" delay={0}>
+              <div className="num">01</div>
+              <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
+              <p>
+                Pick the category, type a sentence. We cite the law, you send the
+                letter.
+              </p>
+              <HeroDemo />
+            </Reveal>
+
+            <Reveal className="how-step" delay={80}>
+              <div className="num">02</div>
+              <h3>Connect your bank and email to find hidden costs.</h3>
+              <p>Open Banking via Yapily. Read-only. Never stored longer than needed.</p>
+              <div className="bank-list">
+                <div className="bank-row"><span className="n">Monzo · main</span><span className="v">Connected</span></div>
+                <div className="bank-row"><span className="n">Barclays · joint</span><span className="v">Connected</span></div>
+                <div className="bank-row"><span className="n">Chase · savings</span><span className="v">Connected</span></div>
+                <div className="bank-row"><span className="n">Gmail · inbox scan</span><span className="v orange">3 hikes</span></div>
+                <div className="bank-row"><span className="n">Outlook · work</span><span className="v orange">1 duplicate</span></div>
+              </div>
+            </Reveal>
+
+            <Reveal className="how-step" delay={160}>
+              <div className="num">03</div>
+              <h3>We escalate the dispute end-to-end — provider, then Ombudsman.</h3>
+              <p>Watchdog reads the provider&rsquo;s reply, escalates after 8 weeks if needed, and tracks every step. You keep 100% of what we recover.</p>
+              <div style={{ marginTop: 'auto' }}>
+                <div className="deal-row">
+                  <div>
+                    <div className="cat">Step 1</div>
+                    <div className="name">Provider escalation</div>
+                  </div>
+                  <div className="save">Auto</div>
+                </div>
+                <div className="deal-row">
+                  <div>
+                    <div className="cat">Step 2</div>
+                    <div className="name">Ombudsman at 8 weeks</div>
+                  </div>
+                  <div className="save">Auto</div>
+                </div>
+                <div className="deal-row">
+                  <div>
+                    <div className="cat">Step 3</div>
+                    <div className="name">Refund recovered</div>
+                  </div>
+                  <div className="save">100% yours</div>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+
+          <div className="how-cta-row">
+            <Link className="btn btn-mint" href="/auth/signup">
+              Try it free — no account needed
+            </Link>
           </div>
         </div>
       </section>
