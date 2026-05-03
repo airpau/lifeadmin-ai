@@ -9,9 +9,22 @@
  *   1. Create a Twilio Content (POST /v1/Content) — body + variables.
  *   2. Submit it for WhatsApp approval (POST /v1/Content/{sid}/ApprovalRequests/whatsapp).
  *   3. UPSERT the new SID + approval_status='pending' into whatsapp_template_sids.
- *   4. 1s rate-limit between templates.
+ *   4. 2s rate-limit between templates (bumped from 1s on 2026-05-03 — Meta
+ *      has been flaky on rapid resubmissions).
  *
  * Body: { template_names?: string[] }. Omitted = resubmit all PENDING_RESUBMISSION.
+ *
+ * Sources picked up when `template_names` is omitted (deduped):
+ *   1. Registry rows where `sid === PENDING_RESUBMISSION` (compile-time
+ *      sentinel — always-needs-submitting templates).
+ *   2. `whatsapp_template_sids` rows where `approval_status = 'rejected'`
+ *      AND the template still exists in the registry. Even if the
+ *      registry has a real (non-PENDING) SID, if the DB says rejected
+ *      we attempt a fresh submission with the current registry body.
+ *      Twilio creates a new SID per submission so the upsert handles it.
+ *
+ * Response includes a `resubmittedRejected` count so callers can see how
+ * many rejected templates got auto-retried this run.
  *
  * Logs every action to business_log under category `whatsapp_template_resubmit`.
  * Twilio creds are NEVER returned in the response or echoed to console.
@@ -103,17 +116,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     body = {};
   }
 
+  const sb = adminClient();
+
   const allPending: TemplateName[] = (Object.keys(TEMPLATES) as TemplateName[]).filter((n) => {
     const t = TEMPLATES[n];
     return t.sid === PENDING_RESUBMISSION;
   });
 
-  const requested = body.template_names && body.template_names.length > 0
-    ? (body.template_names.filter((n): n is TemplateName => n in TEMPLATES) as TemplateName[])
-    : allPending;
+  // Auto-pick rejected templates from the DB (added 2026-05-03). When the
+  // founder corrects a body and pushes a new build, hitting "Resubmit
+  // pending" should also retry every previously-rejected template — even
+  // if the registry still has a live SID for it. Meta gives us a fresh
+  // SID per submission, so the upsert path below handles the rotation.
+  let rejectedNames: TemplateName[] = [];
+  try {
+    const { data: rejectedRows } = await sb
+      .from('whatsapp_template_sids')
+      .select('template_name')
+      .eq('approval_status', 'rejected');
+    rejectedNames = ((rejectedRows ?? []) as Array<{ template_name: string }>)
+      .map((r) => r.template_name)
+      .filter((n): n is TemplateName => n in TEMPLATES);
+  } catch (e) {
+    // Non-fatal — log + continue with the registry-only pending set.
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[resubmit-pending] failed to load rejected DB rows:', msg);
+  }
+
+  let requested: TemplateName[];
+  let resubmittedRejected = 0;
+  if (body.template_names && body.template_names.length > 0) {
+    requested = body.template_names.filter((n): n is TemplateName => n in TEMPLATES) as TemplateName[];
+  } else {
+    // Union allPending + rejectedNames (deduped via Set).
+    const set = new Set<TemplateName>([...allPending, ...rejectedNames]);
+    requested = Array.from(set);
+    // How many of the resolved set came in via the rejected-DB path?
+    resubmittedRejected = rejectedNames.filter((n) => set.has(n)).length;
+  }
 
   if (requested.length === 0) {
-    return NextResponse.json({ submitted: [], failed: [], note: 'No pending templates to resubmit.' });
+    return NextResponse.json({
+      submitted: [],
+      failed: [],
+      resubmittedRejected: 0,
+      note: 'No pending or rejected templates to resubmit.',
+    });
   }
 
   let authHeader: string;
@@ -127,7 +175,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const submitted: ResubmitOk[] = [];
   const failed: ResubmitFail[] = [];
-  const sb = adminClient();
 
   for (let i = 0; i < requested.length; i += 1) {
     const name = requested[i];
@@ -194,11 +241,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await logBusiness('failed', { name, error: msg });
     }
 
-    // Rate-limit: 1s pause between templates.
+    // Rate-limit: 2s pause between templates (bumped from 1s on
+    // 2026-05-03 — Meta has been flaky on rapid resubmissions).
     if (i < requested.length - 1) {
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 2000));
     }
   }
 
-  return NextResponse.json({ submitted, failed });
+  return NextResponse.json({ submitted, failed, resubmittedRejected });
 }
