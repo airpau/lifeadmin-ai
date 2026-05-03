@@ -23,6 +23,7 @@ import { syncLinkedThread } from '@/lib/dispute-sync/sync-runner';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { generateAnnualReportData, generateOnDemandReportData } from '@/lib/report-generator';
+import { predictMonthlyIncome } from '@/lib/income-prediction';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -557,6 +558,30 @@ export async function executeToolCall(
       return deleteContract(supabase, userId, toolInput.contract_id as string);
     case 'analyse_contract':
       return analyseContractFromText(supabase, userId);
+    // ===== Money Hub write parity (2026-05-03) =====
+    case 'add_net_worth_entry':
+      return addNetWorthEntry(supabase, userId, {
+        kind: toolInput.kind as 'asset' | 'liability',
+        label: toolInput.label as string,
+        value_gbp: toolInput.value_gbp as number,
+        category: toolInput.category as string | undefined,
+      });
+    case 'delete_net_worth_entry':
+      return deleteNetWorthEntry(supabase, userId, {
+        entry_id: toolInput.entry_id as string,
+        kind: toolInput.kind as 'asset' | 'liability',
+      });
+    case 'delete_savings_goal':
+      return deleteSavingsGoal(supabase, userId, toolInput.goal_id as string);
+    case 'get_cashflow_forecast':
+      return getCashflowForecast(supabase, userId, toolInput.days as number | undefined);
+    case 'detect_liabilities':
+      return detectLiabilities(supabase, userId);
+    case 'dismiss_detected_liability':
+      return dismissDetectedLiability(supabase, userId, {
+        liability_id: toolInput.liability_id as string,
+        lender_name: toolInput.lender_name as string,
+      });
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -7793,5 +7818,464 @@ async function analyseContractFromText(
   // text up front.
   return {
     text: 'Contract analysis isn\'t available in chat — please upload the PDF or photo at /dashboard/contracts on the website and I\'ll extract the key terms there.',
+  };
+}
+
+// ============================================================
+// Money Hub write parity (2026-05-03)
+//
+// Bot-side counterparts to /api/money-hub/{net-worth,goals,
+// forecast,detect-liabilities}. Each handler mirrors the route's
+// underlying logic IN-PROCESS via the admin Supabase client — never
+// HTTP-fetches our own API. Tier gates match the source routes.
+// ============================================================
+
+// Source of truth: supabase/migrations/20260324020000_money_hub_tables.sql.
+// Keep these aligned with the CHECK constraints on money_hub_assets.asset_type
+// and money_hub_liabilities.liability_type. Drift here silently coerces user
+// intent to 'other' and breaks parity with the Money Hub net-worth API.
+const NET_WORTH_ASSET_TYPES = new Set([
+  'property',
+  'savings',
+  'investment',
+  'pension',
+  'vehicle',
+  'crypto',
+  'other',
+]);
+const NET_WORTH_LIABILITY_TYPES = new Set([
+  'mortgage',
+  'loan',
+  'credit_card',
+  'car_finance',
+  'overdraft',
+  'student_loan',
+  'other',
+]);
+
+async function addNetWorthEntry(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    kind: 'asset' | 'liability';
+    label: string;
+    value_gbp: number;
+    category?: string;
+  },
+): Promise<ToolResult> {
+  if (params.kind !== 'asset' && params.kind !== 'liability') {
+    return { text: 'kind must be "asset" or "liability".' };
+  }
+  if (!params.label || typeof params.label !== 'string') {
+    return { text: 'A label is required (e.g. "Family home", "Barclaycard").' };
+  }
+  const value = Number(params.value_gbp);
+  if (!Number.isFinite(value) || value < 0) {
+    return { text: 'value_gbp must be a non-negative number.' };
+  }
+
+  if (params.kind === 'asset') {
+    const assetType = params.category && NET_WORTH_ASSET_TYPES.has(params.category)
+      ? params.category
+      : 'other';
+    const { error } = await supabase.from('money_hub_assets').insert({
+      user_id: userId,
+      asset_type: assetType,
+      asset_name: params.label,
+      estimated_value: value,
+    });
+    if (error) return { text: `Failed to add asset: ${error.message}` };
+    return {
+      text: `✓ Added asset: *${params.label}* — ${fmt(value)} (${assetType}). It's now tracked in your Money Hub Net Worth.`,
+    };
+  }
+
+  const liabilityType = params.category && NET_WORTH_LIABILITY_TYPES.has(params.category)
+    ? params.category
+    : 'other';
+  const { error } = await supabase.from('money_hub_liabilities').insert({
+    user_id: userId,
+    liability_type: liabilityType,
+    liability_name: params.label,
+    outstanding_balance: value,
+  });
+  if (error) return { text: `Failed to add liability: ${error.message}` };
+  return {
+    text: `✓ Added liability: *${params.label}* — ${fmt(value)} (${liabilityType}). It's now tracked in your Money Hub Net Worth.`,
+  };
+}
+
+async function deleteNetWorthEntry(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { entry_id: string; kind: 'asset' | 'liability' },
+): Promise<ToolResult> {
+  if (params.kind !== 'asset' && params.kind !== 'liability') {
+    return { text: 'kind must be "asset" or "liability".' };
+  }
+  if (!params.entry_id) {
+    return { text: 'entry_id is required. Use get_net_worth to find the id.' };
+  }
+
+  const table = params.kind === 'asset' ? 'money_hub_assets' : 'money_hub_liabilities';
+  const { error, count } = await supabase
+    .from(table)
+    .delete({ count: 'exact' })
+    .eq('id', params.entry_id)
+    .eq('user_id', userId);
+
+  if (error) return { text: `Failed to delete ${params.kind}: ${error.message}` };
+  if (!count || count === 0) {
+    return { text: `No ${params.kind} found with that id.` };
+  }
+  return { text: `✓ Removed ${params.kind} from your Money Hub Net Worth.` };
+}
+
+async function deleteSavingsGoal(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  goalId: string,
+): Promise<ToolResult> {
+  if (!goalId) {
+    return { text: 'goal_id is required. Use get_savings_goals to find the id.' };
+  }
+
+  // Match the Money Hub goals page UX: show what we're about to delete in
+  // the confirmation message so the user knows it landed.
+  const { data: goal } = await supabase
+    .from('money_hub_savings_goals')
+    .select('goal_name, emoji')
+    .eq('id', goalId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const { error, count } = await supabase
+    .from('money_hub_savings_goals')
+    .delete({ count: 'exact' })
+    .eq('id', goalId)
+    .eq('user_id', userId);
+
+  if (error) return { text: `Failed to delete savings goal: ${error.message}` };
+  if (!count || count === 0) {
+    return { text: 'No savings goal found with that id.' };
+  }
+
+  const label = goal?.goal_name ? `${goal.emoji ?? '🎯'} *${goal.goal_name}*` : 'savings goal';
+  return { text: `✓ Removed ${label} from your Money Hub.` };
+}
+
+async function getCashflowForecast(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  daysInput?: number,
+): Promise<ToolResult> {
+  const days = daysInput === 60 || daysInput === 90 ? daysInput : 30;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const dayOfMonth = now.getDate();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const daysRemainingThisMonth = daysInMonth - dayOfMonth;
+
+  // Mirrors /api/money-hub/forecast: income prediction + expected bills
+  // + this-month actuals + last-3-month spend baseline.
+  const [incomeForecast, billsRes, actualIncomeRes, actualSpendingRes, avgDailyRes] =
+    await Promise.all([
+      predictMonthlyIncome(userId, year, month),
+      supabase.rpc('get_expected_bills', {
+        p_user_id: userId,
+        p_year: year,
+        p_month: month,
+      }),
+      supabase.rpc('get_monthly_income_total', {
+        p_user_id: userId,
+        p_year: year,
+        p_month: month,
+      }),
+      supabase.rpc('get_monthly_spending_total', {
+        p_user_id: userId,
+        p_year: year,
+        p_month: month,
+      }),
+      Promise.all(
+        [1, 2, 3].map((i) => {
+          const d = new Date(year, month - 1 - i, 1);
+          return supabase.rpc('get_monthly_spending_total', {
+            p_user_id: userId,
+            p_year: d.getFullYear(),
+            p_month: d.getMonth() + 1,
+          });
+        }),
+      ),
+    ]);
+
+  const actualIncome = parseFloat(String(actualIncomeRes.data ?? 0)) || 0;
+  const actualSpending = parseFloat(String(actualSpendingRes.data ?? 0)) || 0;
+
+  const rawBills = (billsRes.data || []).filter(
+    (b: any) => b.occurrence_count >= 2 && b.occurrence_count <= 30,
+  );
+
+  const startOfMonth = new Date(year, month - 1, 1).toISOString();
+  const { data: thisMonthTxns } = await supabase
+    .from('bank_transactions')
+    .select('merchant_name, description, amount')
+    .eq('user_id', userId)
+    .lt('amount', 0)
+    .gte('timestamp', startOfMonth);
+
+  const paidMerchants = (thisMonthTxns || []).map((t: any) =>
+    (t.merchant_name || t.description || '').substring(0, 30).toLowerCase(),
+  );
+
+  type ForecastBill = { name: string; amount: number; paid: boolean };
+  const bills: ForecastBill[] = rawBills.map((b: any) => {
+    const name = (b.provider_name || '').toLowerCase().substring(0, 15);
+    const paid = paidMerchants.some(
+      (pm: string) => pm.includes(name) || name.includes(pm.substring(0, 8)),
+    );
+    return {
+      name: b.provider_name as string,
+      amount: parseFloat(String(b.expected_amount)) || 0,
+      paid,
+    };
+  });
+
+  const totalBillsExpected = bills.reduce((s, b) => s + b.amount, 0);
+  const totalBillsPaid = bills.filter((b) => b.paid).reduce((s, b) => s + b.amount, 0);
+  const totalBillsRemainingThisMonth = totalBillsExpected - totalBillsPaid;
+
+  const last3Totals = (avgDailyRes as any[])
+    .map((r) => parseFloat(String(r.data ?? 0)) || 0)
+    .filter((v) => v > 0);
+  const avgMonthlySpend =
+    last3Totals.length > 0
+      ? last3Totals.reduce((a, b) => a + b, 0) / last3Totals.length
+      : actualSpending;
+  const avgDailyDiscretionary =
+    avgMonthlySpend > totalBillsExpected
+      ? (avgMonthlySpend - totalBillsExpected) / 30
+      : avgMonthlySpend / 30;
+
+  // Project the FULL requested horizon forward from today. Split it into
+  // (a) the rest of the current month — already covered by actual income +
+  // actualSpending + totalBillsRemainingThisMonth + projectedDiscretionary
+  // ThisMonth — and (b) a trailing window of `days - daysRemainingThisMonth`
+  // days that we model as a fractional number of 30-day months. Earlier
+  // versions did `daysRemainingThisMonth + 30 * additionalMonths` which
+  // systematically underestimated the horizon (e.g. on day 20 of a 30-day
+  // month a 60-day forecast modelled only 40 days).
+  const trailingDays = Math.max(0, days - daysRemainingThisMonth);
+  const trailingMonthFraction = trailingDays / 30;
+  const monthlyIncome =
+    incomeForecast.totalExpectedIncome || incomeForecast.totalReceivedSoFar;
+  const projectedDiscretionaryThisMonth = avgDailyDiscretionary * daysRemainingThisMonth;
+  const projectedDiscretionaryFuture = avgDailyDiscretionary * trailingDays;
+  const projectedBillsFuture = totalBillsExpected * trailingMonthFraction;
+  const projectedIncomeFuture = monthlyIncome * trailingMonthFraction;
+
+  const projectedIncome = actualIncome + incomeForecast.totalStillExpected + projectedIncomeFuture;
+  const projectedSpending =
+    actualSpending +
+    totalBillsRemainingThisMonth +
+    projectedDiscretionaryThisMonth +
+    projectedBillsFuture +
+    projectedDiscretionaryFuture;
+  const projectedNet = projectedIncome - projectedSpending;
+
+  const { data: bankConns } = await supabase
+    .from('bank_connections')
+    .select('current_balance')
+    .eq('user_id', userId)
+    .eq('status', 'active');
+  const currentBalance = (bankConns || []).reduce(
+    (s: number, c: any) => s + (parseFloat(String(c.current_balance)) || 0),
+    0,
+  );
+
+  const horizonLabel = days === 30 ? 'rest of this month' : `next ${days} days`;
+  const remainingBills = bills.filter((b) => !b.paid);
+
+  let text = `*Cashflow forecast (${horizonLabel})*\n\n`;
+  text += `*Current balance:* ${fmt(currentBalance)}\n`;
+  text += `*Projected income:* ${fmt(projectedIncome)}\n`;
+  text += `*Projected spending:* ${fmt(projectedSpending)}\n`;
+  text += `*Projected net:* ${projectedNet >= 0 ? '+' : '-'}${fmt(Math.abs(projectedNet))}\n`;
+
+  if (remainingBills.length > 0) {
+    text += `\n*Bills still due this month (${fmt(totalBillsRemainingThisMonth)}):*\n`;
+    for (const b of remainingBills.slice(0, 8)) {
+      text += `• ${b.name} — ${fmt(b.amount)}\n`;
+    }
+    if (remainingBills.length > 8) {
+      text += `…and ${remainingBills.length - 8} more.\n`;
+    }
+  } else if (totalBillsExpected > 0) {
+    text += `\n✓ All ${bills.length} expected bills this month already paid.\n`;
+  }
+
+  if (incomeForecast.totalStillExpected > 0) {
+    text += `\n*Income still expected this month:* ${fmt(incomeForecast.totalStillExpected)}\n`;
+  }
+
+  return { text };
+}
+
+interface DetectedLiabilityRow {
+  lender: string;
+  lender_key: string;
+  liability_type: 'loan' | 'credit_card' | 'car_finance' | 'overdraft' | 'other';
+  monthly_payment: number;
+  payment_count: number;
+  estimated_balance: number | null;
+  already_tracked: boolean;
+}
+
+function cleanLenderDescription(desc: string): string {
+  return desc
+    .replace(/FP \d{2}\/\d{2}\/\d{2}.*$/i, '')
+    .replace(/TPP .*$/i, '')
+    .replace(/\d{6,}/g, '')
+    .replace(/[A-Z]\d{4,}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .substring(0, 40);
+}
+
+async function detectLiabilities(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  // Mirrors GET /api/money-hub/detect-liabilities — scan loan-categorised
+  // transactions over the last 12 months and group by normalised lender.
+  const twelveMonthsAgo = new Date();
+  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+  const [txnRes, existingRes, dismissedRes] = await Promise.all([
+    supabase
+      .from('bank_transactions')
+      .select('merchant_name, description, amount, timestamp, user_category')
+      .eq('user_id', userId)
+      .in('user_category', ['loans'])
+      .lt('amount', 0)
+      .gte('timestamp', twelveMonthsAgo.toISOString())
+      .order('timestamp', { ascending: false }),
+    supabase
+      .from('money_hub_liabilities')
+      .select('liability_name')
+      .eq('user_id', userId),
+    supabase
+      .from('dismissed_detected_liabilities')
+      .select('lender_key')
+      .eq('user_id', userId),
+  ]);
+
+  const txns = txnRes.data || [];
+  const existing = existingRes.data || [];
+  const existingNames = new Set(existing.map((l: any) => (l.liability_name || '').toLowerCase()));
+  const dismissedKeys = new Set((dismissedRes.data || []).map((d: any) => d.lender_key));
+
+  const lenderMap = new Map<string, { merchant: string; payments: number[] }>();
+  for (const t of txns) {
+    const merchant = (t as any).merchant_name || cleanLenderDescription((t as any).description || '');
+    if (!merchant || merchant.length < 3) continue;
+    const key = merchant.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+    if (!lenderMap.has(key)) lenderMap.set(key, { merchant, payments: [] });
+    lenderMap.get(key)!.payments.push(Math.abs(parseFloat(String((t as any).amount))));
+  }
+
+  const detected: DetectedLiabilityRow[] = [];
+  for (const [key, entry] of lenderMap) {
+    if (entry.payments.length < 2) continue;
+    if (dismissedKeys.has(key)) continue;
+    const avgPayment = entry.payments.reduce((s, p) => s + p, 0) / entry.payments.length;
+
+    const nameLower = entry.merchant.toLowerCase();
+    let liabilityType: DetectedLiabilityRow['liability_type'] = 'loan';
+    if (
+      nameLower.includes('credit') || nameLower.includes('card') || nameLower.includes('mbna') ||
+      nameLower.includes('barclaycard') || nameLower.includes('mastercard')
+    ) {
+      liabilityType = 'credit_card';
+    } else if (nameLower.includes('auto') || nameLower.includes('car finance') || nameLower.includes('motor')) {
+      liabilityType = 'car_finance';
+    } else if (nameLower.includes('overdraft')) {
+      liabilityType = 'overdraft';
+    }
+
+    const alreadyTracked =
+      existingNames.has(entry.merchant.toLowerCase()) ||
+      [...existingNames].some((n) => n.includes(entry.merchant.toLowerCase().substring(0, 10)));
+
+    let estimatedBalance: number | null = null;
+    if ((liabilityType === 'loan' || liabilityType === 'car_finance') && entry.payments.length >= 3) {
+      estimatedBalance = Math.round(avgPayment * 24);
+    }
+
+    detected.push({
+      lender: entry.merchant,
+      lender_key: key,
+      liability_type: liabilityType,
+      monthly_payment: Math.round(avgPayment * 100) / 100,
+      payment_count: entry.payments.length,
+      estimated_balance: estimatedBalance,
+      already_tracked: alreadyTracked,
+    });
+  }
+
+  detected.sort((a, b) => {
+    if (a.already_tracked !== b.already_tracked) return a.already_tracked ? 1 : -1;
+    return b.monthly_payment - a.monthly_payment;
+  });
+
+  const untracked = detected.filter((d) => !d.already_tracked);
+  if (detected.length === 0) {
+    return {
+      text:
+        '✓ No recurring debt payments detected in the last 12 months. ' +
+        "If you've got loans or cards we should track, add them with add_net_worth_entry.",
+    };
+  }
+
+  const totalMonthly = detected.reduce((s, d) => s + d.monthly_payment, 0);
+  let text = `*Detected liabilities — ${detected.length} found, ${untracked.length} not yet tracked*\n`;
+  text += `Total recurring debt payments: ${fmt(totalMonthly)}/mo\n\n`;
+  for (const d of detected.slice(0, 10)) {
+    const flag = d.already_tracked ? '✓ tracked' : '⚠ untracked';
+    const balance = d.estimated_balance != null ? ` · est. balance ~${fmt(d.estimated_balance)}` : '';
+    text += `• *${d.lender}* (${d.liability_type}) — ${fmt(d.monthly_payment)}/mo${balance} · ${flag}\n`;
+  }
+  if (detected.length > 10) text += `\n…and ${detected.length - 10} more.`;
+  if (untracked.length > 0) {
+    text += `\n\nUse add_net_worth_entry to track an untracked one, or dismiss_detected_liability to ignore it.`;
+  }
+  return { text };
+}
+
+async function dismissDetectedLiability(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { liability_id: string; lender_name: string },
+): Promise<ToolResult> {
+  if (!params.liability_id) {
+    return { text: 'liability_id (lender_key from detect_liabilities) is required.' };
+  }
+  if (!params.lender_name) {
+    return { text: 'lender_name is required (returned by detect_liabilities).' };
+  }
+
+  const { error } = await supabase.from('dismissed_detected_liabilities').upsert(
+    {
+      user_id: userId,
+      lender_key: params.liability_id,
+      lender_name: params.lender_name,
+      dismissed_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,lender_key' },
+  );
+  if (error) return { text: `Failed to dismiss detected liability: ${error.message}` };
+  return {
+    text: `✓ Dismissed *${params.lender_name}*. It won't appear in detect_liabilities again.`,
   };
 }
