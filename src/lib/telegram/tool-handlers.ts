@@ -2528,6 +2528,7 @@ async function resolveActiveDisputeForBot(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
   provider: string,
+  options: { allowResolved?: boolean } = {},
 ): Promise<
   | { ok: true; dispute: { id: string; provider_name: string; issue_type: string; issue_summary: string | null; created_at: string } }
   | { ok: false; text: string }
@@ -2543,19 +2544,23 @@ async function resolveActiveDisputeForBot(
   if (!matches || matches.length === 0) {
     return { ok: false, text: `No dispute found matching "${provider}". Open one first via the dashboard or by asking me to "draft a complaint to ${provider}".` };
   }
-  const active = matches.filter((m) => !RESOLVED.has(m.status));
-  if (active.length === 0) {
+  // Codex P2: some bot actions (e.g. clearing the unread badge) MUST
+  // work on closed/resolved disputes — that's exactly when the user
+  // wants the badge gone. Callers opt in with allowResolved=true; the
+  // default still blocks terminal-state writes for safety.
+  const candidates = options.allowResolved ? matches : matches.filter((m) => !RESOLVED.has(m.status));
+  if (candidates.length === 0) {
     return {
       ok: false,
       text: `Your "${provider}" dispute is closed (${matches[0].status.replace(/_/g, ' ')}). Email-linking only applies to active disputes — re-open the case or open a new one if you want to attach replies.`,
     };
   }
-  if (active.length > 1) {
-    let t = `You have ${active.length} active disputes matching "${provider}". Which one do you want to link an email to?\n`;
-    for (const m of active) t += `\n• ${m.provider_name} — opened ${fmtDate(m.created_at)}: _${(m.issue_summary || '').slice(0, 80)}${(m.issue_summary || '').length > 80 ? '…' : ''}_`;
+  if (candidates.length > 1) {
+    let t = `You have ${candidates.length} ${options.allowResolved ? '' : 'active '}disputes matching "${provider}". Which one do you want?\n`;
+    for (const m of candidates) t += `\n• ${m.provider_name} — opened ${fmtDate(m.created_at)}: _${(m.issue_summary || '').slice(0, 80)}${(m.issue_summary || '').length > 80 ? '…' : ''}_`;
     return { ok: false, text: t };
   }
-  const d = active[0];
+  const d = candidates[0];
   return {
     ok: true,
     dispute: {
@@ -6829,6 +6834,36 @@ async function recordDisputeOutcome(
     return { text: `Error: failed to record outcome — ${updErr.message}` };
   }
 
+  // Codex P1: mirror the cascade in src/app/api/disputes/[id]/route.ts
+  // (lines 218-235 / 247-282). When a dispute opened to cancel a
+  // subscription resolves as "won", flip the matching
+  // pending_cancellation subscription to cancelled + stamp
+  // cancelled_at. Without this the bot path leaves subscription
+  // counts and Money Hub drifting out of sync with the dispute
+  // outcome. Same guards as the website: outcome='won' AND
+  // provider_name present AND issue_type='cancellation'. Non-fatal
+  // (matches the website route's behaviour — log and continue).
+  let cascadedSubs = 0;
+  if (outcome === 'won' && full.provider_name && full.issue_type === 'cancellation') {
+    const { data: matched, error: cancelErr } = await supabase
+      .from('subscriptions')
+      .update({
+        status: 'cancelled',
+        cancelled_at: nowIso,
+        notes: `Auto-cancelled on dispute resolution (${dispute.id.slice(0, 8)})`,
+      })
+      .eq('user_id', userId)
+      .eq('status', 'pending_cancellation')
+      .ilike('provider_name', full.provider_name as string)
+      .select('id');
+    if (cancelErr) {
+      console.error('[recordDisputeOutcome] subscription auto-cancel failed:', cancelErr.message);
+    } else if (matched && matched.length > 0) {
+      cascadedSubs = matched.length;
+      console.log(`[recordDisputeOutcome] auto-cancelled ${matched.length} subscription(s) for ${full.provider_name}`);
+    }
+  }
+
   // Append to the outcome event log (intelligence flywheel). Non-fatal
   // if it fails — we don't want the user-facing flow to error just
   // because the audit row didn't insert.
@@ -6847,6 +6882,9 @@ async function recordDisputeOutcome(
 
   let text = `✓ Recorded *${dispute.provider_name}* outcome: *${outcome.replace(/_/g, ' ')}*`;
   if (recovered !== null) text += ` · recovered ${fmt(recovered)}`;
+  if (cascadedSubs > 0) {
+    text += `\n\n✓ Also marked ${cascadedSubs} pending subscription${cascadedSubs === 1 ? '' : 's'} as cancelled.`;
+  }
   if (outcome === 'won') text += `\n\n🎉 Logged to your dispute intelligence dataset.`;
   return { text };
 }
@@ -6860,7 +6898,12 @@ async function markDisputeRead(
     return { text: 'Error: provider is required.' };
   }
 
-  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
+  // Codex P2: clearing the unread badge must work on closed/resolved
+  // disputes too — that's the most common case (replies trickle in
+  // after the dispute is marked won/lost and the user wants the
+  // badge cleared). The website mark-read route does not filter on
+  // status, so neither should we. opt into allowResolved.
+  const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider, { allowResolved: true });
   if (!resolved.ok) return { text: resolved.text };
   const dispute = resolved.dispute;
 
