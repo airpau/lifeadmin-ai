@@ -2294,13 +2294,13 @@ export const telegramTools: Tool[] = [
   {
     name: 'delete_contract',
     description:
-      "Permanently remove a contract entry from the Contract Vault. Use only when the user explicitly asks to delete a contract (not to archive a subscription).",
+      "Permanently remove an uploaded contract file from the Contract Vault. Use only when the user explicitly asks to delete a contract (not to archive a subscription). You MUST get the id from get_contracts first — its 'Uploaded contract files' section lists each contract with its UUID.",
     input_schema: {
       type: 'object' as const,
       properties: {
         contract_id: {
           type: 'string',
-          description: 'The UUID of the contract_extractions row to delete. Get this from get_contracts.',
+          description: 'The UUID of the contract_extractions row to delete. Get this from get_contracts (it surfaces each uploaded contract with its id).',
         },
       },
       required: ['contract_id'],

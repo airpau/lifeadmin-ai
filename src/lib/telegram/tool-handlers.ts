@@ -537,12 +537,22 @@ export async function executeToolCall(
     // ===== Subscription + Contract write parity (2026-05-03) =====
     case 'compare_all_subscription_prices': return compareAllSubscriptionPrices(userId);
     case 'scan_all_subscriptions': return scanAllSubscriptions(supabase, userId);
-    case 'create_dispute_from_subscription':
+    case 'create_dispute_from_subscription': {
+      // Coerce claim_amount: the LLM occasionally passes a string ("12.50") or
+      // a non-finite value. Fail loud rather than crashing on .toFixed() later
+      // (Codex P2, PR #468).
+      const rawClaim = toolInput.claim_amount;
+      const claimAmount =
+        typeof rawClaim === 'string' ? Number(rawClaim) : (rawClaim as number | undefined);
+      if (rawClaim !== undefined && rawClaim !== null && !Number.isFinite(claimAmount)) {
+        return { text: `Invalid claim_amount: ${JSON.stringify(rawClaim)}. Provide a finite number in GBP (e.g. 12.50).` };
+      }
       return createDisputeFromSubscription(supabase, userId, {
         subscription_provider: toolInput.subscription_provider as string,
         issue_type: toolInput.issue_type as string | undefined,
-        claim_amount: toolInput.claim_amount as number | undefined,
+        claim_amount: Number.isFinite(claimAmount) ? (claimAmount as number) : undefined,
       });
+    }
     case 'delete_contract':
       return deleteContract(supabase, userId, toolInput.contract_id as string);
     case 'analyse_contract':
@@ -960,41 +970,76 @@ async function getContracts(
     query = query.ilike('category', category);
   }
 
-  const { data, error } = await query;
-  if (error || !data || data.length === 0) {
+  // Also fetch the user's uploaded contract_extractions so the assistant can
+  // surface UUIDs needed by delete_contract — get_contracts is the only path
+  // to obtain them in chat (Codex P1, PR #468).
+  let extractionsQuery = supabase
+    .from('contract_extractions')
+    .select('id, provider_name, contract_type, contract_end_date, contract_start_date, file_name')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (provider) {
+    extractionsQuery = extractionsQuery.ilike('provider_name', `%${provider}%`);
+  }
+
+  const [{ data, error }, { data: extractions }] = await Promise.all([
+    query,
+    extractionsQuery,
+  ]);
+
+  const haveSubs = !error && data && data.length > 0;
+  const haveExtractions = extractions && extractions.length > 0;
+
+  if (!haveSubs && !haveExtractions) {
     const desc = category ? ` in category "${category}"` : provider ? ` matching "${provider}"` : '';
     return { text: `No contracts found${desc}. Add contracts at paybacker.co.uk/dashboard/subscriptions` };
   }
 
   const now = new Date();
-  let text = `*Contracts (${data.length})*\n\n`;
+  let text = '';
 
-  for (const c of data) {
-    const cycle = c.billing_cycle ?? 'monthly';
-    text += `*${c.provider_name}*`;
-    if (c.category) text += ` [${c.category}]`;
-    if (c.contract_type && c.contract_type !== 'subscription') {
-      text += ` (${c.contract_type.replace(/_/g, ' ')})`;
+  if (haveSubs) {
+    text += `*Contracts (${data!.length})*\n\n`;
+    for (const c of data!) {
+      const cycle = c.billing_cycle ?? 'monthly';
+      text += `*${c.provider_name}*`;
+      if (c.category) text += ` [${c.category}]`;
+      if (c.contract_type && c.contract_type !== 'subscription') {
+        text += ` (${c.contract_type.replace(/_/g, ' ')})`;
+      }
+      text += `\n   ${fmt(c.amount)}/${cycle}`;
+      if (c.contract_end_date) {
+        const endDate = new Date(c.contract_end_date);
+        const daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        const urgency = daysLeft <= 7 ? '🔴' : daysLeft <= 30 ? '🟡' : '🟢';
+        text = text.replace(`*${c.provider_name}*`, `${urgency} *${c.provider_name}*`);
+        text += ` · Ends ${fmtDate(c.contract_end_date)} (${daysLeft} days)`;
+      }
+      if (c.auto_renews) text += ' · Auto-renews';
+      if (c.early_exit_fee && Number(c.early_exit_fee) > 0) {
+        text += ` · Exit fee: ${fmt(c.early_exit_fee)}`;
+      }
+      if (c.interest_rate && Number(c.interest_rate) > 0) {
+        text += `\n   Interest: ${Number(c.interest_rate).toFixed(2)}%`;
+      }
+      if (c.remaining_balance && Number(c.remaining_balance) > 0) {
+        text += ` · Remaining: ${fmt(c.remaining_balance)}`;
+      }
+      text += '\n';
     }
-    text += `\n   ${fmt(c.amount)}/${cycle}`;
-    if (c.contract_end_date) {
-      const endDate = new Date(c.contract_end_date);
-      const daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      const urgency = daysLeft <= 7 ? '🔴' : daysLeft <= 30 ? '🟡' : '🟢';
-      text = text.replace(`*${c.provider_name}*`, `${urgency} *${c.provider_name}*`);
-      text += ` · Ends ${fmtDate(c.contract_end_date)} (${daysLeft} days)`;
+  }
+
+  if (haveExtractions) {
+    if (text) text += '\n';
+    text += `*Uploaded contract files (${extractions!.length})* — pass the id to delete_contract\n\n`;
+    for (const ex of extractions!) {
+      const label = ex.provider_name || ex.file_name || 'Unknown contract';
+      text += `· *${label}*`;
+      if (ex.contract_type) text += ` (${ex.contract_type.replace(/_/g, ' ')})`;
+      if (ex.contract_end_date) text += ` · Ends ${fmtDate(ex.contract_end_date)}`;
+      text += `\n  id: \`${ex.id}\`\n`;
     }
-    if (c.auto_renews) text += ' · Auto-renews';
-    if (c.early_exit_fee && Number(c.early_exit_fee) > 0) {
-      text += ` · Exit fee: ${fmt(c.early_exit_fee)}`;
-    }
-    if (c.interest_rate && Number(c.interest_rate) > 0) {
-      text += `\n   Interest: ${Number(c.interest_rate).toFixed(2)}%`;
-    }
-    if (c.remaining_balance && Number(c.remaining_balance) > 0) {
-      text += ` · Remaining: ${fmt(c.remaining_balance)}`;
-    }
-    text += '\n';
   }
 
   return { text };
