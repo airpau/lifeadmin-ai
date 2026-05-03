@@ -2252,4 +2252,77 @@ export const telegramTools: Tool[] = [
       required: [],
     },
   },
+
+  // ============================================================
+  // SUBSCRIPTION + CONTRACT WRITE PARITY (2026-05-03)
+  // ============================================================
+  {
+    name: 'compare_all_subscription_prices',
+    description:
+      "Run a price-comparison sweep across every active subscription the user has. Saves cheaper alternatives to the deals dashboard. Use this when the user asks 'find me a cheaper deal', 'compare my bills', 'am I overpaying', etc.",
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'scan_all_subscriptions',
+    description:
+      "Run a bank-transaction-based subscription detection sweep. Looks at the user's recent bank activity and surfaces any recurring payments that aren't yet tracked as subscriptions. Use when the user asks 'find my hidden subscriptions', 'scan my bank for recurring payments', 'detect missing subs'.",
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'create_dispute_from_subscription',
+    description:
+      "Atomic shortcut: takes an active subscription by provider name and opens a dispute against it (cancellation by default). Use when the user says 'open a dispute against Netflix', 'raise a complaint with my broadband provider', 'I want my money back from X'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        subscription_provider: {
+          type: 'string',
+          description: 'The provider name of the subscription to dispute (case-insensitive partial match — e.g. "Netflix", "BT").',
+        },
+        issue_type: {
+          type: 'string',
+          description: "Optional dispute issue type. Defaults to 'cancellation'. Allowed values: complaint, cancellation, energy_dispute, broadband_complaint, refund_request.",
+        },
+        claim_amount: {
+          type: 'number',
+          description: 'Optional claim amount in GBP, if the user is asking for a refund of a specific amount.',
+        },
+      },
+      required: ['subscription_provider'],
+    },
+  },
+  {
+    name: 'delete_contract',
+    description:
+      "Permanently remove a contract entry from the Contract Vault. Use only when the user explicitly asks to delete a contract (not to archive a subscription).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contract_id: {
+          type: 'string',
+          description: 'The UUID of the contract_extractions row to delete. Get this from get_contracts.',
+        },
+      },
+      required: ['contract_id'],
+    },
+  },
+  {
+    name: 'analyse_contract',
+    description:
+      "Analyse contract text the user has pasted into chat and extract key terms (minimum term, notice period, cancellation fee, auto-renewal, unfair clauses) using the contract analyser. NOTE: full PDF/image upload analysis must be done from /dashboard/contracts.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contract_text: {
+          type: 'string',
+          description: 'The raw contract text the user has pasted into chat.',
+        },
+        label: {
+          type: 'string',
+          description: "Optional human-readable label / provider name for this contract (e.g. 'BT Broadband 24-month').",
+        },
+      },
+      required: ['contract_text'],
+    },
+  },
 ];

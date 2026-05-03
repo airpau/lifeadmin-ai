@@ -534,6 +534,22 @@ export async function executeToolCall(
       });
     case 'list_reports':
       return listReportsTool(supabase, userId, toolInput.limit as number | undefined);
+    // ===== Subscription + Contract write parity (2026-05-03) =====
+    case 'compare_all_subscription_prices': return compareAllSubscriptionPrices(userId);
+    case 'scan_all_subscriptions': return scanAllSubscriptions(supabase, userId);
+    case 'create_dispute_from_subscription':
+      return createDisputeFromSubscription(supabase, userId, {
+        subscription_provider: toolInput.subscription_provider as string,
+        issue_type: toolInput.issue_type as string | undefined,
+        claim_amount: toolInput.claim_amount as number | undefined,
+      });
+    case 'delete_contract':
+      return deleteContract(supabase, userId, toolInput.contract_id as string);
+    case 'analyse_contract':
+      return analyseContractFromText(supabase, userId, {
+        contract_text: toolInput.contract_text as string,
+        label: toolInput.label as string | undefined,
+      });
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -7562,4 +7578,176 @@ async function listReportsTool(
     return `• ${fmtDate(r.created_at)} — ${periodLabel} — ${url}`;
   });
   return { text: `*Your reports (${data.length}):*\n${lines.join('\n')}` };
+}
+
+// ============================================================
+// SUBSCRIPTION + CONTRACT WRITE PARITY HANDLERS (2026-05-03)
+// In-process — no HTTP fetch (PR #463 lesson). Each tool calls the
+// existing lib helper directly with the admin Supabase client so
+// behaviour matches the API route 1:1 without network overhead.
+// ============================================================
+
+async function compareAllSubscriptionPrices(userId: string): Promise<ToolResult> {
+  try {
+    const { compareAllSubscriptions, saveComparisons } = await import('@/lib/comparison-engine');
+    const result = await compareAllSubscriptions(userId);
+
+    // Persist results so /dashboard/deals reflects the latest run — same as
+    // the POST /api/subscriptions/compare route.
+    for (const [subId, comparisons] of Object.entries(result.comparisons)) {
+      const currentPrice = comparisons[0]?.currentPrice || 0;
+      await saveComparisons(subId, currentPrice, comparisons);
+    }
+
+    if (!result.count || result.count === 0) {
+      return { text: '✓ Compared all your active subscriptions — no cheaper alternatives found right now. We\'ll keep checking weekly.' };
+    }
+    const annual = `£${Math.round(result.totalAnnualSaving).toLocaleString('en-GB')}`;
+    return {
+      text: `Found ${result.count} cheaper alternative${result.count === 1 ? '' : 's'} — open /dashboard/deals to review. Best-case annual saving: ${annual}.`,
+    };
+  } catch (err) {
+    return { text: `Comparison failed: ${err instanceof Error ? err.message : 'unknown error'}` };
+  }
+}
+
+async function scanAllSubscriptions(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  try {
+    const { detectRecurring } = await import('@/lib/detect-recurring');
+    const newCount = await detectRecurring(userId, supabase);
+    if (!newCount || newCount === 0) {
+      return { text: '✓ Subscription sweep complete — no new recurring payments detected since last scan.' };
+    }
+    return {
+      text: `✓ Found ${newCount} new recurring payment${newCount === 1 ? '' : 's'} in your bank activity — open /dashboard/subscriptions to review.`,
+    };
+  } catch (err) {
+    return { text: `Subscription sweep failed: ${err instanceof Error ? err.message : 'unknown error'}` };
+  }
+}
+
+async function createDisputeFromSubscription(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { subscription_provider: string; issue_type?: string; claim_amount?: number },
+): Promise<ToolResult> {
+  if (!params.subscription_provider?.trim()) {
+    return { text: 'Provider name required.' };
+  }
+
+  // Resolve subscription by provider name — same fuzzy match as cancel_subscription.
+  const { data: subs } = await supabase
+    .from('subscriptions')
+    .select('id, provider_name, amount, billing_cycle')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .ilike('provider_name', `%${params.subscription_provider}%`)
+    .order('updated_at', { ascending: false })
+    .limit(5);
+
+  if (!subs || subs.length === 0) {
+    return { text: `No active subscription matching "${params.subscription_provider}". Use get_subscriptions to see what's tracked.` };
+  }
+  if (subs.length > 1) {
+    const list = subs.map((s) => s.provider_name).join(', ');
+    return { text: `Multiple matches for "${params.subscription_provider}" — be more specific. Found: ${list}.` };
+  }
+
+  const sub = subs[0];
+  const issueType = params.issue_type || 'cancellation';
+  const issueSummary = params.claim_amount
+    ? `Refund request for ${sub.provider_name} — claim amount £${params.claim_amount.toFixed(2)}.`
+    : null;
+  const desiredOutcome = params.claim_amount
+    ? `Refund of £${params.claim_amount.toFixed(2)} and confirmation of cancellation`
+    : 'Cancel subscription and confirm no further charges';
+
+  const { data, error } = await supabase.rpc('create_dispute_from_subscription', {
+    p_user_id: userId,
+    p_subscription_id: sub.id,
+    p_issue_type: issueType,
+    p_issue_summary: issueSummary,
+    p_desired_outcome: desiredOutcome,
+  });
+
+  if (error) {
+    return { text: `Failed to open dispute: ${error.message}` };
+  }
+
+  // RPC return shape varies — surface the dispute id when present.
+  const disputeId =
+    (data && typeof data === 'object' && 'dispute_id' in (data as Record<string, unknown>)
+      ? (data as { dispute_id?: string }).dispute_id
+      : undefined) ||
+    (data && typeof data === 'object' && 'id' in (data as Record<string, unknown>)
+      ? (data as { id?: string }).id
+      : undefined);
+
+  let text = `✓ Opened a *${issueType.replace(/_/g, ' ')}* dispute against *${sub.provider_name}*.`;
+  if (params.claim_amount) text += ` Claim: £${params.claim_amount.toFixed(2)}.`;
+  text += '\n\nNext step: ask me to draft the letter, or open /dashboard/disputes';
+  if (disputeId) text += `/${disputeId}`;
+  text += ' to review.';
+  return { text };
+}
+
+async function deleteContract(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  contractId: string,
+): Promise<ToolResult> {
+  if (!contractId?.trim()) {
+    return { text: 'contract_id required. Use get_contracts to see your contracts and their IDs.' };
+  }
+
+  // Verify ownership and grab file_url for storage cleanup — same as DELETE /api/contracts.
+  const { data: contract, error: fetchError } = await supabase
+    .from('contract_extractions')
+    .select('id, provider_name, file_url')
+    .eq('id', contractId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (fetchError || !contract) {
+    return { text: `No contract found with id ${contractId.slice(0, 8)}… (or it doesn't belong to you).` };
+  }
+
+  // Best-effort storage cleanup — mirrors the route's logic.
+  if (contract.file_url) {
+    const path = contract.file_url.includes('/contracts/')
+      ? contract.file_url.split('/contracts/').pop()?.split('?')[0]
+      : null;
+    if (path) {
+      await supabase.storage.from('contracts').remove([path]).catch(() => {});
+    }
+  }
+
+  const { error: deleteError } = await supabase
+    .from('contract_extractions')
+    .delete()
+    .eq('id', contractId)
+    .eq('user_id', userId);
+
+  if (deleteError) {
+    return { text: `Failed to delete contract: ${deleteError.message}` };
+  }
+
+  return { text: `✓ Deleted contract: *${contract.provider_name || contractId.slice(0, 8)}*.` };
+}
+
+async function analyseContractFromText(
+  _supabase: ReturnType<typeof getAdmin>,
+  _userId: string,
+  _params: { contract_text: string; label?: string },
+): Promise<ToolResult> {
+  // The /api/contracts/analyse endpoint is purely multipart-driven (file upload
+  // → Supabase Storage → Claude Vision). Re-implementing the extractor against
+  // raw text would duplicate the prompt logic in a second place — exactly the
+  // footgun called out by PR #463. Direct users to the proper flow.
+  return {
+    text: 'Contract analysis from chat text not yet supported — please upload the PDF or photo via /dashboard/contracts and I\'ll extract the key terms there.',
+  };
 }
