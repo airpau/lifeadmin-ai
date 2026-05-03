@@ -40,6 +40,10 @@ export default function DashboardPage() {
   const [expiringContracts, setExpiringContracts] = useState(0);
   const [userTier, setUserTier] = useState('free');
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
+  // Pocket Agent connection state — null until loaded so the card
+  // doesn't flash. Card hides if either telegram or whatsapp is
+  // already connected, otherwise shows two CTAs (WhatsApp Pro-only).
+  const [pocketAgentConnected, setPocketAgentConnected] = useState<{ telegram: boolean; whatsapp: boolean } | null>(null);
   // Number of tasks the user has snoozed (snooze_until > now via the
   // bot's snooze_task tool). Surfaced as a small badge under the
   // Action items header so users know how many are hidden.
@@ -327,6 +331,30 @@ export default function DashboardPage() {
             setEmailAddress(gmailToken.email);
           }
         }
+
+        // Pocket Agent connection state — query both session tables in
+        // parallel. Mirrors the pattern in src/lib/pocket-agent/dispatch.ts
+        // (telegram_sessions: is_active=true; whatsapp_sessions: is_active=true
+        // AND opted_out_at IS NULL).
+        const [{ data: tgSessions }, { data: waSessions }] = await Promise.all([
+          supabase
+            .from('telegram_sessions')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .limit(1),
+          supabase
+            .from('whatsapp_sessions')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .is('opted_out_at', null)
+            .limit(1),
+        ]);
+        setPocketAgentConnected({
+          telegram: (tgSessions?.length ?? 0) > 0,
+          whatsapp: (waSessions?.length ?? 0) > 0,
+        });
 
         // Load saved email scan opportunities from the centralised email_scan_findings table
         const { data: scanFindings } = await supabase
@@ -1698,22 +1726,36 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Pocket Agent */}
-          <div className="card">
-            <h3>Pocket Agent</h3>
-            <p style={{ fontSize: 12.5, color: 'var(--text-2)', margin: '0 0 10px', lineHeight: 1.45 }}>
-              Chat on Telegram. Ask about your subs, dispute status, or start a new letter.
-            </p>
-            <a
-              className="cta-ghost"
-              href="https://t.me/PaybackerCoUkBot"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ width: '100%', justifyContent: 'center', fontSize: 12 }}
-            >
-              Open @PaybackerCoUkBot →
-            </a>
-          </div>
+          {/* Pocket Agent — hide once connected on either channel.
+              Renders nothing until state loads to avoid a flash. */}
+          {pocketAgentConnected !== null && !pocketAgentConnected.telegram && !pocketAgentConnected.whatsapp && (
+            <div className="card">
+              <h3>Pocket Agent</h3>
+              <p style={{ fontSize: 12.5, color: 'var(--text-2)', margin: '0 0 10px', lineHeight: 1.45 }}>
+                Chat to your Pocket Agent on Telegram or WhatsApp. Ask about your subs, dispute status, or start a new letter.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <a
+                  className="cta-ghost"
+                  href="https://t.me/PaybackerCoUkBot"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ width: '100%', justifyContent: 'center', fontSize: 12 }}
+                >
+                  Connect on Telegram →
+                </a>
+                {userTier === 'pro' && (
+                  <Link
+                    href="/dashboard/settings/whatsapp"
+                    className="cta-ghost"
+                    style={{ width: '100%', justifyContent: 'center', fontSize: 12 }}
+                  >
+                    Connect on WhatsApp →
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Getting started — only while incomplete */}
           {!(bankConnected && emailConnected && complaintsGenerated > 0) && (
