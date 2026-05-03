@@ -21,6 +21,7 @@ import { getEffectiveTier, checkUsageLimit, incrementUsage } from '@/lib/plan-li
 import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
 import { syncLinkedThread } from '@/lib/dispute-sync/sync-runner';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
+import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { generateAnnualReportData, generateOnDemandReportData } from '@/lib/report-generator';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -7359,15 +7360,39 @@ async function generateComplaintLetterTool(
   // Pull legal refs the same way /api/complaints/generate does — we
   // keep this lean (general + finance is the catch-all set used for
   // the 'complaint' letterType) so the bot can render quickly.
+  // Include `verified` alongside `current`/`updated`/`needs_review` so the
+  // bot draws on the same citation-eligible pool as the API route — Codex
+  // P2 flagged that omitting `verified` here silently dropped grounding
+  // data and produced weaker letters via Telegram.
   const { data: legalRefs } = await supabase
     .from('legal_references')
     .select('law_name, section, summary, source_url, escalation_body, verification_status')
     .in('category', ['general', 'finance'])
-    .in('verification_status', ['current', 'updated', 'needs_review']);
+    .in('verification_status', ['current', 'updated', 'needs_review', 'verified']);
 
   const verifiedLegalRefs = (legalRefs || [])
     .map((r) => `- ${r.law_name}${r.section ? `, ${r.section}` : ''}: ${r.summary}${r.escalation_body ? ` (Escalate to: ${r.escalation_body})` : ''} [Source: ${r.source_url}]`)
     .join('\n');
+
+  // Enforce the same Claude rate-limit bucket that /api/complaints/generate
+  // uses — Codex P1 flagged that the bot path bypassed the shared limiter,
+  // letting paid users trigger unbounded Claude runs over Telegram. Mirror
+  // the API: check before the call, log the planned spend, record on
+  // success.
+  const rateLimit = await checkClaudeRateLimit(userId, usage.tier);
+  if (!rateLimit.allowed) {
+    return {
+      text: "You're generating too many letters too quickly — please wait a few minutes and try again.",
+    };
+  }
+
+  logClaudeCall({
+    userId,
+    route: 'telegram:generate_complaint_letter',
+    model: 'claude-sonnet-4-6',
+    estimatedInputTokens: 1300,
+    estimatedOutputTokens: 2000,
+  });
 
   let result;
   try {
@@ -7381,6 +7406,8 @@ async function generateComplaintLetterTool(
   } catch (err) {
     return { text: `Couldn't generate the letter — ${err instanceof Error ? err.message : 'unknown error'}.` };
   }
+
+  await recordClaudeCall(userId, usage.tier);
 
   // Auto-fill profile placeholders, mirroring the API route.
   const { data: profile } = await supabase
