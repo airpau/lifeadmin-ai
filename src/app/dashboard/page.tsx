@@ -1,7 +1,7 @@
 'use client';
 
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useRef, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import UpgradePrompt from '@/components/UpgradePrompt';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
@@ -78,6 +78,8 @@ export default function DashboardPage() {
   const [emailScanning, setEmailScanning] = useState(false);
   const [emailScanResults, setEmailScanResults] = useState<number | null>(null);
   const [emailOpportunities, setEmailOpportunities] = useState<any[]>([]);
+  const [scanFeedback, setScanFeedback] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  const scanFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [bankSyncing, setBankSyncing] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null; status: string }>>([]);
@@ -537,6 +539,17 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
+  // Clear the scan-feedback auto-dismiss timer on unmount so we don't update
+  // state on an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (scanFeedbackTimerRef.current) {
+        clearTimeout(scanFeedbackTimerRef.current);
+        scanFeedbackTimerRef.current = null;
+      }
+    };
+  }, []);
+
   /**
    * scanInboxNow
    *
@@ -552,9 +565,18 @@ export default function DashboardPage() {
   const scanInboxNow = async () => {
     // Explicit manual re-scan: clear the session guard so auto-trigger bookkeeping stays accurate
     sessionStorage.removeItem('gmailScanFired');
+    // Capture the count before the scan so we can show the user a delta on completion.
+    const priorCount = emailOpportunities.length;
+    // Clear any pending banner from a previous scan and reset feedback state.
+    if (scanFeedbackTimerRef.current) {
+      clearTimeout(scanFeedbackTimerRef.current);
+      scanFeedbackTimerRef.current = null;
+    }
+    setScanFeedback(null);
     setEmailScanning(true);
     // Set guard immediately (before await) so any parallel auto-trigger sees the flag even while in-flight
     sessionStorage.setItem('gmailScanFired', '1');
+    let nextFeedback: { kind: 'success' | 'error'; message: string } | null = null;
     try {
       const res = await fetch('/api/gmail/scan', { method: 'POST' });
       const data = await res.json();
@@ -565,6 +587,7 @@ export default function DashboardPage() {
       if (data.error) {
         // Don't clear existing results on error
         if (emailOpportunities.length === 0) setEmailScanResults(0);
+        nextFeedback = { kind: 'error', message: 'Scan failed — please try again.' };
       } else if (userId) {
         // Reload from centralised email_scan_findings table so we stay in sync with scanner page.
         const { data: scanFindings } = await supabase
@@ -596,8 +619,31 @@ export default function DashboardPage() {
           });
           setEmailOpportunities(mapped);
           setEmailScanResults(mapped.length);
+          const total = mapped.length;
+          const delta = total - priorCount;
+          if (delta > 0) {
+            nextFeedback = {
+              kind: 'success',
+              message: `Scan complete · ${delta} new finding${delta === 1 ? '' : 's'} (${total} total)`,
+            };
+          } else {
+            nextFeedback = {
+              kind: 'success',
+              message: `Scan complete · no new findings (${total} total)`,
+            };
+          }
         } else if (emailOpportunities.length === 0) {
           setEmailScanResults(0);
+          nextFeedback = {
+            kind: 'success',
+            message: 'Scan complete · 0 findings — your inbox looks clean',
+          };
+        } else {
+          // Findings query empty but we already had results in state (rare race) — treat as no-change.
+          nextFeedback = {
+            kind: 'success',
+            message: `Scan complete · no new findings (${priorCount} total)`,
+          };
         }
 
         // Refresh stored price-increase alerts (a scan can surface new ones)
@@ -631,11 +677,21 @@ export default function DashboardPage() {
         }
       } else {
         if (emailOpportunities.length === 0) setEmailScanResults(0);
+        nextFeedback = { kind: 'error', message: 'Scan failed — please try again.' };
       }
     } catch {
       if (emailOpportunities.length === 0) setEmailScanResults(0);
+      nextFeedback = { kind: 'error', message: 'Scan failed — please try again.' };
     } finally {
       setEmailScanning(false);
+      if (nextFeedback) {
+        setScanFeedback(nextFeedback);
+        // Auto-clear the banner after 6s so it doesn't linger.
+        scanFeedbackTimerRef.current = setTimeout(() => {
+          setScanFeedback(null);
+          scanFeedbackTimerRef.current = null;
+        }, 6000);
+      }
     }
   };
 
@@ -1228,6 +1284,27 @@ export default function DashboardPage() {
                 )}
               </button>
             </div>
+
+            {/* Completion banner — surfaces success or error feedback after a scan
+                so the user has a clear signal that the scan ran (auto-clears after 6s). */}
+            {scanFeedback && !emailScanning && (
+              <div
+                role="status"
+                aria-live="polite"
+                className={`mb-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium ${
+                  scanFeedback.kind === 'success'
+                    ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                }`}
+              >
+                {scanFeedback.kind === 'success' ? (
+                  <CheckCircle className="h-3.5 w-3.5" />
+                ) : (
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                )}
+                <span>{scanFeedback.message}</span>
+              </div>
+            )}
 
             {emailScanning && (
               <RotatingCaptionsLoader
