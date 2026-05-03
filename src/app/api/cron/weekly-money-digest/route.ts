@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendWeeklyDigestEmail } from '@/lib/email/weekly-money-digest';
 import { canSendEmail } from '@/lib/email-rate-limit';
+import { isRealSpend, sumRealSpend, groupRealSpend } from '@/lib/spending';
+import { whatsappFanoutForCron } from '@/lib/pocket-agent/whatsapp-fanout';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -43,7 +45,8 @@ export async function GET(request: NextRequest) {
   const { data: bankUsers } = await admin
     .from('bank_connections')
     .select('user_id')
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .is('archived_at', null);
 
   if (!bankUsers || bankUsers.length === 0) {
     return NextResponse.json({ success: true, sent: 0, reason: 'No users with bank connections' });
@@ -93,38 +96,46 @@ export async function GET(request: NextRequest) {
 
       const userName = profile.first_name || profile.full_name?.split(' ')[0] || 'there';
 
-      // This week's transactions
+      // This week's transactions. Pull user_category alongside category
+      // because Yapily/TrueLayer writes the auto-category into
+      // user_category — the `category` column is null on every row
+      // ingest writes today, which is why every digest used to show
+      // "Other 100%". See lib/spending.ts for the resolution rule.
       const { data: thisWeekTx } = await admin
         .from('bank_transactions')
-        .select('amount, description, category, timestamp')
+        .select('amount, description, merchant_name, category, user_category, timestamp')
         .eq('user_id', userId)
         .gte('timestamp', weekStart.toISOString())
         .lt('amount', 0);
 
-      // Last week's transactions (for comparison)
+      // Last week's transactions (for comparison) — same shape so the
+      // exclusion filter applies to both halves of the +/- vs last
+      // week comparison.
       const { data: lastWeekTx } = await admin
         .from('bank_transactions')
-        .select('amount')
+        .select('amount, description, merchant_name, category, user_category')
         .eq('user_id', userId)
         .gte('timestamp', lastWeekStart.toISOString())
         .lt('timestamp', weekStart.toISOString())
         .lt('amount', 0);
 
-      const weekSpend = (thisWeekTx || []).reduce((sum, tx) => sum + Math.abs(parseFloat(String(tx.amount))), 0);
-      const lastWeekSpend = (lastWeekTx || []).reduce((sum, tx) => sum + Math.abs(parseFloat(String(tx.amount))), 0);
+      // Real spend only — strips self-transfers, credit-card bill
+      // repayments, loan principal, and investments. The earlier
+      // implementation summed every debit and reported £20,733 for
+      // a week that had ~£10k of internal transfers in it.
+      const weekSpend = sumRealSpend(thisWeekTx || []);
+      const lastWeekSpend = sumRealSpend(lastWeekTx || []);
+      const realThisWeek = (thisWeekTx || []).filter(isRealSpend);
 
-      // Skip if no spending data this week
-      if (weekSpend === 0 && (thisWeekTx || []).length === 0) {
+      // Skip if no spending data this week (after exclusions — a user
+      // whose only debits were internal transfers shouldn't get a
+      // digest).
+      if (weekSpend === 0 && realThisWeek.length === 0) {
         skipped++;
         continue;
       }
 
-      // Category breakdown
-      const categoryTotals: Record<string, number> = {};
-      for (const tx of (thisWeekTx || [])) {
-        const cat = tx.category?.toLowerCase() || 'other';
-        categoryTotals[cat] = (categoryTotals[cat] || 0) + Math.abs(parseFloat(String(tx.amount)));
-      }
+      const categoryTotals = groupRealSpend(thisWeekTx || []);
 
       const topCategories = Object.entries(categoryTotals)
         .sort(([, a], [, b]) => b - a)
@@ -159,20 +170,18 @@ export async function GET(request: NextRequest) {
         .select('category, monthly_limit')
         .eq('user_id', userId);
 
-      // Get current month spending for budget comparison
+      // Get current month spending for budget comparison — same
+      // exclusions apply (a user whose budget category is "loans"
+      // shouldn't have their loan principal counted).
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       const { data: monthTx } = await admin
         .from('bank_transactions')
-        .select('amount, category')
+        .select('amount, description, merchant_name, category, user_category')
         .eq('user_id', userId)
         .gte('timestamp', monthStart)
         .lt('amount', 0);
 
-      const monthCategorySpend: Record<string, number> = {};
-      for (const tx of (monthTx || [])) {
-        const cat = tx.category?.toLowerCase() || 'other';
-        monthCategorySpend[cat] = (monthCategorySpend[cat] || 0) + Math.abs(parseFloat(String(tx.amount)));
-      }
+      const monthCategorySpend = groupRealSpend(monthTx || []);
 
       const budgetAlerts = (budgets || [])
         .map(b => {
@@ -209,7 +218,11 @@ export async function GET(request: NextRequest) {
           upcomingRenewals,
           budgetAlerts,
           totalSaved,
-          transactionCount: (thisWeekTx || []).length,
+          // Use the post-exclusion count so the headline matches the
+          // actual spend total (52 raw debits → 35 real outgoings,
+          // 17 self-transfers / loan principal hidden). Without this
+          // we'd say "£800 across 52 transactions" which is incoherent.
+          transactionCount: realThisWeek.length,
         },
         tier,
       );
@@ -230,5 +243,79 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, sent, skipped, total_users: userIds.length });
+  // ─── WhatsApp fan-out (added 2026-04-29) ───
+  //
+  // Same content as the email digest, just routed through the
+  // channel-agnostic dispatcher. Uses the recovery-this-week +
+  // lifetime-recovery shape (paybacker_recovery_total_weekly).
+  // Inside the 24h service window the dispatcher substitutes
+  // free-form text — so the typical Pocket Agent user pays £0.
+  // Outside the window it requires marketing opt-in.
+  const waResult = await whatsappFanoutForCron({
+    supabase: admin,
+    alertType: 'weekly_recovery',
+    userIds,
+    logLabel: 'weekly-recovery',
+    buildVars: async (userId) => {
+      // Lifetime recovery = sum of money_saved across all
+      // cancelled subs + verified savings for the user. Same
+      // sources the email digest uses for the totalSaved figure.
+      const [{ data: cancelledSubs }, { data: verified }] = await Promise.all([
+        admin
+          .from('subscriptions')
+          .select('money_saved, updated_at')
+          .eq('user_id', userId)
+          .eq('status', 'cancelled'),
+        admin
+          .from('verified_savings')
+          .select('amount_saved, created_at')
+          .eq('user_id', userId),
+      ]);
+
+      const lifetime =
+        (cancelledSubs ?? []).reduce(
+          (s, r) => s + (parseFloat(String(r.money_saved)) || 0),
+          0,
+        ) +
+        (verified ?? []).reduce(
+          (s, r) => s + (parseFloat(String(r.amount_saved)) || 0),
+          0,
+        );
+
+      // Recovery this week = same set, filtered to the past 7d.
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const thisWeek =
+        (cancelledSubs ?? [])
+          .filter((r) => r.updated_at && new Date(r.updated_at) >= weekAgo)
+          .reduce((s, r) => s + (parseFloat(String(r.money_saved)) || 0), 0) +
+        (verified ?? [])
+          .filter((r) => r.created_at && new Date(r.created_at) >= weekAgo)
+          .reduce((s, r) => s + (parseFloat(String(r.amount_saved)) || 0), 0);
+
+      // No recovery this week AND no lifetime — skip silently.
+      if (thisWeek === 0 && lifetime === 0) return null;
+
+      return {
+        amount_this_week: `£${thisWeek.toFixed(2)}`,
+        lifetime_amount: `£${lifetime.toFixed(2)}`,
+      };
+    },
+  });
+
+  console.log(
+    `[weekly-money-digest] WhatsApp fanout: attempted=${waResult.attempted} sent=${waResult.sent} skipped=${waResult.skipped.length} errors=${waResult.errors.length}`,
+  );
+
+  return NextResponse.json({
+    success: true,
+    sent,
+    skipped,
+    total_users: userIds.length,
+    whatsapp: {
+      attempted: waResult.attempted,
+      sent: waResult.sent,
+      skipped: waResult.skipped.length,
+      errors: waResult.errors.length,
+    },
+  });
 }

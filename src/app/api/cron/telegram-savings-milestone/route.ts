@@ -10,6 +10,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { whatsappFanoutForCron } from '@/lib/pocket-agent/whatsapp-fanout';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -70,23 +72,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, message: 'No active sessions', sent: 0 });
   }
 
-  // Filter to Pro users
+  // Filter to Pro users (includes onboarding trial users)
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, subscription_tier, subscription_status, stripe_subscription_id')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
     .in('id', sessions.map((s) => s.user_id));
 
+  // Eligibility helper handles past_due / unpaid / incomplete (Stripe
+  // retry window) so users keep getting alerts during the 7-day grace
+  // before auto-demotion. See lib/telegram/eligibility.ts.
   const proUserIds = new Set(
     (profiles ?? [])
-      .filter((p) => {
-        const hasStripe = !!p.stripe_subscription_id;
-        return (
-          p.subscription_tier === 'pro' &&
-          (hasStripe
-            ? ['active', 'trialing'].includes(p.subscription_status ?? '')
-            : p.subscription_status === 'trialing')
-        );
-      })
+      .filter((p) => isProPocketAgentEligible(p))
       .map((p) => p.id),
   );
 
@@ -177,5 +174,105 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, sent, errors: errors.length });
+  // ─── WhatsApp fan-out (added 2026-04-29) ───
+  //
+  // Mirror of the Telegram milestone path on the WhatsApp channel.
+  // Same milestone-once rule via notification_log.reference_key.
+  // We deliberately use a separate reference_key prefix so a user
+  // who switched from Telegram → WhatsApp doesn't miss a milestone
+  // they hadn't yet been congratulated on.
+  const { data: waProfiles } = await supabase
+    .from('profiles')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
+    .eq('subscription_tier', 'pro');
+
+  const waCandidateIds = (waProfiles ?? [])
+    .filter((p) => isProPocketAgentEligible(p))
+    .map((p) => p.id);
+
+  // Respect the same proactive-alerts opt-out as Telegram.
+  const { data: waPrefs } = await supabase
+    .from('telegram_alert_preferences')
+    .select('user_id, proactive_alerts')
+    .in('user_id', waCandidateIds);
+  const waPrefMap = new Map((waPrefs ?? []).map((p) => [p.user_id, p]));
+  const waEligibleIds = waCandidateIds.filter((uid) => {
+    const pref = waPrefMap.get(uid);
+    return !pref || pref.proactive_alerts !== false;
+  });
+
+  const waResult = await whatsappFanoutForCron({
+    supabase,
+    alertType: 'savings_milestone',
+    userIds: waEligibleIds,
+    logLabel: 'savings-milestone',
+    buildVars: async (userId) => {
+      const { data: rows } = await supabase
+        .from('verified_savings')
+        .select('amount_saved')
+        .eq('user_id', userId);
+      const totalSaved = (rows ?? []).reduce(
+        (s, r) => s + (Number(r.amount_saved) || 0),
+        0,
+      );
+      if (totalSaved <= 0) return null;
+
+      const crossed = MILESTONES.filter((m) => totalSaved >= m);
+      if (crossed.length === 0) return null;
+
+      const { data: existing } = await supabase
+        .from('notification_log')
+        .select('reference_key')
+        .eq('user_id', userId)
+        .eq('notification_type', 'savings_milestone_wa');
+      const celebrated = new Set(
+        (existing ?? []).map((e: { reference_key: string }) => e.reference_key),
+      );
+      const fresh = crossed.filter((m) => !celebrated.has(`milestone_${m}`));
+      if (fresh.length === 0) return null;
+
+      const highest = fresh[fresh.length - 1];
+      const nextIdx = MILESTONES.findIndex((m) => m > highest);
+      const nextMilestone = nextIdx >= 0 ? MILESTONES[nextIdx] : highest * 2;
+      const percent = Math.min(100, Math.round((totalSaved / nextMilestone) * 100));
+
+      // Stamp BEFORE the dispatcher fires to keep things idempotent.
+      // If the send fails we'll see a skip in the log but the
+      // milestone won't be fired again — better than double-firing.
+      for (const m of fresh) {
+        await supabase
+          .from('notification_log')
+          .insert({
+            user_id: userId,
+            notification_type: 'savings_milestone_wa',
+            reference_key: `milestone_${m}`,
+          })
+          .select()
+          .single();
+      }
+
+      return {
+        goal_name: 'Lifetime savings',
+        percent,
+        amount_saved: fmt(totalSaved),
+        target_amount: fmt(nextMilestone),
+      };
+    },
+  });
+
+  console.log(
+    `[telegram-savings-milestone] WhatsApp fanout: attempted=${waResult.attempted} sent=${waResult.sent} skipped=${waResult.skipped.length} errors=${waResult.errors.length}`,
+  );
+
+  return NextResponse.json({
+    ok: true,
+    sent,
+    errors: errors.length,
+    whatsapp: {
+      attempted: waResult.attempted,
+      sent: waResult.sent,
+      skipped: waResult.skipped.length,
+      errors: waResult.errors.length,
+    },
+  });
 }

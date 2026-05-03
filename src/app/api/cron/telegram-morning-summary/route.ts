@@ -11,6 +11,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { whatsappFanoutForCron } from '@/lib/pocket-agent/whatsapp-fanout';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -120,20 +122,15 @@ export async function GET(request: NextRequest) {
   const userIds = sessions.map((s) => s.user_id);
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, subscription_tier, subscription_status, stripe_subscription_id')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
     .in('id', userIds);
 
+  // Eligibility helper covers past_due / unpaid / incomplete (Stripe
+  // retry window) so users keep getting alerts during the 7-day grace
+  // before auto-demotion. See lib/telegram/eligibility.ts.
   const proUserIds = new Set(
     (profiles ?? [])
-      .filter((p) => {
-        const tier = p.subscription_tier;
-        const status = p.subscription_status;
-        const hasStripe = !!p.stripe_subscription_id;
-        return (
-          tier === 'pro' &&
-          (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing')
-        );
-      })
+      .filter((p) => isProPocketAgentEligible(p))
       .map((p) => p.id),
   );
 
@@ -205,7 +202,16 @@ export async function GET(request: NextRequest) {
       sections.push('*Good morning! Here\'s your daily money briefing:*');
 
       // ------ 1. Yesterday's spending ------
-      const EXCLUDE_CATS = new Set(['transfers', 'income']);
+      // Mirror lib/spending.ts exclusions so the morning summary matches
+      // Money Hub + the weekly digest. Previous list was just
+      // ('transfers','income') which double-counted credit-card bill
+      // repayments + investments + pension contributions.
+      const EXCLUDE_CATS = new Set([
+        'transfer', 'transfers', 'internal_transfer', 'self_transfer',
+        'credit_card_payment', 'credit_card',
+        'investment', 'investments', 'savings', 'pension',
+        'income', 'fee_refund',
+      ]);
       const { data: yesterdayTxRaw } = await supabase
         .from('bank_transactions')
         .select('user_category, amount')
@@ -358,6 +364,131 @@ export async function GET(request: NextRequest) {
     `[telegram-morning-summary] Processed ${proSessions.length} users, sent ${sent}, skipped ${skipped}, errors ${errors.length}`,
   );
 
+  // ─── WhatsApp fan-out (added 2026-04-29) ───
+  //
+  // Until now this cron only fanned out to Telegram sessions, so a
+  // Pro user on WhatsApp got no morning brief. We now use the
+  // channel-agnostic dispatcher which (a) substitutes the free-form
+  // text inside the 24h customer-service window, (b) requires
+  // marketing opt-in for the template send outside the window, and
+  // (c) respects the 1-marketing-template-per-24h cap.
+  //
+  // We deliberately do NOT touch the Telegram path above — it has
+  // a hand-tuned multi-section Markdown layout that wouldn't survive
+  // round-tripping through the dispatcher's 4-variable template
+  // shape. The WhatsApp branch sends a tighter summary built from
+  // the same source data.
+  const { data: waProfiles } = await supabase
+    .from('profiles')
+    .select('id, first_name, full_name, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
+    .eq('subscription_tier', 'pro');
+
+  const waCandidateIds = (waProfiles ?? [])
+    .filter((p) => isProPocketAgentEligible(p))
+    .map((p) => p.id);
+
+  // Read the morning_summary preference once for everyone in scope
+  // — same default-on rule as Telegram.
+  const { data: waPrefs } = await supabase
+    .from('telegram_alert_preferences')
+    .select('user_id, morning_summary')
+    .in('user_id', waCandidateIds);
+  const waPrefMap = new Map((waPrefs ?? []).map((p) => [p.user_id, p]));
+
+  const waEligibleIds = waCandidateIds.filter((uid) => {
+    const pref = waPrefMap.get(uid);
+    return !pref || pref.morning_summary !== false;
+  });
+
+  // Quick name lookup for the {{1}} template var.
+  const nameByUser = new Map(
+    (waProfiles ?? []).map((p) => [
+      p.id,
+      p.first_name || p.full_name?.split(' ')[0] || 'there',
+    ]),
+  );
+
+  const waResult = await whatsappFanoutForCron({
+    supabase,
+    alertType: 'morning_summary',
+    userIds: waEligibleIds,
+    logLabel: 'morning-summary',
+    buildVars: async (userId) => {
+      // Yesterday's outgoings and the next 7 days of upcoming items
+      // — same source tables the Telegram path reads above. We
+      // recompute per-user here rather than thread state through
+      // the loop above; the cost is negligible (one user).
+      const yStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      yStart.setHours(0, 0, 0, 0);
+      const tStart = new Date();
+      tStart.setHours(0, 0, 0, 0);
+
+      const [{ data: yTx }, { data: renewals }, { data: contracts }, { data: budgets }] = await Promise.all([
+        supabase
+          .from('bank_transactions')
+          .select('user_category, amount, merchant_name')
+          .eq('user_id', userId)
+          .lt('amount', 0)
+          .gte('timestamp', yStart.toISOString())
+          .lt('timestamp', tStart.toISOString()),
+        supabase
+          .from('subscriptions')
+          .select('provider_name, amount, next_billing_date')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .gte('next_billing_date', new Date().toISOString().split('T')[0])
+          .lte('next_billing_date', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
+        supabase
+          .from('subscriptions')
+          .select('provider_name, contract_end_date')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .not('contract_end_date', 'is', null)
+          .gte('contract_end_date', new Date().toISOString().split('T')[0])
+          .lte('contract_end_date', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
+        supabase.rpc('get_monthly_spending', {
+          p_user_id: userId,
+          p_year: new Date().getFullYear(),
+          p_month: new Date().getMonth() + 1,
+        }),
+      ]);
+
+      const scannedCount = (yTx ?? []).length;
+      const opportunitiesCount =
+        (renewals?.length ?? 0) +
+        (contracts?.length ?? 0) +
+        (budgets?.data ?? []).filter((b: { category_total: number; budget_limit?: number }) =>
+          b.budget_limit && Number(b.category_total) >= 0.8 * Number(b.budget_limit),
+        ).length;
+
+      // No data, no signal — skip rather than send "0 transactions
+      // scanned" which is just noise.
+      if (scannedCount === 0 && opportunitiesCount === 0) return null;
+
+      let topFocus = 'Nothing urgent today — keep doing what you\'re doing.';
+      if (renewals && renewals.length > 0) {
+        const r = renewals[0];
+        topFocus = `${r.provider_name} renews on ${new Date(r.next_billing_date).toLocaleDateString('en-GB')} — £${Number(r.amount).toFixed(2)}`;
+      } else if (contracts && contracts.length > 0) {
+        topFocus = `${contracts[0].provider_name} contract ends ${new Date(contracts[0].contract_end_date).toLocaleDateString('en-GB')}`;
+      } else if (yTx && yTx.length > 0) {
+        const top = [...yTx].sort((a, b) => Math.abs(Number(b.amount)) - Math.abs(Number(a.amount)))[0];
+        topFocus = `Biggest spend yesterday — ${top.merchant_name ?? 'a transaction'} £${Math.abs(Number(top.amount)).toFixed(2)}`;
+      }
+
+      return {
+        name: nameByUser.get(userId) ?? 'there',
+        scanned_count: scannedCount,
+        opportunities_count: opportunitiesCount,
+        top_focus: topFocus,
+      };
+    },
+  });
+
+  console.log(
+    `[telegram-morning-summary] WhatsApp fanout: attempted=${waResult.attempted} sent=${waResult.sent} skipped=${waResult.skipped.length} errors=${waResult.errors.length}`,
+  );
+
   // Alert founder if the cron ran with eligible users but sent nothing
   const founderChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
   if (founderChatId && eligibleSessions.length > 0 && sent === 0 && errors.length > 0) {
@@ -377,5 +508,11 @@ export async function GET(request: NextRequest) {
     sent,
     skipped,
     errors: errors.length,
+    whatsapp: {
+      attempted: waResult.attempted,
+      sent: waResult.sent,
+      skipped: waResult.skipped.length,
+      errors: waResult.errors.length,
+    },
   });
 }
