@@ -366,6 +366,12 @@ async function dispatchWhatsAppMorningBrief(
   }
 
   // Outside the window (or text fallback) — template path.
+  // Skip only when no SID exists at all. `getTemplateSid` mirrors the
+  // Twilio provider's full resolution order: TWILIO_TEMPLATE_<NAME>
+  // env override → DB override (populated via /dashboard/admin/whatsapp
+  // Resubmit) → registry fallback. So a `null` here means there's
+  // genuinely nothing send-safe — even a registry default of
+  // PENDING_RESUBMISSION can dispatch via the override path.
   const templateName = 'paybacker_morning_summary';
   const sid = await getTemplateSid(templateName);
   if (!sid) {
