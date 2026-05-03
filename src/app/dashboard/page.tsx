@@ -1573,14 +1573,17 @@ export default function DashboardPage() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {collapsedDealsByMerchant.slice(0, 3).map((d, i) => (
-                    <div
+                    <Link
                       key={`${d.sub}-${i}`}
+                      href="/dashboard/deals"
                       style={{
                         display: 'flex',
                         gap: 10,
                         padding: '10px 0',
                         borderTop: '1px solid var(--divider-2)',
                         alignItems: 'flex-start',
+                        textDecoration: 'none',
+                        color: 'inherit',
                       }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1592,7 +1595,7 @@ export default function DashboardPage() {
                       <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--mint-deep)', whiteSpace: 'nowrap' }}>
                         {formatGBP(d.saving)}/yr
                       </div>
-                    </div>
+                    </Link>
                   ))}
                   <Link
                     href="/dashboard/deals"
