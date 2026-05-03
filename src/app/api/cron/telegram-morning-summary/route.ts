@@ -327,6 +327,29 @@ async function isInsideWhatsAppServiceWindow(
 }
 
 /**
+ * Recognise template-send failures that represent an *intentional* skip
+ * rather than an operational outage.
+ *
+ * Today the only such case is "no eligible WhatsApp template configured"
+ * — which the Twilio provider surfaces as a `PENDING_RESUBMISSION`
+ * pending-Meta error string when the registry SID is the placeholder and
+ * neither the env-var override nor the DB SID has been set. In that
+ * scenario there's nothing the cron can do at runtime — Meta has to
+ * approve the template — so it's correctly classified as a skip.
+ *
+ * Genuine operational failures (Twilio HTTP non-2xx, network/DNS errors,
+ * auth issues, invalid phone formatting, unexpected exceptions) MUST NOT
+ * be matched here — they need to surface as `whatsappErrors` so on-call
+ * sees a real delivery outage instead of silent skipping.
+ */
+function isIntentionalTemplateSkip(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  // The Twilio provider's "template pending Meta resubmission" guard:
+  // see src/lib/whatsapp/twilio-provider.ts ~line 105.
+  return /pending Meta resubmission/i.test(msg);
+}
+
+/**
  * Send the morning brief to a single WhatsApp user. Smart-routes by
  * the 24h customer-service window:
  *   - inside window: free-form text (cheap, full body, full Markdown
@@ -335,24 +358,37 @@ async function isInsideWhatsAppServiceWindow(
  *     Meta-approved. If not approved (current state per
  *     template-registry.ts), log + skip rather than 4xx Twilio.
  *
- * Returns 'sent' on a successful Twilio submit, 'skipped' otherwise.
- * Throws ONLY on unexpected runtime errors — the caller wraps the
- * whole call in try/catch so per-user failures don't kill the run.
+ * Returns:
+ *   - 'sent'    on a successful Twilio submit
+ *   - 'skipped' for *intentional* skips (e.g. template not approved /
+ *     pending Meta resubmission with no env or DB SID configured)
+ *   - 'error'   for genuine operational failures — Twilio HTTP error,
+ *     network/auth/format issue, anything else the provider throws.
+ *     Caller MUST count these as whatsappErrors, not whatsappSkipped,
+ *     so on-call sees real outages instead of silent skipping.
+ *
+ * Never throws — operational errors are converted to `'error'` so the
+ * caller's bookkeeping stays simple.
  */
 async function dispatchWhatsAppMorningBrief(
   supabase: AdminClient,
   userId: string,
   phone: string,
   markdownBody: string,
-): Promise<'sent' | 'skipped'> {
+): Promise<{ status: 'sent' | 'skipped' | 'error'; reason?: string }> {
   const inWindow = await isInsideWhatsAppServiceWindow(supabase, userId);
 
+  // Track the in-window text-send failure (if any) so that, if the
+  // template fallback also fails, we surface the *original* operational
+  // error rather than the secondary template error.
+  let inWindowTextError: unknown | undefined;
   if (inWindow) {
     const body = toWhatsAppPlainText(markdownBody);
     try {
       await sendWhatsAppText({ to: phone, text: body });
-      return 'sent';
+      return { status: 'sent' };
     } catch (err) {
+      inWindowTextError = err;
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(
         `[telegram-morning-summary] WhatsApp text send failed for user ${userId}:`,
@@ -369,7 +405,9 @@ async function dispatchWhatsAppMorningBrief(
   // order (TWILIO_TEMPLATE_<NAME> env override → DB override → registry)
   // and may also reject the PENDING_RESUBMISSION placeholder cleanly. We
   // always attempt the send and rely on the provider to throw on
-  // unsendable state — that error is logged and tallied as a skip below.
+  // unsendable state — only the *intentional* skip patterns (template
+  // not approved) are reclassified as 'skipped'; everything else is
+  // surfaced as 'error' so monitoring/on-call sees real outages.
   const templateName = 'paybacker_morning_summary';
 
   // Best-effort variable extraction from the brief. The template body is:
@@ -417,14 +455,40 @@ async function dispatchWhatsAppMorningBrief(
         topFocus,
       ],
     });
-    return 'sent';
+    return { status: 'sent' };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
+    if (isIntentionalTemplateSkip(err)) {
+      // Known "no eligible template / pending Meta resubmission" case.
+      // Nothing the cron can do at runtime — log at warn level and
+      // count as a normal skip. If the in-window text-send also failed
+      // first (e.g. window just expired), prefer surfacing that as a
+      // genuine error since it isn't an intentional skip.
+      if (inWindowTextError) {
+        const textMsg =
+          inWindowTextError instanceof Error
+            ? inWindowTextError.message
+            : String(inWindowTextError);
+        console.error(
+          `[telegram-morning-summary] WhatsApp delivery failed for user ${userId} (in-window text errored, template not approved):`,
+          textMsg,
+        );
+        return { status: 'error', reason: textMsg };
+      }
+      console.warn(
+        `[telegram-morning-summary] WhatsApp template skipped for user ${userId} (not approved):`,
+        errMsg,
+      );
+      return { status: 'skipped', reason: errMsg };
+    }
+    // Operational failure — Twilio outage, bad credentials, malformed
+    // phone, network blip, etc. Bubble up as 'error' so the cron's
+    // whatsappErrors counter increments and on-call sees the outage.
     console.error(
       `[telegram-morning-summary] WhatsApp template send failed for user ${userId}:`,
       errMsg,
     );
-    return 'skipped';
+    return { status: 'error', reason: errMsg };
   }
 }
 
@@ -434,17 +498,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Telegram is now optional — environments running WhatsApp-only (no
+  // Telegram is OPTIONAL — environments running WhatsApp-only (no
   // Telegram bot token configured) must still be able to fan out the
-  // morning brief to active whatsapp_sessions. Gate the Telegram path
-  // behind a flag rather than 500-ing the whole handler.
+  // morning brief to active whatsapp_sessions.
+  //
+  // We deliberately do NOT 4xx/5xx here on missing TELEGRAM_USER_BOT_TOKEN.
+  // The Codex P2 finding was that an early 500 would silently block
+  // independent WhatsApp dispatch — so the token check is deferred
+  // until AFTER session loading and only treated as a problem when
+  // there are actually Telegram recipients to send to. If there are
+  // zero eligible Telegram sessions, missing token is a no-op.
   const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
-  const telegramEnabled = Boolean(token);
-  if (!telegramEnabled) {
-    console.warn(
-      '[telegram-morning-summary] TELEGRAM_USER_BOT_TOKEN not set — Telegram dispatch disabled, WhatsApp-only run.',
-    );
-  }
 
   const supabase = getAdmin();
   let sent = 0;
@@ -530,6 +594,19 @@ export async function GET(request: NextRequest) {
   const eligibleWhatsappSessions = proWhatsappSessions.filter((s) =>
     morningSummaryOn(s.user_id),
   );
+
+  // POST-SESSION-LOAD Telegram gate (P2 fix): only treat the missing
+  // bot token as a problem when there are actually Telegram recipients
+  // to send to. With zero eligible Telegram sessions, missing token is
+  // a no-op and the WhatsApp path proceeds independently below.
+  const telegramEnabled = Boolean(token);
+  if (eligibleSessions.length > 0 && !telegramEnabled) {
+    console.warn(
+      '[telegram-morning-summary] TELEGRAM_USER_BOT_TOKEN not set despite ' +
+        `${eligibleSessions.length} eligible Telegram session(s) — those users ` +
+        'will be skipped this run; WhatsApp dispatch continues.',
+    );
+  }
 
   // Index whatsapp sessions by user_id so the per-user loop can find
   // the matching phone in O(1). Map<user_id, whatsapp_phone>.
@@ -627,12 +704,19 @@ export async function GET(request: NextRequest) {
               waPhone,
               message,
             );
-            if (waOutcome === 'sent') {
+            if (waOutcome.status === 'sent') {
               whatsappSent++;
-            } else {
+            } else if (waOutcome.status === 'skipped') {
               whatsappSkipped++;
+            } else {
+              // 'error' — operational failure (Twilio HTTP, network,
+              // auth, bad phone format, etc). Surface to on-call.
+              whatsappErrors.push(`${userId}: ${waOutcome.reason ?? 'unknown'}`);
             }
           } catch (waErr) {
+            // Defensive: dispatchWhatsAppMorningBrief no longer throws,
+            // but if anything in the surrounding code (Supabase lookups,
+            // etc) does, treat that as an error rather than a skip.
             const errMsg = waErr instanceof Error ? waErr.message : String(waErr);
             console.error(
               `[telegram-morning-summary] WhatsApp dispatch failed for user ${userId}:`,
@@ -673,10 +757,14 @@ export async function GET(request: NextRequest) {
         waPhone,
         message,
       );
-      if (waOutcome === 'sent') {
+      if (waOutcome.status === 'sent') {
         whatsappSent++;
-      } else {
+      } else if (waOutcome.status === 'skipped') {
         whatsappSkipped++;
+      } else {
+        // 'error' — operational failure, push to whatsappErrors so the
+        // route's response body and on-call alerting reflect reality.
+        whatsappErrors.push(`${userId}: ${waOutcome.reason ?? 'unknown'}`);
       }
     } catch (waErr) {
       const errMsg = waErr instanceof Error ? waErr.message : String(waErr);
