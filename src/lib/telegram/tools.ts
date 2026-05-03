@@ -1959,13 +1959,13 @@ export const telegramTools: Tool[] = [
   {
     name: 'dismiss_contract_alert',
     description:
-      "Clear a contract end-date / renewal alert from the dashboard. Use when the user says 'dismiss that alert', 'I've dealt with the EE renewal one', etc. Sets `dismissed_at = now()` and status='dismissed' on the contract_renewal_alerts row.",
+      "Clear a contract end-date / renewal alert from the dashboard. Use when the user says 'dismiss that alert', 'I've dealt with the EE renewal one', etc. Sets `dismissed_at = now()` and status='dismissed' on the contract_renewal_alerts row. Get the id from get_contract_alerts (each row's output now includes its id).",
     input_schema: {
       type: 'object' as const,
       properties: {
         alert_id: {
           type: 'string',
-          description: 'The contract_renewal_alerts row id to dismiss.',
+          description: 'The contract_renewal_alerts row id to dismiss. Obtain it via get_contract_alerts — each alert row is surfaced with its id.',
         },
       },
       required: ['alert_id'],

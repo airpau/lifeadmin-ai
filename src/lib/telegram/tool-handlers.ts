@@ -5962,6 +5962,37 @@ async function getContractAlertsForBot(
   const days = withinDays ?? 60;
   const cutoff = new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
+
+  // Pull in-app contract renewal alerts (the canonical row dismiss_contract_alert
+  // operates on) so the bot can surface the UUID needed for dismissal. Falls
+  // back to the subscriptions-based listing if no alerts have been generated
+  // yet by the contract-expiry cron.
+  const { data: alerts } = await supabase
+    .from('contract_renewal_alerts')
+    .select('id, provider_name, category, contract_end_date, current_amount, alert_type, potential_saving_monthly, potential_saving_annual')
+    .eq('user_id', userId)
+    .eq('alert_channel', 'in_app')
+    .in('status', ['pending', 'sent'])
+    .gte('contract_end_date', today)
+    .lte('contract_end_date', cutoff)
+    .order('contract_end_date', { ascending: true });
+
+  if (alerts && alerts.length > 0) {
+    let text = `*Contract alerts (within ${days} days):*\n`;
+    for (const a of alerts) {
+      const amount = a.current_amount != null ? fmt(Number(a.current_amount)) : '—';
+      text += `\n• *${a.provider_name}* — ends ${fmtDate(a.contract_end_date)} · ${amount}/mo`;
+      if (a.potential_saving_monthly) {
+        text += ` · save ~${fmt(Number(a.potential_saving_monthly))}/mo with a switch`;
+      }
+      text += `\n  · id: \`${a.id}\` (use this for dismiss_contract_alert)`;
+    }
+    return { text };
+  }
+
+  // No generated alerts yet — fall back to the subscriptions table so the user
+  // still sees what's coming up. Dismissal needs a contract_renewal_alerts row,
+  // which the cron creates closer to the renewal date.
   const { data } = await supabase
     .from('subscriptions')
     .select('provider_name, contract_end_date, amount, billing_cycle, early_exit_fee, auto_renews')
@@ -6601,7 +6632,10 @@ async function renewBankConsent(
     return { text: `No bank connection matches "${bankName ?? ''}". Try get_bank_connections.` };
   }
 
-  if (data.length > 1 && !bankName) {
+  // If only one connection actually needs renewal, auto-select it and skip
+  // the disambiguation prompt — the documented behaviour is "if only one
+  // connection needs renewal, that one is used".
+  if (data.length > 1 && !bankName && renewable.length !== 1) {
     const list = data.map((c) => `• ${c.bank_name ?? 'Unknown'} (${c.status})`).join('\n');
     return { text: `You have ${data.length} bank connections:\n${list}\n\nSay "renew consent for [bank name]" so I know which one.` };
   }
