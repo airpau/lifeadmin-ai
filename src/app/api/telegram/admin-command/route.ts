@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import {
+  TOOL_DEFINITIONS,
+  executeAdminTool,
+  loadFounderWhatsAppPhone,
+} from '@/lib/telegram/admin-tools';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -668,13 +673,19 @@ ${liveData}`,
     await saveMessage(supabase, chatId, 'user', text);
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: `You are Charlie, Executive Assistant at Paybacker LTD. You're chatting with Paul (the founder) via Telegram. You have persistent memory of the conversation and full access to business data.
+    const SYSTEM_PROMPT = `You are Charlie, Executive Assistant at Paybacker LTD. You're chatting with Paul (the founder) via Telegram. You have persistent memory of the conversation and full access to business data.
 
 CRITICAL RULES:
 - You have LIVE data from the database loaded below. This is real-time, not cached.
+- You ALSO have tools that can carry out work — read fresh DB rows (run_sql_query),
+  fire crons (trigger_cron / morning_brief_now), resubmit WhatsApp templates
+  (resubmit_whatsapp_templates), send a real WhatsApp template to Paul for
+  verification (send_test_whatsapp_template). Use them when Paul asks you to DO
+  something rather than just discuss it. After a tool runs, summarise the result
+  in plain English — never just paste raw JSON.
+- For ad-hoc business questions (MRR right now, today's signups, last week's
+  disputes, recent alert sends), prefer run_sql_query over the pre-loaded
+  context — it's always fresher.
 - NEVER say "I'll check with them", "let me ask them", "waiting for responses", or "pulling updates now". You already HAVE the data. Just answer.
 - NEVER write /ask commands in your responses. You cannot execute commands. Just use the data below.
 - NEVER pretend to be contacting other agents. You ARE the central hub with all the data already loaded.
@@ -689,17 +700,107 @@ The AI team: Alex (CFO), Morgan (CTO), Jamie (CAO), Taylor (CMO), Jordan (Head o
 
 The BUSINESS LOG section below has the most current information. Always prioritise it over stale agent reports.
 
-${context}${agentContext}`,
-      messages: [
-        ...history,
-        { role: 'user', content: text },
-      ],
+${context}${agentContext}`;
+
+    // Tool execution context — resolved once and passed through every
+    // tool-loop iteration. baseUrl prefers VERCEL_URL so we hit the
+    // current deploy in preview branches; falls back to the canonical
+    // production host so a missing env var doesn't 500 every reply.
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'https://paybacker.co.uk';
+    // Resolve founder user_id via the profiles mirror (id == auth.users.id)
+    // so we don't need to schema('auth') from supabase-js. The founder is
+    // the only chat_id past the gate above, so this is safe to look up
+    // by env email.
+    const founderEmail = process.env.FOUNDER_EMAIL || 'aireypaul@googlemail.com';
+    const { data: founderRow } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', founderEmail)
+      .maybeSingle();
+    const founderUserId = founderRow?.id ?? '';
+    const founderWhatsAppPhone = founderUserId
+      ? await loadFounderWhatsAppPhone(founderUserId)
+      : null;
+    const toolCtx = {
+      cronSecret: process.env.CRON_SECRET ?? '',
+      baseUrl,
+      founderWhatsAppPhone,
+    };
+
+    const messageHistory: Anthropic.MessageParam[] = [
+      ...(history as Anthropic.MessageParam[]),
+      { role: 'user', content: text },
+    ];
+
+    let response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      tools: TOOL_DEFINITIONS,
+      messages: messageHistory,
     });
 
-    const reply = response.content.find(b => b.type === 'text');
-    if (reply?.type === 'text') {
-      await saveMessage(supabase, chatId, 'assistant', reply.text);
-      await sendTelegram(chatId, reply.text);
+    // Tool-use loop. Cap at 5 iterations + a soft timeout to stay well
+    // under Vercel's maxDuration=120s — each tool call typically takes
+    // 2-15s (run_sql_query and trigger_cron dominate). On timeout we
+    // break and surface whatever text the model already produced so
+    // Paul gets a useful reply even if the work didn't fully complete.
+    const MAX_ITERATIONS = 5;
+    const HARD_TIMEOUT_MS = 90_000;
+    const loopStart = Date.now();
+    let iterations = 0;
+
+    while (response.stop_reason === 'tool_use' && iterations < MAX_ITERATIONS) {
+      if (Date.now() - loopStart > HARD_TIMEOUT_MS) {
+        console.warn('[admin-bot] tool loop hit soft timeout, breaking');
+        break;
+      }
+      iterations++;
+
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const block of response.content) {
+        if (block.type !== 'tool_use') continue;
+        let result;
+        try {
+          result = await executeAdminTool(
+            block.name,
+            (block.input as Record<string, unknown>) ?? {},
+            toolCtx,
+          );
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          result = { text: `Tool ${block.name} threw: ${msg}` };
+        }
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: result.text,
+        });
+      }
+
+      messageHistory.push({ role: 'assistant', content: response.content });
+      messageHistory.push({ role: 'user', content: toolResults });
+
+      response = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        tools: TOOL_DEFINITIONS,
+        messages: messageHistory,
+      });
+    }
+
+    const finalText = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+      .trim();
+
+    if (finalText) {
+      await saveMessage(supabase, chatId, 'assistant', finalText);
+      await sendTelegram(chatId, finalText);
 
       const devPhrases = [
         'build a ', 'build the ', 'create a component', 'create a page', 'add a component',
@@ -719,6 +820,10 @@ ${context}${agentContext}`,
           body: JSON.stringify({ chatId, task: text }),
         }).catch(() => {});
       }
+    } else {
+      // No final text — most likely we hit MAX_ITERATIONS or the soft
+      // timeout. Surface a short status so Paul isn't left in silence.
+      await sendTelegram(chatId, '_Worked on that but ran out of time before finishing the reply. Try a more specific question or break it into steps._');
     }
 
     return NextResponse.json({ ok: true });
