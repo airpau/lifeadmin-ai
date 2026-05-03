@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   CreditCard, FileText, Building2, BarChart3, CheckCircle, CheckCircle2,
   ArrowRight, Loader2, AlertTriangle, Clock, Sparkles, PiggyBank, TrendingUp, Tag,
-  Mail, ScanSearch, RefreshCw, ChevronDown, ChevronUp, Trash2,
+  Mail, ScanSearch, RefreshCw, ChevronDown, ChevronUp, Trash2, MessageCircle,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
@@ -85,6 +85,11 @@ export default function DashboardPage() {
   const [connectionsCollapsed, setConnectionsCollapsed] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  // Pocket Agent connection state. `null` while we don't yet know — the
+  // card stays hidden in that window so it doesn't flash for users who
+  // already have a channel linked. Once loaded, the card hides entirely
+  // when either channel is active.
+  const [pocketAgentConnected, setPocketAgentConnected] = useState<{ telegram: boolean; whatsapp: boolean } | null>(null);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -282,6 +287,7 @@ export default function DashboardPage() {
           profile, subs, tasks, banks, userTasks, cancelledSubs, resolvedTasks,
           emailConnsRes, scanFindingsRes, subTotalRes, vaultExpiringRes,
           priceAlertRes, anyAlertsRes,
+          telegramSessionsRes, whatsappSessionsRes,
         ] = await Promise.all([
           supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).maybeSingle(),
           supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
@@ -314,9 +320,22 @@ export default function DashboardPage() {
             .order('annual_impact', { ascending: false }),
           supabase.from('price_increase_alerts').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).in('status', ['active', 'dismissed', 'actioned']),
+          // Pocket Agent connection state — same pattern used by the
+          // notifications/whatsapp settings pages and the dispatch
+          // helper in src/lib/pocket-agent/dispatch.ts. The mutex
+          // trigger guarantees at most one active row per user across
+          // both tables.
+          supabase.from('telegram_sessions').select('user_id', { count: 'exact', head: true })
+            .eq('user_id', user.id).eq('is_active', true),
+          supabase.from('whatsapp_sessions').select('user_id', { count: 'exact', head: true })
+            .eq('user_id', user.id).eq('is_active', true).is('opted_out_at', null),
         ]);
 
         setUserTier(profile.data?.subscription_tier || 'free');
+        setPocketAgentConnected({
+          telegram: (telegramSessionsRes.count ?? 0) > 0,
+          whatsapp: (whatsappSessionsRes.count ?? 0) > 0,
+        });
         hasBankConnection = (banks.data || []).length > 0;
         setBankConnected(hasBankConnection);
         setBankAccounts(banks.data || []);
@@ -1697,6 +1716,38 @@ export default function DashboardPage() {
           </Link>
         )}
       </div>
+
+      {/* Pocket Agent — only render once we know connection state, and
+          hide entirely if either Telegram or WhatsApp is already linked.
+          Telegram is free on every tier; WhatsApp is Pro-only because each
+          template send costs us money via Meta. */}
+      {pocketAgentConnected !== null && !pocketAgentConnected.telegram && !pocketAgentConnected.whatsapp && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card]">
+          <MessageCircle className="h-8 w-8 text-orange-400 mb-3" />
+          <h3 className="text-white font-semibold mb-1">Chat to your Pocket Agent</h3>
+          <p className="text-slate-400 text-sm mb-4">
+            Chat to your Pocket Agent on Telegram or WhatsApp. Ask about your subs, dispute status, or start a new letter.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <a
+              href="https://t.me/PaybackerCoUkBot"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-mint-400 text-sm hover:text-mint-300 transition-colors"
+            >
+              Connect on Telegram <ArrowRight className="h-3 w-3" />
+            </a>
+            {userTier === 'pro' && (
+              <Link
+                href="/dashboard/settings/whatsapp"
+                className="inline-flex items-center gap-1 text-mint-400 text-sm hover:text-mint-300 transition-colors"
+              >
+                Connect on WhatsApp <ArrowRight className="h-3 w-3" />
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Quick links */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
