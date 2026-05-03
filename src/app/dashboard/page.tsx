@@ -594,7 +594,13 @@ export default function DashboardPage() {
       // per-endpoint success. Fixes the "scan-now button doesn't seem
       // to update" report — previously a same-result scan left the UI
       // showing stale opportunity counts.
-      const [{ data: scanFindings }, { data: refreshedConns }] = await Promise.all([
+      //
+      // We run a separate count-only query alongside the capped list so
+      // the delta math reflects the TRUE total count, not the displayed
+      // (limited to 30) list length. Without this, a user going from 30
+      // → 31 actual findings would see "no new findings (30 total)"
+      // because mapped.length saturates at the cap — Codex P2 round 2.
+      const [{ data: scanFindings }, { count: trueTotal }, { data: refreshedConns }] = await Promise.all([
         supabase
           .from('email_scan_findings')
           .select('*')
@@ -602,6 +608,11 @@ export default function DashboardPage() {
           .in('status', ['new', 'reviewing'])
           .order('created_at', { ascending: false })
           .limit(30),
+        supabase
+          .from('email_scan_findings')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', authUser.id)
+          .in('status', ['new', 'reviewing']),
         supabase
           .from('email_connections')
           .select('id, email_address, provider_type, last_scanned_at')
@@ -644,7 +655,11 @@ export default function DashboardPage() {
           message: 'Scan failed — please re-link your email or try again.',
         });
       } else {
-        const total = mapped.length;
+        // Use the uncapped trueTotal (count: 'exact', head: true) for
+        // delta math — mapped.length saturates at the .limit(30) cap so
+        // a user going from 30 → 31 actual findings would otherwise see
+        // "no new findings (30 total)". Codex P2 round 2.
+        const total = trueTotal ?? mapped.length;
         const delta = total - priorCount;
         let message: string;
         if (total === 0) {
