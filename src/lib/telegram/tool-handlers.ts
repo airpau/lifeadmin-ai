@@ -19,6 +19,7 @@ import {
 } from '@/lib/notifications/events';
 import { getEffectiveTier } from '@/lib/plan-limits';
 import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
+import { syncLinkedThread } from '@/lib/dispute-sync/sync-runner';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -5734,29 +5735,36 @@ async function syncRepliesNow(
 ): Promise<ToolResult> {
   const resolved = await resolveActiveDisputeForBot(supabase, userId, provider);
   if (!resolved.ok) return { text: resolved.text };
-  // Trigger the existing sync endpoint via fetch so we reuse its logic.
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
-  try {
-    const res = await fetch(`${origin}/api/disputes/${resolved.dispute.id}/sync-replies-now`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.CRON_SECRET}`,
-        'X-User-Id': userId,
-      },
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      return { text: `Sync failed (${res.status}): ${txt.slice(0, 200)}` };
-    }
-    const data = await res.json();
-    const imported = (data as { imported?: number }).imported ?? 0;
-    return imported > 0
-      ? { text: `✓ Synced *${resolved.dispute.provider_name}* — imported ${imported} new repl${imported === 1 ? 'y' : 'ies'}. Check the dispute timeline.` }
-      : { text: `✓ Synced *${resolved.dispute.provider_name}* — no new replies since last check.` };
-  } catch (err) {
-    return { text: `Sync request failed: ${err instanceof Error ? err.message : 'unknown error'}. The watchdog cron will catch up on its next 30-min run.` };
+
+  // Call the watchdog runner directly. The bot is already on the server
+  // with the admin Supabase client, so going through the HTTP route just
+  // to be 401'd by cookie-only auth (the route runs `supabase.auth.getUser()`
+  // and ignores `Authorization: Bearer ${CRON_SECRET}` + `X-User-Id`) is both
+  // pointless and misleading — the LLM was surfacing those 401s as
+  // "authorisation error" and telling users their email/bank connection had
+  // expired. Mirror the route's logic in-process instead.
+  const { data: link } = await supabase
+    .from('dispute_watchdog_links')
+    .select('id')
+    .eq('dispute_id', resolved.dispute.id)
+    .eq('user_id', userId)
+    .eq('sync_enabled', true)
+    .maybeSingle();
+
+  if (!link) {
+    return { text: `No linked email thread for *${resolved.dispute.provider_name}* yet. Link one via /dashboard/disputes first.` };
   }
+
+  const result = await syncLinkedThread(link.id, { sendNotifications: true });
+
+  if (result.error) {
+    return { text: `Sync failed: ${result.error}. The watchdog cron will retry on its next 30-min run.` };
+  }
+
+  const imported = result.imported;
+  return imported > 0
+    ? { text: `✓ Synced *${resolved.dispute.provider_name}* — imported ${imported} new repl${imported === 1 ? 'y' : 'ies'}. Check the dispute timeline.` }
+    : { text: `✓ Synced *${resolved.dispute.provider_name}* — no new replies since last check.` };
 }
 
 async function getNotifications(
