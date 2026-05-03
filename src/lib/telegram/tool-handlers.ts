@@ -497,7 +497,13 @@ export async function executeToolCall(
       return attachEvidenceToDispute(supabase, userId, {
         provider: toolInput.provider as string,
         evidence_text: toolInput.evidence_text as string,
-        source: (toolInput.source as 'telegram_chat' | 'whatsapp_chat' | undefined) ?? 'telegram_chat',
+        // Codex P2 round 2: default source from the actual channel the
+        // tool call is coming from. Previously hard-coded to
+        // 'telegram_chat' which mistagged WhatsApp evidence. Caller can
+        // still override via toolInput.source.
+        source:
+          (toolInput.source as 'telegram_chat' | 'whatsapp_chat' | undefined) ??
+          (channel === 'whatsapp' ? 'whatsapp_chat' : 'telegram_chat'),
       });
     case 'edit_correspondence_entry':
       return editCorrespondenceEntry(supabase, userId, {
@@ -2305,9 +2311,15 @@ async function getDisputeDetail(
     return { text: `No dispute found matching "${provider}".` };
   }
 
+  // Codex P2 round 2: select `id` so we can surface each
+  // correspondence entry's UUID in the output text. Without it the
+  // bot has no way to discover the correspondence_id required by
+  // edit_correspondence_entry / delete_correspondence_entry /
+  // move_correspondence_to_dispute. Mirrors the net-worth ID-exposure
+  // fix in #469.
   const { data: letters } = await supabase
     .from('correspondence')
-    .select('entry_type, title, content, entry_date')
+    .select('id, entry_type, title, content, entry_date')
     .eq('dispute_id', dispute.id)
     .eq('user_id', userId)
     .order('entry_date', { ascending: true });
@@ -2337,6 +2349,10 @@ async function getDisputeDetail(
     // still bounded; very long emails get truncated with an ellipsis.
     for (const l of letters) {
       text += `\n📄 *${l.title ?? l.entry_type}* — ${fmtDate(l.entry_date)}\n`;
+      // Surface the correspondence id so edit_correspondence_entry /
+      // delete_correspondence_entry / move_correspondence_to_dispute
+      // have an ID to pass. (Codex P2 round 2.)
+      text += `id: ${l.id}\n`;
       if (l.content) {
         const preview = l.content.length > 1500 ? l.content.slice(0, 1500) + '...' : l.content;
         text += `${preview}\n`;
@@ -2421,14 +2437,19 @@ async function quoteEmailFromThread(
     return { text: `No dispute found matching "${provider}".` };
   }
 
+  // Codex P2 round 2: select `id` so the bot can surface the
+  // correspondence UUID alongside each quoted entry. Required for
+  // edit_correspondence_entry / delete_correspondence_entry /
+  // move_correspondence_to_dispute to be callable from chat.
   const { data: rows } = await supabase
     .from('correspondence')
-    .select('entry_type, title, content, entry_date, sender_address, sender_name')
+    .select('id, entry_type, title, content, entry_date, sender_address, sender_name')
     .eq('dispute_id', dispute.id)
     .eq('user_id', userId)
     .order('entry_date', { ascending: true });
 
   type CorrRow = {
+    id: string;
     entry_type: string;
     title: string | null;
     content: string | null;
@@ -2499,6 +2520,9 @@ async function quoteEmailFromThread(
     lines.push(
       `[entry ${e.message_index_in_thread}/${all.length}] ${fmtDate(r.entry_date)} — direction=${e.direction} — type=${r.entry_type}`,
     );
+    // Surface correspondence id so edit / delete / move tools can be
+    // called with this entry. (Codex P2 round 2.)
+    lines.push(`id: ${r.id}`);
     lines.push(`subject: ${r.title ?? '(no subject)'}`);
     lines.push(`sender: ${senderLabel}`);
     lines.push(`recipient: ${recipientLabel}`);

@@ -270,7 +270,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'get_dispute_detail',
     description:
-      "Get the full detail of a specific dispute including all correspondence (letters sent, responses received). Use when the user asks about a specific complaint or dispute with a provider.",
+      "Get the full detail of a specific dispute including all correspondence (letters sent, responses received). Use when the user asks about a specific complaint or dispute with a provider. Each correspondence entry includes its `id:` (UUID) — pass that to edit_correspondence_entry / delete_correspondence_entry / move_correspondence_to_dispute.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -286,7 +286,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'quote_email_from_thread',
     description:
-      "Read the actual body text of the user's correspondence on a dispute — the linked email thread plus AI-drafted letters they've sent. ALWAYS call this tool when the user asks about content, amounts, dates, deadlines, demands, requests, or specific words from any email or letter on a dispute (e.g. 'what did I write', 'what amount did I demand', 'what was in my last letter', 'what did they offer', 'what date did they say', 'confirm the figure I quoted'). NEVER infer email content from summaries, dispute metadata, offer figures, or earlier conversation context — always call this tool first and quote verbatim from the returned `body` field. Returns the most recent N entries with FULL body text (not snippets), ordered most-recent first, with structured fields {date, sender, recipient, subject, body, direction, message_index_in_thread}.",
+      "Read the actual body text of the user's correspondence on a dispute — the linked email thread plus AI-drafted letters they've sent. ALWAYS call this tool when the user asks about content, amounts, dates, deadlines, demands, requests, or specific words from any email or letter on a dispute (e.g. 'what did I write', 'what amount did I demand', 'what was in my last letter', 'what did they offer', 'what date did they say', 'confirm the figure I quoted'). NEVER infer email content from summaries, dispute metadata, offer figures, or earlier conversation context — always call this tool first and quote verbatim from the returned `body` field. Returns the most recent N entries with FULL body text (not snippets), ordered most-recent first, with structured fields {id, date, sender, recipient, subject, body, direction, message_index_in_thread}. The `id` is the correspondence UUID — pass it to edit_correspondence_entry / delete_correspondence_entry / move_correspondence_to_dispute.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -2087,7 +2087,7 @@ export const telegramTools: Tool[] = [
         source: {
           type: 'string',
           enum: ['telegram_chat', 'whatsapp_chat'],
-          description: "Which channel the evidence came from. Used to label the timeline entry. Defaults to telegram_chat.",
+          description: "Which channel the evidence came from. Used to label the timeline entry. Defaults to whichever channel the bot is currently running on (telegram_chat for Telegram, whatsapp_chat for WhatsApp) — you usually don't need to set this explicitly.",
         },
       },
       required: ['provider', 'evidence_text'],
