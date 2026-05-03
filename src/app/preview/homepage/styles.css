@@ -604,6 +604,13 @@
 
 .m-v2-root .pillar-card .copy { color: var(--text-secondary); font-size: 15px; margin-bottom: 20px; }
 
+/* Product overview grid — compact pillar cards (no inline demo preview,
+   so we relax the 480px min-height inherited from the older "pillar"
+   pattern and pin the anchor-link to the bottom-left of the card). */
+.m-v2-root .pillars-section .pillar-card { min-height: 280px; }
+.m-v2-root .pillars-section .pillar-card .btn { align-self: flex-start; margin-top: auto; }
+.m-v2-root .pillars-section .pillar-card h3 { color: var(--text-primary); }
+
 .m-v2-root .pillar-preview {
   margin-top: auto;
   border-radius: 14px;
