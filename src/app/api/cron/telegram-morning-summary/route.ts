@@ -27,7 +27,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { sendWhatsAppText, sendWhatsAppTemplate } from '@/lib/whatsapp';
-import { getTemplateSid } from '@/lib/whatsapp/template-sids';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -366,20 +365,12 @@ async function dispatchWhatsAppMorningBrief(
   }
 
   // Outside the window (or text fallback) — template path.
-  // Skip only when no SID exists at all. `getTemplateSid` mirrors the
-  // Twilio provider's full resolution order: TWILIO_TEMPLATE_<NAME>
-  // env override → DB override (populated via /dashboard/admin/whatsapp
-  // Resubmit) → registry fallback. So a `null` here means there's
-  // genuinely nothing send-safe — even a registry default of
-  // PENDING_RESUBMISSION can dispatch via the override path.
+  // No pre-flight SID gate: the Twilio provider owns the full resolution
+  // order (TWILIO_TEMPLATE_<NAME> env override → DB override → registry)
+  // and may also reject the PENDING_RESUBMISSION placeholder cleanly. We
+  // always attempt the send and rely on the provider to throw on
+  // unsendable state — that error is logged and tallied as a skip below.
   const templateName = 'paybacker_morning_summary';
-  const sid = await getTemplateSid(templateName);
-  if (!sid) {
-    console.warn(
-      `[telegram-morning-summary] WhatsApp template ${templateName} not yet approved — skipping user ${userId}`,
-    );
-    return 'skipped';
-  }
 
   // Best-effort variable extraction from the brief. The template body is:
   //   "Morning {{1}}. Overnight we scanned {{2}} items and found {{3}}
@@ -443,9 +434,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Telegram is now optional — environments running WhatsApp-only (no
+  // Telegram bot token configured) must still be able to fan out the
+  // morning brief to active whatsapp_sessions. Gate the Telegram path
+  // behind a flag rather than 500-ing the whole handler.
   const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
-  if (!token) {
-    return NextResponse.json({ error: 'TELEGRAM_USER_BOT_TOKEN not set' }, { status: 500 });
+  const telegramEnabled = Boolean(token);
+  if (!telegramEnabled) {
+    console.warn(
+      '[telegram-morning-summary] TELEGRAM_USER_BOT_TOKEN not set — Telegram dispatch disabled, WhatsApp-only run.',
+    );
   }
 
   const supabase = getAdmin();
@@ -590,59 +588,65 @@ export async function GET(request: NextRequest) {
     todayStart,
     tipIndex,
   };
-  for (const session of eligibleSessions) {
-    const { user_id: userId, telegram_chat_id: chatId } = session;
+  // The Telegram dispatch loop only runs when the bot token is present.
+  // When telegramEnabled is false, users with both Telegram and WhatsApp
+  // sessions get picked up by the WhatsApp-only loop below (the
+  // whatsappDispatchedUserIds Set stays empty so no user is skipped).
+  if (telegramEnabled && token) {
+    for (const session of eligibleSessions) {
+      const { user_id: userId, telegram_chat_id: chatId } = session;
 
-    try {
-      // ------ Build the brief (helper handles "no transactions = null") ------
-      const message = await buildMorningBrief(supabase, userId, briefCtx);
-      if (!message) {
-        skipped++;
-        continue;
-      }
-
-      // ------ Send via Telegram ------
-      const ok = await sendTelegramMessage(token, Number(chatId), message);
-
-      if (ok) {
-        sent++;
-      } else {
-        errors.push(`Failed to send to user ${userId}`);
-      }
-
-      // ------ WhatsApp dispatch (independent channel) ------
-      // If this user also has an active WhatsApp Pocket Agent session,
-      // fan the same body out there too. Wrapped in its own try/catch
-      // so a bad number / unapproved template / Twilio outage can't
-      // kill the Telegram run for the rest of the user list.
-      const waPhone = whatsappByUserId.get(userId);
-      if (waPhone) {
-        try {
-          const waOutcome = await dispatchWhatsAppMorningBrief(
-            supabase,
-            userId,
-            waPhone,
-            message,
-          );
-          if (waOutcome === 'sent') {
-            whatsappSent++;
-          } else {
-            whatsappSkipped++;
-          }
-        } catch (waErr) {
-          const errMsg = waErr instanceof Error ? waErr.message : String(waErr);
-          console.error(
-            `[telegram-morning-summary] WhatsApp dispatch failed for user ${userId}:`,
-            errMsg,
-          );
-          whatsappErrors.push(`${userId}: ${errMsg}`);
+      try {
+        // ------ Build the brief (helper handles "no transactions = null") ------
+        const message = await buildMorningBrief(supabase, userId, briefCtx);
+        if (!message) {
+          skipped++;
+          continue;
         }
-        whatsappDispatchedUserIds.add(userId);
+
+        // ------ Send via Telegram ------
+        const ok = await sendTelegramMessage(token, Number(chatId), message);
+
+        if (ok) {
+          sent++;
+        } else {
+          errors.push(`Failed to send to user ${userId}`);
+        }
+
+        // ------ WhatsApp dispatch (independent channel) ------
+        // If this user also has an active WhatsApp Pocket Agent session,
+        // fan the same body out there too. Wrapped in its own try/catch
+        // so a bad number / unapproved template / Twilio outage can't
+        // kill the Telegram run for the rest of the user list.
+        const waPhone = whatsappByUserId.get(userId);
+        if (waPhone) {
+          try {
+            const waOutcome = await dispatchWhatsAppMorningBrief(
+              supabase,
+              userId,
+              waPhone,
+              message,
+            );
+            if (waOutcome === 'sent') {
+              whatsappSent++;
+            } else {
+              whatsappSkipped++;
+            }
+          } catch (waErr) {
+            const errMsg = waErr instanceof Error ? waErr.message : String(waErr);
+            console.error(
+              `[telegram-morning-summary] WhatsApp dispatch failed for user ${userId}:`,
+              errMsg,
+            );
+            whatsappErrors.push(`${userId}: ${errMsg}`);
+          }
+          whatsappDispatchedUserIds.add(userId);
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[telegram-morning-summary] Error for user ${userId}:`, errMsg);
+        errors.push(`${userId}: ${errMsg}`);
       }
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(`[telegram-morning-summary] Error for user ${userId}:`, errMsg);
-      errors.push(`${userId}: ${errMsg}`);
     }
   }
 
@@ -689,9 +693,17 @@ export async function GET(request: NextRequest) {
       `WhatsApp: sent ${whatsappSent}, skipped ${whatsappSkipped}, errors ${whatsappErrors.length}.`,
   );
 
-  // Alert founder if the cron ran with eligible users but sent nothing
+  // Alert founder if the cron ran with eligible users but sent nothing.
+  // Skipped when Telegram isn't configured (no token to call the API with).
   const founderChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
-  if (founderChatId && eligibleSessions.length > 0 && sent === 0 && errors.length > 0) {
+  if (
+    telegramEnabled &&
+    token &&
+    founderChatId &&
+    eligibleSessions.length > 0 &&
+    sent === 0 &&
+    errors.length > 0
+  ) {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -11,7 +11,7 @@
  */
 
 import crypto from 'node:crypto';
-import { TEMPLATES, type TemplateName } from './template-registry';
+import { TEMPLATES, PENDING_RESUBMISSION, type TemplateName } from './template-registry';
 import type {
   InboundMessage,
   SendTemplateOptions,
@@ -90,8 +90,22 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
     const { getTemplateSid } = await import('./template-sids');
     const dbSid = await getTemplateSid(opts.templateName);
     const registry = (TEMPLATES as Record<string, { sid: string }>)[opts.templateName as TemplateName];
-    const contentSid = envOverride || dbSid || registry?.sid;
+    // Reject the registry's `PENDING_RESUBMISSION` placeholder — it's not a
+    // valid Twilio ContentSid. Without this guard the provider would POST the
+    // literal string "PENDING_RESUBMISSION" and Twilio would 400. Callers
+    // upstream rely on this throwing a clean error rather than skipping
+    // pre-emptively, so we never attempt the send when the only candidate
+    // SID is the placeholder.
+    const registrySid =
+      registry?.sid && registry.sid !== PENDING_RESUBMISSION ? registry.sid : undefined;
+    const contentSid = envOverride || dbSid || registrySid;
     const from = requireEnv('TWILIO_WHATSAPP_FROM');
+
+    if (!contentSid && registry?.sid === PENDING_RESUBMISSION) {
+      throw new Error(
+        `[whatsapp/twilio] template "${opts.templateName}" is pending Meta resubmission — set TWILIO_TEMPLATE_${opts.templateName.toUpperCase()} or update whatsapp_template_sids to send.`,
+      );
+    }
 
     if (contentSid) {
       const params: Record<string, string> = {
