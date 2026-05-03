@@ -332,29 +332,29 @@ export default function DashboardPage() {
           }
         }
 
-        // Pocket Agent connection state — query both session tables in
-        // parallel. Mirrors the pattern in src/lib/pocket-agent/dispatch.ts
-        // (telegram_sessions: is_active=true; whatsapp_sessions: is_active=true
-        // AND opted_out_at IS NULL).
-        const [{ data: tgSessions }, { data: waSessions }] = await Promise.all([
-          supabase
-            .from('telegram_sessions')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('is_active', true)
-            .limit(1),
-          supabase
-            .from('whatsapp_sessions')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('is_active', true)
-            .is('opted_out_at', null)
-            .limit(1),
-        ]);
-        setPocketAgentConnected({
-          telegram: (tgSessions?.length ?? 0) > 0,
-          whatsapp: (waSessions?.length ?? 0) > 0,
-        });
+        // Pocket Agent connection state — fetched from a privileged
+        // server route. The browser Supabase client can't read
+        // telegram_sessions / whatsapp_sessions directly under RLS,
+        // so we delegate the lookup to /api/pocket-agent/connection-status
+        // which verifies the user server-side and uses the service-role
+        // client. Mirrors the active-session predicates in
+        // src/lib/pocket-agent/dispatch.ts.
+        try {
+          const res = await fetch('/api/pocket-agent/connection-status', {
+            cache: 'no-store',
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setPocketAgentConnected({
+              telegram: Boolean(data?.telegram),
+              whatsapp: Boolean(data?.whatsapp),
+            });
+          } else {
+            setPocketAgentConnected({ telegram: false, whatsapp: false });
+          }
+        } catch {
+          setPocketAgentConnected({ telegram: false, whatsapp: false });
+        }
 
         // Load saved email scan opportunities from the centralised email_scan_findings table
         const { data: scanFindings } = await supabase
