@@ -39,6 +39,11 @@ export default function DashboardPage() {
   const [bankConnected, setBankConnected] = useState(false);
   const [expiringContracts, setExpiringContracts] = useState(0);
   const [userTier, setUserTier] = useState('free');
+  // Effective tier mirrors `getEffectiveTier(userId)` server-side: stored
+  // subscription_tier, with an active onboarding trial flipping the user
+  // to 'pro' for the trial window. Used for the WhatsApp Pocket Agent
+  // gate so trial Pros (who pass `canUseWhatsApp`) actually see the CTA.
+  const [effectiveTier, setEffectiveTier] = useState('free');
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   // Pocket Agent connection state — null until loaded so the card
   // doesn't flash. Card hides if either telegram or whatsapp is
@@ -290,7 +295,7 @@ export default function DashboardPage() {
         if (!user) { setLoading(false); return; }
 
         const [profile, subs, tasks, banks, userTasks] = await Promise.all([
-          supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).maybeSingle(),
+          supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at').eq('id', user.id).maybeSingle(),
           supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('disputes').select('id', { count: 'exact', head: true })
@@ -302,7 +307,19 @@ export default function DashboardPage() {
             .order('created_at', { ascending: false }).limit(50),
         ]);
 
-        setUserTier(profile.data?.subscription_tier || 'free');
+        const storedTier = profile.data?.subscription_tier || 'free';
+        setUserTier(storedTier);
+        // Mirror `getEffectiveTier` (src/lib/plan-limits.ts): an active
+        // onboarding trial promotes the user to 'pro' for the trial
+        // window. The WhatsApp CTA gate below honours `canUseWhatsApp`,
+        // which checks the effective tier — without this, trial Pros
+        // pass the server-side `/api/whatsapp/opt-in` check but never
+        // see the CTA on the dashboard.
+        const onboardingTrialActive = !!profile.data?.trial_ends_at
+          && new Date(profile.data.trial_ends_at) > new Date()
+          && !profile.data?.trial_converted_at
+          && !profile.data?.trial_expired_at;
+        setEffectiveTier(onboardingTrialActive ? 'pro' : storedTier);
         hasBankConnection = (banks.data || []).length > 0;
         setBankConnected(hasBankConnection);
         setBankAccounts(banks.data || []);
@@ -1744,7 +1761,7 @@ export default function DashboardPage() {
                 >
                   Connect on Telegram →
                 </a>
-                {userTier === 'pro' && (
+                {effectiveTier === 'pro' && (
                   <Link
                     href="/dashboard/settings/whatsapp"
                     className="cta-ghost"
