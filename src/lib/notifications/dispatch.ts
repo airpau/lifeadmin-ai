@@ -15,6 +15,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { EVENT_CATALOG, type NotificationEventType } from './events';
 import { TEMPLATES, type TemplateName } from '@/lib/whatsapp/template-registry';
+// Static-import the WhatsApp helpers. Dynamic `await import('@/lib/whatsapp')`
+// fails to resolve under Turbopack (Next 16.2) — same regression fixed in
+// src/lib/pocket-agent/dispatch.ts. Build error: `Module not found: Can't
+// resolve '@/lib/whatsapp'` even though tsc resolves it fine.
+import { sendWhatsAppText, sendWhatsAppTemplate } from '@/lib/whatsapp';
 
 /**
  * Cost guardrail thresholds for WhatsApp marketing-category templates.
@@ -374,7 +379,6 @@ async function sendWhatsApp(
 ): Promise<boolean> {
   try {
     if (payload.templateName) {
-      const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
       await sendWhatsAppTemplate({
         to: phone,
         templateName: payload.templateName,
@@ -383,7 +387,6 @@ async function sendWhatsApp(
       return true;
     }
     if (payload.text) {
-      const { sendWhatsAppText } = await import('@/lib/whatsapp');
       await sendWhatsAppText({ to: phone, text: payload.text });
       return true;
     }

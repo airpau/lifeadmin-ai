@@ -37,6 +37,15 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+// Static-import the WhatsApp send helpers. Earlier today we used
+// `await import('@/lib/whatsapp')` lazily, but Turbopack (Next 16.2)
+// fails to resolve the path alias on dynamic-import call-sites — the
+// build error is `Module not found: Can't resolve '@/lib/whatsapp'`
+// at the import line, even though the file (src/lib/whatsapp/index.ts)
+// is present and tsc resolves it fine. Static import sidesteps the
+// bug. The lazy-import was originally just a defensive ergonomic, no
+// real reason for it.
+import { sendWhatsAppText, sendWhatsAppTemplate } from '@/lib/whatsapp';
 
 // Loose typing — the cron passes a Supabase client with a different
 // generic instantiation than this lib's createClient inference would
@@ -60,7 +69,22 @@ export type AlertType =
   | 'dispute_followup'
   | 'subscription_renewing'
   | 'unusual_charge'
-  | 'money_recovered';
+  | 'money_recovered'
+  // ─── Recurring digest / lifecycle alerts (added 2026-04-29) ───
+  // The crons that send these (telegram-morning-summary,
+  // weekly-money-digest, telegram-savings-milestone) used to fan
+  // out to Telegram only, bypassing the channel-agnostic router.
+  // Adding them here means a Pro WhatsApp user finally hears their
+  // morning brief, weekly recap and milestone pings on the channel
+  // they actually chose.
+  | 'morning_summary'
+  | 'weekly_recovery'
+  | 'savings_milestone'
+  // Income-detection alert (PR 2 — paybacker_income_received template
+  // is PENDING_RESUBMISSION at time of writing; the WhatsApp branch
+  // will skip cleanly until the SID resolves and the dispatcher will
+  // prefer the free-form text inside the 24h window in the meantime).
+  | 'income_received';
 
 export interface ActiveSession {
   user_id: string;
@@ -213,6 +237,7 @@ export async function dispatchPocketAgentAlert(args: {
       let inWindow = false;
       let hasMarketingOptIn = false;
       let withinMarketingCap = false;
+      let lastMessageMs: number | null = null;
       if (supabase) {
         const { data: row } = await supabase
           .from('whatsapp_sessions')
@@ -222,7 +247,8 @@ export async function dispatchPocketAgentAlert(args: {
           .maybeSingle();
         if (row) {
           if (row.last_message_at) {
-            inWindow = Date.now() - new Date(row.last_message_at).getTime() < SERVICE_WINDOW_MS;
+            lastMessageMs = new Date(row.last_message_at).getTime();
+            inWindow = Date.now() - lastMessageMs < SERVICE_WINDOW_MS;
           }
           hasMarketingOptIn = !!row.marketing_opt_in_at;
           if (row.last_marketing_template_at) {
@@ -232,6 +258,10 @@ export async function dispatchPocketAgentAlert(args: {
         }
       }
 
+      const minsSinceMsg = lastMessageMs
+        ? Math.round((Date.now() - lastMessageMs) / 60000)
+        : -1;
+
       // Service-window fast path: free-form text inside the 24h
       // window. Costs nothing, no opt-in needed, no cap. Used for
       // marketing AND utility templates when we're inside the window
@@ -239,11 +269,16 @@ export async function dispatchPocketAgentAlert(args: {
       if (inWindow && supabase) {
         const text = renderAlertText(alertType, whatsappVars);
         if (text) {
-          const { sendWhatsAppText } = await import('@/lib/whatsapp');
           const result = await sendWhatsAppText({
             to: String(session.destination),
             text,
           });
+          // Prod-log the routing decision. Filter Vercel logs by
+          // `[pocket-agent/whatsapp]` to audit cost split between
+          // free (mode=text) and paid (mode=template) sends.
+          console.log(
+            `[pocket-agent/whatsapp] mode=text alert=${alertType} marketing=${isMarketing} mins_since_msg=${minsSinceMsg} sid=${result.providerMessageId}`,
+          );
           return {
             ok: true,
             channel: 'whatsapp',
@@ -271,12 +306,17 @@ export async function dispatchPocketAgentAlert(args: {
         }
       }
 
-      const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
       const result = await sendWhatsAppTemplate({
         to: String(session.destination),
         templateName,
         parameters: positional,
       });
+
+      // Prod log — paid path. Same prefix as the text branch so a
+      // single Vercel filter shows the cost split.
+      console.log(
+        `[pocket-agent/whatsapp] mode=template alert=${alertType} template=${templateName} marketing=${isMarketing} mins_since_msg=${minsSinceMsg} sid=${result.providerMessageId}`,
+      );
 
       // Stamp last_marketing_template_at so concurrent crons can't
       // double-charge by both deciding the cap had elapsed.
@@ -350,6 +390,27 @@ function renderAlertText(
       return (
         `🟡 Budget watch — *${v('category')}* is at ${v('percent_used')}% with ${v('amount_left')} left until ${v('end_date')}.`
       );
+    case 'morning_summary':
+      return (
+        `☕ Morning ${v('name')}!\n\n` +
+        `Yesterday I scanned ${v('scanned_count')} transactions and spotted ${v('opportunities_count')} opportunities for you.\n\n` +
+        `Top focus: ${v('top_focus')}`
+      );
+    case 'weekly_recovery':
+      return (
+        `📊 *This week with Paybacker:* ${v('amount_this_week')} recovered.\n\n` +
+        `All-time: ${v('lifetime_amount')} back in your account. Reply WIN for the breakdown.`
+      );
+    case 'savings_milestone':
+      return (
+        `🎯 You've hit ${v('percent')}% of your *${v('goal_name')}* goal — ${v('amount_saved')} of ${v('target_amount')}.\n\n` +
+        `Keep going. Reply BOOST and I'll find another £20-50 to add this week.`
+      );
+    case 'income_received':
+      return (
+        `💷 ${v('amount')} from *${v('merchant')}* just landed in your account.\n\n` +
+        `Lifetime received: ${v('lifetime_received')}. Tap to see the breakdown.`
+      );
     default:
       return null;
   }
@@ -378,6 +439,20 @@ function templateForAlertType(alertType: AlertType): string | null {
       return 'paybacker_dispute_reply';
     case 'budget_overrun':
       return 'paybacker_budget_alert';
+    case 'morning_summary':
+      return 'paybacker_morning_summary';
+    case 'weekly_recovery':
+      return 'paybacker_recovery_total_weekly';
+    case 'savings_milestone':
+      return 'paybacker_savings_goal_milestone';
+    case 'income_received':
+      // Template added in PR 2 with status PENDING_RESUBMISSION. Inside
+      // the 24h window the dispatcher will substitute the renderAlertText
+      // free-form text and the missing SID never matters; outside the
+      // window the template send will fail until Meta approves it. The
+      // failure surfaces as a logged skip, not a thrown error — so this
+      // is safe to ship before approval lands.
+      return 'paybacker_income_received';
     default:
       return null;
   }
