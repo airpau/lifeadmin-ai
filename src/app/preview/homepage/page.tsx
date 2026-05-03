@@ -1133,6 +1133,48 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
+      {/* ----- Pocket Agent · reframed as "personal caseworker" ----- */}
+      <section className="feature-section feature-section--ink" id="pocket-agent">
+        <div className="wrap">
+          <div className="feature-grid">
+            <Reveal className="feature-copy">
+              <h2 className="feature-title">Your personal caseworker — over WhatsApp &amp; Telegram</h2>
+              <p className="feature-tagline">
+                A solicitor takes a week to reply to email. Your Paybacker
+                caseworker is on chat 24/7.
+              </p>
+              <p>
+                It tells you when a dispute is ready to send, when the company
+                replies, and when the 8-week Ombudsman clock hits. Tap to
+                approve. Done — no chasing, no hold music.
+              </p>
+              <ul className="feature-bullets">
+                <li>Drafts ready in 30 seconds — approve with one tap</li>
+                <li>Watches your inbox for the provider&rsquo;s response</li>
+                <li>Auto-escalates to Ombudsman at the 8-week mark</li>
+                <li>
+                  <strong>Telegram Pocket Agent</strong>{' '}
+                  <span className="tier-chip tier-chip--free">Free</span> — across all plans.
+                </li>
+                <li>
+                  <strong>WhatsApp Pocket Agent</strong>{' '}
+                  <span className="tier-chip tier-chip--pro">Pro</span> — £9.99/month.
+                  Same caseworker, different chat.
+                </li>
+              </ul>
+              <div className="feature-cta-row">
+                <Link className="btn btn-mint" href="/pocket-agent">
+                  Set up your Pocket Agent →
+                </Link>
+              </div>
+            </Reveal>
+            <Reveal className="feature-stage" delay={120}>
+              <PocketAgentDemo />
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
       {/* ----- 02 · Compliance pipeline (trust strip between Disputes
               and Money Hub) ----- */}
       <section
@@ -1284,48 +1326,6 @@ export default function HomepageV3PreviewPage() {
             </Reveal>
             <Reveal className="feature-stage" delay={120}>
               <ExportDemo />
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
-      {/* ----- Pocket Agent · reframed as "personal caseworker" ----- */}
-      <section className="feature-section feature-section--ink" id="pocket-agent">
-        <div className="wrap">
-          <div className="feature-grid">
-            <Reveal className="feature-copy">
-              <h2 className="feature-title">Your personal caseworker — over WhatsApp &amp; Telegram</h2>
-              <p className="feature-tagline">
-                A solicitor takes a week to reply to email. Your Paybacker
-                caseworker is on chat 24/7.
-              </p>
-              <p>
-                It tells you when a dispute is ready to send, when the company
-                replies, and when the 8-week Ombudsman clock hits. Tap to
-                approve. Done — no chasing, no hold music.
-              </p>
-              <ul className="feature-bullets">
-                <li>Drafts ready in 30 seconds — approve with one tap</li>
-                <li>Watches your inbox for the provider&rsquo;s response</li>
-                <li>Auto-escalates to Ombudsman at the 8-week mark</li>
-                <li>
-                  <strong>Telegram Pocket Agent</strong>{' '}
-                  <span className="tier-chip tier-chip--free">Free</span> — across all plans.
-                </li>
-                <li>
-                  <strong>WhatsApp Pocket Agent</strong>{' '}
-                  <span className="tier-chip tier-chip--pro">Pro</span> — £9.99/month.
-                  Same caseworker, different chat.
-                </li>
-              </ul>
-              <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/pocket-agent">
-                  Set up your Pocket Agent →
-                </Link>
-              </div>
-            </Reveal>
-            <Reveal className="feature-stage" delay={120}>
-              <PocketAgentDemo />
             </Reveal>
           </div>
         </div>
