@@ -751,6 +751,16 @@ export default function DashboardPage() {
   // Total count includes everything the user can see (primary + track-only +
   // unknown), so the headline pill matches what's actually on screen.
   const totalActions = primaryActions.length + trackOnlyRows.length + unknownDisputeRows.length;
+  // Combined count also folds in email-scanner findings and pending tasks so
+  // the Action Centre pill can't say "0 ITEMS" while 30 email opps + 26 tasks
+  // sit immediately below. The £ headline still gates on price-detector data
+  // (deals/disputes) because email opps + tasks don't carry an annual £ figure.
+  const combinedActions =
+    primaryActions.length +
+    trackOnlyRows.length +
+    unknownDisputeRows.length +
+    emailOpportunities.length +
+    pendingTasks.length;
   // Backwards-compat alias for downstream KPI cards that read actionRows.
   const actionRows = primaryActions;
 
@@ -899,11 +909,12 @@ export default function DashboardPage() {
                 action-centre card's gating below. */}
             {dealsLoading ? (
               <>Loading your action centre…</>
-            ) : totalActions > 0 ? (
+            ) : combinedActions > 0 ? (
               <>
                 You have{' '}
                 <strong style={{ color: 'var(--mint-deep)' }}>
-                  {totalActions} action{totalActions === 1 ? '' : 's'} worth {formatGBP(potentialSavings)}/yr
+                  {combinedActions} action{combinedActions === 1 ? '' : 's'}
+                  {potentialSavings > 0 ? ` worth ${formatGBP(potentialSavings)}/yr` : ''}
                 </strong>{' '}
                 waiting. Start with the biggest wins.
               </>
@@ -958,14 +969,19 @@ export default function DashboardPage() {
                 marginBottom: 10,
               }}
             >
-              ⚡ Action Centre · {dealsLoading ? '…' : `${totalActions} item${totalActions === 1 ? '' : 's'}`}
+              ⚡ Action Centre · {dealsLoading ? '…' : `${combinedActions} item${combinedActions === 1 ? '' : 's'}`}
             </div>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-.015em' }}>
               {dealsLoading
                 ? 'Crunching cheaper-alternatives + price alerts…'
-                : dealRows.length === 0 && disputeRows.length === 0
+                : dealRows.length === 0 &&
+                    disputeRows.length === 0 &&
+                    emailOpportunities.length === 0 &&
+                    pendingTasks.length === 0
                   ? 'No actions waiting — you\'re all caught up.'
-                  : `${formatGBP(potentialSavings)} of potential savings`}
+                  : dealRows.length > 0 || disputeRows.length > 0
+                    ? `${formatGBP(potentialSavings)} of potential savings`
+                    : `${combinedActions} thing${combinedActions === 1 ? '' : 's'} to review`}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-2)' }}>
               {dealRows.length > 0 && disputeRows.length > 0
@@ -974,7 +990,13 @@ export default function DashboardPage() {
                   ? `${dealRows.length} cheaper deal${dealRows.length === 1 ? '' : 's'} found across your subscriptions`
                   : disputeRows.length > 0
                     ? `${disputeRows.length} price rise${disputeRows.length === 1 ? '' : 's'} detected — disputable under UK consumer law`
-                    : 'Connect a bank account to start finding savings.'}
+                    : emailOpportunities.length > 0 && pendingTasks.length > 0
+                      ? `${emailOpportunities.length} email finding${emailOpportunities.length === 1 ? '' : 's'} · ${pendingTasks.length} task${pendingTasks.length === 1 ? '' : 's'} pending`
+                      : emailOpportunities.length > 0
+                        ? `${emailOpportunities.length} email finding${emailOpportunities.length === 1 ? '' : 's'} from your inbox scan`
+                        : pendingTasks.length > 0
+                          ? `${pendingTasks.length} task${pendingTasks.length === 1 ? '' : 's'} pending — pick up where you left off`
+                          : 'Connect a bank account to start finding savings.'}
             </p>
           </div>
         </div>
