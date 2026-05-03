@@ -150,7 +150,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'get_savings_goals',
     description:
-      "Get the user's savings goals from Money Hub — name, target amount, current progress, target date, and emoji. Use when they ask about savings targets, goals, or how much they've saved towards something.",
+      "Get the user's savings goals from Money Hub — name, target amount, current progress, target date, emoji, and id. Use when they ask about savings targets, goals, or how much they've saved towards something. Each row's id can be passed to delete_savings_goal.",
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -452,7 +452,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'get_net_worth',
     description:
-      "Get the user's net worth breakdown from Money Hub — total assets (property, savings, investments, vehicles) vs total liabilities (mortgages, loans, credit cards), with an overall net worth figure. Use when they ask about net worth, total assets, total debts, or their financial position.",
+      "Get the user's net worth breakdown from Money Hub — total assets (property, savings, investments, vehicles) vs total liabilities (mortgages, loans, credit cards), with an overall net worth figure. Each asset/liability row also includes its id, which can be passed to delete_net_worth_entry. Use when they ask about net worth, total assets, total debts, or their financial position.",
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -2405,7 +2405,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'detect_liabilities',
     description:
-      "Run the bank-transaction-based liability detector to find recurring debt payments (loans, credit cards, car finance) that aren't yet tracked in Net Worth. Returns the list of detected lenders so the user can add them via add_net_worth_entry. Mirrors the Money Hub \"Detect liabilities\" action.",
+      "Run the bank-transaction-based liability detector to find recurring debt payments (loans, credit cards, car finance) that aren't yet tracked in Net Worth. Returns the list of detected lenders (each row includes a lender_key) so the user can add them via add_net_worth_entry, or dismiss them via dismiss_detected_liability (pass lender_key as liability_id). Mirrors the Money Hub \"Detect liabilities\" action.",
     input_schema: {
       type: 'object' as const,
       properties: {},

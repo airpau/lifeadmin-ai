@@ -1936,7 +1936,7 @@ async function getSavingsGoals(
 ): Promise<ToolResult> {
   const { data, error } = await supabase
     .from('money_hub_savings_goals')
-    .select('goal_name, target_amount, current_amount, target_date, emoji')
+    .select('id, goal_name, target_amount, current_amount, target_date, emoji')
     .eq('user_id', userId)
     .order('target_date', { ascending: true });
 
@@ -1953,8 +1953,10 @@ async function getSavingsGoals(
     text += `${emoji} *${g.goal_name}*\n`;
     text += `   ${fmt(current)} / ${fmt(target)} (${pct}%)`;
     if (g.target_date) text += ` · Target: ${fmtDate(g.target_date)}`;
-    text += '\n';
+    text += `\n   id: \`${g.id}\`\n`;
   }
+
+  text += `\n_Pass an id to delete_savings_goal to remove a goal._`;
 
   return { text };
 }
@@ -4326,8 +4328,8 @@ async function getNetWorth(
   userId: string,
 ): Promise<ToolResult> {
   const [assetsRes, liabilitiesRes] = await Promise.all([
-    supabase.from('money_hub_assets').select('asset_name, asset_type, estimated_value').eq('user_id', userId),
-    supabase.from('money_hub_liabilities').select('liability_name, liability_type, outstanding_balance, monthly_payment, interest_rate').eq('user_id', userId),
+    supabase.from('money_hub_assets').select('id, asset_name, asset_type, estimated_value').eq('user_id', userId),
+    supabase.from('money_hub_liabilities').select('id, liability_name, liability_type, outstanding_balance, monthly_payment, interest_rate').eq('user_id', userId),
   ]);
 
   const assets = assetsRes.data ?? [];
@@ -4351,7 +4353,7 @@ async function getNetWorth(
   if (assets.length > 0) {
     text += `\n*Assets:*\n`;
     for (const a of assets) {
-      text += `• ${a.asset_name} (${a.asset_type}) — ${fmt(a.estimated_value)}\n`;
+      text += `• ${a.asset_name} (${a.asset_type}) — ${fmt(a.estimated_value)} · id: \`${a.id}\`\n`;
     }
   }
 
@@ -4360,9 +4362,11 @@ async function getNetWorth(
     for (const l of liabilities) {
       const rate = l.interest_rate ? ` @ ${l.interest_rate}%` : '';
       const monthly = l.monthly_payment ? ` (${fmt(l.monthly_payment)}/mo)` : '';
-      text += `• ${l.liability_name} — ${fmt(l.outstanding_balance)}${rate}${monthly}\n`;
+      text += `• ${l.liability_name} — ${fmt(l.outstanding_balance)}${rate}${monthly} · id: \`${l.id}\`\n`;
     }
   }
+
+  text += `\n_Pass an id (with kind: "asset" or "liability") to delete_net_worth_entry to remove a row._`;
 
   return { text };
 }
@@ -8244,11 +8248,11 @@ async function detectLiabilities(
   for (const d of detected.slice(0, 10)) {
     const flag = d.already_tracked ? '✓ tracked' : '⚠ untracked';
     const balance = d.estimated_balance != null ? ` · est. balance ~${fmt(d.estimated_balance)}` : '';
-    text += `• *${d.lender}* (${d.liability_type}) — ${fmt(d.monthly_payment)}/mo${balance} · ${flag}\n`;
+    text += `• *${d.lender}* (${d.liability_type}) — ${fmt(d.monthly_payment)}/mo${balance} · ${flag} · lender_key: \`${d.lender_key}\`\n`;
   }
   if (detected.length > 10) text += `\n…and ${detected.length - 10} more.`;
   if (untracked.length > 0) {
-    text += `\n\nUse add_net_worth_entry to track an untracked one, or dismiss_detected_liability to ignore it.`;
+    text += `\n\nUse add_net_worth_entry to track an untracked one, or dismiss_detected_liability (pass lender_key as liability_id, lender as lender_name) to ignore it.`;
   }
   return { text };
 }
