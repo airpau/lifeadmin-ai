@@ -465,6 +465,11 @@ export async function executeToolCall(
     case 'start_subscription_cancel': return startSubscriptionCancel();
     case 'start_account_deletion': return startAccountDeletion(supabase, userId, toolInput.reason as string | undefined);
     case 'start_data_export_download': return startDataExportDownload(supabase, userId);
+    // ===== Phase 3d — misc parity =====
+    case 'scan_receipt': return scanReceipt(toolInput.receipt_text as string, toolInput.suggested_action as string | undefined);
+    case 'renew_bank_consent': return renewBankConsent(supabase, userId, toolInput.bank_name as string | undefined);
+    case 'dismiss_contract_alert': return dismissContractAlert(supabase, userId, toolInput.alert_id as string);
+    case 'dismiss_bank_prompt': return dismissBankPrompt(supabase, userId);
     // ===== Phase 4 — founder-only =====
     case 'get_business_log': return getBusinessLog(supabase, userId, toolInput.category as string | undefined, toolInput.limit as number | undefined);
     case 'get_open_support_tickets': return getOpenSupportTicketsAdmin(supabase, userId, toolInput.limit as number | undefined);
@@ -5968,6 +5973,37 @@ async function getContractAlertsForBot(
   const days = withinDays ?? 60;
   const cutoff = new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
+
+  // Pull in-app contract renewal alerts (the canonical row dismiss_contract_alert
+  // operates on) so the bot can surface the UUID needed for dismissal. Falls
+  // back to the subscriptions-based listing if no alerts have been generated
+  // yet by the contract-expiry cron.
+  const { data: alerts } = await supabase
+    .from('contract_renewal_alerts')
+    .select('id, provider_name, category, contract_end_date, current_amount, alert_type, potential_saving_monthly, potential_saving_annual')
+    .eq('user_id', userId)
+    .eq('alert_channel', 'in_app')
+    .in('status', ['pending', 'sent'])
+    .gte('contract_end_date', today)
+    .lte('contract_end_date', cutoff)
+    .order('contract_end_date', { ascending: true });
+
+  if (alerts && alerts.length > 0) {
+    let text = `*Contract alerts (within ${days} days):*\n`;
+    for (const a of alerts) {
+      const amount = a.current_amount != null ? fmt(Number(a.current_amount)) : '—';
+      text += `\n• *${a.provider_name}* — ends ${fmtDate(a.contract_end_date)} · ${amount}/mo`;
+      if (a.potential_saving_monthly) {
+        text += ` · save ~${fmt(Number(a.potential_saving_monthly))}/mo with a switch`;
+      }
+      text += `\n  · id: \`${a.id}\` (use this for dismiss_contract_alert)`;
+    }
+    return { text };
+  }
+
+  // No generated alerts yet — fall back to the subscriptions table so the user
+  // still sees what's coming up. Dismissal needs a contract_renewal_alerts row,
+  // which the cron creates closer to the renewal date.
   const { data } = await supabase
     .from('subscriptions')
     .select('provider_name, contract_end_date, amount, billing_cycle, early_exit_fee, auto_renews')
@@ -6506,6 +6542,166 @@ async function startDataExportDownload(supabase: ReturnType<typeof getAdmin>, us
   const { data } = await supabase.from('business_log').select('content, created_at').eq('category', 'gdpr_request').ilike('content', `%${userId}%`).order('created_at', { ascending: false }).limit(1).maybeSingle();
   if (!data) return { text: `No data export requested yet. Run request_data_export first, then I'll have a download link within 24h.` };
   return { text: `Latest export requested ${fmtDate(data.created_at)}. Download link will be emailed to your account address once ready (within 24h of the request). Links expire after 7 days.` };
+}
+
+// ============================================================
+// PHASE 3d HANDLERS — miscellaneous parity
+// ============================================================
+
+async function scanReceipt(receiptText: string, suggestedAction?: string): Promise<ToolResult> {
+  const text = (receiptText || '').trim();
+  if (!text) {
+    return { text: 'No receipt text provided. Paste the contents of the receipt/bill and I\'ll pull out the merchant, amount and category.' };
+  }
+  if (text.length > 8000) {
+    return { text: 'That\'s a lot of text. Trim it to just the receipt/bill body (~8k chars max) and resend.' };
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { text: 'Receipt scanning is offline right now (AI key not configured). Try again later.' };
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const prompt = `Extract from this UK receipt / bill / invoice text:
+- merchant: the company / supplier name
+- amount: total amount in £ as a number (no currency symbol, no commas)
+- date: in YYYY-MM-DD if present, else null
+- category: ONE of mortgage, loans, credit, council_tax, energy, water, broadband, mobile, streaming, fitness, groceries, eating_out, fuel, shopping, insurance, transport, software, tax, professional, bills, other
+- reference: any account / customer / order reference number, else null
+
+Receipt text:
+"""
+${text.slice(0, 8000)}
+"""
+
+Return ONLY valid JSON, no other text. Example: {"merchant":"EE","amount":42.50,"date":"2026-04-30","category":"mobile","reference":"123456"}`;
+
+  let extracted: { merchant?: string; amount?: number | string; date?: string | null; category?: string; reference?: string | null } = {};
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const responseText = message.content[0]?.type === 'text' ? message.content[0].text : '';
+    const cleaned = responseText.replace(/```json?\n?/g, '').replace(/```\n?/g, '').trim();
+    extracted = JSON.parse(cleaned);
+  } catch (err) {
+    console.error('scan_receipt parse error:', err);
+    return { text: 'Couldn\'t parse that receipt. Make sure the text includes a merchant, amount and (ideally) a date, then try again.' };
+  }
+
+  const merchant = extracted.merchant || 'Unknown';
+  const amountNum = typeof extracted.amount === 'string' ? parseFloat(extracted.amount) : (extracted.amount ?? 0);
+  const category = (extracted.category || 'other').toLowerCase();
+  const categoryLabel = CATEGORY_LABELS[category] || extracted.category || 'Other';
+
+  let body = `📄 *Receipt parsed*\n\n• Merchant: *${merchant}*\n• Amount: *${fmt(amountNum)}*\n• Category: ${categoryLabel}`;
+  if (extracted.date) body += `\n• Date: ${fmtDate(extracted.date)}`;
+  if (extracted.reference) body += `\n• Ref: ${extracted.reference}`;
+
+  const action = suggestedAction || 'just_categorise';
+  if (action === 'add_subscription') {
+    body += `\n\nNext: I can add this as a recurring subscription — say "add ${merchant} to subscriptions" to confirm.`;
+  } else if (action === 'create_dispute') {
+    body += `\n\nNext: I can draft a dispute letter for ${merchant} — say "dispute this charge" to start.`;
+  } else {
+    body += `\n\nLet me know if you want to add this as a subscription, dispute it, or just file it.`;
+  }
+
+  return { text: body };
+}
+
+async function renewBankConsent(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  bankName?: string,
+): Promise<ToolResult> {
+  let query = supabase
+    .from('bank_connections')
+    .select('id, bank_name, status, consent_expires_at')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .not('status', 'in', '("revoked","expired_legacy")')
+    .order('connected_at', { ascending: false });
+
+  if (bankName) {
+    query = query.ilike('bank_name', `%${bankName}%`);
+  }
+
+  const { data, error } = await query;
+  if (error || !data || data.length === 0) {
+    return { text: bankName
+      ? `No bank connection matches "${bankName}". Try get_bank_connections to see what's connected.`
+      : `No bank accounts connected. Connect one at ${SITE()}/dashboard/subscriptions?connectBank=true` };
+  }
+
+  // Prefer connections that actually need renewal
+  const renewable = data.filter((c) => ['expiring_soon', 'expired', 'token_expired'].includes(c.status));
+  const target = renewable[0] || data[0];
+
+  if (!target) {
+    return { text: `No bank connection matches "${bankName ?? ''}". Try get_bank_connections.` };
+  }
+
+  // If only one connection actually needs renewal, auto-select it and skip
+  // the disambiguation prompt — the documented behaviour is "if only one
+  // connection needs renewal, that one is used".
+  if (data.length > 1 && !bankName && renewable.length !== 1) {
+    const list = data.map((c) => `• ${c.bank_name ?? 'Unknown'} (${c.status})`).join('\n');
+    return { text: `You have ${data.length} bank connections:\n${list}\n\nSay "renew consent for [bank name]" so I know which one.` };
+  }
+
+  // Send users to the subscriptions page — this is the canonical bank-management
+  // surface that lists expired connections with a Reconnect button per row, and
+  // ?connectBank=true auto-opens the bank-picker modal so the OAuth re-auth flow
+  // starts immediately. (The dashboard/profile page does NOT handle renew_bank.)
+  const url = `${SITE()}/dashboard/subscriptions?connectBank=true`;
+  const expiry = target.consent_expires_at ? ` (consent expires ${fmtDate(target.consent_expires_at)})` : '';
+  const bankLabel = target.bank_name ?? 'your bank';
+  return { text: `Renew consent for ${bankLabel} here: ${url}${expiry}\n\nThis opens the bank picker — pick ${bankLabel} again to re-authorise. UK Open Banking requires a 90-day re-auth and takes ~30 seconds via your bank app.` };
+}
+
+async function dismissContractAlert(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  alertId: string,
+): Promise<ToolResult> {
+  if (!alertId) {
+    return { text: 'No alert id provided. Use get_contract_alerts (or list_contract_alerts) first to find the id.' };
+  }
+
+  const { data, error } = await supabase
+    .from('contract_renewal_alerts')
+    .update({ status: 'dismissed', dismissed_at: new Date().toISOString() })
+    .eq('id', alertId)
+    .eq('user_id', userId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    console.error('dismiss_contract_alert error:', error);
+    return { text: `Couldn't dismiss that alert: ${error.message}` };
+  }
+  if (!data) {
+    return { text: `No alert found with id ${alertId} on your account.` };
+  }
+  return { text: '✓ Contract alert dismissed.' };
+}
+
+async function dismissBankPrompt(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ bank_prompt_dismissed_at: new Date().toISOString() })
+    .eq('id', userId);
+
+  if (error) {
+    console.error('dismiss_bank_prompt error:', error);
+    return { text: `Couldn't dismiss the bank prompt: ${error.message}` };
+  }
+  return { text: '✓ "Connect a bank" banner dismissed. You won\'t see it on the dashboard again.' };
 }
 
 // ============================================================

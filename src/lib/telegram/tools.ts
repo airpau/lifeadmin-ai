@@ -1919,6 +1919,70 @@ export const telegramTools: Tool[] = [
   },
 
   // ============================================================
+  // PHASE 3d — miscellaneous parity tools
+  // ============================================================
+  {
+    name: 'scan_receipt',
+    description:
+      "Parse pasted/forwarded receipt or bill text to extract merchant, amount, date and category. Use when the user types or forwards the contents of a receipt, invoice or bill in chat (e.g. 'just got this from EE: ...'). The bot does NOT accept image uploads here — only the text the user has typed/pasted. Optionally suggests a follow-up action.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        receipt_text: {
+          type: 'string',
+          description: 'The full text of the receipt / bill / invoice the user has pasted or forwarded.',
+        },
+        suggested_action: {
+          type: 'string',
+          enum: ['add_subscription', 'create_dispute', 'just_categorise'],
+          description: "Optional follow-up suggestion after extraction. 'just_categorise' is the safe default.",
+        },
+      },
+      required: ['receipt_text'],
+    },
+  },
+  {
+    name: 'renew_bank_consent',
+    description:
+      "Return the URL where the user can renew Open Banking consent for a connected bank (UK 90-day cycle). Bank consent renewal needs a browser hand-off — we surface the dashboard URL rather than try to do the OAuth re-auth in chat. If multiple banks are connected, pass `bank_name` to disambiguate.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        bank_name: {
+          type: 'string',
+          description: 'Optional: filter by bank name (partial match, case-insensitive, e.g. "Barclays", "Monzo"). If omitted and only one connection needs renewal, that one is used.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'dismiss_contract_alert',
+    description:
+      "Clear a contract end-date / renewal alert from the dashboard. Use when the user says 'dismiss that alert', 'I've dealt with the EE renewal one', etc. Sets `dismissed_at = now()` and status='dismissed' on the contract_renewal_alerts row. Get the id from get_contract_alerts (each row's output now includes its id).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        alert_id: {
+          type: 'string',
+          description: 'The contract_renewal_alerts row id to dismiss. Obtain it via get_contract_alerts — each alert row is surfaced with its id.',
+        },
+      },
+      required: ['alert_id'],
+    },
+  },
+  {
+    name: 'dismiss_bank_prompt',
+    description:
+      "Dismiss the dashboard 'connect a bank' banner for the current user. Use when the user says they don't want to be nagged about connecting a bank account. Sets profile.bank_prompt_dismissed_at = now().",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ============================================================
   // PHASE 4 — founder-only admin tools
   // ============================================================
   {
