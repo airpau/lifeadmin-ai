@@ -1700,10 +1700,46 @@ export default function DashboardPage() {
 
       {/* Quick links */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link href="/dashboard/deals" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
-          <h3 className="text-white font-semibold mb-1">Browse 59 Deals</h3>
-          <p className="text-slate-500 text-xs">Compare energy, broadband, mobile, insurance, and more. Find cheaper alternatives to your current providers.</p>
-        </Link>
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card]">
+          <div className="flex items-center gap-2 mb-3">
+            <Tag className="h-4 w-4 text-mint-400" />
+            <h3 className="text-white font-semibold">Browse Deals</h3>
+          </div>
+          {comparisonDeals.length > 0 ? (
+            <>
+              <div className="divide-y divide-navy-700/50 -mx-1">
+                {[...comparisonDeals]
+                  .sort((a, b) => (b.annualSaving || 0) - (a.annualSaving || 0))
+                  .slice(0, 3)
+                  .map((deal, i) => (
+                    <div key={`${deal.dealProvider}-${deal.subscriptionName}-${i}`} className="flex items-center justify-between gap-3 px-1 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-white text-sm font-medium truncate">{deal.dealProvider}</p>
+                        <p className="text-slate-500 text-xs truncate">{deal.subscriptionName}{deal.category ? ` · ${deal.category}` : ''}</p>
+                      </div>
+                      <span className="text-mint-400 text-xs font-semibold whitespace-nowrap">
+                        Save {formatGBP(deal.annualSaving)}/yr
+                      </span>
+                    </div>
+                  ))}
+              </div>
+              <Link href="/dashboard/deals" className="text-mint-400 hover:text-mint-300 text-xs font-medium mt-3 flex items-center gap-1">
+                View all {comparisonDeals.length} deals <ArrowRight className="h-3 w-3" />
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="text-slate-500 text-xs">
+                {bankConnected
+                  ? 'No cheaper alternatives found yet — we’ll keep checking.'
+                  : 'Connect a bank to find cheaper deals on your bills.'}
+              </p>
+              <Link href="/dashboard/deals" className="text-mint-400 hover:text-mint-300 text-xs font-medium mt-3 flex items-center gap-1">
+                Browse all deals <ArrowRight className="h-3 w-3" />
+              </Link>
+            </>
+          )}
+        </div>
         <Link href="/dashboard/subscriptions" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <h3 className="text-white font-semibold mb-1">Track Contracts</h3>
           <p className="text-slate-500 text-xs">Add your subscriptions and contracts with end dates. Get alerts before renewals and find better deals.</p>
