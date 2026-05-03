@@ -2309,20 +2309,11 @@ export const telegramTools: Tool[] = [
   {
     name: 'analyse_contract',
     description:
-      "Analyse contract text the user has pasted into chat and extract key terms (minimum term, notice period, cancellation fee, auto-renewal, unfair clauses) using the contract analyser. NOTE: full PDF/image upload analysis must be done from /dashboard/contracts.",
+      "Inform the user that contract analysis is not available in chat and requires uploading the PDF or photo at /dashboard/contracts on the website. Use this ONLY when the user explicitly asks to analyse, review, or extract terms from a contract via chat — it does NOT perform any analysis itself, it just returns the redirect message. Do NOT collect contract text from the user; the website upload flow is the only supported path. Take no parameters.",
     input_schema: {
       type: 'object' as const,
-      properties: {
-        contract_text: {
-          type: 'string',
-          description: 'The raw contract text the user has pasted into chat.',
-        },
-        label: {
-          type: 'string',
-          description: "Optional human-readable label / provider name for this contract (e.g. 'BT Broadband 24-month').",
-        },
-      },
-      required: ['contract_text'],
+      properties: {},
+      required: [],
     },
   },
 ];

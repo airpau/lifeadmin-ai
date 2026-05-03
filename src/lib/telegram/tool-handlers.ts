@@ -546,10 +546,7 @@ export async function executeToolCall(
     case 'delete_contract':
       return deleteContract(supabase, userId, toolInput.contract_id as string);
     case 'analyse_contract':
-      return analyseContractFromText(supabase, userId, {
-        contract_text: toolInput.contract_text as string,
-        label: toolInput.label as string | undefined,
-      });
+      return analyseContractFromText(supabase, userId);
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -7741,13 +7738,15 @@ async function deleteContract(
 async function analyseContractFromText(
   _supabase: ReturnType<typeof getAdmin>,
   _userId: string,
-  _params: { contract_text: string; label?: string },
 ): Promise<ToolResult> {
   // The /api/contracts/analyse endpoint is purely multipart-driven (file upload
   // → Supabase Storage → Claude Vision). Re-implementing the extractor against
   // raw text would duplicate the prompt logic in a second place — exactly the
-  // footgun called out by PR #463. Direct users to the proper flow.
+  // footgun called out by PR #463. This tool is intentionally a no-op redirect
+  // that points users to the website upload flow; the tool description in
+  // tools.ts mirrors that contract so the LLM doesn't try to gather contract
+  // text up front.
   return {
-    text: 'Contract analysis from chat text not yet supported — please upload the PDF or photo via /dashboard/contracts and I\'ll extract the key terms there.',
+    text: 'Contract analysis isn\'t available in chat — please upload the PDF or photo at /dashboard/contracts on the website and I\'ll extract the key terms there.',
   };
 }
