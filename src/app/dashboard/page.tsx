@@ -387,6 +387,9 @@ export default function DashboardPage() {
             });
             setEmailOpportunities(mapped);
             setEmailScanResults(mapped.length);
+            // These rows come from the `tasks` table — some will overlap
+            // with `pendingTasks` (also from `tasks`). `combinedActions`
+            // dedupes by id below so they're not double-counted.
           }
         }
 
@@ -751,6 +754,39 @@ export default function DashboardPage() {
   // Total count includes everything the user can see (primary + track-only +
   // unknown), so the headline pill matches what's actually on screen.
   const totalActions = primaryActions.length + trackOnlyRows.length + unknownDisputeRows.length;
+  // Combined count also folds in email-scanner findings and pending tasks so
+  // the Action Centre pill can't say "0 ITEMS" while 30 email opps + 26 tasks
+  // sit immediately below. The £ headline still gates on price-detector data
+  // (deals/disputes) because email opps + tasks don't carry an annual £ figure.
+  //
+  // Dedup by id: when emailOpportunities was hydrated from the legacy
+  // `tasks`-table fallback, some of those rows ALSO appear in `pendingTasks`
+  // (both query `tasks`). But pendingTasks is filtered (snoozed/paybacker
+  // rows dropped) and grouped by provider+type, so a flat `if legacy then 0`
+  // either double-counts or under-counts depending on which way the data
+  // breaks. Build a Set of every task id represented in pendingTasks (each
+  // row carries `_groupIds` listing the underlying tasks it collapsed) and
+  // count only emailOpportunities whose id is NOT already in that set.
+  const pendingTaskIdSet = new Set<string>();
+  for (const t of pendingTasks) {
+    if (Array.isArray(t._groupIds)) {
+      for (const id of t._groupIds) {
+        if (id) pendingTaskIdSet.add(String(id));
+      }
+    } else if (t.id) {
+      pendingTaskIdSet.add(String(t.id));
+    }
+  }
+  const dedupedEmailOpportunityCount = emailOpportunities.reduce(
+    (n, o) => (o?.id && pendingTaskIdSet.has(String(o.id)) ? n : n + 1),
+    0,
+  );
+  const combinedActions =
+    primaryActions.length +
+    trackOnlyRows.length +
+    unknownDisputeRows.length +
+    dedupedEmailOpportunityCount +
+    pendingTasks.length;
   // Backwards-compat alias for downstream KPI cards that read actionRows.
   const actionRows = primaryActions;
 
@@ -899,11 +935,12 @@ export default function DashboardPage() {
                 action-centre card's gating below. */}
             {dealsLoading ? (
               <>Loading your action centre…</>
-            ) : totalActions > 0 ? (
+            ) : combinedActions > 0 ? (
               <>
                 You have{' '}
                 <strong style={{ color: 'var(--mint-deep)' }}>
-                  {totalActions} action{totalActions === 1 ? '' : 's'} worth {formatGBP(potentialSavings)}/yr
+                  {combinedActions} action{combinedActions === 1 ? '' : 's'}
+                  {potentialSavings > 0 ? ` worth ${formatGBP(potentialSavings)}/yr` : ''}
                 </strong>{' '}
                 waiting. Start with the biggest wins.
               </>
@@ -958,14 +995,29 @@ export default function DashboardPage() {
                 marginBottom: 10,
               }}
             >
-              ⚡ Action Centre · {dealsLoading ? '…' : `${totalActions} item${totalActions === 1 ? '' : 's'}`}
+              ⚡ Action Centre · {dealsLoading ? '…' : `${combinedActions} item${combinedActions === 1 ? '' : 's'}`}
             </div>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-.015em' }}>
               {dealsLoading
                 ? 'Crunching cheaper-alternatives + price alerts…'
-                : dealRows.length === 0 && disputeRows.length === 0
+                : dealRows.length === 0 &&
+                    disputeRows.length === 0 &&
+                    emailOpportunities.length === 0 &&
+                    pendingTasks.length === 0
                   ? 'No actions waiting — you\'re all caught up.'
-                  : `${formatGBP(potentialSavings)} of potential savings`}
+                  : dealRows.length > 0 || disputeRows.length > 0
+                    ? `${formatGBP(potentialSavings)} of potential savings`
+                    // No deals/disputes to render in this card — emails/tasks
+                    // live in their own cards below. Don't promise "to review"
+                    // here; point downward instead so the headline matches
+                    // what the card body actually shows.
+                    : `${combinedActions} item${combinedActions === 1 ? '' : 's'} below — see ${
+                        emailOpportunities.length > 0 && pendingTasks.length > 0
+                          ? 'Email Scanner & Action Items'
+                          : emailOpportunities.length > 0
+                            ? 'Email Scanner'
+                            : 'Action Items'
+                      }`}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-2)' }}>
               {dealRows.length > 0 && disputeRows.length > 0
@@ -974,7 +1026,13 @@ export default function DashboardPage() {
                   ? `${dealRows.length} cheaper deal${dealRows.length === 1 ? '' : 's'} found across your subscriptions`
                   : disputeRows.length > 0
                     ? `${disputeRows.length} price rise${disputeRows.length === 1 ? '' : 's'} detected — disputable under UK consumer law`
-                    : 'Connect a bank account to start finding savings.'}
+                    : emailOpportunities.length > 0 && pendingTasks.length > 0
+                      ? `${emailOpportunities.length} email finding${emailOpportunities.length === 1 ? '' : 's'} · ${pendingTasks.length} task${pendingTasks.length === 1 ? '' : 's'} pending`
+                      : emailOpportunities.length > 0
+                        ? `${emailOpportunities.length} email finding${emailOpportunities.length === 1 ? '' : 's'} from your inbox scan`
+                        : pendingTasks.length > 0
+                          ? `${pendingTasks.length} task${pendingTasks.length === 1 ? '' : 's'} pending — pick up where you left off`
+                          : 'Connect a bank account to start finding savings.'}
             </p>
           </div>
         </div>
@@ -988,7 +1046,21 @@ export default function DashboardPage() {
                 fontSize: 13,
               }}
             >
-              Ready to find your first saving? Connect a bank account to scan transactions for forgotten subscriptions and silent price rises — we&apos;ll flag every one automatically.
+              {emailOpportunities.length > 0 || pendingTasks.length > 0 ? (
+                // The Action Centre's own list (deals + disputes) is empty,
+                // but emails/tasks exist further down. Headline already
+                // points the user there; this microcopy reinforces it so
+                // the empty card doesn't feel like a dead end.
+                `Scroll to ${
+                  emailOpportunities.length > 0 && pendingTasks.length > 0
+                    ? 'Email Scanner & Action Items'
+                    : emailOpportunities.length > 0
+                      ? 'Email Scanner'
+                      : 'Action Items'
+                } to act on the ${combinedActions} item${combinedActions === 1 ? '' : 's'} above.`
+              ) : (
+                <>Ready to find your first saving? Connect a bank account to scan transactions for forgotten subscriptions and silent price rises — we&apos;ll flag every one automatically.</>
+              )}
             </div>
           ) : (
             actionRowsTop.map((r, i) => (
