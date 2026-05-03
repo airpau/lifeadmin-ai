@@ -1733,12 +1733,58 @@ export default function DashboardPage() {
                 Every subscription in one place. Sync from your bank or add manually.
               </p>
             </Link>
-            <Link href="/dashboard/deals" className="card" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div className="card">
               <h3><Tag className="h-4 w-4" style={{ color: 'var(--mint-deep)' }} /> Browse deals</h3>
-              <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>
-                Compare energy, broadband, mobile, insurance. Find cheaper alternatives.
-              </p>
-            </Link>
+              {collapsedDealsByMerchant.length === 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>
+                    {bankConnected
+                      ? "No cheaper alternatives found yet — we'll keep checking."
+                      : 'Connect a bank to find cheaper deals on your bills.'}
+                  </p>
+                  <Link
+                    href="/dashboard/deals"
+                    style={{ fontSize: 12, color: 'var(--mint-deep)', textDecoration: 'none' }}
+                  >
+                    Browse all deals →
+                  </Link>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {collapsedDealsByMerchant.slice(0, 3).map((d, i) => (
+                    <Link
+                      key={`${d.sub}-${i}`}
+                      href="/dashboard/deals"
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        padding: '10px 0',
+                        borderTop: '1px solid var(--divider-2)',
+                        alignItems: 'flex-start',
+                        textDecoration: 'none',
+                        color: 'inherit',
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{d.provider}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.35 }}>
+                          Switch from {d.sub}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--mint-deep)', whiteSpace: 'nowrap' }}>
+                        {formatGBP(d.saving)}/yr
+                      </div>
+                    </Link>
+                  ))}
+                  <Link
+                    href="/dashboard/deals"
+                    style={{ fontSize: 12, color: 'var(--mint-deep)', textDecoration: 'none', paddingTop: 10 }}
+                  >
+                    View all {collapsedDealsByMerchant.length} deal{collapsedDealsByMerchant.length === 1 ? '' : 's'} →
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
