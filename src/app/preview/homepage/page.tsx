@@ -287,11 +287,20 @@ function Nav() {
             )}
           </div>
           <div className="nav-cta-row">
-            {isLoggedIn ? (
+            {/*
+              While the auth probe is in flight (`isLoggedIn === null`)
+              we render the logged-out CTAs but visually hide them so
+              the slot reserves layout (matches SSR + prevents layout
+              shift) and signed-in users don't see a flash of
+              "Sign in / Start free" before the probe resolves. Codex
+              P2 on PR #450 — the whole point of this hook is to kill
+              that flash.
+            */}
+            {isLoggedIn === true ? (
               <Link className="nav-start" href="/dashboard">
                 Open Dashboard
               </Link>
-            ) : (
+            ) : isLoggedIn === false ? (
               <>
                 <Link className="nav-signin" href="/auth/login">
                   Sign in
@@ -300,6 +309,14 @@ function Nav() {
                   Start free
                 </Link>
               </>
+            ) : (
+              <span
+                aria-hidden="true"
+                style={{ visibility: 'hidden', display: 'inline-flex', gap: 'var(--m-v2-cta-gap, 8px)' }}
+              >
+                <span className="nav-signin">Sign in</span>
+                <span className="nav-start">Start free</span>
+              </span>
             )}
             <button
               type="button"
@@ -349,11 +366,11 @@ function Nav() {
               )}
             </div>
             <div className="nav-drawer-ctas">
-              {isLoggedIn ? (
+              {isLoggedIn === true ? (
                 <Link className="btn btn-mint" href="/dashboard" onClick={() => setMenuOpen(false)}>
                   Open Dashboard
                 </Link>
-              ) : (
+              ) : isLoggedIn === false ? (
                 <>
                   <Link className="btn btn-ghost" href="/auth/login" onClick={() => setMenuOpen(false)}>
                     Sign in
@@ -362,6 +379,13 @@ function Nav() {
                     Sign up free
                   </Link>
                 </>
+              ) : (
+                // Same null-state guard as the desktop nav — reserve
+                // layout but stay invisible until the probe resolves.
+                <span aria-hidden="true" style={{ visibility: 'hidden' }}>
+                  <span className="btn btn-ghost">Sign in</span>
+                  <span className="btn btn-mint">Sign up free</span>
+                </span>
               )}
             </div>
           </div>
