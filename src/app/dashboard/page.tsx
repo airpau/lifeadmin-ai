@@ -1557,11 +1557,19 @@ export default function DashboardPage() {
             <div className="card">
               <h3><Tag className="h-4 w-4" style={{ color: 'var(--mint-deep)' }} /> Browse deals</h3>
               {collapsedDealsByMerchant.length === 0 ? (
-                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>
-                  {bankConnected
-                    ? "No cheaper alternatives found yet — we'll keep checking."
-                    : 'Connect a bank to find cheaper deals on your bills.'}
-                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>
+                    {bankConnected
+                      ? "No cheaper alternatives found yet — we'll keep checking."
+                      : 'Connect a bank to find cheaper deals on your bills.'}
+                  </p>
+                  <Link
+                    href="/dashboard/deals"
+                    style={{ fontSize: 12, color: 'var(--mint-deep)', textDecoration: 'none' }}
+                  >
+                    Browse all deals →
+                  </Link>
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {collapsedDealsByMerchant.slice(0, 3).map((d, i) => (
