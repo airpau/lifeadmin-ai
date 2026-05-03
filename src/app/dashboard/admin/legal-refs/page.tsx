@@ -2,15 +2,17 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   Shield, CheckCircle, AlertTriangle, Clock, RefreshCw, ExternalLink,
-  Loader2, ChevronLeft, ArrowLeft, Search, Filter,
+  Loader2, ChevronLeft, ArrowLeft, Search, Filter, ChevronDown, ChevronRight,
+  Check, Play,
 } from 'lucide-react';
 import Link from 'next/link';
 import { AutoAppliedPanel } from './AutoAppliedPanel';
 import PendingCorrectionsSection from './PendingCorrectionsSection';
+import InlineCorrectionPanel, { InlineCorrection } from './InlineCorrectionPanel';
 import { pickCanonicalSource, SOURCE_LABEL } from '@/lib/legal-data/source-router';
 
 /**
@@ -228,6 +230,23 @@ export default function LegalRefsAdminPage() {
   const [lastSyncRun, setLastSyncRun] = useState<{ at: string; ok: boolean; failedPhases: string[] } | null>(null);
   const [allRefsExpanded, setAllRefsExpanded] = useState<boolean>(false);
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+
+  // Phase 1 actionable-UX (2026-05-03): page-level pending-corrections
+  // index. Fetched alongside refs so each review-queue / attention-panel
+  // row can render its corresponding correction inline (without forcing
+  // the founder to scroll to the dedicated PendingCorrectionsSection).
+  const [pendingCorrectionsByRefId, setPendingCorrectionsByRefId] = useState<
+    Record<string, InlineCorrection[]>
+  >({});
+  const [allPendingCorrections, setAllPendingCorrections] = useState<InlineCorrection[]>([]);
+  // Per-row toggle for the inline panel under review-queue rows. Default
+  // open for url_dead and auto_corrected rows (which is what the founder
+  // actually needs to act on); closed for everything else.
+  const [reviewRowExpanded, setReviewRowExpanded] = useState<Record<string, boolean>>({});
+  // Confirmation state for "Confirm correct" on auto-corrected rows.
+  const [confirmingAutoCorr, setConfirmingAutoCorr] = useState<Set<string>>(new Set());
+  // Inline runner for "Run url-dead recovery now" from the attention panel.
+  const [recoveringUrlDead, setRecoveringUrlDead] = useState<boolean>(false);
   // Freshness pipeline filters (added 2026-05-01).
   const [filterStaleOnly, setFilterStaleOnly] = useState<boolean>(false);
   const [filterUnappliedOnly, setFilterUnappliedOnly] = useState<boolean>(false);
@@ -249,7 +268,7 @@ export default function LegalRefsAdminPage() {
         return;
       }
       setAuthorized(true);
-      await Promise.all([fetchRefs(), fetchCandidates(), fetchActionPanelCounts()]);
+      await Promise.all([fetchRefs(), fetchCandidates(), fetchActionPanelCounts(), fetchPendingCorrections()]);
     };
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -334,6 +353,34 @@ export default function LegalRefsAdminPage() {
       }
     } catch {
       // non-fatal
+    }
+  };
+
+  // Page-level pending-corrections fetch. We index by ref_id so the
+  // review-queue and attention-panel rows can render their proposal
+  // inline. Same endpoint that PendingCorrectionsSection uses, so the two
+  // views always show the same data — they just present it differently
+  // (per-ref inline vs. flat queue).
+  const fetchPendingCorrections = async () => {
+    try {
+      const res = await fetch('/api/admin/legal-ref-corrections?status=pending', {
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const list: InlineCorrection[] = data.corrections || [];
+      setAllPendingCorrections(list);
+      const idx: Record<string, InlineCorrection[]> = {};
+      for (const c of list) {
+        if (!c.ref_id) continue;
+        if (!idx[c.ref_id]) idx[c.ref_id] = [];
+        idx[c.ref_id].push(c);
+      }
+      setPendingCorrectionsByRefId(idx);
+      setPendingCorrectionsCount(list.length);
+    } catch {
+      // non-fatal — the count widget falls back to the supabase query in
+      // fetchActionPanelCounts
     }
   };
 
@@ -522,7 +569,12 @@ export default function LegalRefsAdminPage() {
     try {
       const result = await fn();
       setOpToast({ kind: result.ok ? 'ok' : 'err', text: result.text });
-      await Promise.all([fetchRefs(), fetchCandidates(), fetchActionPanelCounts()]);
+      await Promise.all([
+        fetchRefs(),
+        fetchCandidates(),
+        fetchActionPanelCounts(),
+        fetchPendingCorrections(),
+      ]);
     } catch (err) {
       setOpToast({
         kind: 'err',
@@ -530,6 +582,78 @@ export default function LegalRefsAdminPage() {
       });
     } finally {
       setOpRunning(null);
+    }
+  };
+
+  // Called whenever a correction is approved / rejected from any inline
+  // panel on the page. Refreshes refs (status may flip to current),
+  // pending corrections (row drops out), and the attention-panel counts.
+  const handleCorrectionResolved = async () => {
+    await Promise.all([fetchRefs(), fetchPendingCorrections(), fetchActionPanelCounts()]);
+  };
+
+  // "Confirm correct" handler for auto-corrected rows. Hits the
+  // confirm-auto-correction endpoint added in this PR.
+  const confirmAutoCorrection = async (refId: string) => {
+    setConfirmingAutoCorr((prev) => new Set(prev).add(refId));
+    try {
+      const res = await fetch(`/api/admin/legal-refs/${refId}/confirm-auto-correction`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setOpToast({ kind: 'err', text: `Confirm failed: ${data.error || res.statusText}` });
+      } else {
+        setOpToast({ kind: 'ok', text: 'Auto-correction confirmed. Amber flag cleared.' });
+        await fetchRefs();
+      }
+    } catch (err) {
+      setOpToast({
+        kind: 'err',
+        text: `Failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      setConfirmingAutoCorr((prev) => {
+        const next = new Set(prev);
+        next.delete(refId);
+        return next;
+      });
+    }
+  };
+
+  // Inline "Run url-dead recovery now" — same op as the modal-confirmed
+  // version above, but kicks off without the confirmation prompt because
+  // the founder triggered it from the attention panel where context is
+  // unambiguous.
+  const runUrlDeadRecoveryInline = async () => {
+    setRecoveringUrlDead(true);
+    try {
+      const res = await fetch('/api/admin/legal-refs/recover-url-dead', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ queue: true }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setOpToast({ kind: 'err', text: `Error: ${data.error || 'Unknown'}` });
+      } else {
+        setOpToast({
+          kind: 'ok',
+          text:
+            `Probed ${data.probed} · still dead ${data.still_dead} · now resolves ${data.now_resolves} · ` +
+            `queued ${data.queued} pending correction${data.queued === 1 ? '' : 's'}.`,
+        });
+        await Promise.all([fetchRefs(), fetchPendingCorrections(), fetchActionPanelCounts()]);
+      }
+    } catch (err) {
+      setOpToast({
+        kind: 'err',
+        text: `Failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      setRecoveringUrlDead(false);
     }
   };
 
@@ -984,58 +1108,303 @@ export default function LegalRefsAdminPage() {
       </div>
 
       {/* Section A — "What needs your attention". Daily-driver summary
-          panel that surfaces only the action items: pending corrections,
-          url_dead refs needing recovery, AI auto-corrections needing
-          founder eyeball, candidates pending approval, and last sync
-          outcome. Founder reads this, clicks the right link, deals with
-          what matters — without scrolling through 124-row tables. */}
+          panel that surfaces only the action items, with top-3 inline
+          previews per non-zero bucket so the founder can see the issue
+          at a glance and act in 1 click without scrolling. */}
       {(() => {
-        const autoCorrectedCount = refs.filter((r) => r.auto_corrected === true).length;
-        const items: Array<{ label: string; count: number; href?: string; tone: 'amber' | 'red' | 'slate' }> = [
-          { label: 'pending corrections need review', count: pendingCorrectionsCount, href: '#pending-corrections', tone: 'amber' },
-          { label: 'URL_DEAD refs need recovery', count: urlDeadCount, href: '#review-queue', tone: 'red' },
-          { label: '"AI auto-correction" rows need verification', count: autoCorrectedCount, href: '#review-queue', tone: 'amber' },
-          { label: 'candidates pending approval', count: pendingCandCount, tone: 'slate' },
-        ];
-        const totalAction = items.reduce((s, i) => s + i.count, 0);
-        const tonePill = (t: 'amber' | 'red' | 'slate') =>
-          t === 'red'
-            ? 'bg-red-100 text-red-700 border-red-200'
-            : t === 'amber'
-              ? 'bg-amber-100 text-amber-700 border-amber-200'
-              : 'bg-slate-100 text-slate-700 border-slate-200';
+        const autoCorrectedRefs = refs.filter((r) => r.auto_corrected === true);
+        const autoCorrectedCount = autoCorrectedRefs.length;
+        const urlDeadRefs = refs.filter((r) => r.verification_status === 'url_dead');
+        const top3Pending = allPendingCorrections.slice(0, 3);
+        const top3UrlDead = urlDeadRefs.slice(0, 3);
+        const top3AutoCorr = autoCorrectedRefs.slice(0, 3);
+        const top3Candidates = candidates.slice(0, 3);
+
+        const totalAction =
+          pendingCorrectionsCount + urlDeadCount + autoCorrectedCount + pendingCandCount;
+
         return (
           <div className="mb-6 bg-white border-2 border-amber-300 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-4">
               <AlertTriangle className="h-5 w-5 text-amber-600" />
               <h2 className="text-lg font-bold text-slate-900">What needs your attention</h2>
             </div>
+
             {totalAction === 0 ? (
               <p className="text-sm text-emerald-700 font-medium flex items-center gap-2">
                 <CheckCircle className="h-4 w-4" />
                 Nothing needs your attention. Last sync clean.
               </p>
             ) : (
-              <ul className="space-y-2">
-                {items
-                  .filter((i) => i.count > 0)
-                  .map((i) => (
-                    <li key={i.label} className="flex items-center gap-3 text-sm">
-                      <span className={`inline-flex items-center justify-center min-w-[2rem] h-7 px-2 rounded-full border text-xs font-bold ${tonePill(i.tone)}`}>
-                        {i.count}
-                      </span>
-                      {i.href ? (
-                        <a href={i.href} className="text-slate-800 hover:text-emerald-700 hover:underline">
-                          {i.label}
+              <div className="space-y-5">
+                {/* Bucket: pending corrections */}
+                {pendingCorrectionsCount > 0 && (
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3 mb-2">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        <span className="inline-flex items-center justify-center min-w-[1.75rem] h-6 px-2 rounded-full border bg-amber-100 text-amber-700 border-amber-200 text-xs font-bold mr-2">
+                          {pendingCorrectionsCount}
+                        </span>
+                        pending correction{pendingCorrectionsCount === 1 ? '' : 's'} need review
+                      </h3>
+                      {pendingCorrectionsCount > top3Pending.length && (
+                        <a
+                          href="#pending-corrections"
+                          className="text-xs text-emerald-700 hover:text-emerald-800 hover:underline"
+                        >
+                          View all {pendingCorrectionsCount} ↓
                         </a>
-                      ) : (
-                        <span className="text-slate-800">{i.label}</span>
                       )}
-                    </li>
-                  ))}
-              </ul>
+                    </div>
+                    <div className="space-y-2">
+                      {top3Pending.map((c) => (
+                        <details
+                          key={c.id}
+                          className="border border-amber-200 rounded-xl bg-amber-50/40 group"
+                          open
+                        >
+                          <summary className="cursor-pointer list-none px-3 py-2 flex items-center gap-2 text-xs hover:bg-amber-50 rounded-xl">
+                            <ChevronDown className="h-3.5 w-3.5 text-slate-500 group-open:rotate-0 -rotate-90 transition-transform" />
+                            <span className="font-medium text-slate-900 truncate flex-1">
+                              {c.before_law_name ?? '(unknown)'}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono whitespace-nowrap">
+                              {c.confidence}
+                            </span>
+                          </summary>
+                          <div className="px-3 pb-3 pt-1">
+                            <InlineCorrectionPanel
+                              correction={c}
+                              onResolve={handleCorrectionResolved}
+                              compact
+                              allowDuplicate={false}
+                            />
+                          </div>
+                        </details>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Bucket: url_dead refs needing recovery */}
+                {urlDeadCount > 0 && (
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3 mb-2">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        <span className="inline-flex items-center justify-center min-w-[1.75rem] h-6 px-2 rounded-full border bg-red-100 text-red-700 border-red-200 text-xs font-bold mr-2">
+                          {urlDeadCount}
+                        </span>
+                        URL_DEAD ref{urlDeadCount === 1 ? '' : 's'} need recovery
+                      </h3>
+                      {urlDeadCount > top3UrlDead.length && (
+                        <a
+                          href="#review-queue"
+                          className="text-xs text-emerald-700 hover:text-emerald-800 hover:underline"
+                        >
+                          View all in review queue ↓
+                        </a>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      {top3UrlDead.map((r) => {
+                        const corrs = pendingCorrectionsByRefId[r.id] ?? [];
+                        const top = corrs[0];
+                        return (
+                          <div
+                            key={r.id}
+                            className="border border-red-200 rounded-xl bg-red-50/40 px-3 py-2"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-slate-900 truncate">
+                                  {r.law_name}
+                                </p>
+                                <a
+                                  href={r.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] text-slate-500 break-all underline decoration-dotted hover:text-slate-700"
+                                >
+                                  {r.source_url}
+                                </a>
+                              </div>
+                              <a
+                                href={`#ref-${r.id}`}
+                                className="text-[11px] text-emerald-700 hover:text-emerald-800 hover:underline whitespace-nowrap"
+                              >
+                                jump to row
+                              </a>
+                            </div>
+                            {top ? (
+                              <div className="mt-2 pt-2 border-t border-red-200">
+                                <InlineCorrectionPanel
+                                  correction={top}
+                                  onResolve={handleCorrectionResolved}
+                                  compact
+                                  allowDuplicate={false}
+                                />
+                              </div>
+                            ) : (
+                              <div className="mt-2 pt-2 border-t border-red-200 text-[11px] text-slate-600 italic">
+                                AI hasn&apos;t been able to find a replacement yet.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={runUrlDeadRecoveryInline}
+                        disabled={recoveringUrlDead || opRunning !== null}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg"
+                      >
+                        {recoveringUrlDead ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Play className="h-3.5 w-3.5" />
+                        )}
+                        Run url-dead recovery now
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bucket: AI auto-corrected refs needing verification */}
+                {autoCorrectedCount > 0 && (
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3 mb-2">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        <span className="inline-flex items-center justify-center min-w-[1.75rem] h-6 px-2 rounded-full border bg-amber-100 text-amber-700 border-amber-200 text-xs font-bold mr-2">
+                          {autoCorrectedCount}
+                        </span>
+                        &quot;AI auto-correction&quot; row{autoCorrectedCount === 1 ? '' : 's'} need verification
+                      </h3>
+                      {autoCorrectedCount > top3AutoCorr.length && (
+                        <a
+                          href="#review-queue"
+                          className="text-xs text-emerald-700 hover:text-emerald-800 hover:underline"
+                        >
+                          View all in review queue ↓
+                        </a>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      {top3AutoCorr.map((r) => {
+                        const isConfirming = confirmingAutoCorr.has(r.id);
+                        return (
+                          <div
+                            key={r.id}
+                            className="border border-amber-200 rounded-xl bg-amber-50/40 px-3 py-2"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-slate-900 truncate">
+                                  {r.law_name}
+                                </p>
+                                <a
+                                  href={r.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] text-slate-600 break-all underline decoration-dotted hover:text-slate-800"
+                                >
+                                  {r.source_url}
+                                </a>
+                                {r.verification_notes && (
+                                  <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">
+                                    {r.verification_notes}
+                                  </p>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => confirmAutoCorrection(r.id)}
+                                disabled={isConfirming}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-2.5 py-1 rounded-lg whitespace-nowrap"
+                              >
+                                {isConfirming ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Check className="h-3 w-3" />
+                                )}
+                                Confirm correct
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Bucket: discovery candidates pending approval */}
+                {pendingCandCount > 0 && (
+                  <div>
+                    <div className="flex items-baseline justify-between gap-3 mb-2">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        <span className="inline-flex items-center justify-center min-w-[1.75rem] h-6 px-2 rounded-full border bg-slate-100 text-slate-700 border-slate-200 text-xs font-bold mr-2">
+                          {pendingCandCount}
+                        </span>
+                        candidate{pendingCandCount === 1 ? '' : 's'} pending approval
+                      </h3>
+                    </div>
+                    <div className="space-y-2">
+                      {top3Candidates.map((c) => (
+                        <div
+                          key={c.id}
+                          className="border border-slate-200 rounded-xl bg-slate-50/60 px-3 py-2"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-slate-900 truncate">
+                                {c.title}
+                              </p>
+                              {c.category && (
+                                <span className="inline-block mt-1 text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">
+                                  {CATEGORY_LABELS[c.category] || c.category}
+                                </span>
+                              )}
+                              {c.source_url && (
+                                <a
+                                  href={c.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="ml-2 inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:underline"
+                                >
+                                  <ExternalLink className="h-3 w-3" /> source
+                                </a>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => decideCandidate(c.id, 'approve')}
+                                className="text-[11px] px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const notes = window.prompt('Notes (optional)') ?? undefined;
+                                  void decideCandidate(c.id, 'reject', notes);
+                                }}
+                                className="text-[11px] px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-red-400 text-slate-700"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
-            <div className="mt-4 pt-3 border-t border-slate-200 text-xs text-slate-600">
+
+            <div className="mt-5 pt-3 border-t border-slate-200 text-xs text-slate-600">
               {lastSyncRun ? (
                 <span>
                   Last sync run: {formatDate(lastSyncRun.at)} —{' '}
@@ -1254,7 +1623,7 @@ export default function LegalRefsAdminPage() {
 
       {/* Pending corrections (PR ε — human-in-loop gate) */}
       <div id="pending-corrections">
-        <PendingCorrectionsSection />
+        <PendingCorrectionsSection onResolved={handleCorrectionResolved} />
       </div>
 
       {/* Section C — "All references" collapsed by default. Founder
@@ -1693,74 +2062,196 @@ export default function LegalRefsAdminPage() {
                       const truncated = ref.source_url.length > 50
                         ? ref.source_url.slice(0, 47) + '…'
                         : ref.source_url;
+                      // Phase 1 actionable-UX: pull pending corrections for
+                      // this ref so we can render the diff inline.
+                      const refCorrections = pendingCorrectionsByRefId[ref.id] ?? [];
+                      const hasPendingCorrection = refCorrections.length > 0;
+                      const isUrlDead = ref.verification_status === 'url_dead';
+                      const isAutoCorrected = ref.auto_corrected === true;
+                      // Default expanded for url_dead / auto_corrected so
+                      // the founder sees the AI's proposal without an
+                      // extra click. For other rows the chevron is
+                      // closed-by-default — the diff exists but isn't
+                      // urgent enough to grab attention by default.
+                      const defaultOpen = isUrlDead || isAutoCorrected;
+                      const isExpanded = reviewRowExpanded[ref.id] ?? defaultOpen;
+                      const canExpand = hasPendingCorrection || isAutoCorrected;
+                      const isConfirming = confirmingAutoCorr.has(ref.id);
                       return (
-                        <tr key={ref.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                          <td className="px-5 py-4">
-                            <p className="text-slate-900 text-sm font-medium">{ref.law_name}</p>
-                            <p className="text-slate-600 text-xs mt-0.5 flex flex-wrap items-center gap-1.5">
-                              <span>{ref.source_type || '—'}{ref.section ? ` · ${ref.section}` : ''}</span>
-                              <SourceKindChip url={ref.source_url} />
-                            </p>
-                          </td>
-                          <td className="px-5 py-4 text-slate-700 text-sm hidden md:table-cell">{year}</td>
-                          <td className="px-5 py-4 hidden md:table-cell">
-                            <a
-                              href={ref.source_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-emerald-600 hover:text-emerald-500 text-xs"
-                              title={ref.source_url}
-                            >
-                              {truncated}
-                            </a>
-                          </td>
-                          <td className="px-5 py-4">
-                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${status.className}`}>
-                              <StatusIcon className="h-3 w-3" />
-                              {status.label}
-                            </span>
-                            {ref.auto_corrected && (
-                              <span className="ml-1 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200" title="Perplexity auto-overwrote the canonical citation. Please review.">
-                                <AlertTriangle className="h-3 w-3" />
-                                AI auto-correction — please review
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-5 py-4 hidden lg:table-cell text-slate-600 text-xs">
-                            {relativeTime(ref.last_verified)}
-                          </td>
-                          <td className="px-5 py-4">
-                            <div className="flex items-center justify-end gap-2 flex-wrap">
+                        <Fragment key={ref.id}>
+                          <tr className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                            <td className="px-5 py-4">
+                              <div className="flex items-start gap-2">
+                                {canExpand && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setReviewRowExpanded((prev) => ({
+                                        ...prev,
+                                        [ref.id]: !isExpanded,
+                                      }))
+                                    }
+                                    className="mt-0.5 p-0.5 rounded hover:bg-slate-200 text-slate-500"
+                                    aria-label={isExpanded ? 'Collapse correction' : 'Expand correction'}
+                                  >
+                                    {isExpanded ? (
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                    ) : (
+                                      <ChevronRight className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                )}
+                                <div className="min-w-0">
+                                  <p className="text-slate-900 text-sm font-medium">{ref.law_name}</p>
+                                  <p className="text-slate-600 text-xs mt-0.5 flex flex-wrap items-center gap-1.5">
+                                    <span>{ref.source_type || '—'}{ref.section ? ` · ${ref.section}` : ''}</span>
+                                    <SourceKindChip url={ref.source_url} />
+                                    {hasPendingCorrection && (
+                                      <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                        AI proposal ready
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4 text-slate-700 text-sm hidden md:table-cell">{year}</td>
+                            <td className="px-5 py-4 hidden md:table-cell">
                               <a
                                 href={ref.source_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-slate-700 hover:text-slate-900 px-2.5 py-1.5 border border-slate-200 rounded-lg"
+                                className="text-emerald-600 hover:text-emerald-500 text-xs"
+                                title={ref.source_url}
                               >
-                                <ExternalLink className="h-3 w-3" />
-                                Open URL
+                                {truncated}
                               </a>
-                              <button
-                                onClick={() => verifyWithAi([ref.id])}
-                                disabled={verifying}
-                                className="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 px-2.5 py-1.5 rounded-lg"
-                              >
-                                {verifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                                Verify with AI
-                              </button>
-                            </div>
-                            {result && (
-                              <p className={`text-[11px] mt-1.5 text-right ${result.ok ? 'text-emerald-600' : 'text-red-500'}`}>
-                                {result.ok ? '✓ ' : '✗ '}{result.ok ? (
-                                  result.status === 'no_change' ? 'No change · still current'
-                                  : result.status === 'queued' ? 'Correction queued for review'
-                                  : result.status === 'auto_applied' ? 'Auto-applied (low-risk)'
-                                  : `Verified · ${result.status}`
-                                ) : (result.notes || 'Failed')}
-                              </p>
-                            )}
-                          </td>
-                        </tr>
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${status.className}`}>
+                                <StatusIcon className="h-3 w-3" />
+                                {status.label}
+                              </span>
+                              {ref.auto_corrected && (
+                                <span className="ml-1 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200" title="Perplexity auto-overwrote the canonical citation. Please review.">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  AI auto-correction — please review
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-4 hidden lg:table-cell text-slate-600 text-xs">
+                              {relativeTime(ref.last_verified)}
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="flex items-center justify-end gap-2 flex-wrap">
+                                <a
+                                  href={ref.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-slate-700 hover:text-slate-900 px-2.5 py-1.5 border border-slate-200 rounded-lg"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Open URL
+                                </a>
+                                <button
+                                  onClick={() => verifyWithAi([ref.id])}
+                                  disabled={verifying}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 px-2.5 py-1.5 rounded-lg"
+                                >
+                                  {verifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                                  Verify with AI
+                                </button>
+                              </div>
+                              {result && (
+                                <p className={`text-[11px] mt-1.5 text-right ${result.ok ? 'text-emerald-600' : 'text-red-500'}`}>
+                                  {result.ok ? '✓ ' : '✗ '}{result.ok ? (
+                                    result.status === 'no_change' ? 'No change · still current'
+                                    : result.status === 'queued' ? 'Correction queued for review'
+                                    : result.status === 'auto_applied' ? 'Auto-applied (low-risk)'
+                                    : `Verified · ${result.status}`
+                                  ) : (result.notes || 'Failed')}
+                                </p>
+                              )}
+                            </td>
+                          </tr>
+                          {canExpand && isExpanded && (
+                            <tr className="border-b border-slate-200">
+                              <td colSpan={6} className="px-5 py-4 bg-slate-50/60">
+                                {hasPendingCorrection && (
+                                  <div className="space-y-3">
+                                    {refCorrections.map((c) => (
+                                      <div
+                                        key={c.id}
+                                        className="bg-white border border-slate-200 rounded-xl p-4"
+                                      >
+                                        <InlineCorrectionPanel
+                                          correction={c}
+                                          onResolve={handleCorrectionResolved}
+                                          allowDuplicate={false}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {!hasPendingCorrection && isAutoCorrected && (
+                                  <div className="bg-white border border-amber-200 rounded-xl p-4">
+                                    <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700 mb-2 flex items-center gap-1.5">
+                                      <AlertTriangle className="h-3.5 w-3.5" />
+                                      AI auto-correction — verify
+                                    </p>
+                                    <p className="text-sm text-slate-700 mb-2">
+                                      Perplexity overwrote this citation via the high-confidence
+                                      auto-apply path. Confirm if it&apos;s correct, or revert via
+                                      the Auto-applied panel above.
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs mb-3">
+                                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-0.5">
+                                          Current
+                                        </p>
+                                        <p className="text-slate-800">{ref.law_name}</p>
+                                        <a
+                                          href={ref.source_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-slate-600 break-all underline decoration-dotted hover:text-slate-800 inline-block mt-0.5"
+                                        >
+                                          {ref.source_url}
+                                        </a>
+                                      </div>
+                                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-0.5">
+                                          Verifier notes
+                                        </p>
+                                        <p className="text-slate-700 whitespace-pre-wrap">
+                                          {ref.verification_notes || '(no notes recorded)'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => confirmAutoCorrection(ref.id)}
+                                        disabled={isConfirming}
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg"
+                                      >
+                                        {isConfirming ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <Check className="h-3.5 w-3.5" />
+                                        )}
+                                        Confirm correct
+                                      </button>
+                                      <p className="text-[11px] text-slate-500">
+                                        To revert, use the Auto-applied (last 7 days) panel above.
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
