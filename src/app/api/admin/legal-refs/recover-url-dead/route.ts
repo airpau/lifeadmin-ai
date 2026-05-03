@@ -46,6 +46,27 @@ function publisherDomain(url: string): string | null {
   }
 }
 
+/**
+ * Phase 3 of compliance UX overhaul: when Perplexity can't recover a
+ * url_dead citation, write a SHORT one-line founder instruction so the
+ * Compliance Centre surfaces "do exactly this" instead of just burying
+ * "manual research needed" in business_log.
+ *
+ * Output is one sentence the founder can act on — search-and-paste, not
+ * a research project. Specialise on the publishers we hit most (legislation,
+ * Ofcom) and fall back to a generic search-the-domain prompt.
+ */
+function buildActionInstruction(publisherDomain: string, lawName: string): string {
+  const name = lawName.trim() || 'this citation';
+  if (publisherDomain === 'legislation.gov.uk') {
+    return `Search legislation.gov.uk for '${name}' and paste the current URL into a fresh correction (or mark this ref retired).`;
+  }
+  if (publisherDomain === 'ofcom.org.uk') {
+    return `Search ofcom.org.uk for '${name}' (try the General Conditions index page) and paste the current URL.`;
+  }
+  return `Original URL on ${publisherDomain} 4xx'd. Search ${publisherDomain} for '${name}' and either paste the new URL or mark this citation retired.`;
+}
+
 async function askPerplexityForRecovery(args: {
   oldUrl: string;
   lawName: string;
@@ -426,20 +447,57 @@ export async function POST(request: NextRequest) {
             }
           }
         } else {
-          // Null / low confidence / off-domain — leave url_dead, log for
-          // founder so manual research is visible in business_log.
+          // Null / low confidence / off-domain — Perplexity gave up.
+          //
+          // Phase 3: instead of just logging "manual research needed" to
+          // business_log (where it gets buried), also write a low-confidence
+          // pending correction with an action_instructions one-liner so the
+          // founder sees "do exactly this" inline in the Compliance Centre
+          // review queue. Keep the business_log row too — it's the audit
+          // trail the cron summary email scrapes.
+          const giveUpReasoning =
+            `Ref ${row.id} (${row.law_name}) source ${row.source_url} ` +
+            `still 4xx after browser-UA probe. Perplexity recovery returned ` +
+            `${proposedUrl ? `URL ${proposedUrl}` : 'no URL'} ` +
+            `with confidence=${recovery?.confidence ?? 'n/a'}` +
+            (recovery?.reasoning ? `. Reasoning: ${recovery.reasoning}` : '.');
+
           // eslint-disable-next-line no-await-in-loop
           await admin.from('business_log').insert({
             category: 'compliance',
             title: `url_dead — manual research needed: ${row.law_name}`,
-            content:
-              `Ref ${row.id} (${row.law_name}) source ${row.source_url} ` +
-              `still 4xx after browser-UA probe. Perplexity recovery returned ` +
-              `${proposedUrl ? `URL ${proposedUrl}` : 'no URL'} ` +
-              `with confidence=${recovery?.confidence ?? 'n/a'}` +
-              (recovery?.reasoning ? `. Reasoning: ${recovery.reasoning}` : '.'),
+            content: giveUpReasoning,
             created_by: 'system',
           });
+
+          const actionInstruction = buildActionInstruction(pubDomain, row.law_name);
+          // eslint-disable-next-line no-await-in-loop
+          const { data: insertedRow, error: insErr } = await admin
+            .from('legal_ref_corrections')
+            .insert({
+              ref_id: row.id,
+              proposer: 'url-recovery-action-needed-2026-05-03',
+              before_law_name: row.law_name,
+              before_source_url: row.source_url,
+              before_status: 'url_dead',
+              proposed_law_name: null,
+              proposed_source_url: null,
+              proposed_status: null,
+              reasoning: giveUpReasoning,
+              confidence: 'low',
+              status: 'pending',
+              action_instructions: actionInstruction,
+            })
+            .select('id')
+            .maybeSingle();
+          if (insErr) {
+            summary.errors.push(`${row.id} (action-needed): ${insErr.message}`);
+          } else if (insertedRow?.id) {
+            summary.queued++;
+            // Fire enrichment fire-and-forget (same pattern as the other
+            // inserts in this file — added in PR #470).
+            enrichSingleCorrection(admin, insertedRow.id).catch(() => {});
+          }
         }
       }
     }
