@@ -38,6 +38,7 @@ import {
   SubscriptionsDemo,
   ExportDemo,
   DealsDemo,
+  McpDemo,
 } from './demos';
 import { createClient } from '@/lib/supabase/client';
 import './styles.css';
@@ -1102,51 +1103,79 @@ export default function HomepageV3PreviewPage() {
           <div className="pillar-grid">
             <Reveal className="pillar-card" delay={0}>
               <div className="pillar-icon mint" aria-hidden="true">⚖️</div>
+              <div className="pillar-tier-row">
+                <span className="tier-chip tier-chip--free">Free 3/mo</span>
+                <span className="tier-chip tier-chip--essential">Essential ∞</span>
+                <span className="tier-chip tier-chip--pro">Pro ∞</span>
+              </div>
               <h3>AI Disputes Centre</h3>
+              <p className="pillar-rival">The category-defining tool — no UK rival cites statute in-letter.</p>
               <p className="copy">
                 Type one sentence. Get a formal complaint letter citing the
                 exact UK statute — Consumer Rights Act 2015, Ofcom, Ofgem,
-                UK261 — in 30 seconds.
+                UK261 — in 30 seconds. Every citation re-verified daily by
+                our Compliance pipeline.
               </p>
               <a className="btn btn-ghost" href="#disputes">See how &rarr;</a>
             </Reveal>
 
             <Reveal className="pillar-card" delay={60}>
               <div className="pillar-icon gradient" aria-hidden="true">💬</div>
+              <div className="pillar-tier-row">
+                <span className="tier-chip tier-chip--free">Telegram free</span>
+                <span className="tier-chip tier-chip--pro">WhatsApp Pro</span>
+              </div>
               <h3>Pocket Agent</h3>
+              <p className="pillar-rival">Like a solicitor on retainer — at 1/50th the price.</p>
               <p className="copy">
                 Your personal caseworker on WhatsApp &amp; Telegram. Drafts
                 ready in 30 seconds, watches for replies, escalates to the
-                Ombudsman at 8 weeks.
+                Ombudsman at 8 weeks — tap to approve.
               </p>
               <a className="btn btn-ghost" href="#pocket-agent">See how &rarr;</a>
             </Reveal>
 
             <Reveal className="pillar-card" delay={120}>
               <div className="pillar-icon orange" aria-hidden="true">📊</div>
+              <div className="pillar-tier-row">
+                <span className="tier-chip tier-chip--free">Free overview</span>
+                <span className="tier-chip tier-chip--essential">Essential full</span>
+                <span className="tier-chip tier-chip--pro">Pro unlimited</span>
+              </div>
               <h3>Money Hub</h3>
+              <p className="pillar-rival">Like Emma — but with the fight built in.</p>
               <p className="copy">
                 Every account, every bill, every trend in one view.
-                Open-Banking-fed, auto-categorised, with budgets, savings
-                goals and net-worth tracking.
+                Open-Banking-fed, auto-categorised across 20+ buckets,
+                with budgets, savings goals and net-worth tracking.
               </p>
               <a className="btn btn-ghost" href="#money-hub">See how &rarr;</a>
             </Reveal>
 
             <Reveal className="pillar-card" delay={180}>
               <div className="pillar-icon mint" aria-hidden="true">🔁</div>
+              <div className="pillar-tier-row">
+                <span className="tier-chip tier-chip--free">Free</span>
+                <span className="tier-chip tier-chip--essential">Essential alerts</span>
+                <span className="tier-chip tier-chip--pro">Pro alerts</span>
+              </div>
               <h3>Subscriptions Tracker</h3>
+              <p className="pillar-rival">Snoop-style, plus a one-tap legal cancellation letter.</p>
               <p className="copy">
                 Auto-detects every subscription, direct debit and recurring
                 charge. Flags hikes, duplicates and forgotten trials —
-                cancel any of them in one tap.
+                cancel any of them with a one-tap legal letter.
               </p>
               <a className="btn btn-ghost" href="#subscriptions">See how &rarr;</a>
             </Reveal>
 
             <Reveal className="pillar-card" delay={240}>
               <div className="pillar-icon orange" aria-hidden="true">📤</div>
+              <div className="pillar-tier-row">
+                <span className="tier-chip tier-chip--pro">Pro only</span>
+              </div>
               <h3>Export Hub</h3>
+              <p className="pillar-rival">Everything Lunch Money does — plus AI-cited UK law on top.</p>
               <p className="copy">
                 Live-sync to Google Sheets — bi-directional. Or one-shot
                 CSV, Excel and PDF. Accountant-ready exports for your
@@ -1157,16 +1186,106 @@ export default function HomepageV3PreviewPage() {
 
             <Reveal className="pillar-card" delay={300}>
               <div className="pillar-icon gradient" aria-hidden="true">🤝</div>
+              <div className="pillar-tier-row">
+                <span className="tier-chip tier-chip--free">Free</span>
+                <span className="tier-chip tier-chip--essential">Essential</span>
+                <span className="tier-chip tier-chip--pro">Pro instant</span>
+              </div>
               <h3>Smart Deals</h3>
+              <p className="pillar-rival">Money Saving Expert energy & broadband, fed your real bill.</p>
               <p className="copy">
                 When the dispute&rsquo;s done, switch to a better tariff.
                 53+ verified UK partners across broadband, energy, mobile
-                and insurance — surfaced only when they actually beat your
-                current bill.
+                and insurance — surfaced only when they beat your bill.
               </p>
               <a className="btn btn-ghost" href="#deals">See how &rarr;</a>
             </Reveal>
           </div>
+        </div>
+      </section>
+
+      {/* ========== Why Pro · power-tools strip ==========
+          Sits between the product overview grid and the AI Disputes
+          deep-dive so the visitor has just seen the surface, then
+          immediately sees what £9.99 unlocks before they drop into
+          per-feature deep-dives. Re-introduces MCP visibility on the
+          homepage as a Pro upsell rather than as a standalone
+          "developer" block. */}
+      <section className="pro-power-ups section-ink" aria-label="What Pro unlocks on top of Free and Essential">
+        <div className="wrap">
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow on-ink">
+              <span className="pill-pro" style={{ marginBottom: 0 }}>Pro</span>
+              {' '}power tools
+            </span>
+            <h2>
+              Four power-ups that turn Paybacker
+              <br />
+              into your household finance team.
+            </h2>
+            <p>
+              Free gets you a real taste. Essential makes it your daily
+              driver. <strong style={{ color: 'var(--text-on-ink)' }}>Pro at £9.99/month</strong> unlocks the four
+              tools founders, freelancers and finance nerds actually live in.
+            </p>
+          </Reveal>
+
+          <Reveal className="pro-power-ups__grid">
+            <div className="pro-power-up">
+              <div className="pro-power-up__icon" aria-hidden="true">💬</div>
+              <h3>WhatsApp Pocket Agent</h3>
+              <p>
+                Instant price-rise alerts, daily morning brief, &ldquo;did I get
+                paid?&rdquo; queries, FCA 8-week deadline pings — all on the
+                chat app you already have open. Telegram stays free across all
+                tiers.
+              </p>
+            </div>
+
+            <div className="pro-power-up">
+              <div className="pro-power-up__icon" aria-hidden="true">📊</div>
+              <h3>Live Sheets export</h3>
+              <p>
+                Bi-directional Google Sheets sync. CSV, Excel, PDF on demand.
+                Accountant-ready annual exports for self-assessment. Your
+                money, your data, your spreadsheet.
+              </p>
+            </div>
+
+            <div className="pro-power-up">
+              <div className="pro-power-up__icon" aria-hidden="true">🤖</div>
+              <h3>Paybacker MCP</h3>
+              <p>
+                Talk to your money straight from Claude Desktop. Read-only
+                access to your transactions, hikes and savings opportunities
+                — Claude becomes your personal financial analyst, grounded in
+                real bank data.
+              </p>
+            </div>
+
+            <div className="pro-power-up">
+              <div className="pro-power-up__icon" aria-hidden="true">🎯</div>
+              <h3>Better-deal alerts &amp; unlimited connections</h3>
+              <p>
+                WhatsApp ping the moment a cheaper tariff beats your bill.
+                Plus unlimited bank &amp; email connections, top-merchant
+                analysis, priority support and on-demand bank sync.
+              </p>
+            </div>
+          </Reveal>
+
+          <Reveal className="pro-power-ups__demo">
+            <McpDemo />
+          </Reveal>
+
+          <Reveal className="pro-power-ups__cta">
+            <Link className="btn btn-mint" href="/auth/signup">
+              Go Pro — £9.99/month →
+            </Link>
+            <span className="pro-power-ups__cta-fine">
+              Or £94.99/year · Founding rate locked in · Cancel anytime
+            </span>
+          </Reveal>
         </div>
       </section>
 
@@ -1294,13 +1413,8 @@ export default function HomepageV3PreviewPage() {
                 <li>
                   <strong>WhatsApp Pocket Agent</strong>{' '}
                   <span className="tier-chip tier-chip--pro">Pro</span> — £9.99/month.
-                  Same caseworker, different chat.
-                </li>
-                <li>
-                  <strong>Paybacker MCP</strong>{' '}
-                  <span className="tier-chip tier-chip--pro">Pro</span> — talk to your
-                  money from Claude Desktop. Read-only access to transactions, hikes
-                  and savings opportunities.
+                  Same caseworker, different chat. Daily morning brief,
+                  better-deal alerts and 8-week Ombudsman deadline pings included.
                 </li>
               </ul>
               <div className="feature-cta-row">
