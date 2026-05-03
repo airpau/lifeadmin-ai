@@ -604,13 +604,6 @@
 
 .m-v2-root .pillar-card .copy { color: var(--text-secondary); font-size: 15px; margin-bottom: 20px; }
 
-/* Product overview grid — compact pillar cards (no inline demo preview,
-   so we relax the 480px min-height inherited from the older "pillar"
-   pattern and pin the anchor-link to the bottom-left of the card). */
-.m-v2-root .pillars-section .pillar-card { min-height: 280px; }
-.m-v2-root .pillars-section .pillar-card .btn { align-self: flex-start; margin-top: auto; }
-.m-v2-root .pillars-section .pillar-card h3 { color: var(--text-primary); }
-
 .m-v2-root .pillar-preview {
   margin-top: auto;
   border-radius: 14px;
@@ -2432,110 +2425,10 @@
   color: #5eead4;
   border: 1px solid rgba(94, 234, 212, 0.4);
 }
-.tier-chip--essential {
-  background: rgba(16, 185, 129, 0.16);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.4);
-}
 .tier-chip--pro {
   background: rgba(245, 158, 11, 0.18);
   color: #fbbf24;
   border: 1px solid rgba(245, 158, 11, 0.4);
-}
-
-/* On a light card surface (the product overview pillars) the dim
-   .18 alpha versions read as washed out — use slightly stronger
-   alpha + darker text so the chips actually pop on white. Scoped
-   to the pillars-section so dark-surface usages elsewhere are
-   untouched. */
-.m-v2-root .pillars-section .tier-chip--free {
-  background: rgba(5, 150, 105, 0.10);
-  color: #047857;
-  border-color: rgba(5, 150, 105, 0.30);
-}
-.m-v2-root .pillars-section .tier-chip--essential {
-  background: rgba(16, 185, 129, 0.12);
-  color: #047857;
-  border-color: rgba(16, 185, 129, 0.36);
-}
-.m-v2-root .pillars-section .tier-chip--pro {
-  background: rgba(217, 119, 6, 0.12);
-  color: #b45309;
-  border-color: rgba(217, 119, 6, 0.32);
-}
-
-/* Tier-chip cluster on the product overview cards — sits between
-   the icon and the title so a glance tells the user which plan
-   includes this tool. */
-.m-v2-root .pillars-section .pillar-tier-row {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  margin: 0 0 10px;
-}
-.m-v2-root .pillars-section .pillar-rival {
-  font-size: 12.5px; color: var(--text-tertiary);
-  letter-spacing: 0.01em; margin: 0 0 14px;
-  font-style: italic;
-}
-
-/* "Why Pro" power-tools strip — sits between the product overview
-   grid and the AI Disputes deep-dive so the user has just seen the
-   product surface and now sees what £9.99 unlocks before they drop
-   into the per-feature sections. Dark ink so it pops as an upsell
-   block, not as marketing padding. */
-.m-v2-root .pro-power-ups { padding: 96px 0; }
-.m-v2-root .pro-power-ups .section-head h2 { color: var(--text-on-ink); }
-.m-v2-root .pro-power-ups .section-head p { color: var(--text-on-ink-dim); }
-.m-v2-root .pro-power-ups__grid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px;
-  margin-top: 40px;
-}
-.m-v2-root .pro-power-up {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 18px;
-  padding: 24px;
-  display: flex; flex-direction: column;
-  transition: transform 220ms cubic-bezier(0.22,1,0.36,1), border-color 220ms ease;
-}
-.m-v2-root .pro-power-up:hover {
-  transform: translateY(-4px);
-  border-color: rgba(245, 158, 11, 0.4);
-}
-.m-v2-root .pro-power-up__icon {
-  width: 44px; height: 44px; border-radius: 12px;
-  background: linear-gradient(135deg, var(--accent-mint), var(--accent-orange));
-  display: grid; place-items: center;
-  font-size: 22px;
-  margin-bottom: 16px;
-  color: #fff;
-}
-.m-v2-root .pro-power-up h3 {
-  color: var(--text-on-ink); font-size: 17px; font-weight: 600;
-  margin: 0 0 8px; letter-spacing: -0.01em;
-}
-.m-v2-root .pro-power-up p {
-  color: var(--text-on-ink-dim); font-size: 13.5px; line-height: 1.55; margin: 0;
-}
-.m-v2-root .pro-power-ups__cta {
-  margin-top: 36px; display: flex; flex-direction: column;
-  align-items: center; gap: 10px;
-}
-.m-v2-root .pro-power-ups__cta-fine {
-  color: var(--text-on-ink-dim); font-size: 12px;
-}
-.m-v2-root .pro-power-ups__demo {
-  margin-top: 32px;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 18px;
-  padding: 22px;
-}
-@media (max-width: 980px) {
-  .m-v2-root .pro-power-ups__grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 600px) {
-  .m-v2-root .pro-power-ups__grid { grid-template-columns: 1fr; }
-  .m-v2-root .pro-power-ups { padding: 72px 0; }
 }
 
 /* Freshness chip — strapline link inside the AI Disputes section
