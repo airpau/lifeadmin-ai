@@ -1,7 +1,7 @@
 'use client';
 
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import UpgradePrompt from '@/components/UpgradePrompt';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
@@ -59,6 +59,11 @@ export default function DashboardPage() {
   const [emailScanning, setEmailScanning] = useState(false);
   const [emailScanResults, setEmailScanResults] = useState<number | null>(null);
   const [emailOpportunities, setEmailOpportunities] = useState<any[]>([]);
+  // Inline completion banner for the Scan-now button. Founders reported
+  // "spins and items don't update — is it working?" when the count was
+  // unchanged (30 → 30). The spinner stopping is too quiet a signal.
+  const [scanFeedback, setScanFeedback] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  const scanFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null; status: string }>>([]);
   const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email_address: string; provider_type: string }>>([]);
@@ -106,6 +111,17 @@ export default function DashboardPage() {
   };
 
   // Meta Pixel + Awin tracking for free signups
+  // Clear the email-scan auto-dismiss timer on unmount so we don't try
+  // to setState after the component has gone.
+  useEffect(() => {
+    return () => {
+      if (scanFeedbackTimerRef.current) {
+        clearTimeout(scanFeedbackTimerRef.current);
+        scanFeedbackTimerRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (searchParams.get('signup') === '1') {
       // Meta Pixel Lead event
@@ -533,6 +549,14 @@ export default function DashboardPage() {
   // endpoint succeeded or whether new findings were produced.
   const handleEmailScan = async () => {
     setEmailScanning(true);
+    // Clear any in-flight banner from a previous scan so the new run
+    // doesn't auto-dismiss prematurely.
+    if (scanFeedbackTimerRef.current) {
+      clearTimeout(scanFeedbackTimerRef.current);
+      scanFeedbackTimerRef.current = null;
+    }
+    setScanFeedback(null);
+    const priorCount = emailOpportunities.length;
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
@@ -555,17 +579,31 @@ export default function DashboardPage() {
       // hit the same endpoint twice (the endpoints loop over all the
       // user's connections of their type internally).
       const seen = new Set<string>();
-      const calls = targets
-        .filter(({ endpoint }) => (seen.has(endpoint) ? false : (seen.add(endpoint), true)))
-        .map(({ endpoint }) => fetch(endpoint, { method: 'POST' }).catch(() => null));
+      const dedupedTargets = targets.filter(({ endpoint }) =>
+        seen.has(endpoint) ? false : (seen.add(endpoint), true)
+      );
+      const calls = dedupedTargets.map(({ endpoint }) =>
+        fetch(endpoint, { method: 'POST' }).catch(() => null)
+      );
 
-      await Promise.all(calls);
+      // Track per-call success so we can distinguish "scan ran clean,
+      // 0 findings" from "every endpoint blew up (revoked OAuth → 401/
+      // 500)". Without this, the success banner fires even when nothing
+      // actually scanned — Codex P1.
+      const results = await Promise.all(calls);
+      const okCount = results.filter((r): r is Response => !!r && r.ok).length;
 
       // Always refresh state from the canonical tables, regardless of
       // per-endpoint success. Fixes the "scan-now button doesn't seem
       // to update" report — previously a same-result scan left the UI
       // showing stale opportunity counts.
-      const [{ data: scanFindings }, { data: refreshedConns }] = await Promise.all([
+      //
+      // We run a separate count-only query alongside the capped list so
+      // the delta math reflects the TRUE total count, not the displayed
+      // (limited to 30) list length. Without this, a user going from 30
+      // → 31 actual findings would see "no new findings (30 total)"
+      // because mapped.length saturates at the cap — Codex P2 round 2.
+      const [{ data: scanFindings }, { count: trueTotal }, { data: refreshedConns }] = await Promise.all([
         supabase
           .from('email_scan_findings')
           .select('*')
@@ -573,6 +611,11 @@ export default function DashboardPage() {
           .in('status', ['new', 'reviewing'])
           .order('created_at', { ascending: false })
           .limit(30),
+        supabase
+          .from('email_scan_findings')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', authUser.id)
+          .in('status', ['new', 'reviewing']),
         supabase
           .from('email_connections')
           .select('id, email_address, provider_type, last_scanned_at')
@@ -601,6 +644,37 @@ export default function DashboardPage() {
       setEmailOpportunities(mapped);
       setEmailScanResults(mapped.length);
 
+      // Visible completion signal — addresses "spins and items don't
+      // update — is it working?". A same-count scan (30 → 30) used to
+      // leave the user without any signal at all.
+      //
+      // BUT: if every scan call failed (e.g. revoked OAuth → 401/500
+      // across all endpoints), we must NOT show "scan complete" — that
+      // misleads the user into thinking their inbox is clean when in
+      // reality nothing scanned. Codex P1.
+      if (dedupedTargets.length > 0 && okCount === 0) {
+        setScanFeedback({
+          kind: 'error',
+          message: 'Scan failed — please re-link your email or try again.',
+        });
+      } else {
+        // Use the uncapped trueTotal (count: 'exact', head: true) for
+        // delta math — mapped.length saturates at the .limit(30) cap so
+        // a user going from 30 → 31 actual findings would otherwise see
+        // "no new findings (30 total)". Codex P2 round 2.
+        const total = trueTotal ?? mapped.length;
+        const delta = total - priorCount;
+        let message: string;
+        if (total === 0) {
+          message = 'Scan complete · 0 findings — your inbox looks clean';
+        } else if (delta > 0) {
+          message = `Scan complete · ${delta} new finding${delta === 1 ? '' : 's'} (${total} total)`;
+        } else {
+          message = `Scan complete · no new findings (${total} total)`;
+        }
+        setScanFeedback({ kind: 'success', message });
+      }
+
       if (refreshedConns && refreshedConns.length > 0) {
         // Pick the most-recently-scanned timestamp so the UI shows the
         // freshest signal across all active accounts.
@@ -612,11 +686,18 @@ export default function DashboardPage() {
         setEmailLastScanned(latest);
       }
     } catch {
-      // No state mutation on a hard throw — leave the UI as it was
-      // and let the user retry. Setting results=0 here previously
-      // hid existing opportunities which felt worse than not updating.
+      // Surface the failure instead of swallowing it silently — the
+      // founder reported the spinner stopping with no feedback when a
+      // scan threw, leaving "is it working?" unanswered.
+      setScanFeedback({ kind: 'error', message: 'Scan failed — please try again.' });
     } finally {
       setEmailScanning(false);
+      // Auto-clear after 6s so the banner doesn't linger; cleared
+      // on unmount or new scan via the ref above.
+      scanFeedbackTimerRef.current = setTimeout(() => {
+        setScanFeedback(null);
+        scanFeedbackTimerRef.current = null;
+      }, 6000);
     }
   };
 
@@ -1400,6 +1481,32 @@ export default function DashboardPage() {
                   ? `Connected: ${emailAddress}${emailLastScanned ? ` · Last scanned ${new Date(emailLastScanned).toLocaleDateString()}` : ''}`
                   : 'Scan your inbox to find bills, overcharges and savings.'}
               </p>
+              {scanFeedback && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    margin: '0 0 10px',
+                    padding: '5px 10px',
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: scanFeedback.kind === 'success' ? 'var(--mint-wash)' : 'var(--amber-wash)',
+                    color: scanFeedback.kind === 'success' ? 'var(--mint-deep)' : '#92400E',
+                    border: `1px solid ${scanFeedback.kind === 'success' ? '#BBF7D0' : '#FCD34D'}`,
+                  }}
+                >
+                  {scanFeedback.kind === 'success' ? (
+                    <CheckCircle className="h-3.5 w-3.5" />
+                  ) : (
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  )}
+                  {scanFeedback.message}
+                </div>
+              )}
               {emailOpportunities.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {emailOpportunities.slice(0, 5).map((opp: any, i: number) => (
