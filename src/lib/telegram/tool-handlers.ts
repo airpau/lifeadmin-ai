@@ -534,6 +534,29 @@ export async function executeToolCall(
       });
     case 'list_reports':
       return listReportsTool(supabase, userId, toolInput.limit as number | undefined);
+    // ===== Subscription + Contract write parity (2026-05-03) =====
+    case 'compare_all_subscription_prices': return compareAllSubscriptionPrices(userId);
+    case 'scan_all_subscriptions': return scanAllSubscriptions(supabase, userId);
+    case 'create_dispute_from_subscription': {
+      // Coerce claim_amount: the LLM occasionally passes a string ("12.50") or
+      // a non-finite value. Fail loud rather than crashing on .toFixed() later
+      // (Codex P2, PR #468).
+      const rawClaim = toolInput.claim_amount;
+      const claimAmount =
+        typeof rawClaim === 'string' ? Number(rawClaim) : (rawClaim as number | undefined);
+      if (rawClaim !== undefined && rawClaim !== null && !Number.isFinite(claimAmount)) {
+        return { text: `Invalid claim_amount: ${JSON.stringify(rawClaim)}. Provide a finite number in GBP (e.g. 12.50).` };
+      }
+      return createDisputeFromSubscription(supabase, userId, {
+        subscription_provider: toolInput.subscription_provider as string,
+        issue_type: toolInput.issue_type as string | undefined,
+        claim_amount: Number.isFinite(claimAmount) ? (claimAmount as number) : undefined,
+      });
+    }
+    case 'delete_contract':
+      return deleteContract(supabase, userId, toolInput.contract_id as string);
+    case 'analyse_contract':
+      return analyseContractFromText(supabase, userId);
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -947,41 +970,76 @@ async function getContracts(
     query = query.ilike('category', category);
   }
 
-  const { data, error } = await query;
-  if (error || !data || data.length === 0) {
+  // Also fetch the user's uploaded contract_extractions so the assistant can
+  // surface UUIDs needed by delete_contract — get_contracts is the only path
+  // to obtain them in chat (Codex P1, PR #468).
+  let extractionsQuery = supabase
+    .from('contract_extractions')
+    .select('id, provider_name, contract_type, contract_end_date, contract_start_date, file_name')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (provider) {
+    extractionsQuery = extractionsQuery.ilike('provider_name', `%${provider}%`);
+  }
+
+  const [{ data, error }, { data: extractions }] = await Promise.all([
+    query,
+    extractionsQuery,
+  ]);
+
+  const haveSubs = !error && data && data.length > 0;
+  const haveExtractions = extractions && extractions.length > 0;
+
+  if (!haveSubs && !haveExtractions) {
     const desc = category ? ` in category "${category}"` : provider ? ` matching "${provider}"` : '';
     return { text: `No contracts found${desc}. Add contracts at paybacker.co.uk/dashboard/subscriptions` };
   }
 
   const now = new Date();
-  let text = `*Contracts (${data.length})*\n\n`;
+  let text = '';
 
-  for (const c of data) {
-    const cycle = c.billing_cycle ?? 'monthly';
-    text += `*${c.provider_name}*`;
-    if (c.category) text += ` [${c.category}]`;
-    if (c.contract_type && c.contract_type !== 'subscription') {
-      text += ` (${c.contract_type.replace(/_/g, ' ')})`;
+  if (haveSubs) {
+    text += `*Contracts (${data!.length})*\n\n`;
+    for (const c of data!) {
+      const cycle = c.billing_cycle ?? 'monthly';
+      text += `*${c.provider_name}*`;
+      if (c.category) text += ` [${c.category}]`;
+      if (c.contract_type && c.contract_type !== 'subscription') {
+        text += ` (${c.contract_type.replace(/_/g, ' ')})`;
+      }
+      text += `\n   ${fmt(c.amount)}/${cycle}`;
+      if (c.contract_end_date) {
+        const endDate = new Date(c.contract_end_date);
+        const daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        const urgency = daysLeft <= 7 ? '🔴' : daysLeft <= 30 ? '🟡' : '🟢';
+        text = text.replace(`*${c.provider_name}*`, `${urgency} *${c.provider_name}*`);
+        text += ` · Ends ${fmtDate(c.contract_end_date)} (${daysLeft} days)`;
+      }
+      if (c.auto_renews) text += ' · Auto-renews';
+      if (c.early_exit_fee && Number(c.early_exit_fee) > 0) {
+        text += ` · Exit fee: ${fmt(c.early_exit_fee)}`;
+      }
+      if (c.interest_rate && Number(c.interest_rate) > 0) {
+        text += `\n   Interest: ${Number(c.interest_rate).toFixed(2)}%`;
+      }
+      if (c.remaining_balance && Number(c.remaining_balance) > 0) {
+        text += ` · Remaining: ${fmt(c.remaining_balance)}`;
+      }
+      text += '\n';
     }
-    text += `\n   ${fmt(c.amount)}/${cycle}`;
-    if (c.contract_end_date) {
-      const endDate = new Date(c.contract_end_date);
-      const daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      const urgency = daysLeft <= 7 ? '🔴' : daysLeft <= 30 ? '🟡' : '🟢';
-      text = text.replace(`*${c.provider_name}*`, `${urgency} *${c.provider_name}*`);
-      text += ` · Ends ${fmtDate(c.contract_end_date)} (${daysLeft} days)`;
+  }
+
+  if (haveExtractions) {
+    if (text) text += '\n';
+    text += `*Uploaded contract files (${extractions!.length})* — pass the id to delete_contract\n\n`;
+    for (const ex of extractions!) {
+      const label = ex.provider_name || ex.file_name || 'Unknown contract';
+      text += `· *${label}*`;
+      if (ex.contract_type) text += ` (${ex.contract_type.replace(/_/g, ' ')})`;
+      if (ex.contract_end_date) text += ` · Ends ${fmtDate(ex.contract_end_date)}`;
+      text += `\n  id: \`${ex.id}\`\n`;
     }
-    if (c.auto_renews) text += ' · Auto-renews';
-    if (c.early_exit_fee && Number(c.early_exit_fee) > 0) {
-      text += ` · Exit fee: ${fmt(c.early_exit_fee)}`;
-    }
-    if (c.interest_rate && Number(c.interest_rate) > 0) {
-      text += `\n   Interest: ${Number(c.interest_rate).toFixed(2)}%`;
-    }
-    if (c.remaining_balance && Number(c.remaining_balance) > 0) {
-      text += ` · Remaining: ${fmt(c.remaining_balance)}`;
-    }
-    text += '\n';
   }
 
   return { text };
@@ -7562,4 +7620,178 @@ async function listReportsTool(
     return `• ${fmtDate(r.created_at)} — ${periodLabel} — ${url}`;
   });
   return { text: `*Your reports (${data.length}):*\n${lines.join('\n')}` };
+}
+
+// ============================================================
+// SUBSCRIPTION + CONTRACT WRITE PARITY HANDLERS (2026-05-03)
+// In-process — no HTTP fetch (PR #463 lesson). Each tool calls the
+// existing lib helper directly with the admin Supabase client so
+// behaviour matches the API route 1:1 without network overhead.
+// ============================================================
+
+async function compareAllSubscriptionPrices(userId: string): Promise<ToolResult> {
+  try {
+    const { compareAllSubscriptions, saveComparisons } = await import('@/lib/comparison-engine');
+    const result = await compareAllSubscriptions(userId);
+
+    // Persist results so /dashboard/deals reflects the latest run — same as
+    // the POST /api/subscriptions/compare route.
+    for (const [subId, comparisons] of Object.entries(result.comparisons)) {
+      const currentPrice = comparisons[0]?.currentPrice || 0;
+      await saveComparisons(subId, currentPrice, comparisons);
+    }
+
+    if (!result.count || result.count === 0) {
+      return { text: '✓ Compared all your active subscriptions — no cheaper alternatives found right now. We\'ll keep checking weekly.' };
+    }
+    const annual = `£${Math.round(result.totalAnnualSaving).toLocaleString('en-GB')}`;
+    return {
+      text: `Found ${result.count} cheaper alternative${result.count === 1 ? '' : 's'} — open /dashboard/deals to review. Best-case annual saving: ${annual}.`,
+    };
+  } catch (err) {
+    return { text: `Comparison failed: ${err instanceof Error ? err.message : 'unknown error'}` };
+  }
+}
+
+async function scanAllSubscriptions(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  try {
+    const { detectRecurring } = await import('@/lib/detect-recurring');
+    const newCount = await detectRecurring(userId, supabase);
+    if (!newCount || newCount === 0) {
+      return { text: '✓ Subscription sweep complete — no new recurring payments detected since last scan.' };
+    }
+    return {
+      text: `✓ Found ${newCount} new recurring payment${newCount === 1 ? '' : 's'} in your bank activity — open /dashboard/subscriptions to review.`,
+    };
+  } catch (err) {
+    return { text: `Subscription sweep failed: ${err instanceof Error ? err.message : 'unknown error'}` };
+  }
+}
+
+async function createDisputeFromSubscription(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { subscription_provider: string; issue_type?: string; claim_amount?: number },
+): Promise<ToolResult> {
+  if (!params.subscription_provider?.trim()) {
+    return { text: 'Provider name required.' };
+  }
+
+  // Resolve subscription by provider name — same fuzzy match as cancel_subscription.
+  const { data: subs } = await supabase
+    .from('subscriptions')
+    .select('id, provider_name, amount, billing_cycle')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .ilike('provider_name', `%${params.subscription_provider}%`)
+    .order('updated_at', { ascending: false })
+    .limit(5);
+
+  if (!subs || subs.length === 0) {
+    return { text: `No active subscription matching "${params.subscription_provider}". Use get_subscriptions to see what's tracked.` };
+  }
+  if (subs.length > 1) {
+    const list = subs.map((s) => s.provider_name).join(', ');
+    return { text: `Multiple matches for "${params.subscription_provider}" — be more specific. Found: ${list}.` };
+  }
+
+  const sub = subs[0];
+  const issueType = params.issue_type || 'cancellation';
+  const issueSummary = params.claim_amount
+    ? `Refund request for ${sub.provider_name} — claim amount £${params.claim_amount.toFixed(2)}.`
+    : null;
+  const desiredOutcome = params.claim_amount
+    ? `Refund of £${params.claim_amount.toFixed(2)} and confirmation of cancellation`
+    : 'Cancel subscription and confirm no further charges';
+
+  const { data, error } = await supabase.rpc('create_dispute_from_subscription', {
+    p_user_id: userId,
+    p_subscription_id: sub.id,
+    p_issue_type: issueType,
+    p_issue_summary: issueSummary,
+    p_desired_outcome: desiredOutcome,
+  });
+
+  if (error) {
+    return { text: `Failed to open dispute: ${error.message}` };
+  }
+
+  // RPC return shape varies — surface the dispute id when present.
+  const disputeId =
+    (data && typeof data === 'object' && 'dispute_id' in (data as Record<string, unknown>)
+      ? (data as { dispute_id?: string }).dispute_id
+      : undefined) ||
+    (data && typeof data === 'object' && 'id' in (data as Record<string, unknown>)
+      ? (data as { id?: string }).id
+      : undefined);
+
+  let text = `✓ Opened a *${issueType.replace(/_/g, ' ')}* dispute against *${sub.provider_name}*.`;
+  if (params.claim_amount) text += ` Claim: £${params.claim_amount.toFixed(2)}.`;
+  text += '\n\nNext step: ask me to draft the letter, or open /dashboard/disputes';
+  if (disputeId) text += `/${disputeId}`;
+  text += ' to review.';
+  return { text };
+}
+
+async function deleteContract(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  contractId: string,
+): Promise<ToolResult> {
+  if (!contractId?.trim()) {
+    return { text: 'contract_id required. Use get_contracts to see your contracts and their IDs.' };
+  }
+
+  // Verify ownership and grab file_url for storage cleanup — same as DELETE /api/contracts.
+  const { data: contract, error: fetchError } = await supabase
+    .from('contract_extractions')
+    .select('id, provider_name, file_url')
+    .eq('id', contractId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (fetchError || !contract) {
+    return { text: `No contract found with id ${contractId.slice(0, 8)}… (or it doesn't belong to you).` };
+  }
+
+  // Best-effort storage cleanup — mirrors the route's logic.
+  if (contract.file_url) {
+    const path = contract.file_url.includes('/contracts/')
+      ? contract.file_url.split('/contracts/').pop()?.split('?')[0]
+      : null;
+    if (path) {
+      await supabase.storage.from('contracts').remove([path]).catch(() => {});
+    }
+  }
+
+  const { error: deleteError } = await supabase
+    .from('contract_extractions')
+    .delete()
+    .eq('id', contractId)
+    .eq('user_id', userId);
+
+  if (deleteError) {
+    return { text: `Failed to delete contract: ${deleteError.message}` };
+  }
+
+  return { text: `✓ Deleted contract: *${contract.provider_name || contractId.slice(0, 8)}*.` };
+}
+
+async function analyseContractFromText(
+  _supabase: ReturnType<typeof getAdmin>,
+  _userId: string,
+): Promise<ToolResult> {
+  // The /api/contracts/analyse endpoint is purely multipart-driven (file upload
+  // → Supabase Storage → Claude Vision). Re-implementing the extractor against
+  // raw text would duplicate the prompt logic in a second place — exactly the
+  // footgun called out by PR #463. This tool is intentionally a no-op redirect
+  // that points users to the website upload flow; the tool description in
+  // tools.ts mirrors that contract so the LLM doesn't try to gather contract
+  // text up front.
+  return {
+    text: 'Contract analysis isn\'t available in chat — please upload the PDF or photo at /dashboard/contracts on the website and I\'ll extract the key terms there.',
+  };
 }
