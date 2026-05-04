@@ -11,31 +11,36 @@ import './styles.css';
  * Scoped under `.m-how-root`.
  *
  * Six numbered demo sections walk through the product surface by surface:
- *   01 Disputes Centre     — LIVE
+ *   01 Disputes Centre     — LIVE (incl. inbox-scan callout)
  *   02 Subscriptions       — LIVE
  *   03 Money Hub           — LIVE
- *   04 Telegram agent      — COMING SOON (per CLAUDE.md roadmap)
- *   05 Google Sheets sync  — COMING SOON
+ *   04 Pocket Agent — Telegram + WhatsApp — LIVE (Telegram free; WhatsApp Pro)
+ *   05 Google Sheets sync  — LIVE (Pro tier, /dashboard/export)
  *   06 Stacked             — comparison with Emma / Snoop / Resolver / Which? / Lunchflow
  *
  * The design's JS-driven filter tagbar is replaced with anchor-link
  * jump nav — every section is rendered and links scroll to it.
  *
- * Content-accuracy deviations vs the design file:
- * - Telegram + Sheets marked "Coming soon" (CLAUDE.md: both on roadmap, not live).
+ * Content-accuracy notes:
+ * - Pocket Agent is LIVE on Telegram (free + Essential + Pro) and WhatsApp (Pro-only).
+ *   WhatsApp is Pro-gated because Meta charges per template send (£0.003-£0.06).
+ * - Google Sheets sync is LIVE on Pro tier — daily 06:00 UTC cron + on-demand
+ *   from /dashboard/export.
+ * - Email inbox scanning (Gmail + Outlook) is LIVE — read-only, up to 2y history.
  * - "53+ UK partners" replaced with "UK partner network" (no specific count to commit to).
- * - Bank connection copy references Yapily (current provider) rather than TrueLayer.
+ * - Bank connection copy references TrueLayer (current production provider).
+ *   Yapily integration is built but pending approval — not surfaced in marketing.
  */
 
 export const metadata: Metadata = {
   title: 'How Paybacker works — the five tools in one app',
   description:
-    'AI-drafted legal dispute letters, subscription tracking, a bank-connected Money Hub, a Telegram pocket agent and a live Google Sheets export. All from one app, citing real UK consumer law.',
+    'AI-drafted legal dispute letters, subscription tracking, a bank-connected Money Hub, a WhatsApp + Telegram Pocket Agent and live Google Sheets sync (Pro). All from one app, citing real UK consumer law.',
   alternates: { canonical: 'https://paybacker.co.uk/how-it-works' },
   openGraph: {
     title: 'How Paybacker works',
     description:
-      'The five tools, side by side. Disputes, subscriptions, Money Hub, Telegram agent, Sheets sync.',
+      'The five tools, side by side. Disputes, subscriptions, Money Hub, WhatsApp + Telegram Pocket Agent, live Sheets sync.',
     url: 'https://paybacker.co.uk/how-it-works',
     siteName: 'Paybacker',
     type: 'website',
@@ -44,7 +49,7 @@ export const metadata: Metadata = {
     card: 'summary',
     title: 'How Paybacker works',
     description:
-      'The five tools, side by side. Disputes, subscriptions, Money Hub, Telegram agent, Sheets sync.',
+      'The five tools, side by side. Disputes, subscriptions, Money Hub, WhatsApp + Telegram Pocket Agent, live Sheets sync.',
   },
 };
 
@@ -58,7 +63,7 @@ export default function HowItWorksPage() {
           <Link href="#disputes">Disputes</Link>
           <Link href="#subs">Subscriptions</Link>
           <Link href="#hub">Money Hub</Link>
-          <Link href="#agent">Telegram agent</Link>
+          <Link href="#agent">Pocket Agent</Link>
           <Link href="#sheets">Sheets export</Link>
           <Link href="#stacked">Stacked</Link>
         </nav>
@@ -247,6 +252,16 @@ function Section1Disputes() {
               <span className="dt">ACT NOW</span>
             </div>
           </div>
+
+          <div className="clarity-banner">
+            <div className="icon">+</div>
+            <div>
+              <strong>Bonus: we scan your inbox too.</strong> Paybacker reads Gmail or Outlook
+              (read-only) for hidden refunds, forgotten subscriptions, flight-delay claims, and
+              debt disputes you&rsquo;d otherwise miss &mdash; up to <strong>2 years</strong>{' '}
+              of email history on the first scan.
+            </div>
+          </div>
         </div>
       </div>
 
@@ -382,7 +397,7 @@ function Section2Subscriptions() {
         <div className="caption-col">
           <h3>How to use it</h3>
           <p>
-            Connect your bank once (read-only, Open Banking via Yapily). Paybacker auto-detects
+            Connect your bank once (read-only, Open Banking via TrueLayer). Paybacker auto-detects
             every recurring charge and tags them: price hikes (amber), duplicates (red),
             expiring trials (blue), upcoming renewals (grey). Tap any row to cancel, dispute,
             or switch &mdash; we deep-link you straight to the provider&rsquo;s cancel page.
@@ -439,7 +454,7 @@ function Section3MoneyHub() {
           <div className="demo-num">03 &middot; MONEY HUB</div>
           <h2 className="demo-title">All your accounts, in one place. With a fighter built in.</h2>
           <p className="demo-sub">
-            Connects to every UK bank via Open Banking (FCA-authorised via Yapily). Net
+            Connects to every UK bank via Open Banking (FCA-authorised via TrueLayer). Net
             position, breakdown, live transactions. Everything Emma does &mdash; plus a dispute
             engine, a deals engine, and an AI agent, all reading from the same ledger.
           </p>
@@ -514,8 +529,8 @@ function Section3MoneyHub() {
           <CompareRow feat="Subscriptions" them="List only" us="+ action flags" />
           <CompareRow feat="Dispute engine" them="—" us="✓ Built-in" />
           <CompareRow feat="Bill-hike alerts" them="Basic" us="With law cited" />
-          <CompareRow feat="Telegram agent" them="—" us="Coming soon" />
-          <CompareRow feat="Sheets export" them="CSV" us="Coming soon" />
+          <CompareRow feat="Pocket Agent (Telegram + WhatsApp)" them="—" us="✓ Live" />
+          <CompareRow feat="Sheets export" them="CSV" us="✓ Live (Pro)" />
           <CompareRow feat="Switch deals" them="Generic" us="Coming soon" />
         </div>
       </div>
@@ -555,7 +570,7 @@ function CompareRow({ feat, them, us }: { feat: string; them: string; us: string
 }
 
 /* ==================================================================== */
-/* 04 — Telegram Pocket Agent (coming soon)                             */
+/* 04 — Pocket Agent (Telegram + WhatsApp) — LIVE                       */
 /* ==================================================================== */
 
 function Section4Telegram() {
@@ -564,13 +579,16 @@ function Section4Telegram() {
       <div className="demo-head">
         <div>
           <div className="demo-num">04 &middot; POCKET AGENT</div>
-          <h2 className="demo-title">Ask anything about your money, in Telegram.</h2>
+          <h2 className="demo-title">
+            Ask anything about your money &mdash; in Telegram or WhatsApp.
+          </h2>
           <p className="demo-sub">
-            Your bank data and dispute tools, wrapped in a chat interface. Push alerts when
-            bills hike. Natural language for every action. No app to open.
+            Your bank data and dispute tools, wrapped in a chat interface. Telegram is free on
+            every plan; WhatsApp is Pro-only. Push alerts when bills hike. Natural language for
+            every action.
           </p>
         </div>
-        <span className="vs-badge soon">Coming soon</span>
+        <span className="vs-badge">Live now</span>
       </div>
 
       <div className="stage" style={{ minHeight: 620 } as CSSProperties}>
@@ -587,7 +605,7 @@ function Section4Telegram() {
                   <div className="av">PB</div>
                   <div className="info">
                     <div className="nm">Paybacker &middot; Pocket Agent</div>
-                    <div className="st">bot &middot; last seen just now</div>
+                    <div className="st">Telegram bot &middot; same agent on WhatsApp (Pro)</div>
                   </div>
                 </div>
                 <div className="tg-body">
@@ -646,21 +664,22 @@ function Section4Telegram() {
 
       <div className="caption-row">
         <div className="caption-col">
-          <h3>How it will work</h3>
+          <h3>How to use it</h3>
           <p>
-            Once the Telegram agent ships, you&rsquo;ll connect it to your Paybacker account in
-            30 seconds. From then on, just ask: &ldquo;cancel my gym,&rdquo; &ldquo;is my
-            energy bill fair?&rdquo;, &ldquo;what renews this week?&rdquo; &mdash; and it
-            answers from your own data. The agent also pushes proactive alerts the moment it
-            spots a bill hike, with a one-tap &ldquo;Fight it&rdquo; button.
+            Connect Telegram (free) or WhatsApp (Pro) in 30 seconds. From then on, just ask:
+            &ldquo;cancel my gym,&rdquo; &ldquo;is my energy bill fair?&rdquo;, &ldquo;what
+            renews this week?&rdquo; &mdash; and it answers from your own data. The agent also
+            pushes proactive alerts the moment it spots a bill hike, with a one-tap &ldquo;Fight
+            it&rdquo; button.
           </p>
         </div>
         <div className="caption-col">
-          <h3>Why Telegram</h3>
+          <h3>Why Telegram + WhatsApp</h3>
           <ul>
-            <li>Users don&rsquo;t need to open an app &mdash; it comes to them.</li>
-            <li>Zero-friction approval for automated actions.</li>
-            <li>Works cross-device, notification-first.</li>
+            <li>Use the channel you already have open &mdash; alerts come to you.</li>
+            <li>Telegram free on every plan; WhatsApp Pro-only because Meta charges per send.</li>
+            <li>Both channels share one Pocket Agent &mdash; alerts go to whichever you&rsquo;ve linked.</li>
+            <li>Zero-friction approval for actions, cross-device, notification-first.</li>
           </ul>
         </div>
       </div>
@@ -669,7 +688,7 @@ function Section4Telegram() {
 }
 
 /* ==================================================================== */
-/* 05 — Google Sheets export (coming soon)                              */
+/* 05 — Google Sheets export — LIVE (Pro)                               */
 /* ==================================================================== */
 
 function Section5Sheets() {
@@ -681,11 +700,11 @@ function Section5Sheets() {
           <h2 className="demo-title">Live-sync to your own spreadsheet. Own your data, forever.</h2>
           <p className="demo-sub">
             Everything Lunchflow does &mdash; transaction export, monthly roll-up, custom
-            categories &mdash; piped into a Google Sheet that updates hourly. Your formulas,
-            your charts, your AI agents can read from it.
+            categories &mdash; piped into a Google Sheet that updates daily (and on demand). Your
+            formulas, your charts, your AI agents can read from it.
           </p>
         </div>
-        <span className="vs-badge soon">Coming soon</span>
+        <span className="vs-badge">vs. Lunchflow &middot; Pro</span>
       </div>
 
       <div className="stage plain">
@@ -743,7 +762,7 @@ function Section5Sheets() {
         <div className="export-node">
           <div className="logo">&#x1F3E6;</div>
           <div className="nm">UK banks</div>
-          <div className="sub">via Yapily (Open Banking)</div>
+          <div className="sub">via TrueLayer (Open Banking)</div>
         </div>
         <div className="export-arrow">&rarr;</div>
         <div className="export-node" style={{ borderColor: 'var(--accent-mint)' } as CSSProperties}>
@@ -755,19 +774,20 @@ function Section5Sheets() {
         <div className="export-node">
           <div className="logo" style={{ color: 'var(--sheets-green)' } as CSSProperties}>▤</div>
           <div className="nm">Google Sheets</div>
-          <div className="sub">live sync every hour</div>
+          <div className="sub">live sync &middot; daily + on-demand</div>
         </div>
       </div>
 
       <div className="caption-row">
         <div className="caption-col">
-          <h3>How it will work</h3>
+          <h3>How to use it</h3>
           <p>
-            From settings, click &ldquo;Sync to Google Sheets&rdquo; and authorise once.
-            Paybacker creates a live sheet in your Drive and updates it every hour with every
-            transaction, plus two extra columns: <strong>Flag</strong> (hike, duplicate,
-            unused, switched) and <strong>Paybacker tag</strong> (dispute-ready, cancel-ready,
-            saves £X/yr). Use it with your own formulas, charts, or AI agents.
+            Pro-only feature &mdash; head to <strong>/dashboard/export</strong>, click
+            &ldquo;Connect Google Sheets&rdquo; and authorise once. Paybacker creates a live
+            sheet in your Drive and refreshes it daily (06:00 UTC) plus on-demand whenever you
+            want. Every transaction is piped through with two extra columns: <strong>Flag</strong>{' '}
+            (hike, duplicate, unused, switched) and <strong>Paybacker tag</strong> (dispute-ready,
+            cancel-ready, saves £X/yr). Use it with your own formulas, charts, or AI agents.
           </p>
         </div>
         <div className="caption-col">
@@ -805,10 +825,10 @@ function Section6Stacked() {
         <div className="arch">
           <div className="arch-col">
             <h5 style={{ color: 'var(--accent-orange)' } as CSSProperties}>INPUTS</h5>
-            <div className="arch-item"><span className="d" />UK banks via Yapily</div>
-            <div className="arch-item"><span className="d" />Gmail / Outlook inbox scan</div>
+            <div className="arch-item"><span className="d" />UK banks via Open Banking</div>
+            <div className="arch-item"><span className="d" />Email inbox scan (Gmail / Outlook)</div>
             <div className="arch-item"><span className="d" />Manual subscription add</div>
-            <div className="arch-item"><span className="d" />Telegram commands (coming soon)</div>
+            <div className="arch-item"><span className="d" />Telegram + WhatsApp commands</div>
             <div className="arch-item"><span className="d" />Dispute form (web or chat)</div>
           </div>
           <div className="arch-col hub">
@@ -822,9 +842,9 @@ function Section6Stacked() {
           <div className="arch-col">
             <h5 style={{ color: 'var(--accent-mint)' } as CSSProperties}>OUTPUTS</h5>
             <div className="arch-item"><span className="d" />Web app &mdash; Money Hub + Disputes</div>
-            <div className="arch-item"><span className="d" />Telegram Pocket Agent (coming soon)</div>
+            <div className="arch-item"><span className="d" />Pocket Agent &mdash; Telegram + WhatsApp</div>
             <div className="arch-item"><span className="d" />Complaint letters (copy/email/PDF)</div>
-            <div className="arch-item"><span className="d" />Google Sheets live sync (coming soon)</div>
+            <div className="arch-item"><span className="d" />Google Sheets live sync (Pro)</div>
             <div className="arch-item"><span className="d" />Deep-links to cancel / switch</div>
           </div>
         </div>
@@ -847,8 +867,9 @@ function Section6Stacked() {
           <tr><td className="feat">Subscription flagging (hike/dup/unused)</td><td className="them">Basic</td><td className="them">Basic</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="us">Full</td></tr>
           <tr><td className="feat">Legal-grade dispute letters</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="them">Templates</td><td className="them">Guide</td><td className="us">AI + law</td></tr>
           <tr><td className="feat">UK consumer law library cited</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="them">Partial</td><td className="them">Partial</td><td className="us">5+ statutes</td></tr>
-          <tr><td className="feat">Telegram / chat agent</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="us">Coming soon</td></tr>
-          <tr><td className="feat">Live Google Sheets export</td><td className="them">CSV only</td><td className="them">—</td><td className="us">✓</td><td className="them">—</td><td className="them">—</td><td className="us">Coming soon</td></tr>
+          <tr><td className="feat">Telegram + WhatsApp Pocket Agent</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="us">✓ Live</td></tr>
+          <tr><td className="feat">Email inbox scanning (Gmail / Outlook)</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="them">—</td><td className="us">✓ Live</td></tr>
+          <tr><td className="feat">Live Google Sheets export</td><td className="them">CSV only</td><td className="them">—</td><td className="us">✓</td><td className="them">—</td><td className="them">—</td><td className="us">✓ Live (Pro)</td></tr>
           <tr><td className="feat">User in control (no auto-sent emails)</td><td className="us">✓</td><td className="us">✓</td><td className="us">✓</td><td className="them">Semi</td><td className="us">✓</td><td className="us">✓</td></tr>
         </tbody>
       </table>
