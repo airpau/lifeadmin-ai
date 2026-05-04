@@ -28,8 +28,7 @@ import './styles.css';
  *   from /dashboard/export.
  * - Email inbox scanning (Gmail + Outlook) is LIVE — read-only, up to 2y history.
  * - "53+ UK partners" replaced with "UK partner network" (no specific count to commit to).
- * - Bank connection copy references TrueLayer (current production provider).
- *   Yapily integration is built but pending approval — not surfaced in marketing.
+ * - Bank connection copy references Yapily (current provider) rather than TrueLayer.
  */
 
 export const metadata: Metadata = {
@@ -397,7 +396,7 @@ function Section2Subscriptions() {
         <div className="caption-col">
           <h3>How to use it</h3>
           <p>
-            Connect your bank once (read-only, Open Banking via TrueLayer). Paybacker auto-detects
+            Connect your bank once (read-only, Open Banking via Yapily). Paybacker auto-detects
             every recurring charge and tags them: price hikes (amber), duplicates (red),
             expiring trials (blue), upcoming renewals (grey). Tap any row to cancel, dispute,
             or switch &mdash; we deep-link you straight to the provider&rsquo;s cancel page.
@@ -454,7 +453,7 @@ function Section3MoneyHub() {
           <div className="demo-num">03 &middot; MONEY HUB</div>
           <h2 className="demo-title">All your accounts, in one place. With a fighter built in.</h2>
           <p className="demo-sub">
-            Connects to every UK bank via Open Banking (FCA-authorised via TrueLayer). Net
+            Connects to every UK bank via Open Banking (FCA-authorised via Yapily). Net
             position, breakdown, live transactions. Everything Emma does &mdash; plus a dispute
             engine, a deals engine, and an AI agent, all reading from the same ledger.
           </p>
@@ -762,7 +761,7 @@ function Section5Sheets() {
         <div className="export-node">
           <div className="logo">&#x1F3E6;</div>
           <div className="nm">UK banks</div>
-          <div className="sub">via TrueLayer (Open Banking)</div>
+          <div className="sub">via Yapily (Open Banking)</div>
         </div>
         <div className="export-arrow">&rarr;</div>
         <div className="export-node" style={{ borderColor: 'var(--accent-mint)' } as CSSProperties}>
@@ -825,7 +824,7 @@ function Section6Stacked() {
         <div className="arch">
           <div className="arch-col">
             <h5 style={{ color: 'var(--accent-orange)' } as CSSProperties}>INPUTS</h5>
-            <div className="arch-item"><span className="d" />UK banks via Open Banking</div>
+            <div className="arch-item"><span className="d" />UK banks via Yapily</div>
             <div className="arch-item"><span className="d" />Email inbox scan (Gmail / Outlook)</div>
             <div className="arch-item"><span className="d" />Manual subscription add</div>
             <div className="arch-item"><span className="d" />Telegram + WhatsApp commands</div>
