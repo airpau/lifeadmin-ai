@@ -575,164 +575,6 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         </div>
       </div>
 
-      {/* Legacy detail card retained for the status-change dropdown + resolve
-          action. The h1/subtitle inside are now hidden — the page-title-row
-          above replaces them visually. */}
-      <div className="card mb-6">
-        <div className="flex items-start justify-between mb-3">
-          <div style={{display:'none'}}>
-            <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
-              {dispute.provider_name}
-            </h1>
-            <p className="text-slate-600 text-sm mt-1">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {dispute.disputed_amount && dispute.disputed_amount > 0 && (
-              <span className="text-amber-600 font-bold text-lg">£{dispute.disputed_amount.toFixed(2)}</span>
-            )}
-            <div className="relative">
-              <button
-                onClick={() => !isResolved(dispute.status) && setStatusDropdown(!statusDropdown)}
-                className={`text-xs px-3 py-1.5 rounded-full font-medium ${isResolved(dispute.status) ? '' : 'cursor-pointer hover:opacity-80'} ${statusConf.className}`}
-              >
-                {statusUpdating ? (
-                  <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
-                ) : null}
-                {statusConf.label}
-              </button>
-              {statusDropdown && !isResolved(dispute.status) && (
-                <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200/50 rounded-lg shadow-xl z-10 min-w-[200px]">
-                  <div className="px-3 py-2 border-b border-slate-200/50">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Update Status</p>
-                  </div>
-                  {ACTIVE_STATUSES.map((key) => {
-                    const conf = STATUS_CONFIG[key];
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => updateStatus(key)}
-                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-all flex items-center gap-2 ${
-                          dispute.status === key ? 'text-amber-600' : 'text-slate-600'
-                        }`}
-                      >
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          key === 'open' ? 'bg-amber-500' :
-                          key === 'in_progress' ? 'bg-blue-400' :
-                          key === 'awaiting_response' ? 'bg-purple-400' :
-                          key === 'escalated' ? 'bg-orange-400' :
-                          'bg-red-400'
-                        }`} />
-                        {conf.label}
-                        {dispute.status === key && <CheckCircle className="h-3 w-3 ml-auto" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <p className="text-slate-600 text-sm">{dispute.issue_summary}</p>
-        {dispute.desired_outcome && (
-          <p className="text-slate-500 text-xs mt-2">Outcome wanted: {dispute.desired_outcome}</p>
-        )}
-        <div className="flex items-center justify-between mt-3">
-          <p className="text-slate-600 text-xs">Started {formatDate(dispute.created_at)}</p>
-          {!isResolved(dispute.status) && (
-            <button
-              onClick={() => setShowResolveModal(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-100 text-amber-600 hover:bg-amber-300/20 rounded-lg transition-all border border-amber-300/20 font-medium"
-            >
-              <Trophy className="h-3.5 w-3.5" />
-              Resolve Dispute
-            </button>
-          )}
-          {isResolved(dispute.status) && dispute.money_recovered > 0 && (
-            <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20 font-medium">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Recovered £{dispute.money_recovered.toFixed(2)}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* AI overview — summary + latest update + next action.
-          Renders above the progress tracker so the user knows where
-          they stand before touching anything else. */}
-      <DisputeOverviewCard disputeId={dispute.id} />
-
-      {/* Latest reply from the supplier — pinned at the top so it's
-          never hidden behind "Show full history" when the user's
-          most-recent letter sorts above it by created_at tiebreak.
-          Renders nothing when there are no supplier replies yet. */}
-      <LatestSupplierReplyCard
-        correspondence={dispute.correspondence ?? []}
-        providerName={dispute.provider_name}
-        userHasGmail={(dispute as any).user_has_gmail}
-        userHasOutlook={(dispute as any).user_has_outlook}
-        onDraftReply={generateFollowUp}
-      />
-
-      {/* Progress Tracker */}
-      <DisputeProgressTracker dispute={dispute} providerInfo={providerInfo} />
-
-      {/* Watchdog — email reply sync */}
-      <WatchdogCard
-        disputeId={dispute.id}
-        providerName={dispute.provider_name}
-        onChanged={fetchDispute}
-      />
-
-      {/* Provider Info Card */}
-      {providerInfo && (
-        <div className="card mb-6">
-          <h3 className="text-sm font-semibold text-slate-900 mb-3">About {providerInfo.display_name}</h3>
-          <div className="grid sm:grid-cols-2 gap-3 text-xs">
-            {providerInfo.cancellation_method && (
-              <div className="bg-white rounded-lg px-3 py-2">
-                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to cancel</p>
-                <p className="text-slate-600 capitalize">{providerInfo.cancellation_method}</p>
-                {providerInfo.cancellation_phone && <p className="text-emerald-600">{providerInfo.cancellation_phone}</p>}
-                {providerInfo.cancellation_url && (
-                  <a href={providerInfo.cancellation_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Cancel online</a>
-                )}
-              </div>
-            )}
-            {providerInfo.complaints_url && (
-              <div className="bg-white rounded-lg px-3 py-2">
-                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to complain</p>
-                {providerInfo.complaints_email && <p className="text-slate-600">{providerInfo.complaints_email}</p>}
-                {providerInfo.complaints_phone && <p className="text-slate-600">{providerInfo.complaints_phone}</p>}
-                <a href={providerInfo.complaints_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Complaints page</a>
-              </div>
-            )}
-            {providerInfo.complaints_response_days && (
-              <div className="bg-white rounded-lg px-3 py-2">
-                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Response deadline</p>
-                <p className="text-slate-600">{providerInfo.complaints_response_days} days to respond</p>
-              </div>
-            )}
-            {providerInfo.ombudsman_name && (
-              <div className="bg-white rounded-lg px-3 py-2">
-                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Escalate to</p>
-                <a href={providerInfo.ombudsman_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">{providerInfo.ombudsman_name}</a>
-              </div>
-            )}
-            {providerInfo.early_exit_fee_info && (
-              <div className="bg-white rounded-lg px-3 py-2 sm:col-span-2">
-                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Exit fees</p>
-                <p className="text-slate-600">{providerInfo.early_exit_fee_info}</p>
-              </div>
-            )}
-          </div>
-          {providerInfo.terms_url && (
-            <a href={providerInfo.terms_url} target="_blank" rel="noopener noreferrer" className="text-xs text-slate-500 hover:text-emerald-600 mt-3 inline-block">
-              View {providerInfo.display_name} T&Cs
-            </a>
-          )}
-        </div>
-      )}
-
       {/* Thread */}
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
@@ -1109,6 +951,165 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           </>
         )}
       </div>
+
+
+      {/* Legacy detail card retained for the status-change dropdown + resolve
+          action. The h1/subtitle inside are now hidden — the page-title-row
+          above replaces them visually. */}
+      <div className="card mb-6">
+        <div className="flex items-start justify-between mb-3">
+          <div style={{display:'none'}}>
+            <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
+              {dispute.provider_name}
+            </h1>
+            <p className="text-slate-600 text-sm mt-1">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {dispute.disputed_amount && dispute.disputed_amount > 0 && (
+              <span className="text-amber-600 font-bold text-lg">£{dispute.disputed_amount.toFixed(2)}</span>
+            )}
+            <div className="relative">
+              <button
+                onClick={() => !isResolved(dispute.status) && setStatusDropdown(!statusDropdown)}
+                className={`text-xs px-3 py-1.5 rounded-full font-medium ${isResolved(dispute.status) ? '' : 'cursor-pointer hover:opacity-80'} ${statusConf.className}`}
+              >
+                {statusUpdating ? (
+                  <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+                ) : null}
+                {statusConf.label}
+              </button>
+              {statusDropdown && !isResolved(dispute.status) && (
+                <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200/50 rounded-lg shadow-xl z-10 min-w-[200px]">
+                  <div className="px-3 py-2 border-b border-slate-200/50">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Update Status</p>
+                  </div>
+                  {ACTIVE_STATUSES.map((key) => {
+                    const conf = STATUS_CONFIG[key];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => updateStatus(key)}
+                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-all flex items-center gap-2 ${
+                          dispute.status === key ? 'text-amber-600' : 'text-slate-600'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          key === 'open' ? 'bg-amber-500' :
+                          key === 'in_progress' ? 'bg-blue-400' :
+                          key === 'awaiting_response' ? 'bg-purple-400' :
+                          key === 'escalated' ? 'bg-orange-400' :
+                          'bg-red-400'
+                        }`} />
+                        {conf.label}
+                        {dispute.status === key && <CheckCircle className="h-3 w-3 ml-auto" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <p className="text-slate-600 text-sm">{dispute.issue_summary}</p>
+        {dispute.desired_outcome && (
+          <p className="text-slate-500 text-xs mt-2">Outcome wanted: {dispute.desired_outcome}</p>
+        )}
+        <div className="flex items-center justify-between mt-3">
+          <p className="text-slate-600 text-xs">Started {formatDate(dispute.created_at)}</p>
+          {!isResolved(dispute.status) && (
+            <button
+              onClick={() => setShowResolveModal(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-100 text-amber-600 hover:bg-amber-300/20 rounded-lg transition-all border border-amber-300/20 font-medium"
+            >
+              <Trophy className="h-3.5 w-3.5" />
+              Resolve Dispute
+            </button>
+          )}
+          {isResolved(dispute.status) && dispute.money_recovered > 0 && (
+            <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20 font-medium">
+              <TrendingUp className="h-3.5 w-3.5" />
+              Recovered £{dispute.money_recovered.toFixed(2)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* AI overview — summary + latest update + next action.
+          Renders above the progress tracker so the user knows where
+          they stand before touching anything else. */}
+      <DisputeOverviewCard disputeId={dispute.id} />
+
+      {/* Latest reply from the supplier — pinned at the top so it's
+          never hidden behind "Show full history" when the user's
+          most-recent letter sorts above it by created_at tiebreak.
+          Renders nothing when there are no supplier replies yet. */}
+      <LatestSupplierReplyCard
+        correspondence={dispute.correspondence ?? []}
+        providerName={dispute.provider_name}
+        userHasGmail={(dispute as any).user_has_gmail}
+        userHasOutlook={(dispute as any).user_has_outlook}
+        onDraftReply={generateFollowUp}
+      />
+
+      {/* Progress Tracker */}
+      <DisputeProgressTracker dispute={dispute} providerInfo={providerInfo} />
+
+      {/* Watchdog — email reply sync */}
+      <WatchdogCard
+        disputeId={dispute.id}
+        providerName={dispute.provider_name}
+        onChanged={fetchDispute}
+      />
+
+      {/* Provider Info Card */}
+      {providerInfo && (
+        <div className="card mb-6">
+          <h3 className="text-sm font-semibold text-slate-900 mb-3">About {providerInfo.display_name}</h3>
+          <div className="grid sm:grid-cols-2 gap-3 text-xs">
+            {providerInfo.cancellation_method && (
+              <div className="bg-white rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to cancel</p>
+                <p className="text-slate-600 capitalize">{providerInfo.cancellation_method}</p>
+                {providerInfo.cancellation_phone && <p className="text-emerald-600">{providerInfo.cancellation_phone}</p>}
+                {providerInfo.cancellation_url && (
+                  <a href={providerInfo.cancellation_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Cancel online</a>
+                )}
+              </div>
+            )}
+            {providerInfo.complaints_url && (
+              <div className="bg-white rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to complain</p>
+                {providerInfo.complaints_email && <p className="text-slate-600">{providerInfo.complaints_email}</p>}
+                {providerInfo.complaints_phone && <p className="text-slate-600">{providerInfo.complaints_phone}</p>}
+                <a href={providerInfo.complaints_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Complaints page</a>
+              </div>
+            )}
+            {providerInfo.complaints_response_days && (
+              <div className="bg-white rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Response deadline</p>
+                <p className="text-slate-600">{providerInfo.complaints_response_days} days to respond</p>
+              </div>
+            )}
+            {providerInfo.ombudsman_name && (
+              <div className="bg-white rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Escalate to</p>
+                <a href={providerInfo.ombudsman_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">{providerInfo.ombudsman_name}</a>
+              </div>
+            )}
+            {providerInfo.early_exit_fee_info && (
+              <div className="bg-white rounded-lg px-3 py-2 sm:col-span-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Exit fees</p>
+                <p className="text-slate-600">{providerInfo.early_exit_fee_info}</p>
+              </div>
+            )}
+          </div>
+          {providerInfo.terms_url && (
+            <a href={providerInfo.terms_url} target="_blank" rel="noopener noreferrer" className="text-xs text-slate-500 hover:text-emerald-600 mt-3 inline-block">
+              View {providerInfo.display_name} T&Cs
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Contract Upload Section */}
       <div className="card mb-6">
