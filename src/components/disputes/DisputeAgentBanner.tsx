@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Sparkles, Info, ChevronDown, Check, Hand, Clock, ShieldCheck } from 'lucide-react';
+import { isResolved } from '@/lib/dispute-helpers';
 
 interface HistoricalSignal {
   merchant_win_rate: number;
@@ -40,6 +41,7 @@ interface ApiResponse {
     id: string;
     provider_name: string | null;
     merchant_normalised: string | null;
+    status: string | null;
     agent_state: string | null;
     agent_paused_until: string | null;
     next_agent_action_at: string | null;
@@ -181,7 +183,8 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
   // Wait recommendations that the user has already approved (or that have no
   // pending action) shouldn't shout for attention — they're "all caught up".
   const isWaitingQuiet = latest && latest.recommended_action === 'wait';
-  const showActionable = latest && !isWaitingQuiet;
+  const isGloballyResolved = isResolved(dispute.status ?? '');
+  const showActionable = latest && !isWaitingQuiet && !isGloballyResolved;
 
   return (
     <div className="rounded-2xl border border-emerald-200 bg-white p-5 mb-4 shadow-sm">
@@ -199,7 +202,7 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
       )}
 
       {!showActionable && (
-        <CaughtUpCard latest={latest} busy={busy} onTrigger={triggerAgent} providerName={merchant} />
+        <CaughtUpCard latest={latest} busy={busy} onTrigger={triggerAgent} providerName={merchant} isGloballyResolved={isGloballyResolved} />
       )}
 
       {history.length > 0 && (
@@ -342,9 +345,16 @@ function ActionableCard({
   );
 }
 
-function CaughtUpCard({ latest, busy, onTrigger, providerName }: { latest: Decision | null, busy: boolean, onTrigger: () => void, providerName?: string }) {
+function CaughtUpCard({ latest, busy, onTrigger, providerName, isGloballyResolved }: { latest: Decision | null, busy: boolean, onTrigger: () => void, providerName?: string, isGloballyResolved?: boolean }) {
   const isWaitingForResponse = latest?.recommended_action === 'wait' && (latest.to_state === 'sent' || latest.to_state === 'responded' || latest.to_state === 'escalated');
-  const title = isWaitingForResponse ? `Status: Awaiting Response from ${providerName || 'Provider'}` : 'All caught up — no action needed';
+  
+  let title = isWaitingForResponse ? `Status: Awaiting Response from ${providerName || 'Provider'}` : 'All caught up — no action needed';
+  let desc = latest ? latest.rationale : 'The agent will review this dispute again at the next 6-hour check. We’ll surface a recommendation if anything changes.';
+  
+  if (isGloballyResolved) {
+    title = 'Dispute Resolved';
+    desc = 'This dispute is marked as resolved or closed. Tracking and automated follow-ups are now paused.';
+  }
   
   return (
     <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
@@ -360,9 +370,7 @@ function CaughtUpCard({ latest, busy, onTrigger, providerName }: { latest: Decis
           <div>
             <div className="font-semibold text-emerald-900">{title}</div>
             <p className="mt-1 text-slate-700 text-xs leading-relaxed">
-              {latest
-                ? latest.rationale
-                : 'The agent will review this dispute again at the next 6-hour check. We’ll surface a recommendation if anything changes.'}
+              {desc}
             </p>
           </div>
         </div>

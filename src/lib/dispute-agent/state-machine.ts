@@ -200,6 +200,28 @@ export async function decideNextAction(
   intelligenceStats: ScopeStats[],
   merchantLegalRefStats?: MerchantLegalRefStat[],
 ): Promise<AgentDecision> {
+  // Forcefully stand down if the global status is already resolved.
+  // This prevents the agent from nagging the user to send follow-ups on disputes
+  // they've already won or closed manually.
+  const globalStatus = (dispute.status ?? '').toLowerCase();
+  const isGloballyResolved = ['won', 'resolved_won', 'partial', 'resolved_partial', 'lost', 'resolved_lost', 'closed', 'withdrawn'].includes(globalStatus);
+  
+  if (isGloballyResolved) {
+    let finalState: AgentState = 'resolved_won';
+    if (globalStatus.includes('partial')) finalState = 'resolved_partial';
+    else if (globalStatus.includes('lost') || globalStatus === 'closed') finalState = 'resolved_lost';
+    else if (globalStatus === 'withdrawn') finalState = 'withdrawn';
+    
+    return {
+      to_state: finalState,
+      action: 'wait',
+      rationale: `Dispute has been marked as ${dispute.status}. Tracking paused.`,
+      next_check_at: plus(365), // Check in a year
+      surface_to_user: false,
+      data_grounded: false,
+    };
+  }
+
   const state: AgentState = dispute.agent_state ?? inferInitialState(dispute);
   const historical = pickHistoricalSignal(
     dispute.merchant_normalised,

@@ -62,11 +62,11 @@ export const STATUS_CONFIG: Record<string, { label: string; className: string }>
 export const ACTIVE_STATUSES = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
 
 export function isResolved(status: string): boolean {
-  return ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'].includes(status);
+  return ['resolved_won', 'won', 'resolved_partial', 'partial', 'resolved_lost', 'lost', 'closed', 'withdrawn'].includes(status);
 }
 
 export function isWon(status: string): boolean {
-  return ['resolved_won', 'resolved_partial'].includes(status);
+  return ['resolved_won', 'won', 'resolved_partial', 'partial'].includes(status);
 }
 
 export const ENTRY_TYPE_CONFIG: Record<string, { label: string; icon: LucideIcon; className: string }> = {
