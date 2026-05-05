@@ -41,6 +41,7 @@ export type NotificationEventType =
   | 'payday_summary'         // After payday income/bills breakdown (Pro)
   | 'deal_alert'             // Personalised switching deal
   | 'targeted_deal'          // Category-specific offer
+  | 'daily_digest'           // Consolidated daily alerts
   | 'onboarding';            // Onboarding email sequence
 
 export type NotificationChannel = 'email' | 'telegram' | 'whatsapp' | 'push';

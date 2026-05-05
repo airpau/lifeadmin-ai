@@ -71,7 +71,7 @@ interface UserSubscription {
   billing_cycle: string;
 }
 
-interface DealAlert {
+export interface DealAlert {
   category: string;
   currentProvider: string;
   currentAmount: number;
