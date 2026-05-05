@@ -1491,7 +1491,7 @@ export default function MoneyHubPage() {
  {/* Inline edit form */}
  {isEditing && (
  <div className="px-3 pb-3 border-t border-slate-200 pt-3">
- <div className="grid grid-cols-3 gap-2 mb-2">
+ <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
  <div>
  <label className="text-[10px] text-slate-600 uppercase tracking-wider block mb-1">Amount (£)</label>
  <input

@@ -155,7 +155,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
       {/* Delete (X) button */}
       <button
         onClick={() => setConfirmDelete(true)}
-        className="absolute top-2 right-2 opacity-0 group-hover/card:opacity-100 text-slate-600 hover:text-red-400 transition-all p-1 rounded"
+        className="absolute top-2 right-2 opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100 text-slate-600 hover:text-red-400 transition-all p-1 rounded"
         title="Remove this payment"
       >
         <XIcon className="h-3.5 w-3.5" />
@@ -278,7 +278,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
             </div>
           )}
 
-          <div className="flex gap-2 mt-3">
+          <div className="flex gap-2 mt-3 flex-wrap">
             {['energy', 'broadband', 'mobile', 'insurance', 'streaming', 'software'].includes(payment.category) && (
               <Link href="/dashboard/deals" className="text-[10px] bg-emerald-500/10 text-emerald-600 px-2 py-1 rounded transition-all hover:bg-emerald-500/20">
                 Switch & Save
