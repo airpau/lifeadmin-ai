@@ -355,7 +355,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'record_letter_sent',
     description:
-      "Save a finalised dispute letter to the dispute history AND mark the dispute as awaiting a response. Call when the user says 'I've sent it', 'I've emailed that', 'use the firm one', 'save this letter', 'finalise the formal version', or otherwise confirms they're done iterating on a draft. Inserts an ai_letter row to correspondence so the dispute timeline shows you sent it, then bumps status to 'awaiting_response' if currently 'open'. Pass the FULL letter_text from the most recent draft you produced (read it back from your prior message in the conversation history). After this fires, the watchdog auto-import will alert the user when the supplier replies.",
+      "Save a finalised dispute letter to the dispute history AND mark the dispute as awaiting a response. Call when the user says 'I've sent it', 'I've emailed that', 'use the firm one', 'save this letter', 'finalise the formal version', or otherwise confirms they're done iterating on a draft. Inserts an ai_letter row to correspondence so the dispute timeline shows you sent it, then bumps status to 'awaiting_response' if currently 'open'. If you have the letter text in conversation history, pass it. If you don't have it (e.g. it scrolled out of history), you can omit letter_text and the system will automatically pull the most recent pending draft from the database.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -365,14 +365,14 @@ export const telegramTools: Tool[] = [
         },
         letter_text: {
           type: 'string',
-          description: "Full text of the letter the user sent. Read this back verbatim from your prior pendingAction.letter_text in conversation history — don't paraphrase or trim.",
+          description: "Optional. Full text of the letter the user sent. Read this back verbatim from your prior pendingAction.letter_text if available.",
         },
         title: {
           type: 'string',
           description: "Optional short title for the dispute timeline (e.g. 'Reply to Enterprise — firm tone'). Defaults to 'AI letter sent on <date>'.",
         },
       },
-      required: ['provider', 'letter_text'],
+      required: ['provider'],
     },
   },
 

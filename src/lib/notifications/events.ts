@@ -315,6 +315,16 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultCron: '0 9 * * 3',
   },
   {
+    event: 'daily_digest',
+    label: 'Daily digest',
+    description: 'Daily consolidated alert: price hikes, switching deals, and personalised savings opportunities.',
+    defaultEmail: true, defaultTelegram: false, defaultWhatsapp: false, defaultPush: false,
+    allowedChannels: ['email', 'telegram', 'whatsapp'],
+    group: 'marketing',
+    scheduleKind: 'cron',
+    defaultCron: '0 8 * * *',
+  },
+  {
     event: 'onboarding',
     label: 'Onboarding emails',
     description: 'Welcome + tips in your first week.',

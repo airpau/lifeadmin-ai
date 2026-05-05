@@ -188,7 +188,7 @@ export async function executeToolCall(
     case 'record_letter_sent':
       return recordLetterSent(supabase, userId, {
         provider: toolInput.provider as string,
-        letterText: toolInput.letter_text as string,
+        letter_text: toolInput.letter_text as string | undefined,
         title: toolInput.title as string | undefined,
       });
     case 'link_email_thread_to_dispute':
@@ -2927,18 +2927,36 @@ async function linkEmailThreadToDispute(
 async function recordLetterSent(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
-  params: { provider: string; letterText: string; title?: string },
+  params: { provider: string; letter_text?: string; title?: string }, // The tool passes letter_text, not letterText
 ): Promise<ToolResult> {
   const resolved = await resolveActiveDisputeForBot(supabase, userId, params.provider);
   if (!resolved.ok) return { text: resolved.text };
   const dispute = resolved.dispute;
 
-  const safeLetterText = params.letterText || '';
+  let safeLetterText = params.letter_text || '';
 
   if (!safeLetterText || safeLetterText.trim().length < 80) {
-    return {
-      text: `That letter looks incomplete (under 80 chars). Re-paste the full letter you sent and I'll save it.`,
-    };
+    // Attempt to pull the most recent pending draft from the database
+    const { data: pendingDraft } = await supabase
+      .from('pending_dispute_letters')
+      .select('letter_text, letter_title')
+      .eq('user_id', userId)
+      .eq('dispute_id', dispute.id)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (pendingDraft && pendingDraft.letter_text) {
+      safeLetterText = pendingDraft.letter_text;
+      if (!params.title && pendingDraft.letter_title) {
+        params.title = pendingDraft.letter_title;
+      }
+    } else {
+      return {
+        text: `That letter looks incomplete (under 80 chars) and I couldn't find a recent draft in the system. Please paste the full letter you sent and I'll save it.`,
+      };
+    }
   }
 
   const today = new Date();

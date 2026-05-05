@@ -209,6 +209,7 @@ export async function decideNextAction(
   const dataGrounded = !!historical;
   const merchantLabel =
     dispute.provider_name || dispute.merchant_normalised || 'this merchant';
+  const isAssignedDebt = !!(dispute.provider_name && /on behalf of|acting for|collecting for/i.test(dispute.provider_name));
 
   // Rule 4 — FCA 8-week clock has hit. Highest priority across all states
   // except already-resolved ones (handled by the cron filter).
@@ -268,9 +269,11 @@ export async function decideNextAction(
       to_state: 'draft',
       action: 'send_initial_letter',
       rationale:
-        ageDays < 1
-          ? 'Your letter is drafted — review and send when ready.'
-          : `Letter has been drafted for ${Math.round(ageDays)} day${ageDays >= 2 ? 's' : ''} but not sent yet. Review and send to start the clock.`,
+        isAssignedDebt
+          ? 'Debt collector detected. Review the drafted Cease & Desist citing CONC 7.14.1, and consider raising a separate regulatory complaint against the original creditor for selling an actively disputed account.'
+          : ageDays < 1
+            ? 'Your letter is drafted — review and send when ready.'
+            : `Letter has been drafted for ${Math.round(ageDays)} day${ageDays >= 2 ? 's' : ''} but not sent yet. Review and send to start the clock.`,
       next_check_at: plus(POST_DECISION_RECHECK_DAYS),
       surface_to_user: true,
       data_grounded: dataGrounded,
@@ -327,11 +330,13 @@ export async function decideNextAction(
               to_state: 'escalation_due',
               action: 'escalate_ombudsman',
               rationale:
-                `${merchantLabel} refused: "${inferred.evidence_excerpt}". ` +
-                `Escalate to ${ombudsmanForType(dispute.dispute_type)}` +
-                (historical
-                  ? ` — ${(historical.merchant_win_rate * 100).toFixed(0)}% of escalated disputes against ${merchantLabel} have been won (${historical.sample_size} cases).`
-                  : '.'),
+                isAssignedDebt
+                  ? `${merchantLabel} refused to return the account: "${inferred.evidence_excerpt}". Escalate to the Financial Ombudsman Service for breaching FCA CONC 7.14.1, and report the original creditor.`
+                  : `${merchantLabel} refused: "${inferred.evidence_excerpt}". ` +
+                    `Escalate to ${ombudsmanForType(dispute.dispute_type)}` +
+                    (historical
+                      ? ` — ${(historical.merchant_win_rate * 100).toFixed(0)}% of escalated disputes against ${merchantLabel} have been won (${historical.sample_size} cases).`
+                      : '.'),
               next_check_at: plus(POST_DECISION_RECHECK_DAYS),
               surface_to_user: true,
               data_grounded: dataGrounded,
@@ -342,7 +347,9 @@ export async function decideNextAction(
             to_state: 'awaiting_user_input',
             action: 'send_followup',
             rationale:
-              `${merchantLabel} refused. Push back with a stronger letter citing the same statute and request final response.`,
+              isAssignedDebt
+                ? `${merchantLabel} refused. Push back aggressively citing FCA CONC 7.14.1, demanding they return the account to the original creditor, and threaten ombudsman escalation.`
+                : `${merchantLabel} refused. Push back with a stronger letter citing the same statute and request final response.`,
             next_check_at: plus(POST_DECISION_RECHECK_DAYS),
             surface_to_user: true,
             data_grounded: dataGrounded,
@@ -371,7 +378,8 @@ export async function decideNextAction(
       daysAgo(dispute.agent_state_set_at) ??
       daysAgo(dispute.created_at) ??
       0;
-    const sinceReply = daysAgo(dispute.last_reply_received_at);
+    const latestCompanyReply = latestInbound(recentCorrespondence);
+    const sinceReply = latestCompanyReply ? (daysAgo(latestCompanyReply.email_date) ?? daysAgo(latestCompanyReply.created_at) ?? 0) : daysAgo(dispute.last_reply_received_at);
     const noResponseFor = sinceReply ?? sinceSent;
     if (noResponseFor >= FOLLOWUP_NO_REPLY_DAYS) {
       // Rule 5 — multiple followups + sector-specific escalation.

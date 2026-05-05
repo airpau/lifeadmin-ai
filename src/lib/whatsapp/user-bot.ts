@@ -40,7 +40,7 @@ import { sendWhatsAppText } from '@/lib/whatsapp';
 // Tunables — calibrated against WhatsApp's actual constraints.
 const MAX_ITERATIONS = 5;
 const HARD_TIMEOUT_MS = 230_000; // 70s buffer before Vercel's 300s kill
-const WHATSAPP_CHAR_LIMIT = 1500;
+const WHATSAPP_CHAR_LIMIT = 3800;
 const RATE_LIMIT_PER_HOUR = 100;
 const HISTORY_MESSAGES = 10;
 
@@ -86,7 +86,7 @@ NEVER auto-link the top result without user confirmation. NEVER guess a thread_i
 FINALISING A LETTER — after you draft a letter via draft_dispute_letter the user is in one of three states. The draft is already tracked as a pending letter; if they don't reply within 1 hour the cron will nudge them. Interpret their next reply:
 
 (A) SAVE — "SAVE", "save it", "I've sent it", "use this one", "go with the firm version", "finalise":
-   → Call record_letter_sent(provider, letter_text). Read letter_text VERBATIM from the most recent draft in conversation history. Inserts ai_letter row + bumps status + clears pending nudge.
+   → Call record_letter_sent(provider, letter_text). Pass letter_text verbatim from the most recent draft IF you have it. If you don't have it (e.g. it scrolled out of history), omit letter_text and just pass the provider name — the system will pull the latest pending draft automatically.
 
 (B) DISCARD — "DISCARD", "drop it", "forget it", "don't send", "cancel that draft":
    → Call discard_letter_draft(provider, reason?). Clears the pending nudge.

@@ -816,6 +816,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               const Icon = config.icon;
               const isAiLetter = entry.entry_type === 'ai_letter';
               const isFromCompany = ['company_email', 'company_letter', 'company_response'].includes(entry.entry_type);
+              const isJustAdded = Date.now() - new Date(entry.created_at).getTime() < 5 * 60 * 1000;
 
               return (
                 <div
@@ -823,7 +824,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                   key={entry.id}
                   className={`border rounded-2xl p-5 transition-all ${config.className} ${
                     isAiLetter ? 'cursor-pointer hover:border-emerald-500/50' : ''
-                  }`}
+                  } ${isJustAdded ? 'border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.15)] ring-2 ring-emerald-500/20' : ''}`}
                   onClick={() => {
                     if (isAiLetter) {
                       setLetterModal({
@@ -869,6 +870,11 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                         <Clock className="h-3 w-3" />
                         {formatDate(entry.entry_date)}
                       </span>
+                      {isJustAdded && (
+                        <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide ml-2 animate-pulse">
+                          Just added
+                        </span>
+                      )}
                       {entry.detected_from_email && (
                         <button
                           onClick={(e) => {
@@ -915,7 +921,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
                   {isAiLetter ? (
                     <>
-                      <pre className="text-sm text-slate-600 whitespace-pre-wrap font-mono leading-relaxed line-clamp-6">
+                      <pre className={`text-sm text-slate-600 whitespace-pre-wrap font-mono leading-relaxed ${index === 0 ? 'line-clamp-none' : 'line-clamp-6'}`}>
                         {entry.content}
                       </pre>
                       {/* Confidence indicator */}

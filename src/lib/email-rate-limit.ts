@@ -22,6 +22,7 @@ const MARKETING_EMAIL_TYPES = [
   'deal_alert_email',
   'targeted_deal_email',
   'price_increase_alert',
+  'daily_digest',
   'renewal_reminder',
   'churn_reengagement',
   'churn_inactive_7d',

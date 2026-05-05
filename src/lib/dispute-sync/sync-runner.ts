@@ -456,7 +456,7 @@ export async function syncLinkedThread(
           updated_at: new Date().toISOString(),
         })
         .eq('id', link.dispute_id)
-        .lt('last_reply_received_at', m.receivedAt.toISOString());
+        .or(`last_reply_received_at.is.null,last_reply_received_at.lt.${m.receivedAt.toISOString()}`);
     }
 
     // --- Intelligence layer -----------------------------------------------

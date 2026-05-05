@@ -180,7 +180,7 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
 
   // Wait recommendations that the user has already approved (or that have no
   // pending action) shouldn't shout for attention — they're "all caught up".
-  const isWaitingQuiet = latest && latest.recommended_action === 'wait' && !!latest.user_action;
+  const isWaitingQuiet = latest && latest.recommended_action === 'wait';
   const showActionable = latest && !isWaitingQuiet;
 
   return (
@@ -199,7 +199,7 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
       )}
 
       {!showActionable && (
-        <CaughtUpCard latest={latest} busy={busy} onTrigger={triggerAgent} />
+        <CaughtUpCard latest={latest} busy={busy} onTrigger={triggerAgent} providerName={merchant} />
       )}
 
       {history.length > 0 && (
@@ -342,29 +342,36 @@ function ActionableCard({
   );
 }
 
-function CaughtUpCard({ latest, busy, onTrigger }: { latest: Decision | null, busy: boolean, onTrigger: () => void }) {
+function CaughtUpCard({ latest, busy, onTrigger, providerName }: { latest: Decision | null, busy: boolean, onTrigger: () => void, providerName?: string }) {
+  const isWaitingForResponse = latest?.recommended_action === 'wait' && (latest.to_state === 'sent' || latest.to_state === 'responded' || latest.to_state === 'escalated');
+  const title = isWaitingForResponse ? `Status: Awaiting Response from ${providerName || 'Provider'}` : 'All caught up — no action needed';
+  
   return (
     <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
       <div className="flex items-start gap-2 justify-between">
         <div className="flex items-start gap-2">
-          <Check className="h-4 w-4 text-emerald-700 mt-0.5 flex-shrink-0" />
+          {isWaitingForResponse ? (
+             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 mt-0.5 flex-shrink-0">
+               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+             </span>
+          ) : (
+            <Check className="h-4 w-4 text-emerald-700 mt-0.5 flex-shrink-0" />
+          )}
           <div>
-            <div className="font-semibold text-emerald-900">All caught up — no action needed</div>
+            <div className="font-semibold text-emerald-900">{title}</div>
             <p className="mt-1 text-slate-700 text-xs leading-relaxed">
               {latest
-                ? `The agent reviewed this dispute on ${formatDate(latest.decided_at)} and decided to wait. ${latest.rationale}`
+                ? latest.rationale
                 : 'The agent will review this dispute again at the next 6-hour check. We’ll surface a recommendation if anything changes.'}
             </p>
           </div>
         </div>
         <button
-          type="button"
-          disabled={busy}
           onClick={onTrigger}
-          className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white hover:bg-emerald-100 px-3 py-1.5 text-xs text-emerald-800 disabled:opacity-50"
+          disabled={busy}
+          className="text-xs text-emerald-700 hover:text-emerald-900 font-medium disabled:opacity-50 flex-shrink-0"
         >
-          <Sparkles className="h-3.5 w-3.5" />
-          {busy ? 'Reviewing...' : 'Review Now'}
+          {busy ? 'Checking…' : 'Check now'}
         </button>
       </div>
     </div>
