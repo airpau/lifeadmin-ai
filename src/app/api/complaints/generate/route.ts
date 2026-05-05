@@ -7,6 +7,7 @@ import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/cla
 import { trackLetterGenerated } from '@/lib/meta-conversions';
 import { awardPoints } from '@/lib/loyalty';
 import { getProviderTerms } from '@/lib/provider-match';
+import { checkIpRateLimit, getClientIp } from '@/lib/rate-limit';
 import {
   checkRefFreshness,
   refreshSingleRef,
@@ -37,6 +38,24 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // IP-based rate limiting — 5 requests per minute per IP
+    const ip = getClientIp(request);
+    const ipLimit = await checkIpRateLimit(ip, '/api/complaints/generate', 5);
+    if (!ipLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please try again in a moment.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil(ipLimit.retryAfterMs / 1000)),
+            'X-RateLimit-Limit': '5',
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': String(Math.ceil(ipLimit.resetAt.getTime() / 1000)),
+          },
+        }
+      );
     }
 
     // Check plan limits
