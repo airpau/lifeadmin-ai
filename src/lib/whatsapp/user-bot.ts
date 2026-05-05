@@ -177,6 +177,12 @@ async function getConversationHistory(
       history.push({ role, content: msg.message_text });
     }
   }
+
+  // Ensure history starts with user message (Claude requirement)
+  while (history.length > 0 && history[0].role === 'assistant') {
+    history.shift();
+  }
+
   return history;
 }
 

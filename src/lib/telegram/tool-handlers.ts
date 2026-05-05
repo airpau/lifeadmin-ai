@@ -2933,7 +2933,9 @@ async function recordLetterSent(
   if (!resolved.ok) return { text: resolved.text };
   const dispute = resolved.dispute;
 
-  if (!params.letterText || params.letterText.trim().length < 80) {
+  const safeLetterText = params.letterText || '';
+
+  if (!safeLetterText || safeLetterText.trim().length < 80) {
     return {
       text: `That letter looks incomplete (under 80 chars). Re-paste the full letter you sent and I'll save it.`,
     };
@@ -2948,8 +2950,8 @@ async function recordLetterSent(
     user_id: userId,
     entry_type: 'ai_letter',
     title,
-    content: params.letterText,
-    summary: params.letterText.slice(0, 200),
+    content: safeLetterText,
+    summary: safeLetterText.slice(0, 200),
     entry_date: today.toISOString(),
     detected_from_email: false,
   });

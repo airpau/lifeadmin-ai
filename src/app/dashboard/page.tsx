@@ -22,6 +22,7 @@ import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 import { calculateTotalSavings, parseComparisonDeals, isPriceAlertValid, priceAlertAnnualImpact } from '@/lib/savings-utils';
 import { disputeWinnabilityHook } from '@/lib/category-taxonomy';
+import PendingDisputeLettersCard from '@/components/dashboard/PendingDisputeLettersCard';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -1633,6 +1634,9 @@ export default function DashboardPage() {
               .reduce((sum, a) => sum + priceAlertAnnualImpact(a), 0)}
             userTier={userTier}
           />
+
+          {/* Prompt user to verify pending dispute letter drafts */}
+          <PendingDisputeLettersCard />
 
           {/* Action Items — preserves existing task logic; visuals simplified */}
           {pendingTasks.length > 0 && (
