@@ -352,6 +352,10 @@ export async function executeToolCall(
       return toggleNotification(supabase, userId, toolInput.event as string, false);
     case 'enable_notification':
       return toggleNotification(supabase, userId, toolInput.event as string, true);
+    case 'update_channel_preferences':
+      return updateChannelPreferences(supabase, userId, toolInput.channel as 'whatsapp' | 'telegram' | 'email' | 'push', toolInput.enable as boolean);
+    case 'opt_in_marketing_whatsapp':
+      return optInMarketingWhatsapp(supabase, userId, toolInput.opt_in as boolean);
     case 'list_notification_schedules':
       return listNotificationSchedules(supabase, userId);
     case 'set_quiet_hours':
@@ -1391,15 +1395,12 @@ async function draftDisputeLetter(
   void anthropic; // legacy fallback path retained as dead code below
 
   const likeForLikeBlock = [
-    `LIKE-FOR-LIKE MODE (overrides tone length targets and any instruction to add substantive content).`,
-    `The user has told you exactly what they want the reply to say. Your job is to render THOSE WORDS as a short, polite, professional business letter — nothing more.`,
-    `- Treat the user's brief as the ENTIRE content of the reply. Do not add points, arguments, deadlines, law citations, escalation paths, or outcomes the user didn't mention.`,
-    `- Do not re-narrate the complaint history. Do not restate the original issue. Do not "set the record straight".`,
-    `- Do not invent availability, dates, preferences, figures, or facts not in the brief.`,
-    `- Length is dictated by the brief — if they said one sentence, the body is one short paragraph. Ignore any word-count target from the tone rules.`,
-    `- You may: (1) add a one-line courteous opener acknowledging their message, (2) polish grammar / phrasing into business English, (3) add a short courteous closing line (e.g. "Please confirm and I'll keep the slot free.").`,
-    `- You may NOT: reframe the user's point, expand it, soften or harden its substance, or layer in extra asks the user didn't make.`,
-    `- If the user asked to be firmer/softer via tone, adjust WORDING only — not substance.`,
+    `DIRECTIVE MODE (The user has provided a brief for what they want the reply to say).`,
+    `- Focus the letter strictly on the points raised in the user's brief.`,
+    `- NEVER invent facts, availability, dates, preferences, figures, or demands that the user didn't mention.`,
+    `- If the brief is purely administrative (e.g. "I am free on Tuesday"), keep the letter short and polite, and do not add legal threats.`,
+    `- If the brief is a substantive dispute argument or pushback (e.g. "I won't pay this", "I already sent this", "stop harassing me"), you MUST enhance their argument by citing relevant UK consumer law, regulations, or statutory guidance, and set appropriate deadlines if the tone is 'firm' or 'balanced'.`,
+    `- Polish their phrasing into professional business English. You may add courteous openers/closers.`,
   ].join('\n');
 
   const letterPrompt = [
@@ -1435,7 +1436,7 @@ async function draftDisputeLetter(
     `- Never include a subject line. The letter body only.`,
     `- Never use bullet points, headings, or CAPS.`,
     likeForLikeMode
-      ? `- LIKE-FOR-LIKE MODE IS ACTIVE: if anything in the tone rules above tells you to add content, hit a word count, cite law, or set a deadline, IGNORE IT. The user's brief is the letter.`
+      ? `- DIRECTIVE MODE IS ACTIVE: Focus entirely on the user's brief. Do not re-narrate the whole complaint history unless necessary to contextualise the brief.`
       : ``,
   ].filter(Boolean).join('\n');
 
@@ -5599,6 +5600,79 @@ async function toggleNotification(
       ? `✓ ${meta.label} is back on.`
       : `✓ ${meta.label} is off. Tell me "turn ${meta.label} back on" any time.`,
   };
+}
+
+async function updateChannelPreferences(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  channel: 'whatsapp' | 'telegram' | 'email' | 'push',
+  enable: boolean
+): Promise<ToolResult> {
+  const { data: existing } = await supabase
+    .from('notification_preferences')
+    .select('event_type, email, telegram, whatsapp, push')
+    .eq('user_id', userId);
+
+  // We need to fetch all possible events, or just upsert for EVENT_CATALOG
+  const validEvents = EVENT_CATALOG.filter(e => e.allowedChannels.includes(channel));
+  const existingMap = new Map((existing ?? []).map(r => [r.event_type, r]));
+
+  const rowsToUpsert = validEvents.map(e => {
+    const current = existingMap.get(e.event) || {
+      email: e.defaultEmail,
+      telegram: e.defaultTelegram,
+      whatsapp: e.defaultWhatsapp,
+      push: e.defaultPush,
+    };
+    return {
+      user_id: userId,
+      event_type: e.event,
+      email: channel === 'email' ? enable : current.email,
+      telegram: channel === 'telegram' ? enable : current.telegram,
+      whatsapp: channel === 'whatsapp' ? enable : current.whatsapp,
+      push: channel === 'push' ? enable : current.push,
+      updated_at: new Date().toISOString(),
+    };
+  });
+
+  const { error } = await supabase
+    .from('notification_preferences')
+    .upsert(rowsToUpsert, { onConflict: 'user_id,event_type' });
+
+  if (error) {
+    return { text: `Error updating channel preferences: ${error.message}` };
+  }
+
+  // If we just turned OFF WhatsApp, we should also clear marketing opt-in just to be safe
+  if (channel === 'whatsapp' && !enable) {
+    await supabase.from('whatsapp_sessions').update({ marketing_opt_in_at: null }).eq('user_id', userId);
+  }
+  // If we turned ON WhatsApp, let's see if any marketing events were turned on
+  if (channel === 'whatsapp' && enable) {
+    const hasMarketing = validEvents.some(e => e.group === 'marketing');
+    if (hasMarketing) {
+      await supabase.from('whatsapp_sessions').update({ marketing_opt_in_at: new Date().toISOString() }).eq('user_id', userId);
+    }
+  }
+
+  return { text: `All ${channel} notifications have been ${enable ? 'enabled' : 'disabled'}.` };
+}
+
+async function optInMarketingWhatsapp(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  optIn: boolean
+): Promise<ToolResult> {
+  const { error } = await supabase
+    .from('whatsapp_sessions')
+    .update({ marketing_opt_in_at: optIn ? new Date().toISOString() : null })
+    .eq('user_id', userId);
+
+  if (error) {
+    return { text: `Error updating marketing opt-in: ${error.message}` };
+  }
+
+  return { text: `You have been successfully ${optIn ? 'opted into' : 'opted out of'} WhatsApp marketing notifications (such as the weekly summary).` };
 }
 
 async function listNotificationSchedules(

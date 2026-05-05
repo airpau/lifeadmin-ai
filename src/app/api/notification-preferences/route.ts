@@ -222,6 +222,26 @@ export async function PUT(request: Request) {
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
+
+      // Sync marketing_opt_in_at based on whether any marketing events have whatsapp enabled
+      const hasMarketing = body.events.some(e => {
+        const meta = EVENT_CATALOG.find(m => m.event === e.event);
+        return meta?.group === 'marketing' && e.whatsapp;
+      });
+
+      if (hasMarketing) {
+        await supabase.from('whatsapp_sessions').update({ marketing_opt_in_at: new Date().toISOString() }).eq('user_id', user.id);
+      } else {
+        // If they explicitly disabled all marketing events for whatsapp, clear the opt in
+        const { data: existingPrefs } = await supabase.from('notification_preferences').select('event_type, whatsapp').eq('user_id', user.id);
+        const activeMarketing = (existingPrefs ?? []).some(row => {
+          const meta = EVENT_CATALOG.find(m => m.event === row.event_type);
+          return meta?.group === 'marketing' && row.whatsapp;
+        });
+        if (!activeMarketing) {
+          await supabase.from('whatsapp_sessions').update({ marketing_opt_in_at: null }).eq('user_id', user.id);
+        }
+      }
     }
   }
 

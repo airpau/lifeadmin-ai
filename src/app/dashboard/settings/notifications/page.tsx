@@ -84,6 +84,17 @@ export default function NotificationsSettingsPage() {
 
   useEffect(() => { void load(); }, []);
 
+  const toggleAll = (channel: Channel, enable: boolean) => {
+    if (!data) return;
+    setData({
+      ...data,
+      events: data.events.map((e) => {
+        if (!e.allowedChannels.includes(channel)) return e;
+        return { ...e, channels: { ...e.channels, [channel]: enable } };
+      }),
+    });
+  };
+
   const toggle = (event: string, channel: Channel) => {
     if (!data) return;
     setData({
@@ -411,6 +422,36 @@ export default function NotificationsSettingsPage() {
             <>· Both fields blank = 24/7 delivery (no quiet window).</>
           )}
         </p>
+      </section>
+
+      {/* Quick actions */}
+      <section className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
+        <h2 className="text-base font-semibold text-slate-900 mb-3">Quick actions</h2>
+        <div className="flex flex-wrap gap-2">
+          {(['email', 'telegram', 'whatsapp', 'push'] as Channel[]).map((ch) => {
+            const lockedByTier = ch === 'whatsapp' && !isPro;
+            if (lockedByTier) return null;
+            return (
+              <div key={ch} className="flex gap-1 items-center bg-slate-50 border border-slate-200 rounded-lg p-1">
+                <span className="text-xs uppercase tracking-wider text-slate-500 font-medium px-2">{ch}</span>
+                <button
+                  type="button"
+                  onClick={() => toggleAll(ch, true)}
+                  className="px-2 py-1 text-xs rounded hover:bg-emerald-100 hover:text-emerald-700 text-slate-600 transition-colors"
+                >
+                  All on
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleAll(ch, false)}
+                  className="px-2 py-1 text-xs rounded hover:bg-rose-100 hover:text-rose-700 text-slate-600 transition-colors"
+                >
+                  All off
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       {/* Event matrix grouped */}

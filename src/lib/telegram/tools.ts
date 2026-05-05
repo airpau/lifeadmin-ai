@@ -575,7 +575,7 @@ export const telegramTools: Tool[] = [
         user_reply_brief: {
           type: 'string',
           description:
-            'What the user wants this reply to say, in plain English, copied from the user\'s own words (e.g. "I\'m available any day except Friday, AM or PM"). When set, the letter is a LIKE-FOR-LIKE professional rendering of these words — short, polite, business-toned — and nothing substantive is added beyond them. Do not embellish, do not add extra points, do not invent availability/dates/outcomes the user didn\'t mention. The system professionalises the phrasing; it does not rewrite the content.',
+            'What the user wants this reply to say, in plain English, copied from the user\'s own words (e.g. "I\'m available any day except Friday", "I won\'t pay this because I already sent the records"). When set, the letter is a DIRECTIVE professional rendering of these words. If purely administrative, it stays short. If it is a substantive argument/pushback, you MUST enhance it with relevant consumer law citations and appropriate escalation deadlines according to the tone. Do NOT invent availability/dates/figures the user didn\'t mention.',
         },
         reply_tone: {
           type: 'string',
@@ -1305,6 +1305,41 @@ export const telegramTools: Tool[] = [
         },
       },
       required: ['start', 'end'],
+    },
+  },
+  {
+    name: 'update_channel_preferences',
+    description:
+      "Enable or disable all notifications for a specific channel (whatsapp, telegram, email, or push). Use when the user says 'turn on all whatsapp notifications', 'stop emailing me', or 'disable telegram alerts'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        channel: {
+          type: 'string',
+          enum: ['whatsapp', 'telegram', 'email', 'push'],
+          description: 'The channel to update.',
+        },
+        enable: {
+          type: 'boolean',
+          description: 'True to turn on all notifications for the channel, false to turn them off.',
+        },
+      },
+      required: ['channel', 'enable'],
+    },
+  },
+  {
+    name: 'opt_in_marketing_whatsapp',
+    description:
+      "Opt the user into WhatsApp marketing notifications (weekly summaries, milestones, lifecycle nudges). Required by Meta's commerce policy. Use when the user says 'opt me into marketing on whatsapp', 'send me the weekly digest on whatsapp'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        opt_in: {
+          type: 'boolean',
+          description: 'True to opt in, false to opt out.',
+        },
+      },
+      required: ['opt_in'],
     },
   },
 
