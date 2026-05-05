@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAccounts, getTransactions } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
-import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
+import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import {
@@ -273,17 +273,63 @@ export async function GET(request: NextRequest) {
           throw new Error('No bank accounts available to sync');
         }
 
+        // ── Backfill account_identifications_hashes if missing ──
+        // This can happen when a connection was created before the hash
+        // invariant was enforced, or when a migration gap left the field
+        // null. Without hashes the dedup invariants in connection-store
+        // can't function, so we fetch accounts and compute them now.
+        let storedHashes: string[] = Array.isArray(connection.account_identifications_hashes)
+          ? connection.account_identifications_hashes
+          : [];
+        let storedDisplayNames: string[] = Array.isArray(connection.account_display_names)
+          ? connection.account_display_names
+          : [];
+
+        if (storedHashes.length === 0 || storedHashes.length < accountIds.length) {
+          try {
+            const accounts = await getAccounts(consentToken);
+            connectionApiCalls++;
+            const snapshots = snapshotAccounts(accounts);
+            const newHashes = snapshots.map((s) => s.accountIdentificationsHash ?? '');
+            const newDisplayNames = snapshots.map((s) => s.displayName);
+            // Only update if we got valid hashes back
+            if (newHashes.length > 0 && newHashes.some((h) => h.length > 0)) {
+              await supabase
+                .from('bank_connections')
+                .update({
+                  account_identifications_hashes: newHashes,
+                  account_display_names: newDisplayNames,
+                  account_ids: snapshots.map((s) => s.yapilyAccountId),
+                  updated_at: now,
+                })
+                .eq('id', connection.id);
+              storedHashes = newHashes;
+              storedDisplayNames = newDisplayNames;
+              accountIds = snapshots.map((s) => s.yapilyAccountId);
+              await sendTelegramAlert(
+                `⚠️ *Bank sync hash backfill*\n\n` +
+                `Connection \`${connection.id}\` for user \`${connection.user_id}\` ` +
+                `had missing \`account_identifications_hashes\`. Fetched ${accounts.length} accounts from Yapily and backfilled. ` +
+                `This was a silent skip — no transactions were being synced for this connection.\n\n` +
+                `Next cron run should sync normally.`
+              );
+            }
+          } catch (err: any) {
+            console.error(`Bank sync: hash backfill failed for ${connection.id}:`, err.message);
+            await sendTelegramAlert(
+              `🚨 *Bank sync hash backfill FAILED*\n\n` +
+              `Connection \`${connection.id}\` for user \`${connection.user_id}\`. ` +
+              `Error: ${err.message}\n\n` +
+              `This connection will continue to be skipped until hashes are present.`
+            );
+          }
+        }
+
         // Route through connection-store so the cron uses the same
         // dedup invariants as the OAuth callback's initial-sync.
         // Replaced 2026-04-28 — the OLD upsert pattern keyed on
         // (user_id, transaction_id) and Yapily reissues IDs across
         // calls, so each cron run was inserting phantom duplicates.
-        const storedHashes: string[] = Array.isArray(connection.account_identifications_hashes)
-          ? connection.account_identifications_hashes
-          : [];
-        const storedDisplayNames: string[] = Array.isArray(connection.account_display_names)
-          ? connection.account_display_names
-          : [];
         const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
