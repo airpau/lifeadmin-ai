@@ -211,7 +211,7 @@ export default async function CoveragePage() {
         </p>
         <p style={{ marginTop: 8, fontSize: 14, color: MUTED }}>
           {refs.length} grounded references · refreshed daily by an automated legal-monitoring cron.
-          Your team gets the same index any UK consumer-law lawyer would consult, exposed as a single API call.
+          Your team gets the same index any UK consumer-rights expert would consult, exposed as a single API call.
         </p>
 
         <p style={{ marginTop: 32, fontSize: 14, color: MUTED }}>

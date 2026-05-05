@@ -139,7 +139,7 @@ function MarkFoot() {
 // "On a typical £216 refund" math table — figures pre-computed from the
 // percentage ranges so we don't claim anything stronger than the
 // 15–30% band that's already on the homepage.
-// Comparison: Paybacker vs lawyers vs claims management companies.
+// Comparison: Paybacker vs solicitors vs claims management companies.
 // Numbers anchored to public norms — claims firms typically take 25–35% of
 // recovered amounts (FCA caps consumer-credit-claims management at 30% +
 // VAT under FG22/5); contingency-fee solicitors usually charge 25%+VAT

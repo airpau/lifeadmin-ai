@@ -1331,7 +1331,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
     { icon: '📚', text: 'Reading up on UK consumer law...' },
     { icon: '⚖️', text: 'Finding the exact legislation that protects you...' },
     { icon: '🔍', text: 'Analysing your situation for maximum impact...' },
-    { icon: '✍️', text: 'Writing a letter that would make a lawyer jealous...' },
+    { icon: '✍️', text: 'Writing a letter that will make them take you seriously...' },
     { icon: '💪', text: 'Making your complaint impossible to ignore...' },
     { icon: '🎯', text: 'Citing the sections they hope you never read...' },
     { icon: '📝', text: 'Politely but firmly demanding what you are owed...' },

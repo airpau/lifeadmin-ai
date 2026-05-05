@@ -71,7 +71,7 @@ describe('Pocket Agent DRAFTING RULE drift detection', () => {
   it('draft_dispute_letter tool description names the legal_references compliance index', () => {
     const src = readFileSync(new URL('../../telegram/tools.ts', import.meta.url), 'utf8');
     // The tool description must promise grounding so the LLM tool-router
-    // knows it produces lawyer-style output (not freehand prose).
+    // knows it produces professional-style output (not freehand prose).
     assert.match(src, /legal_references compliance index/);
   });
 });

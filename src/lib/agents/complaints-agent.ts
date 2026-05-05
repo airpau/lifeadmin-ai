@@ -138,7 +138,7 @@ For statute-barred debt: cite Limitation Act 1980 s.5 AND CCA 1974 s.77/78.
 A single-citation letter on a multi-ground scenario is incorrect output. Use every applicable citation from the verified-refs list — do not pick "the strongest" and drop the others.
 
 ## NON-LEGAL-ADVICE DISCLAIMER
-Paybacker assists consumers in drafting their own correspondence; we are not solicitors and the letter is not legal advice. Do NOT add a disclaimer paragraph inside the letter (the UI shows it separately). But your tone must remain that of a layperson asserting their own rights, not of a lawyer giving formal advice.`;
+Paybacker assists consumers in drafting their own correspondence; we are not solicitors and the letter is not legal advice. Do NOT add a disclaimer paragraph inside the letter (the UI shows it separately). But your tone must remain that of a layperson asserting their own rights, not of a legal professional giving formal advice.`;
 
 /**
  * Letter voice direction.

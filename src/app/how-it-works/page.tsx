@@ -70,7 +70,7 @@ export default function HowItWorksPage() {
           One app. Everything{' '}
           <span style={{ color: 'var(--accent-mint-deep)' } as CSSProperties}>Emma</span>,{' '}
           <span style={{ color: 'var(--accent-orange-deep)' } as CSSProperties}>Lunchflow</span>{' '}
-          and a letter-writing lawyer can do.
+          and a professional dispute letter can do.
         </h1>
         <p>
           Paybacker&rsquo;s five tools work brilliantly on their own &mdash; and become

@@ -907,7 +907,7 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="hero-copy">
               <span className="eyebrow">Free forever tier · No card required</span>
               <h1>
-                <span className="l1">Your AI lawyer</span>
+                <span className="l1">Your AI consumer champion</span>
                 <span className="l2">for unfair bills.</span>
                 <span className="l3">You keep 100% of what we recover.</span>
               </h1>
@@ -922,7 +922,7 @@ export default function HomepageV3PreviewPage() {
                 <Link className="btn btn-mint" href="/auth/signup">
                   Start free — keep 100% of your wins →
                 </Link>
-                <a className="btn btn-ghost" href="#vs-lawyers">
+                <a className="btn btn-ghost" href="#vs-claims-firms">
                   Why not a solicitor?
                 </a>
               </div>
@@ -1428,7 +1428,7 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
-      {/* ========== vs Lawyers / Claims firms ==========
+      {/* ========== vs Solicitors / Claims firms ==========
           Strategic positioning: Paybacker replaces the legal-services
           spend (solicitors at £250/hr, claims firms taking 30%), not
           another budgeting app. This block sits straight after the
@@ -1436,7 +1436,7 @@ export default function HomepageV3PreviewPage() {
           alternative-cost framing. Re-uses .pricing-grid + .price-card
           so it inherits the responsive stacking already wired into the
           mobile breakpoint. */}
-      <section className="pricing-section section-light" id="vs-lawyers" aria-label="Paybacker vs solicitors and claims management firms">
+      <section className="pricing-section section-light" id="vs-claims-firms" aria-label="Paybacker vs claims management firms">
         <div className="wrap">
           <Reveal className="section-head section-head--center">
             <span className="eyebrow">The category we replace</span>
@@ -1474,7 +1474,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Cherry-picks high-value cases only</li>
                 <li>Drops you if your claim is under £200</li>
                 <li>You sign over conduct of the case</li>
-                <li>Often run by ex-PPI shops, not lawyers</li>
+                <li>Often run by ex-PPI shops, not consumer rights experts</li>
               </ul>
             </Reveal>
 
