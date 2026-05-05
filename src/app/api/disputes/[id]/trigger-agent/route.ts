@@ -6,7 +6,8 @@ import type { ScopeStats, MerchantLegalRefStat } from '@/lib/dispute-outcome/sta
 
 const SCOPE_KINDS = ['overall', 'merchant', 'industry', 'dispute_type', 'legal_ref', 'merchant_x_legal_ref'] as const;
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const isServiceRole = req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`;
   
   let supabase;
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const { data: dueDisputes, error: dueErr } = await supabase
     .from('disputes')
     .select('id,user_id,provider_name,merchant_normalised,dispute_type,status,agent_state,agent_state_set_at,created_at,sent_at,first_letter_sent_at,last_letter_sent_at,last_reply_received_at,last_response_at,fca_8_week_deadline,expected_response_by,reminder_count,outcome,resolved_at,archived_at,agent_paused_until')
-    .eq('id', params.id);
+    .eq('id', id);
 
   if (dueErr || !dueDisputes || dueDisputes.length === 0) {
     return NextResponse.json({ ok: false, error: 'Dispute not found' }, { status: 404 });
