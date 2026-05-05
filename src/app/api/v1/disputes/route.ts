@@ -28,7 +28,11 @@ import { publishUsageThreshold } from '@/lib/b2b/webhook-publisher';
 import { resend, FROM_EMAIL } from '@/lib/resend';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+// Same engine as consumer /api/complaints/generate — worst case is two
+// Claude calls (citation-guarantee retry) plus retrieval + context.
+// Consumer route uses 120s after 60s proved too tight. B2B must match
+// or paying customers will see 504s on complex disputes.
+export const maxDuration = 120;
 
 const IDEMPOTENCY_TTL_HOURS = 24;
 const RESPONSE_BYTES_CAP = 64 * 1024; // 64 KB — refuse to cache larger

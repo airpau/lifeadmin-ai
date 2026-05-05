@@ -742,7 +742,7 @@ function HeroDemo() {
 const TESTIMONIALS = [
   {
     name: 'Paul R.',
-    meta: 'Homeowner · Bristol',
+    meta: 'Founder · verified user · Bristol',
     quote:
       "Found nearly a grand of forgotten subs in five minutes. The Virgin dispute letter cut my bill back to the original contract rate — first try.",
     saved: 'Saved £1,240 over the year',
@@ -858,12 +858,18 @@ function StickyCTA() {
       ticking = true;
       rafId = requestAnimationFrame(update);
     };
+    // Resize must always run the mobile-width check immediately,
+    // even when the scroll tick guard is already active.
+    const onResize = () => {
+      if (window.innerWidth <= 768) { setVisible(false); return; }
+      onScroll();
+    };
     update();
     window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
+    window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
+      window.removeEventListener('resize', onResize);
       cancelAnimationFrame(rafId);
     };
   }, []);

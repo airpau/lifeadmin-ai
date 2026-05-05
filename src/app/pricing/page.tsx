@@ -94,9 +94,9 @@ function MarkFoot() {
           </div>
           <div className="footer-col">
             <h5>Product</h5>
-            <Link href="/dashboard/complaints">Disputes Centre</Link>
-            <Link href="/dashboard/money-hub">Money Hub</Link>
-            <Link href="/dashboard">Pocket Agent</Link>
+            <Link href="/how-it-works">Disputes Centre</Link>
+            <Link href="/how-it-works">Money Hub</Link>
+            <Link href="/pocket-agent">Pocket Agent</Link>
             <Link href="/deals">Deals</Link>
             <Link href="/pricing">Pricing</Link>
           </div>
