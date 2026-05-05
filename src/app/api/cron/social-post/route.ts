@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
 
   // Step 3: Use Claude to write a topical, engaging post based on research
   const postRes = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-3-5-haiku-20241022',
     max_tokens: 800,
     system: `You are Casey, the Chief Content Officer for Paybacker, a UK consumer rights fintech platform. You write social media posts that are timely, relevant, and engaging.
 

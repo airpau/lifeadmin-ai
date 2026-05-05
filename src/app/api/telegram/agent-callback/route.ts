@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
   // Consolidate via Claude
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-3-5-haiku-20241022',
     max_tokens: 2000,
     system: `You are Charlie, Executive Assistant at Paybacker. You just triggered the AI agents to run fresh analyses. Consolidate their reports into a clear, actionable briefing for Paul (the founder).
 

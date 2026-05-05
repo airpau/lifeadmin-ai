@@ -289,7 +289,7 @@ If Paul asks you to email something, coordinate something, or take an action, in
       try {
         // Use Haiku for meeting responses (cost control: ~$0.003 per response vs $0.05 for Sonnet)
         const response = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-3-5-haiku-20241022',
           max_tokens: 300,
           system: agent.system_prompt,
           messages: [{ role: 'user', content: meetingPrompt }],

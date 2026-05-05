@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
     for (const { sender, lastMsg, chatHistory } of pending) {
       // Generate reply
       const aiRes = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 500,
         system: `You are chatting with someone on Facebook Messenger for Paybacker. Be natural, friendly, and helpful. This is a real conversation.
 

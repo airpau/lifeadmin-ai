@@ -1083,7 +1083,7 @@ Under 200 words. Start with "Dear ${providerName} Customer Services," and close 
 Return JSON: { "subject": "...", "body": "..." }`;
 
       const response = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 600,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -1126,7 +1126,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
           task_id: task.id,
           user_id: issue.user_id,
           agent_type: 'cancellation_writer',
-          model_name: 'claude-haiku-4-5-20251001',
+          model_name: 'claude-3-5-haiku-20241022',
           status: 'completed',
           input_data: { providerName, amount, category, source: 'telegram' },
           output_data: { subject, body },

@@ -3003,6 +3003,13 @@ async function recordLetterSent(
     .eq('dispute_id', dispute.id)
     .eq('status', 'pending');
 
+  // Also clear any pending dispute agent decisions so the UI auto-triggers a fresh review
+  await supabase
+    .from('dispute_agent_decisions')
+    .delete()
+    .eq('dispute_id', dispute.id)
+    .is('user_action', null);
+
   // Compute the exact 14-day deadline so the user knows when to
   // expect a nudge if there's no reply.
   const deadlineDate = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
@@ -3011,12 +3018,12 @@ async function recordLetterSent(
   // Fire the agent immediately so the UI reflects the new state 
   try {
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
-    fetch(`${baseUrl}/api/disputes/${dispute.id}/trigger-agent`, {
+    await fetch(`${baseUrl}/api/disputes/${dispute.id}/trigger-agent`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`
       }
-    }).catch(err => console.warn('[recordLetterSent] non-fatal background trigger error:', err));
+    });
   } catch (e) {
     console.warn('[recordLetterSent] non-fatal background trigger error:', e);
   }
