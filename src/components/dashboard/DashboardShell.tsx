@@ -195,7 +195,10 @@ export default function DashboardShell({
       {/* Mobile header — only visible < 980px via CSS */}
       <header className="shell-v2-mob-header">
         <Link href="/dashboard" className="brand">
-          <Image src="/brand/paybacker-horizontal.png" alt="Paybacker" width={140} height={32} className="h-8 w-auto object-contain" />
+          <Image src="/brand/paybacker-mark-transparent.png" alt="Paybacker" width={28} height={28} className="object-contain" />
+          <div className="brand-name">
+            Pay<span>backer</span>
+          </div>
         </Link>
         <div className="shell-v2-mob-actions">
           {/* Tier pill on mobile — desktop has it inside the sidebar
@@ -276,7 +279,10 @@ function Sidebar({
   return (
     <aside className="sidebar">
       <Link href="/dashboard" className="brand" onClick={onNavigate}>
-        <Image src="/brand/paybacker-horizontal.png" alt="Paybacker" width={140} height={32} className="h-8 w-auto object-contain" />
+        <Image src="/brand/paybacker-mark-transparent.png" alt="Paybacker" width={28} height={28} className="object-contain" />
+        <div className="brand-name">
+          Pay<span>backer</span>
+        </div>
       </Link>
 
       <div className="user-card">
