@@ -434,7 +434,7 @@ export async function handleWhatsAppInbound(opts: {
     console.error('[whatsapp/user-bot] handle failed', err);
     await sendChunked(
       phone,
-      "I hit an error processing that — please try again in a moment.",
+      `I hit an error processing that: ${err instanceof Error ? err.message : String(err)} — please try again in a moment.`,
     );
     return { ok: false, reason: 'agent_error' };
   }
