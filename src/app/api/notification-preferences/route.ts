@@ -46,7 +46,7 @@ export async function GET() {
       .eq('user_id', user.id),
     supabase
       .from('profiles')
-      .select('quiet_hours_start, quiet_hours_end, notification_timezone, newsletter_unsubscribed_at')
+      .select('quiet_hours_start, quiet_hours_end, notification_timezone, newsletter_unsubscribed_at, digest_frequency')
       .eq('id', user.id)
       .maybeSingle(),
     supabase
@@ -127,6 +127,7 @@ export async function GET() {
     // newsletter audience (kept on user_metadata for the consent
     // audit trail and for any future opt-IN-only marketing).
     newsletter_opted_in: !profileRes.data?.newsletter_unsubscribed_at,
+    digest_frequency: profileRes.data?.digest_frequency ?? 'daily',
   });
 }
 
@@ -183,6 +184,7 @@ interface PutBody {
   quiet_hours_start?: string | null;
   quiet_hours_end?: string | null;
   newsletter_opted_in?: boolean;
+  digest_frequency?: 'daily' | 'weekly' | 'off';
 }
 
 export async function PUT(request: Request) {
@@ -263,6 +265,20 @@ export async function PUT(request: Request) {
       .eq('id', user.id);
     if (profileErr) {
       return NextResponse.json({ error: profileErr.message }, { status: 500 });
+    }
+  }
+
+  if (body.digest_frequency !== undefined) {
+    const validFrequencies = ['daily', 'weekly', 'off'];
+    const freq = String(body.digest_frequency);
+    if (validFrequencies.includes(freq)) {
+      const { error: freqErr } = await supabase
+        .from('profiles')
+        .update({ digest_frequency: freq })
+        .eq('id', user.id);
+      if (freqErr) {
+        return NextResponse.json({ error: freqErr.message }, { status: 500 });
+      }
     }
   }
 

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   // Using a union query via profiles + left join to avoid N+1.
   const { data: userRows, error: userError } = await supabase
     .from('profiles')
-    .select('id, email, full_name, first_name, subscription_tier')
+    .select('id, email, full_name, first_name, subscription_tier, digest_frequency')
     .not('email', 'is', null);
 
   if (userError || !userRows || userRows.length === 0) {
@@ -77,8 +77,24 @@ export async function GET(request: NextRequest) {
   let noContent = 0;
   const errors: string[] = [];
 
+  // Weekly digest sends on Wednesday to avoid colliding with the
+  // weekly-money-digest cron (Monday 7am). Both are marketing emails
+  // and the rate limiter caps at 1 per day.
+  const isWednesday = now.getUTCDay() === 3;
+
   for (const user of userRows) {
     if (!eligibleUserIds.has(user.id)) {
+      skipped++;
+      continue;
+    }
+
+    // Respect digest_frequency preference
+    const freq = (user as any).digest_frequency ?? 'daily';
+    if (freq === 'off') {
+      skipped++;
+      continue;
+    }
+    if (freq === 'weekly' && !isWednesday) {
       skipped++;
       continue;
     }

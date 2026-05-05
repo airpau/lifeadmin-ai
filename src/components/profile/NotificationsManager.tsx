@@ -49,6 +49,7 @@ interface Payload {
   quiet_hours_end: string | null;
   timezone: string;
   newsletter_opted_in: boolean;
+  digest_frequency: 'daily' | 'weekly' | 'off';
 }
 
 const GROUP_LABELS: Record<EventRow['group'], { label: string; icon: any; blurb: string }> = {
@@ -258,6 +259,62 @@ export function NotificationsManager() {
                 ? "You're subscribed. Toggle off to opt out — every send also has a one-click unsubscribe link in the footer."
                 : 'Opted out. Toggle on to start receiving the Thursday newsletter.'}
             </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Daily digest frequency */}
+      <section className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-emerald-100 flex-shrink-0">
+            <BarChart3 className="h-5 w-5 text-emerald-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Daily digest</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  One consolidated email with price increases, switching deals, and personalised savings alerts. Sent at 8am.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {([
+                { key: 'daily', label: 'Daily', desc: 'Every morning' },
+                { key: 'weekly', label: 'Weekly', desc: 'Wednesday only' },
+                { key: 'off', label: 'Off', desc: 'No digest emails' },
+              ] as const).map((opt) => {
+                const active = data.digest_frequency === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={async () => {
+                      setData((prev) => prev ? { ...prev, digest_frequency: opt.key } : prev);
+                      try {
+                        const res = await fetch('/api/notification-preferences', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ digest_frequency: opt.key }),
+                        });
+                        if (!res.ok) throw new Error();
+                      } catch {
+                        setData((prev) => prev ? { ...prev, digest_frequency: data.digest_frequency } : prev);
+                        setError('Could not update digest frequency');
+                      }
+                    }}
+                    className={[
+                      'text-left px-4 py-2.5 rounded-xl border-2 transition flex-1 min-w-[100px]',
+                      active ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300',
+                    ].join(' ')}
+                  >
+                    <div className="text-sm font-semibold text-slate-900">{opt.label}</div>
+                    <div className="text-xs text-slate-500 mt-0.5">{opt.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>
