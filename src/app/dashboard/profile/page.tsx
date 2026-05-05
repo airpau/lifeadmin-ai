@@ -8,6 +8,7 @@ import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, T
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
+import { NotificationsManager } from '@/components/profile/NotificationsManager';
 import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
 
 interface Profile {

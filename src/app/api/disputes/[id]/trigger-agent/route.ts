@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (isServiceRole && process.env.CRON_SECRET) {
     supabase = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
   } else {
-    supabase = createClient();
+    supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     userId = user?.id || null;
   }

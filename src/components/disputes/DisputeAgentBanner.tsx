@@ -42,6 +42,7 @@ interface ApiResponse {
     merchant_normalised: string | null;
     agent_state: string | null;
     agent_paused_until: string | null;
+    next_agent_action_at: string | null;
   };
   latest: Decision | null;
   history: Decision[];
