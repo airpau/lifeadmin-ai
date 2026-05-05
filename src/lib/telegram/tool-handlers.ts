@@ -1140,7 +1140,7 @@ async function getBudgetStatus(
           .join('\n');
 
         const msg = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-3-5-haiku-20241022',
           max_tokens: 512,
           messages: [{
             role: 'user',
@@ -3007,6 +3007,19 @@ async function recordLetterSent(
   // expect a nudge if there's no reply.
   const deadlineDate = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
   const deadlineStr = deadlineDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  // Fire the agent immediately so the UI reflects the new state 
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
+    fetch(`${baseUrl}/api/disputes/${dispute.id}/trigger-agent`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`
+      }
+    }).catch(err => console.warn('[recordLetterSent] non-fatal background trigger error:', err));
+  } catch (e) {
+    console.warn('[recordLetterSent] non-fatal background trigger error:', e);
+  }
 
   return {
     text:
@@ -5007,7 +5020,7 @@ Return as JSON: { "subject": "...", "body": "..." }`;
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 800,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -6819,7 +6832,7 @@ Return ONLY valid JSON, no other text. Example: {"merchant":"EE","amount":42.50,
   let extracted: { merchant?: string; amount?: number | string; date?: string | null; category?: string; reference?: string | null } = {};
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 512,
       messages: [{ role: 'user', content: prompt }],
     });

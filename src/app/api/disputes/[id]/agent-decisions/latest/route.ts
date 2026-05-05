@@ -30,7 +30,7 @@ export async function GET(
   const sb = admin();
   const { data: dispute } = await sb
     .from('disputes')
-    .select('id,user_id,provider_name,merchant_normalised,agent_state,agent_paused_until')
+    .select('id,user_id,provider_name,merchant_normalised,agent_state,agent_paused_until,next_agent_action_at')
     .eq('id', disputeId)
     .maybeSingle();
   if (!dispute || dispute.user_id !== user.id) {
@@ -55,6 +55,7 @@ export async function GET(
       merchant_normalised: dispute.merchant_normalised,
       agent_state: dispute.agent_state,
       agent_paused_until: dispute.agent_paused_until,
+      next_agent_action_at: dispute.next_agent_action_at,
     },
     latest: latestPending,
     history: list,

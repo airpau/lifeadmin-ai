@@ -535,6 +535,11 @@ export async function syncLinkedThread(
       // handler returns, which means a fire-and-forget call gets
       // killed mid-HTTPS and the user never receives the alert.
       //
+      // To avoid spamming the user if a supplier sends 3 emails in one
+      // go (e.g. auto-reply + human reply + closure), we only send the
+      // push notification for the FINAL message in this batch.
+      const isLastMessageInBatch = (m === messages[messages.length - 1]);
+      if (isLastMessageInBatch) {
       // Channel routing: each helper independently checks whether its
       // channel is active for this user (telegram_sessions.is_active
       // / whatsapp_sessions.is_active). The Pocket Agent mutex
@@ -598,6 +603,34 @@ export async function syncLinkedThread(
           });
         } catch { /* swallow secondary log failure */ }
       }
+      }
+    }
+  }
+
+  if (imported > 0) {
+    // Clear out any pending agent decisions so the UI banner reflects that 
+    // the agent needs to re-review the dispute with the new correspondence.
+    try {
+      await db
+        .from('dispute_agent_decisions')
+        .delete()
+        .eq('dispute_id', link.dispute_id)
+        .is('user_action', null);
+    } catch (e) {
+      console.warn('[watchdog] failed to clear stale agent decisions:', e);
+    }
+    
+    // Fire the agent immediately so the UI is up to date when the user opens the notification
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
+      fetch(`${baseUrl}/api/disputes/${link.dispute_id}/trigger-agent`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`
+        }
+      }).catch(err => console.warn('[watchdog] non-fatal background trigger error:', err));
+    } catch (e) {
+      console.warn('[watchdog] non-fatal background trigger error:', e);
     }
   }
 

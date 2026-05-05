@@ -36,8 +36,9 @@ export default function SignupPage() {
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [marketingOptIn, setMarketingOptIn] = useState(true);
+  const [notificationsOptIn, setNotificationsOptIn] = useState(true);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [hideGoogleAuth, setHideGoogleAuth] = useState(false);
@@ -198,6 +199,7 @@ export default function SignupPage() {
             mobile_number: mobile.trim() || null,
             terms_accepted_at: new Date().toISOString(),
             marketing_opt_in: marketingOptIn,
+            notifications_opt_in: notificationsOptIn,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
@@ -254,6 +256,30 @@ export default function SignupPage() {
           ref_code: refCode || null,
           landing_page: window.location.pathname,
         }).then(() => {});
+
+        // If they opted out of notifications, sync it to preferences
+        if (!notificationsOptIn) {
+          try {
+            await fetch('/api/notification-preferences', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                events: [
+                  { event: 'dispute_reply', email: false, telegram: false, whatsapp: false, push: false },
+                  { event: 'dispute_reminder', email: false, telegram: false, whatsapp: false, push: false },
+                  { event: 'money_recovered', email: false, telegram: false, whatsapp: false, push: false },
+                  { event: 'price_increase', email: false, telegram: false, whatsapp: false, push: false },
+                  { event: 'budget_alert', email: false, telegram: false, whatsapp: false, push: false },
+                  { event: 'deal_alert', email: false, telegram: false, whatsapp: false, push: false },
+                  { event: 'targeted_deal', email: false, telegram: false, whatsapp: false, push: false },
+                  { event: 'weekly_digest', email: false, telegram: false, whatsapp: false, push: false },
+                ]
+              })
+            });
+          } catch (e) {
+            console.warn('Failed to sync notification opt out', e);
+          }
+        }
 
         // Process referral if ref code present
         if (refCode && data.user) {
@@ -369,6 +395,16 @@ export default function SignupPage() {
                     <span>
                       Send me the Paybacker newsletter — savings tips and
                       product updates (optional, unsubscribe anytime).
+                    </span>
+                  </label>
+                  <label className="consent__row consent__row--optional">
+                    <input
+                      type="checkbox"
+                      checked={notificationsOptIn}
+                      onChange={(e) => setNotificationsOptIn(e.target.checked)}
+                    />
+                    <span>
+                      I opt in to receive important alerts about my account and disputes via Email, SMS, Telegram or WhatsApp.
                     </span>
                   </label>
                 </div>

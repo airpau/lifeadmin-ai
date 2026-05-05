@@ -76,8 +76,9 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [showWhat, setShowWhat] = useState(false);
+  const [autoTriggered, setAutoTriggered] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isInitialLoad = false) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/disputes/${disputeId}/agent-decisions/latest`, {
@@ -89,16 +90,43 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
       } else {
         setData(j);
         setErr(null);
+
+        // Auto-trigger logic: if we are viewing the page and the agent's scheduled 
+        // next action time is in the past, the cron hasn't gotten to it yet. 
+        // Run it immediately so the user doesn't see stale data.
+        if (isInitialLoad && !autoTriggered) {
+          const isStale = j.dispute.next_agent_action_at 
+            ? new Date(j.dispute.next_agent_action_at) <= new Date()
+            : true; // If null, never run before
+          
+          const hasPendingAction = j.latest && !j.latest.user_action && j.latest.recommended_action !== 'wait';
+          
+          if (isStale && !hasPendingAction) {
+            setAutoTriggered(true);
+            setBusy(true);
+            try {
+              await fetch(`/api/disputes/${disputeId}/trigger-agent`, { method: 'POST' });
+              // Fetch fresh data after auto-trigger
+              const freshRes = await fetch(`/api/disputes/${disputeId}/agent-decisions/latest`, { cache: 'no-store' });
+              const freshJ = (await freshRes.json()) as ApiResponse;
+              if (freshRes.ok && 'ok' in freshJ && freshJ.ok) {
+                setData(freshJ);
+              }
+            } finally {
+              setBusy(false);
+            }
+          }
+        }
       }
     } catch {
       setErr('Network error');
     } finally {
       setLoading(false);
     }
-  }, [disputeId]);
+  }, [disputeId, autoTriggered]);
 
   useEffect(() => {
-    void load();
+    void load(true);
   }, [load]);
 
   async function act(action: 'approve' | 'override' | 'snooze') {
@@ -114,6 +142,16 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      await load(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function triggerAgent() {
+    setBusy(true);
+    try {
+      await fetch(`/api/disputes/${disputeId}/trigger-agent`, { method: 'POST' });
       await load();
     } finally {
       setBusy(false);
@@ -160,7 +198,7 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
       )}
 
       {!showActionable && (
-        <CaughtUpCard latest={latest} />
+        <CaughtUpCard latest={latest} busy={busy} onTrigger={triggerAgent} />
       )}
 
       {history.length > 0 && (
@@ -303,19 +341,30 @@ function ActionableCard({
   );
 }
 
-function CaughtUpCard({ latest }: { latest: Decision | null }) {
+function CaughtUpCard({ latest, busy, onTrigger }: { latest: Decision | null, busy: boolean, onTrigger: () => void }) {
   return (
     <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
-      <div className="flex items-start gap-2">
-        <Check className="h-4 w-4 text-emerald-700 mt-0.5 flex-shrink-0" />
-        <div>
-          <div className="font-semibold text-emerald-900">All caught up — no action needed</div>
-          <p className="mt-1 text-slate-700 text-xs leading-relaxed">
-            {latest
-              ? `The agent reviewed this dispute on ${formatDate(latest.decided_at)} and decided to wait. ${latest.rationale}`
-              : 'The agent will review this dispute again at the next 6-hour check. We’ll surface a recommendation if anything changes.'}
-          </p>
+      <div className="flex items-start gap-2 justify-between">
+        <div className="flex items-start gap-2">
+          <Check className="h-4 w-4 text-emerald-700 mt-0.5 flex-shrink-0" />
+          <div>
+            <div className="font-semibold text-emerald-900">All caught up — no action needed</div>
+            <p className="mt-1 text-slate-700 text-xs leading-relaxed">
+              {latest
+                ? `The agent reviewed this dispute on ${formatDate(latest.decided_at)} and decided to wait. ${latest.rationale}`
+                : 'The agent will review this dispute again at the next 6-hour check. We’ll surface a recommendation if anything changes.'}
+            </p>
+          </div>
         </div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onTrigger}
+          className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white hover:bg-emerald-100 px-3 py-1.5 text-xs text-emerald-800 disabled:opacity-50"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {busy ? 'Reviewing...' : 'Review Now'}
+        </button>
       </div>
     </div>
   );
