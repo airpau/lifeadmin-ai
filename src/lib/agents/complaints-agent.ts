@@ -36,7 +36,7 @@ const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advo
 - Debt recovery: Consumer Credit Act 1974, Financial Conduct Authority CONC (Consumer Credit sourcebook)
 - Statute-barred debts: Limitation Act 1980, s.5 — debts become unenforceable after 6 years (5 in Scotland)
 - Debt harassment: Protection from Harassment Act 1997 — creditors must not harass, threaten, or use deceptive practices
-- Disputed debts: creditor must prove the debt exists and is owed by providing a signed credit agreement (Consumer Credit Act 1974, s.78)
+- Disputed debts: creditor must prove the debt exists and is owed by providing a signed copy of the credit agreement and statement of account (Consumer Credit Act 1974, ss.77–79 — s.77 fixed-sum credit, s.78 running-account credit, s.79 hire). Until a compliant copy is produced the agreement is unenforceable (s.77(4), s.78(6))
 - Default notices: Consumer Credit Act 1974, s.87-88 — creditor must serve valid default notice before taking enforcement action
 - Unfair contract terms: Consumer Rights Act 2015, Part 2 — terms must be fair and transparent
 
@@ -127,9 +127,10 @@ Return ONLY a JSON object with these exact keys:
 For unauthorised payments / subscription auto-renewals: cite Payment Services Regulations 2017 reg 76 AND Consumer Contracts Regs 2013 AND CRA 2015 s.62 AND CPRs 2008 reg 6.
 For Section 75 / credit-card disputes: cite CCA 1974 s.75.
 For energy back-billing: cite Ofgem SLC 21BA.
+For energy billing / tariff disputes (price rise, disputed bill, energy debt collection): cite Ofgem Standard Licence Condition 23 by name AND number (the 30-day price-rise notice rule) AND name the Energy Ombudsman with the 8-week escalation right ("if you do not receive a final response within 8 weeks I will refer this to the Energy Ombudsman"). "Ofgem rules" or "the Ombudsman" generically is not enough — the SLC number and the 8-week clock must both appear in the prose.
 For flight delay/cancellation: cite UK261.
 For broadband mid-contract rises: cite Ofcom GC C1.
-For statute-barred debt: cite Limitation Act 1980 s.5 AND CCA 1974 s.77/78.
+For statute-barred debt and any debt-collection chase by an assignee (Lowell, Cabot, Intrum, ACI, etc.): cite Limitation Act 1980 s.5 AND Consumer Credit Act 1974 sections 77–79 (the right to demand a true copy of the credit agreement; s.77 fixed-sum credit, s.78 running-account credit, s.79 hire). State explicitly that until the creditor produces a compliant copy under ss.77–79, the agreement is unenforceable in the courts. Cite the section range as "ss.77–79" (or the individual sections by number) — not as "the CCA" generically.
 A single-citation letter on a multi-ground scenario is incorrect output. Use every applicable citation from the verified-refs list — do not pick "the strongest" and drop the others.
 
 ## NON-LEGAL-ADVICE DISCLAIMER
@@ -229,11 +230,11 @@ export async function generateComplaintLetter(
 
   const LETTER_TYPE_CONTEXT: Record<string, string> = {
     complaint: 'General company complaint. Cite the Consumer Rights Act 2015 and any relevant sector-specific regulations.',
-    energy_dispute: 'Energy bill dispute. Cite Ofgem Standards of Conduct, Gas Act 1986, Electricity Act 1989, Consumer Rights Act 2015 s49. Mention the right to escalate to the Energy Ombudsman after 8 weeks.',
+    energy_dispute: 'Energy bill dispute. Cite Ofgem Standards of Conduct, Ofgem Standard Licence Condition 23 (30-day price-rise notice rule — name the SLC number explicitly), Gas Act 1986, Electricity Act 1989, Consumer Rights Act 2015 s.49. State the right to escalate to the Energy Ombudsman if no final response within 8 weeks.',
     broadband_complaint: 'Broadband or mobile complaint. Cite Ofcom General Conditions, the right to exit penalty-free for undisclosed mid-contract price rises, and the Communications Act 2003.',
     flight_compensation: 'Flight delay/cancellation compensation claim under UK261 (retained EU261). Cite specific compensation amounts: £220 (short-haul), £350 (medium-haul), £520 (long-haul). Mention the 6-year claim window and CAA escalation.',
     parking_appeal: 'Private parking charge appeal. Cite the Protection of Freedoms Act 2012 (Schedule 4), BPA Code of Practice, and POPLA appeal rights. Challenge signage adequacy and proportionality of the charge.',
-    debt_dispute: 'Debt dispute response. Cite the Consumer Credit Act 1974 s77-79 (right to request CCA agreement), Limitation Act 1980 (6-year statute barred rule), and FCA debt collection guidelines. Request proof of the debt.',
+    debt_dispute: 'Debt dispute response. Cite Consumer Credit Act 1974 ss.77–79 by section number (s.77 fixed-sum credit, s.78 running-account credit, s.79 hire — right to request a true copy of the credit agreement and statement of account; agreement unenforceable until produced), Limitation Act 1980 s.5 (6-year statute-barred rule), and FCA CONC. Request proof of the debt and a copy of the executed credit agreement. Where the chase is from an assignee/debt purchaser (Lowell, Cabot, Intrum, ACI etc.), require a Notice of Assignment and the original creditor\'s details.',
     refund_request: 'Formal refund request. Cite the Consumer Rights Act 2015 (30-day right to reject, 6-month repair or replace period), and Section 75 Consumer Credit Act for credit card purchases over £100.',
     hmrc_tax_rebate: 'HMRC tax rebate claim. This is a formal letter to HMRC, not a company complaint. Cite the relevant tax legislation and include NI number/UTR reference.',
     council_tax_band: 'Council tax band challenge. Address to the Valuation Office Agency (VOA). Cite the Local Government Finance Act 1992 and provide comparable property evidence.',

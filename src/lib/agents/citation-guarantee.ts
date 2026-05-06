@@ -337,7 +337,7 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
       letterType: 'debt_dispute',
     },
     matches: (ctx) =>
-      /\b(statute\s*barred|6\s*years?|debt\s*(claim|collection)|lowell|cabot|intrum|bailiff)\b/.test(ctx.text),
+      /\b(statute\s*barred|6\s*years?|debt\s*(claim|collection|purchaser|recover)|lowell|cabot|intrum|aci|arrow\s*global|moorcroft|pra\s*group|wescot|capquest|bailiff|debt\s*collector|notice\s*of\s*assignment)\b/.test(ctx.text),
     required: [
       {
         label: 'Limitation Act 1980, section 5',
@@ -348,9 +348,25 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
       {
         label: 'Consumer Credit Act 1974, sections 77–79 (information requests)',
         actTokens: ['consumer credit act 1974', 'cca 1974'],
-        sectionTokens: ['s.77', 's.78', 's.79', 'section 77', 'section 78', 'section 79'],
+        sectionTokens: [
+          's.77',
+          's.78',
+          's.79',
+          's 77',
+          's 78',
+          's 79',
+          'section 77',
+          'section 78',
+          'section 79',
+          'sections 77',
+          'ss.77',
+          'ss 77',
+          '77-79',
+          '77–79',
+          '77/78',
+        ],
         rationale:
-          'Right to demand a true copy of the credit agreement; debt unenforceable until produced.',
+          'Right to demand a true copy of the credit agreement and statement of account from the creditor (s.77 fixed-sum, s.78 running-account, s.79 hire). Until the creditor produces a compliant copy, the agreement is unenforceable in the courts (s.77(4), s.78(6)). On a debt-collection chase — especially one made by an assignee like ACI on behalf of an original creditor — this is the customer\'s strongest ground for halting recovery action until the paperwork is produced.',
       },
     ],
   },
@@ -633,15 +649,31 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
       },
       {
         label: 'Ofgem Supply Licence Condition 23 (price rise notice)',
-        matchTokens: ['slc 23', 'licence condition 23', 'price rise notice'],
+        actTokens: [
+          'standard licence condition',
+          'supply licence condition',
+          'licence condition 23',
+          'slc 23',
+        ],
+        sectionTokens: [
+          'slc 23',
+          'condition 23',
+          'standard licence condition 23',
+          'supply licence condition 23',
+        ],
         rationale:
-          '30-day written notice before price increases; otherwise customer can switch penalty-free.',
+          'Ofgem SLC 23 requires the supplier to give at least 30 calendar days advance written notice of any price increase to a domestic customer. Without compliant notice, the customer can switch penalty-free and the increase is not enforceable. Cite by name AND number — letters that reference "Ofgem rules" generically without naming SLC 23 leave the customer without the strongest contractual ground.',
       },
       {
         label: 'Energy Ombudsman — 8-week escalation right',
-        matchTokens: ['energy ombudsman', '8-week', 'deadlock'],
+        actTokens: [
+          'energy ombudsman',
+          'ombudsman services: energy',
+          'ombudsman services energy',
+        ],
+        sectionTokens: ['8 week', '8-week', 'eight week', 'eight-week', 'deadlock'],
         rationale:
-          'Customer can refer to Energy Ombudsman after 8 weeks or deadlock letter.',
+          'If the supplier does not resolve the dispute within 8 weeks (or issues a deadlock letter sooner), the customer has the right to escalate to the Energy Ombudsman free of charge. The 8-week clock and the Energy Ombudsman name MUST both appear — naming "the Ombudsman" generically without specifying Energy Ombudsman + 8 weeks loses the regulatory force of the threat.',
       },
     ],
   },
