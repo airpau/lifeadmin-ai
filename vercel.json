@@ -21,6 +21,7 @@
     { "path": "/api/cron/telegram-scheduler",        "schedule": "0 5,8,9,10,13,18 * * *" },
     { "path": "/api/cron/whatsapp-alerts",           "schedule": "0 */6 * * *" },
     { "path": "/api/cron/consent-renewal",           "schedule": "0 7 * * *" },
+    { "path": "/api/cron/yapily-consent-abandonment", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/email-monitor",             "schedule": "0 14 * * *" },
     { "path": "/api/cron/detect-subscriptions",      "schedule": "0 4 * * *" },
     { "path": "/api/cron/sync-upcoming",             "schedule": "0 6 * * *" },

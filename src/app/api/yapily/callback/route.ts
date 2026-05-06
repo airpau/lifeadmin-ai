@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAccounts } from '@/lib/yapily';
+import { createClient as createAdmin } from '@supabase/supabase-js';
+import { getAccounts, getHostedConsentRequest } from '@/lib/yapily';
 import { snapshotAccounts, upsertYapilyConnection } from '@/lib/yapily/connection-store';
 
 /**
@@ -29,15 +30,19 @@ export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const consentToken = searchParams.get('consent');
-  // Yapily returns consent-id as both ?consent-id and (sometimes) as
-  // a separate field — we accept either query-param form. The id is
-  // distinct from the consent token: token is the credential we use
-  // for API calls, id identifies the consent for re-authorise.
-  const yapilyConsentId =
+  // Hosted Pages returns ONLY consentRequestId on the redirect — the
+  // consentToken comes from GET /hosted/consent-requests/{id} below.
+  // Legacy /account-auth-requests returns ?consent=<token>&consent-id=<id>.
+  // We detect which mode we're in by which params are present.
+  const consentRequestId =
+    searchParams.get('consentRequestId') ||
+    searchParams.get('consent-request-id') ||
+    '';
+  let consentToken = searchParams.get('consent') || '';
+  let yapilyConsentId =
     searchParams.get('consent-id') ||
     searchParams.get('consentId') ||
-    searchParams.get('id') ||
+    (consentRequestId ? '' : searchParams.get('id') || '') ||
     '';
   const state = searchParams.get('state');
   const errorParam = searchParams.get('error');
@@ -50,7 +55,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!consentToken || !state) {
+  // We need either a consentToken (legacy) or a consentRequestId (hosted)
+  // and always need state for CSRF.
+  if ((!consentToken && !consentRequestId) || !state) {
     return NextResponse.redirect(
       new URL('/dashboard/money-hub?error=invalid_callback', request.url),
     );
@@ -80,6 +87,65 @@ export async function GET(request: NextRequest) {
 
   const institutionId = stateData.institutionId;
   const returnTo = stateData.returnTo || '/dashboard/money-hub';
+
+  // ── Hosted Pages: resolve consentToken + consentId from consentRequestId ──
+  // On the legacy flow Yapily puts both in the redirect query. On Hosted
+  // Pages we get only consentRequestId — fetch the rest before continuing.
+  // Tutorial step 4: check status before proceeding.
+  //
+  // Schema (verified against Yapily OpenAPI 12.3.4 on 29 Apr 2026):
+  //   data.consentRequestId  — the request handle (already in our query)
+  //   data.consentId         — the underlying consent identifier; the
+  //                             same shape /account-auth-requests/{id}
+  //                             accepts. THIS is what we persist into
+  //                             bank_connections.yapily_consent_id so
+  //                             renew + delete keep working.
+  //   data.consentToken      — the credential we attach to data calls.
+  //   data.status            — AUTHORIZED once the user has completed
+  //                             the bank-side flow.
+  if (consentRequestId && !consentToken) {
+    try {
+      const hosted = await getHostedConsentRequest(consentRequestId);
+      const hostedStatus = (hosted.status || '').toUpperCase();
+      if (hostedStatus !== 'AUTHORIZED' && hostedStatus !== 'AUTHORISED') {
+        console.warn(
+          `[yapily.callback] hosted consent ${consentRequestId} status=${hostedStatus} — redirecting user back to retry`,
+        );
+        return NextResponse.redirect(
+          new URL(`/dashboard/money-hub?error=hosted_consent_${hostedStatus.toLowerCase() || 'unknown'}`, request.url),
+        );
+      }
+      if (!hosted.consentToken) {
+        console.error(`[yapily.callback] hosted consent ${consentRequestId} authorised but no consentToken returned`);
+        return NextResponse.redirect(
+          new URL('/dashboard/money-hub?error=hosted_consent_token_missing', request.url),
+        );
+      }
+      if (!hosted.consentId) {
+        // AUTHORIZED responses MUST carry consentId per OpenAPI 12.3.4.
+        // If Yapily ever returns AUTHORIZED without one, we bail rather
+        // than persist the consentRequestId in the wrong slot — the
+        // renew + disconnect flows would silently break otherwise.
+        console.error(`[yapily.callback] hosted consent ${consentRequestId} authorised but no consentId returned`);
+        return NextResponse.redirect(
+          new URL('/dashboard/money-hub?error=hosted_consent_id_missing', request.url),
+        );
+      }
+      consentToken = hosted.consentToken;
+      yapilyConsentId = hosted.consentId;
+    } catch (err) {
+      console.error(`[yapily.callback] hosted consent fetch failed for ${consentRequestId}:`, err);
+      return NextResponse.redirect(
+        new URL('/dashboard/money-hub?error=hosted_consent_fetch_failed', request.url),
+      );
+    }
+  }
+
+  if (!consentToken) {
+    return NextResponse.redirect(
+      new URL('/dashboard/money-hub?error=invalid_callback', request.url),
+    );
+  }
 
   // ── Fetch the accounts the user just authorised ──
   let accounts: Awaited<ReturnType<typeof getAccounts>>;
@@ -113,6 +179,7 @@ export async function GET(request: NextRequest) {
       bankName,
       consentToken,
       yapilyConsentId,
+      yapilyConsentRequestId: consentRequestId || null,
       consentExpiresAt,
       accounts: accountSnapshots,
     });
@@ -128,6 +195,25 @@ export async function GET(request: NextRequest) {
     `[yapily.callback] ${upsertResult.reused ? 'reused' : 'inserted'} connection ${upsertResult.connectionId}` +
     (upsertResult.previousConnectionIds.length ? ` (demoted ${upsertResult.previousConnectionIds.length} stale rows)` : ''),
   );
+
+  // ── Mark the pending Hosted Pages request resolved (if any) ──
+  // The abandonment poller treats anything still 'pending' after 15 min
+  // as abandoned. Closing the loop here keeps its working set small.
+  if (consentRequestId) {
+    try {
+      const adminBg = createAdmin(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      );
+      await adminBg
+        .from('yapily_pending_consent_requests')
+        .update({ status: 'completed', resolved_at: new Date().toISOString() })
+        .eq('consent_request_id', consentRequestId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      console.error(`[yapily.callback] pending row update failed (non-fatal): ${msg}`);
+    }
+  }
 
   // ── Award loyalty points ──
   import('@/lib/loyalty')

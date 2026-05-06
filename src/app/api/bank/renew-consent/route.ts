@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
   const { data: connection, error: connError } = await admin
     .from('bank_connections')
-    .select('id, user_id, consent_token, status, bank_name')
+    .select('id, user_id, consent_token, yapily_consent_id, status, bank_name')
     .eq('id', connectionId)
     .single();
 
@@ -80,12 +80,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── Check consent token exists ──
-  if (!connection.consent_token) {
+  // ── Check consent identifiers exist ──
+  // reconfirmConsent calls PUT /account-auth-requests/{consentId} — that's
+  // the opaque Yapily consent identifier, NOT the consent_token (the
+  // credential we attach to data calls). The pre-2026-04-27 callback stored
+  // only consent_token, so legacy connections may have null yapily_consent_id;
+  // in that case the user must full-reconnect, since we don't have the URL
+  // path component the renew endpoint requires.
+  if (!connection.yapily_consent_id) {
     return NextResponse.json(
       {
         error:
-          'No consent token found. Please disconnect and reconnect your bank account.',
+          'This bank connection predates our 90-day renewal flow. Please disconnect and reconnect to enable in-place renewal.',
       },
       { status: 400 }
     );
@@ -93,7 +99,7 @@ export async function POST(request: NextRequest) {
 
   // ── Call Yapily reconfirmConsent ──
   try {
-    await reconfirmConsent(connection.consent_token);
+    await reconfirmConsent(connection.yapily_consent_id);
 
     // Success — extend consent by 90 days
     const now = new Date();

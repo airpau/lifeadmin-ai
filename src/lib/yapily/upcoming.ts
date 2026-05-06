@@ -23,7 +23,7 @@ function authHeader(): string {
 interface YapilyEnvelope<T> {
   meta?: unknown;
   data?: T;
-  error?: { message?: string };
+  error?: { message?: string; tracingId?: string };
 }
 
 interface RawAmount {
@@ -79,14 +79,21 @@ async function yapilyGet<T>(path: string, consentToken: string): Promise<T> {
 
   if (!res.ok) {
     let msg = `Yapily ${res.status} ${res.statusText}`;
+    let tracingId: string | undefined;
     try {
       const body = (await res.json()) as YapilyEnvelope<unknown>;
+      tracingId = body?.error?.tracingId;
       if (body?.error?.message) msg += ` — ${body.error.message}`;
     } catch {
       // ignore parse error
     }
-    const err = new Error(msg) as Error & { status?: number };
+    if (!tracingId) {
+      tracingId = res.headers.get('Tracing-Id') || res.headers.get('tracing-id') || undefined;
+    }
+    if (tracingId) msg += ` [tracingId=${tracingId}]`;
+    const err = new Error(msg) as Error & { status?: number; tracingId?: string };
     err.status = res.status;
+    err.tracingId = tracingId;
     throw err;
   }
 
