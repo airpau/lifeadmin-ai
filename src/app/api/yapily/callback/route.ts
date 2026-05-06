@@ -103,7 +103,16 @@ export async function GET(request: NextRequest) {
   //   data.consentToken      — the credential we attach to data calls.
   //   data.status            — AUTHORIZED once the user has completed
   //                             the bank-side flow.
-  if (consentRequestId && !consentToken) {
+  // Yapily's Hosted Pages redirect can include BOTH a `consent` token
+  // AND consentRequestId in the query string. The query-param token is
+  // not always a valid consentToken for /accounts calls (sometimes it's
+  // a one-time-token); regardless, we still need to fetch the consent
+  // details because the underlying `consentId` (used by extend + delete
+  // via /consents/{id}) is ONLY available via getHostedConsentRequest.
+  // So whenever consentRequestId is present, fetch unconditionally and
+  // overwrite both consentToken and yapilyConsentId with authoritative
+  // values from Yapily.
+  if (consentRequestId) {
     try {
       const hosted = await getHostedConsentRequest(consentRequestId);
       const hostedStatus = (hosted.status || '').toUpperCase();
