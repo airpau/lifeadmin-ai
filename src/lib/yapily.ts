@@ -250,22 +250,34 @@ export async function getTransactions(
 
 /**
  * Reconfirms (extends) an existing consent for the UK 90-day renewal cycle.
- * Uses PUT /account-auth-requests/{consentId}. Preserves the consent-id
- * and consent-token — no new connection row should be created on our
- * side after a successful reconfirm.
+ * Uses POST /consents/{consentId}/extend per Migle (6 May 2026) — the
+ * /account-auth-requests/{consentId} path with PUT was the legacy one and
+ * isn't part of the current API surface. Preserves the consentId and
+ * consentToken; no new connection row should be created on our side after
+ * a successful extend.
+ *
+ * Aliased as extendConsent below — same operation, more accurate name —
+ * so call sites can pick whichever reads clearer in context.
  */
 export async function reconfirmConsent(
   consentId: string
 ): Promise<YapilyAuthResponse['data']> {
   const response = await yapilyRequest<YapilyAuthResponse>(
-    `/account-auth-requests/${consentId}`,
+    `/consents/${consentId}/extend`,
     {
-      method: 'PUT',
+      method: 'POST',
     }
   );
 
   return response.data;
 }
+
+/**
+ * Alias of reconfirmConsent — POST /consents/{consentId}/extend. Use
+ * this name in 403-retry flows where "extend" reads more naturally
+ * than "reconfirm" (the API call is identical).
+ */
+export const extendConsent = reconfirmConsent;
 
 /**
  * Returns the metadata for an account-auth-request (consent), including
@@ -277,7 +289,7 @@ export async function getConsent(
   consentId: string
 ): Promise<YapilyAuthResponse['data']> {
   const response = await yapilyRequest<YapilyAuthResponse>(
-    `/account-auth-requests/${consentId}`,
+    `/consents/${consentId}`,
   );
   return response.data;
 }
@@ -444,7 +456,7 @@ export function isHostedPagesEnabled(): boolean {
  * success and only surface other failures.
  */
 export async function deleteConsent(consentId: string): Promise<void> {
-  const url = `${YAPILY_BASE_URL}/account-auth-requests/${consentId}`;
+  const url = `${YAPILY_BASE_URL}/consents/${consentId}`;
 
   const res = await fetch(url, {
     method: 'DELETE',
@@ -497,4 +509,61 @@ export function buildYapilyAccountDisplayName(account: import('@/types/yapily').
     account.type ||
     'Account'
   );
+}
+
+// ── 403 extend-first wrapper ──
+//
+// Migle (6 May 2026): when /accounts (or any consent-protected GET)
+// returns 403, the right behaviour is to call POST
+// /consents/{consentId}/extend FIRST, retry the original call once,
+// and only if THAT also 403s should the caller trigger a full
+// re-consent via POST /hosted/consent-requests. This wrapper
+// encapsulates that pattern — wrap any consent-protected call you
+// want self-healing.
+//
+// Throws ConsentExpiredError when extend → retry still 403s, so the
+// caller can flip the bank_connection to expired and surface the
+// reconfirm-consent UI.
+
+export class ConsentExpiredError extends Error {
+  consentId: string;
+  originalStatus: number;
+  constructor(consentId: string, originalStatus: number) {
+    super(`Consent ${consentId} expired beyond extend (got ${originalStatus} twice)`);
+    this.name = 'ConsentExpiredError';
+    this.consentId = consentId;
+    this.originalStatus = originalStatus;
+  }
+}
+
+function isYapily403(err: unknown): err is Error & { status?: number } {
+  return err instanceof Error && (err as Error & { status?: number }).status === 403;
+}
+
+export async function withConsentRetry<T>(
+  consentId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!isYapily403(err)) throw err;
+    // First 403 → try extend.
+    try {
+      await extendConsent(consentId);
+    } catch (extendErr) {
+      // If extend itself fails, surface the original 403 — extend is
+      // best-effort.
+      throw new ConsentExpiredError(consentId, 403);
+    }
+    // Extend succeeded; retry once.
+    try {
+      return await fn();
+    } catch (retryErr) {
+      if (isYapily403(retryErr)) {
+        throw new ConsentExpiredError(consentId, 403);
+      }
+      throw retryErr;
+    }
+  }
 }

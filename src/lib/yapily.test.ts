@@ -341,7 +341,7 @@ describe('getHostedConsentRequest', () => {
 });
 
 describe('deleteConsent', () => {
-  it('DELETEs /account-auth-requests/{id}', async () => {
+  it('DELETEs /consents/{id}', async () => {
     setEnvFor(() => {});
     // Yapily returns 200 on a successful delete in the API; we test
     // both that and the 404-already-gone path below. A test using 204
@@ -353,7 +353,7 @@ describe('deleteConsent', () => {
 
     assert.equal(recorded.length, 1);
     assert.equal(recorded[0]!.method, 'DELETE');
-    assert.match(recorded[0]!.url, /\/account-auth-requests\/consent-abc$/);
+    assert.match(recorded[0]!.url, /\/consents\/consent-abc$/);
     assert.match(recorded[0]!.headers['Authorization'] ?? '', /^Basic /);
   });
 
