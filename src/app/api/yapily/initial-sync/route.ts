@@ -73,15 +73,15 @@ export async function POST(request: NextRequest) {
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const toDate = tomorrow.toISOString().split('T')[0];
+  const toDate = tomorrow.toISOString();
 
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  const ninetyDaysAgoIso = ninetyDaysAgo.toISOString().split('T')[0];
+  const ninetyDaysAgoIso = ninetyDaysAgo.toISOString();
 
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
-  const twelveMonthsAgoIso = twelveMonthsAgo.toISOString().split('T')[0];
+  const twelveMonthsAgoIso = twelveMonthsAgo.toISOString();
 
   let totalInserted = 0;
   let totalDuplicateSkipped = 0;

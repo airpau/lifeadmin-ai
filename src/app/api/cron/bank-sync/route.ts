@@ -330,10 +330,10 @@ export async function GET(request: NextRequest) {
         // Replaced 2026-04-28 — the OLD upsert pattern keyed on
         // (user_id, transaction_id) and Yapily reissues IDs across
         // calls, so each cron run was inserting phantom duplicates.
-        const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+        const fromDate = ninetyDaysAgo.toISOString();
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
-        const toDate = tomorrow.toISOString().split('T')[0];
+        const toDate = tomorrow.toISOString();
 
         for (let i = 0; i < accountIds.length; i++) {
           const accountId = accountIds[i];
