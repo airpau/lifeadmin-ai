@@ -28,13 +28,20 @@ export async function GET(request: Request) {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    // 1. Find all users who are trialing and their trial has expired
+    // 1. Find all users who are trialing and their trial has expired.
+    // Exclude founding members — /api/cron/founding-member-expiry is the
+    // single source of truth for that cohort and runs an hour earlier.
+    // Exclude users who already have trial_expired_at set so we don't
+    // re-email anyone whose downgrade has already been processed (the
+    // founding-member cron sets this column when it downgrades).
     const { data: expiredUsers, error: fetchError } = await supabase
       .from('profiles')
       .select('id, email, first_name, full_name')
       .eq('subscription_status', 'trialing')
       .lt('trial_ends_at', new Date().toISOString())
-      .is('stripe_subscription_id', null);
+      .is('stripe_subscription_id', null)
+      .is('trial_expired_at', null)
+      .or('founding_member.is.null,founding_member.eq.false');
 
     if (fetchError) {
       console.error('[trial-expiry] Error fetching expired users:', fetchError);
@@ -49,12 +56,15 @@ export async function GET(request: Request) {
 
     const userIds = expiredUsers.map((u) => u.id);
 
-    // 2. Downgrade their tier and status
+    // 2. Downgrade their tier and status. Stamp trial_expired_at so this
+    // row is idempotent — any subsequent run (or the founding-member cron)
+    // will skip it.
     const { error: updateError } = await supabase
       .from('profiles')
       .update({
         subscription_tier: 'free',
         subscription_status: 'active', // they are active free users now
+        trial_expired_at: new Date().toISOString(),
       })
       .in('id', userIds)
       .eq('subscription_status', 'trialing');
