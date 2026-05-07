@@ -78,8 +78,8 @@ export async function GET(request: NextRequest) {
 
   // Try /transactions for each account, capturing per-account errors
   const today = new Date();
-  const ninety = new Date(today.getTime() - 89 * 86400_000).toISOString().slice(0, 10);
-  const tomorrow = new Date(today.getTime() + 86400_000).toISOString().slice(0, 10);
+  const ninety = new Date(today.getTime() - 89 * 86400_000).toISOString();
+  const tomorrow = new Date(today.getTime() + 86400_000).toISOString();
   const txResults: Array<Record<string, unknown>> = [];
   for (const accountId of conn.account_ids ?? []) {
     try {
