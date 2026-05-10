@@ -7,7 +7,7 @@
  *   design_handoff_paybacker_homepage/index.html
  * with extra scroll-driven dynamism (intersection-observer reveals,
  * animated counters, scroll progress bar, 3D dashboard tilt, sticky
- * conversion CTA, marquee testimonials).
+ * conversion CTA).
  *
  * Everything is wrapped in `.m-v2-root` so the scoped stylesheet at
  * `./styles.css` cannot leak onto `/`, the dashboard, or any other
@@ -17,7 +17,8 @@
  * Content rules (see redesign/CONTENT_SOURCES_OF_TRUTH.md):
  *   - No fabricated specific savings claims.
  *   - Member counts are forbidden.
- *   - Six named testimonials may appear ONLY on this surface.
+ *   - No testimonials anywhere — first-launch trust would suffer from
+ *     unverifiable named quotes.
  */
 
 import Link from 'next/link';
@@ -502,7 +503,7 @@ function HeroVisual() {
 
       <div className="agent-bubble float" style={{ animationDelay: '-3s' }}>
         <div className="who">
-          <span className="dot-mint" /> Pocket Agent · Telegram
+          <span className="dot-mint" /> Pocket Agent · WhatsApp
         </div>
         <div className="msg">
           Virgin Media bill increased by <strong>£12</strong> this month — want me to draft a dispute citing Ofcom&rsquo;s mid-contract price rise rules?
@@ -733,101 +734,6 @@ function HeroDemo() {
         </>
       )}
     </form>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Testimonials — marquee, doubled for seamless loop
-// ---------------------------------------------------------------------------
-const TESTIMONIALS = [
-  {
-    name: 'Paul R.',
-    meta: 'Founder · verified user · Bristol',
-    quote:
-      "Found nearly a grand of forgotten subs in five minutes. The Virgin dispute letter cut my bill back to the original contract rate — first try.",
-    saved: 'Saved £1,240 over the year',
-    color: 'var(--accent-mint-deep)',
-  },
-  {
-    name: 'Sarah K.',
-    meta: 'Freelancer · Manchester',
-    quote:
-      "I was about to call a solicitor — Paybacker had the letter drafted before I'd finished my coffee. Got £340 back from EE for a mid-contract price hike.",
-    saved: 'Recovered £340 · kept 100%',
-    color: 'var(--accent-orange-deep)',
-  },
-  {
-    name: 'Dan M.',
-    meta: 'Commuter · London',
-    quote:
-      "The Ofcom letter took 30 seconds. EE cancelled the mid-contract rise without a phone call. Still can't quite believe it.",
-    saved: 'Saved £168',
-    color: 'var(--accent-mint-deep)',
-  },
-  {
-    name: 'Sarah J.',
-    meta: 'Student · Edinburgh',
-    quote:
-      "Pocket Agent in Telegram is the bit I didn't expect to love. I just ask if things are fair and it tells me.",
-    saved: 'Saved £284',
-    color: 'var(--accent-orange-deep)',
-  },
-  {
-    name: 'Rita N.',
-    meta: 'Teacher · Leeds',
-    quote:
-      "A claims firm wanted 30% to chase British Gas for me. Paybacker caught the £41/month hike, drafted the letter, and I kept every pound. Paid for a year of Pro in one go.",
-    saved: 'Recovered £492 · kept 100%',
-    color: 'var(--accent-mint-deep)',
-  },
-  {
-    name: 'Tom B.',
-    meta: 'New parent · Cardiff',
-    quote:
-      "Tiny baby, no time to read bills. Paybacker does it for us. The broadband switch alone saved us £400 a year.",
-    saved: 'Saved £638',
-    color: 'var(--accent-orange-deep)',
-  },
-];
-
-function Testimonials() {
-  const trackRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const node = trackRef.current;
-    if (!node || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          node.style.animationPlayState = entry.isIntersecting ? 'running' : 'paused';
-        });
-      },
-      { threshold: 0.05 }
-    );
-    io.observe(node);
-    return () => io.disconnect();
-  }, []);
-
-  const doubled = [...TESTIMONIALS, ...TESTIMONIALS];
-
-  return (
-    <div className="t-track" ref={trackRef}>
-      {doubled.map((t, i) => (
-        <div className="t-card" key={`${t.name}-${i}`}>
-          <div className="who">
-            <div className="avatar" style={{ background: t.color }}>
-              {t.name[0]}
-            </div>
-            <div>
-              <div className="name">{t.name}</div>
-              <div className="meta">{t.meta}</div>
-            </div>
-          </div>
-          <div className="quote">&ldquo;{t.quote}&rdquo;</div>
-          <div className="saved">{t.saved}</div>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -1144,10 +1050,10 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <h2 className="feature-title">Your personal caseworker — over WhatsApp &amp; Telegram</h2>
+              <h2 className="feature-title">Your personal caseworker — on WhatsApp</h2>
               <p className="feature-tagline">
                 A solicitor takes a week to reply to email. Your Paybacker
-                caseworker is on chat 24/7.
+                caseworker is on WhatsApp 24/7.
               </p>
               <p>
                 It tells you when a dispute is ready to send, when the company
@@ -1159,13 +1065,14 @@ export default function HomepageV3PreviewPage() {
                 <li>Watches your inbox for the provider&rsquo;s response</li>
                 <li>Auto-escalates to Ombudsman at the 8-week mark</li>
                 <li>
-                  <strong>Telegram Pocket Agent</strong>{' '}
-                  <span className="tier-chip tier-chip--free">Free</span> — across all plans.
-                </li>
-                <li>
                   <strong>WhatsApp Pocket Agent</strong>{' '}
                   <span className="tier-chip tier-chip--pro">Pro</span> — £9.99/month.
-                  Same caseworker, different chat.
+                  Your caseworker on the app you already use every day.
+                </li>
+                <li>
+                  Also available on{' '}
+                  <strong>Telegram</strong>{' '}
+                  <span className="tier-chip tier-chip--free">Free</span> — same agent, any plan.
                 </li>
               </ul>
               <div className="feature-cta-row">
@@ -1860,19 +1767,6 @@ export default function HomepageV3PreviewPage() {
             <Link href="/pricing">See the full feature comparison →</Link>
           </p>
         </div>
-      </section>
-
-      {/* ========== Testimonials ========== */}
-      <section className="testimonials-section section-light" id="testimonials">
-        <Reveal className="testimonials-head">
-          <span className="eyebrow">Honest words from real users</span>
-          <h2>
-            They skipped the solicitor.
-            <br />
-            Kept 100% of the refund.
-          </h2>
-        </Reveal>
-        <Testimonials />
       </section>
 
       {/* ========== Developer · MCP ========== */}
