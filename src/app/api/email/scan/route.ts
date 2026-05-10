@@ -345,6 +345,43 @@ IMPORTANT:
             }))
           ).then(({ error: e }) => { if (e) console.error('[email/scan] money_hub_alerts insert error:', e.message); });
         }
+
+        // The dashboard's "Email scanner" card reads from
+        // `email_scan_findings` (status in [new, reviewing]). Gmail
+        // writes there; IMAP previously did not, so non-Gmail scans
+        // produced findings the user never saw. Mirror Gmail's insert
+        // here — filtered to the CHECK-constraint type allowlist.
+        const FINDING_TYPES = new Set([
+          'subscription', 'bill', 'contract', 'dispute_response',
+          'cancellation_confirmation', 'price_increase', 'refund_opportunity',
+          'flight_delay', 'debt_dispute', 'tax_rebate', 'renewal',
+          'forgotten_subscription', 'upcoming_payment', 'deal_expiry',
+          'bank_gap',
+        ]);
+        const findings = newOpportunities.filter((o: any) => FINDING_TYPES.has(o.type));
+        if (findings.length > 0) {
+          await admin.from('email_scan_findings').insert(
+            findings.map((o: any) => ({
+              user_id: user.id,
+              finding_type: o.type,
+              provider: o.provider || 'Unknown',
+              email_id: o.emailId || null,
+              title: o.title,
+              description: o.description || null,
+              amount: o.amount || o.paymentAmount || null,
+              due_date: o.nextPaymentDate || null,
+              contract_end_date: o.contractEndDate || null,
+              previous_amount: o.previousAmount || null,
+              price_change_date: o.priceChangeDate || null,
+              payment_frequency: o.paymentFrequency || null,
+              confidence: o.confidence || 70,
+              urgency: o.urgency || 'routine',
+              status: 'new',
+              source: 'imap',
+              metadata: o,
+            }))
+          ).then(({ error: e }) => { if (e) console.error('[email/scan] email_scan_findings insert:', e.message); });
+        }
       }
 
       // Also save to scanned_receipts for the Scanner UI

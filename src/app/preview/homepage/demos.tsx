@@ -526,7 +526,7 @@ export function DisputesDemo() {
                     }}
                   />
                   <span>
-                    Alert sent: <b>Paybacker inbox</b> + <b>Telegram</b>
+                    Alert sent: <b>Paybacker inbox</b> + <b>WhatsApp</b>
                   </span>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                     <div
@@ -551,7 +551,7 @@ export function DisputesDemo() {
                         fontWeight: 700,
                       }}
                     >
-                      ✈ Telegram
+                      💬 WhatsApp
                     </div>
                   </div>
                 </div>
@@ -679,7 +679,7 @@ export function DisputesDemo() {
 }
 
 // ---------------------------------------------------------------------------
-// 2 · Pocket Agent · Telegram
+// 2 · Pocket Agent · WhatsApp (Pro driver — see CLAUDE.md "main drivers")
 // ---------------------------------------------------------------------------
 type PAMsg =
   | { from: number; kind: 'bot-alert' }
@@ -771,7 +771,7 @@ export function PocketAgentDemo() {
             }}
           >
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--mint)', animation: 'demoPulse 1.6s infinite' }} />
-            Pocket Agent · Telegram + WhatsApp
+            Pocket Agent · WhatsApp
           </div>
           <div
             style={{
@@ -816,14 +816,14 @@ export function PocketAgentDemo() {
           </div>
         </div>
 
-        {/* RIGHT Telegram phone */}
+        {/* RIGHT WhatsApp phone */}
         <div style={{ padding: '18px 22px 18px 0', display: 'flex', alignItems: 'center' }}>
           <div
             style={{
               width: '100%',
               height: '100%',
               maxHeight: 520,
-              background: '#17212B',
+              background: '#0B141A',
               borderRadius: 28,
               overflow: 'hidden',
               border: '7px solid #0D0D10',
@@ -834,7 +834,7 @@ export function PocketAgentDemo() {
           >
             <div
               style={{
-                background: '#202B36',
+                background: '#1F2C34',
                 padding: '8px 12px',
                 display: 'flex',
                 alignItems: 'center',
@@ -860,7 +860,7 @@ export function PocketAgentDemo() {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 11.5, fontWeight: 700, color: '#fff' }}>Paybacker</div>
-                <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,.5)' }}>assistant · online</div>
+                <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,.5)' }}>online</div>
               </div>
             </div>
 
@@ -908,7 +908,7 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-end',
-                        background: '#2B5278',
+                        background: '#005C4B',
                         color: '#fff',
                         padding: '5px 9px',
                         borderRadius: '10px 10px 2px 10px',
@@ -927,7 +927,7 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-end',
-                        background: '#2B5278',
+                        background: '#005C4B',
                         color: '#fff',
                         padding: '5px 9px',
                         borderRadius: '10px 10px 2px 10px',
@@ -946,7 +946,7 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-start',
-                        background: '#182533',
+                        background: '#1F2C34',
                         color: '#fff',
                         padding: '8px 10px',
                         borderRadius: '10px 10px 10px 2px',
@@ -1005,7 +1005,7 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-start',
-                        background: '#182533',
+                        background: '#1F2C34',
                         color: '#fff',
                         padding: '8px 10px',
                         borderRadius: '10px 10px 10px 2px',
@@ -1045,7 +1045,7 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-start',
-                        background: '#182533',
+                        background: '#1F2C34',
                         color: '#fff',
                         padding: '8px 10px',
                         borderRadius: '10px 10px 10px 2px',
@@ -1095,7 +1095,7 @@ export function PocketAgentDemo() {
                       key={i}
                       style={{
                         alignSelf: 'flex-start',
-                        background: '#182533',
+                        background: '#1F2C34',
                         color: '#fff',
                         padding: '7px 9px',
                         borderRadius: '10px 10px 10px 2px',
@@ -1161,7 +1161,7 @@ export function PocketAgentDemo() {
                   style={{
                     alignSelf: 'flex-start',
                     padding: '7px 11px',
-                    background: '#182533',
+                    background: '#1F2C34',
                     borderRadius: '10px 10px 10px 2px',
                     display: 'flex',
                     gap: 3,
@@ -1185,7 +1185,7 @@ export function PocketAgentDemo() {
 
             <div
               style={{
-                background: '#17212B',
+                background: '#0B141A',
                 padding: '7px 9px',
                 borderTop: '1px solid rgba(255,255,255,.04)',
                 display: 'flex',
@@ -1197,7 +1197,7 @@ export function PocketAgentDemo() {
               <div
                 style={{
                   flex: 1,
-                  background: '#242F3D',
+                  background: '#2A3942',
                   borderRadius: 12,
                   padding: '5px 9px',
                   fontSize: 9.5,
