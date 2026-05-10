@@ -649,7 +649,16 @@ export default function DashboardPage() {
       // (limited to 30) list length. Without this, a user going from 30
       // → 31 actual findings would see "no new findings (30 total)"
       // because mapped.length saturates at the cap — Codex P2 round 2.
-      const [{ data: scanFindings }, { count: trueTotal }, { data: refreshedConns }] = await Promise.all([
+      // Refetch tasks alongside the findings so the "Action items"
+      // count reflects new pending_review rows that the scan just
+      // inserted. Without this the count stays frozen at the initial
+      // load value even though the user can see "386 new findings".
+      const [
+        { data: scanFindings },
+        { count: trueTotal },
+        { data: refreshedConns },
+        { data: refreshedTasks },
+      ] = await Promise.all([
         supabase
           .from('email_scan_findings')
           .select('*')
@@ -667,6 +676,13 @@ export default function DashboardPage() {
           .select('id, email_address, provider_type, last_scanned_at')
           .eq('user_id', authUser.id)
           .eq('status', 'active'),
+        supabase
+          .from('tasks')
+          .select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority, snooze_until')
+          .eq('user_id', authUser.id)
+          .eq('status', 'pending_review')
+          .order('created_at', { ascending: false })
+          .limit(50),
       ]);
 
       const mapped = (scanFindings ?? []).map((f: any) => {
@@ -689,6 +705,39 @@ export default function DashboardPage() {
       });
       setEmailOpportunities(mapped);
       setEmailScanResults(mapped.length);
+
+      // Mirror the initial-load task grouping (lines 478-503) so the
+      // "Action items" count picks up newly inserted pending_review
+      // rows from the scan. Same paybacker-self-filter, same snooze
+      // filter, same provider+type grouping.
+      if (refreshedTasks) {
+        const nowMs = Date.now();
+        const allRaw = refreshedTasks.filter((t: any) =>
+          !((t.provider_name || '').toLowerCase().includes('paybacker'))
+        );
+        const snoozedCount = allRaw.filter((t: any) =>
+          t.snooze_until && new Date(t.snooze_until).getTime() > nowMs
+        ).length;
+        setSnoozedTaskCount(snoozedCount);
+        const cleanTasks = allRaw.filter((t: any) =>
+          !t.snooze_until || new Date(t.snooze_until).getTime() <= nowMs
+        );
+        const taskGroups = new Map<string, any>();
+        for (const t of cleanTasks) {
+          const key = `${(t.provider_name || '').toLowerCase()}::${(t.type || '').toLowerCase()}`;
+          const cur = taskGroups.get(key);
+          if (!cur) {
+            taskGroups.set(key, { ...t, _groupIds: [t.id], _groupCount: 1, _groupTotal: parseFloat(t.disputed_amount) || 0 });
+          } else {
+            cur._groupIds.push(t.id);
+            cur._groupCount += 1;
+            cur._groupTotal += parseFloat(t.disputed_amount) || 0;
+          }
+        }
+        setPendingTasks(Array.from(taskGroups.values()).sort((a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ));
+      }
 
       // Visible completion signal — addresses "spins and items don't
       // update — is it working?". A same-count scan (30 → 30) used to
