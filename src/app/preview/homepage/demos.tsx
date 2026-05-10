@@ -759,19 +759,36 @@ export function PocketAgentDemo() {
         <div style={{ padding: '48px 44px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: '.12em',
-              textTransform: 'uppercase',
-              color: 'var(--mint)',
-              marginBottom: 14,
               display: 'flex',
               alignItems: 'center',
-              gap: 7,
+              gap: 9,
+              marginBottom: 14,
             }}
           >
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--mint)', animation: 'demoPulse 1.6s infinite' }} />
-            Pocket Agent · WhatsApp
+            {/* WhatsApp logo — speech bubble + phone on signature green */}
+            <span
+              aria-hidden="true"
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: '50%',
+                background: '#25D366',
+                display: 'grid',
+                placeItems: 'center',
+                boxShadow: '0 2px 6px rgba(37,211,102,.35)',
+                flexShrink: 0,
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="#fff" aria-hidden="true">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.71.306 1.263.489 1.695.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413"/>
+              </svg>
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: '-.005em' }}>WhatsApp</span>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,.55)', letterSpacing: '.06em', textTransform: 'uppercase', fontWeight: 600 }}>
+                Pocket Agent · Pro
+              </span>
+            </div>
           </div>
           <div
             style={{
@@ -862,6 +879,12 @@ export function PocketAgentDemo() {
                 <div style={{ fontSize: 11.5, fontWeight: 700, color: '#fff' }}>Paybacker</div>
                 <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,.5)' }}>online</div>
               </div>
+              {/* WhatsApp header icons — video call, voice call, kebab menu */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, color: '#AEBAC1' }} aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/></svg>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+              </div>
             </div>
 
             <div
@@ -910,14 +933,34 @@ export function PocketAgentDemo() {
                         alignSelf: 'flex-end',
                         background: '#005C4B',
                         color: '#fff',
-                        padding: '5px 9px',
+                        padding: '5px 9px 4px',
                         borderRadius: '10px 10px 2px 10px',
                         maxWidth: '78%',
                         fontSize: 10,
                         animation: 'demoMsgIn 300ms',
                       }}
                     >
-                      {m.text}
+                      <div>{m.text}</div>
+                      {/* WhatsApp signature: timestamp + double-blue-tick read receipt */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'flex-end',
+                          alignItems: 'center',
+                          gap: 3,
+                          marginTop: 2,
+                          fontSize: 8.5,
+                          color: 'rgba(255,255,255,.55)',
+                          lineHeight: 1,
+                        }}
+                        aria-hidden="true"
+                      >
+                        09:24
+                        <svg viewBox="0 0 16 11" width="14" height="10" style={{ marginLeft: 1 }}>
+                          <path d="M11.071.653a.457.457 0 0 0-.304-.13.46.46 0 0 0-.33.143L4.291 6.946 2.7 5.41a.457.457 0 0 0-.659.022.481.481 0 0 0 .022.673L4.001 7.94c.087.084.197.124.307.124.114 0 .229-.044.317-.133L11.087 1.39a.473.473 0 0 0-.016-.737z" fill="#53BDEB"/>
+                          <path d="M15.071.653a.457.457 0 0 0-.304-.13.46.46 0 0 0-.33.143L8.291 6.946 6.7 5.41a.457.457 0 0 0-.659.022.481.481 0 0 0 .022.673L8.001 7.94c.087.084.197.124.307.124.114 0 .229-.044.317-.133L15.087 1.39a.473.473 0 0 0-.016-.737z" fill="#53BDEB"/>
+                        </svg>
+                      </div>
                     </div>
                   );
                 }
@@ -929,14 +972,33 @@ export function PocketAgentDemo() {
                         alignSelf: 'flex-end',
                         background: '#005C4B',
                         color: '#fff',
-                        padding: '5px 9px',
+                        padding: '5px 9px 4px',
                         borderRadius: '10px 10px 2px 10px',
-                        maxWidth: '40%',
+                        maxWidth: '45%',
                         fontSize: 10,
                         animation: 'demoMsgIn 300ms',
                       }}
                     >
-                      ✓ Accept
+                      <div>✓ Accept</div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'flex-end',
+                          alignItems: 'center',
+                          gap: 3,
+                          marginTop: 2,
+                          fontSize: 8.5,
+                          color: 'rgba(255,255,255,.55)',
+                          lineHeight: 1,
+                        }}
+                        aria-hidden="true"
+                      >
+                        09:25
+                        <svg viewBox="0 0 16 11" width="14" height="10" style={{ marginLeft: 1 }}>
+                          <path d="M11.071.653a.457.457 0 0 0-.304-.13.46.46 0 0 0-.33.143L4.291 6.946 2.7 5.41a.457.457 0 0 0-.659.022.481.481 0 0 0 .022.673L4.001 7.94c.087.084.197.124.307.124.114 0 .229-.044.317-.133L11.087 1.39a.473.473 0 0 0-.016-.737z" fill="#53BDEB"/>
+                          <path d="M15.071.653a.457.457 0 0 0-.304-.13.46.46 0 0 0-.33.143L8.291 6.946 6.7 5.41a.457.457 0 0 0-.659.022.481.481 0 0 0 .022.673L8.001 7.94c.087.084.197.124.307.124.114 0 .229-.044.317-.133L15.087 1.39a.473.473 0 0 0-.016-.737z" fill="#53BDEB"/>
+                        </svg>
+                      </div>
                     </div>
                   );
                 }
@@ -1183,47 +1245,80 @@ export function PocketAgentDemo() {
               )}
             </div>
 
+            {/* WhatsApp-style input bar: emoji + text + paperclip + camera
+                + a green disc with mic (idle) / send-arrow (typing). The
+                exact bottom strip every WhatsApp user recognises. */}
             <div
               style={{
                 background: '#0B141A',
-                padding: '7px 9px',
+                padding: '6px 8px 7px',
                 borderTop: '1px solid rgba(255,255,255,.04)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 5,
+                gap: 6,
                 flexShrink: 0,
               }}
+              aria-hidden="true"
             >
               <div
                 style={{
                   flex: 1,
                   background: '#2A3942',
-                  borderRadius: 12,
-                  padding: '5px 9px',
-                  fontSize: 9.5,
-                  color: inputText ? '#fff' : 'rgba(255,255,255,.42)',
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap',
-                  textOverflow: 'ellipsis',
+                  borderRadius: 18,
+                  padding: '4px 6px 4px 8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                 }}
               >
-                {inputText || 'Ask anything…'}
-                {inputText && <span className="caret" />}
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="#8696A0" style={{ flexShrink: 0 }}>
+                  <path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8zm-3.5-9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm7 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM12 18c2.28 0 4.22-1.66 5-4H7c.78 2.34 2.72 4 5 4z"/>
+                </svg>
+                <div
+                  style={{
+                    flex: 1,
+                    fontSize: 9.5,
+                    color: inputText ? '#fff' : 'rgba(255,255,255,.5)',
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis',
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {inputText || 'Message'}
+                  {inputText && <span className="caret" />}
+                </div>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="#8696A0" style={{ flexShrink: 0, transform: 'rotate(-45deg)' }}>
+                  <path d="M16.5 6v11.5a4.5 4.5 0 1 1-9 0V5a3 3 0 0 1 6 0v10.5a1.5 1.5 0 1 1-3 0V6H9v9.5a3 3 0 1 0 6 0V5a4.5 4.5 0 1 0-9 0v12.5a6 6 0 1 0 12 0V6h-1.5z"/>
+                </svg>
+                {!inputText && (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="#8696A0" style={{ flexShrink: 0 }}>
+                    <path d="M9 3L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-3.17L15 3H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
+                  </svg>
+                )}
               </div>
               <div
                 style={{
-                  width: 24,
-                  height: 24,
+                  width: 30,
+                  height: 30,
                   borderRadius: '50%',
-                  background: '#34D399',
+                  background: '#00A884',
                   display: 'grid',
                   placeItems: 'center',
-                  color: '#0B1220',
-                  fontSize: 11,
-                  fontWeight: 800,
+                  color: '#fff',
+                  flexShrink: 0,
+                  boxShadow: '0 1px 3px rgba(0,0,0,.25)',
                 }}
               >
-                ➤
+                {inputText ? (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff">
+                    <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+                  </svg>
+                )}
               </div>
             </div>
           </div>

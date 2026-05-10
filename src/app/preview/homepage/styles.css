@@ -288,7 +288,7 @@
 
 .m-v2-root .hero h1 {
   font-size: var(--fs-display);
-  line-height: 0.94;
+  line-height: 1.02;
   letter-spacing: var(--track-tight);
   font-weight: 700;
   margin: 18px 0 24px;
@@ -553,7 +553,7 @@
 .m-v2-root .stat-card .label { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); font-weight: 600; }
 
 .m-v2-root .stat-card .num {
-  font-size: 64px; line-height: 1; font-weight: 700; letter-spacing: -0.03em;
+  font-size: 64px; line-height: 1.1; font-weight: 700; letter-spacing: -0.03em;
   margin: 16px 0 6px;
   position: relative; display: inline-block;
   font-variant-numeric: tabular-nums;
@@ -932,7 +932,7 @@
 /* Reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
-  .m-v2-root .reveal, .m-v2-root .reveal.in { opacity: 1; transform: none; transition: none; }
+  .m-v2-root .reveal, .m-v2-root .reveal.in { opacity: 1; transform: none; transition: none; animation: none !important; }
   .m-v2-root .float, .m-v2-root .pulse, .m-v2-root .nav-progress { animation: none !important; transition: none !important; }
 }
 
@@ -945,6 +945,15 @@
   .m-v2-root .trust-row { grid-template-columns: repeat(2, 1fr); gap: 16px; }
   .m-v2-root .footer-grid { grid-template-columns: 1fr 1fr; }
   .m-v2-root .nav-links { display: none; }
+}
+
+/* iPad portrait — give the hero h1 more leading so dots on lowercase
+   i/j don't collide with the line above. The 1.02 desktop value still
+   produced tight kerning at iPad sizes where the title wraps across
+   5-6 lines. */
+@media (max-width: 820px) {
+  .m-v2-root .hero h1 { line-height: 1.1; }
+  .m-v2-root .hero-grid { gap: 24px; }
 }
 
 @media (max-width: 480px) {
@@ -1473,7 +1482,7 @@
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .12em;
-  color: rgba(255,255,255,.55);
+  color: rgba(255,255,255,.78);
   border-bottom: 1px solid rgba(255,255,255,.12);
 }
 .m-v2-root .compare-table--dark thead th.feature {
@@ -1514,14 +1523,14 @@
 .m-v2-root .compare-table--dark td.us .chk { color: var(--accent-mint, #34D399); }
 .m-v2-root .compare-table--dark .x {
   display: inline-block;
-  color: rgba(255,255,255,.32);
+  color: rgba(255,255,255,.62);
   font-size: 16px;
 }
 
 .m-v2-root .compare-footnote.compare-footnote--ink {
   text-align: center;
   font-size: 13px;
-  color: rgba(255,255,255,.5);
+  color: rgba(255,255,255,.72);
   margin: 32px auto 0;
   max-width: 640px;
   line-height: 1.55;
