@@ -40,16 +40,17 @@ export async function GET() {
       .select('id', { count: 'exact', head: true })
       .in('status', RESOLVED_STATUSES),
 
-    // Sum of money_recovered across all disputes
+    // Sum of recovered_amount_gbp across resolved disputes, falling
+    // back to money_recovered for rows that predate the backfill.
+    // recovered_amount_gbp is the canonical column going forward.
     supabase
       .from('disputes')
-      .select('money_recovered')
-      .not('money_recovered', 'is', null)
-      .gt('money_recovered', 0),
+      .select('recovered_amount_gbp, money_recovered')
+      .in('status', RESOLVED_STATUSES),
   ]);
 
   const total_money_saved = (savings.data ?? []).reduce(
-    (sum, d) => sum + Number(d.money_recovered ?? 0),
+    (sum, d) => sum + Number(d.recovered_amount_gbp ?? d.money_recovered ?? 0),
     0,
   );
 

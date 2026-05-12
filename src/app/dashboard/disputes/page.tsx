@@ -37,6 +37,10 @@ interface Dispute {
   desired_outcome: string | null;
   disputed_amount: number | null;
   status: string;
+  // Canonical going forward. Older rows may have it NULL with the
+  // legacy `money_recovered` populated — always read via
+  // `recoveredAmount()` so the fallback is consistent.
+  recovered_amount_gbp?: number | null;
   money_recovered: number;
   created_at: string;
   updated_at: string;
@@ -173,6 +177,17 @@ function isResolved(status: string): boolean {
 // Check if a dispute was actually won (for money-recovered badges)
 function isWon(status: string): boolean {
   return ['resolved_won', 'resolved_partial'].includes(status);
+}
+
+// COALESCE(recovered_amount_gbp, money_recovered). Production rows
+// were backfilled so resolved_won disputes have recovered_amount_gbp
+// populated, but the fallback keeps the UI correct if a row predates
+// the backfill or is created via a code path that only writes the
+// legacy column.
+function recoveredAmount(d: { recovered_amount_gbp?: number | null; money_recovered?: number | null }): number {
+  const canonical = d.recovered_amount_gbp;
+  if (canonical !== null && canonical !== undefined) return Number(canonical) || 0;
+  return Number(d.money_recovered ?? 0) || 0;
 }
 
 // Dispute summary type
@@ -1473,16 +1488,19 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         </div>
         <div className="kpi-card">
           <div className="k-label">Money recovered</div>
-          <div className="k-val green">
-            {dispute.money_recovered && dispute.money_recovered > 0
-              ? `£${Number(dispute.money_recovered).toFixed(2)}`
-              : '—'}
-          </div>
-          <div className="k-delta">
-            {dispute.money_recovered && dispute.money_recovered > 0
-              ? 'Won · credited'
-              : 'Awaiting outcome'}
-          </div>
+          {(() => {
+            const rec = recoveredAmount(dispute);
+            return (
+              <>
+                <div className="k-val green">
+                  {rec > 0 ? `£${rec.toFixed(2)}` : '—'}
+                </div>
+                <div className="k-delta">
+                  {rec > 0 ? 'Won · credited' : 'Awaiting outcome'}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -1558,10 +1576,10 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               Resolve Dispute
             </button>
           )}
-          {isResolved(dispute.status) && dispute.money_recovered > 0 && (
+          {isResolved(dispute.status) && recoveredAmount(dispute) > 0 && (
             <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20 font-medium">
               <TrendingUp className="h-3.5 w-3.5" />
-              Recovered £{dispute.money_recovered.toFixed(2)}
+              Recovered £{recoveredAmount(dispute).toFixed(2)}
             </div>
           )}
         </div>
@@ -2989,14 +3007,23 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
                     </div>
                   </div>
                   <div className="flex items-center gap-3 ml-4 flex-shrink-0">
-                    {isResolved(d.status) && d.money_recovered > 0 ? (
-                      <span className="text-green-400 font-semibold text-sm flex items-center gap-1">
-                        <TrendingUp className="h-3.5 w-3.5" />
-                        £{d.money_recovered.toFixed(2)}
-                      </span>
-                    ) : d.disputed_amount && d.disputed_amount > 0 ? (
-                      <span className="text-amber-600 font-semibold">£{d.disputed_amount.toFixed(2)}</span>
-                    ) : null}
+                    {(() => {
+                      const rec = recoveredAmount(d);
+                      if (isResolved(d.status) && rec > 0) {
+                        return (
+                          <span className="text-green-400 font-semibold text-sm flex items-center gap-1">
+                            <TrendingUp className="h-3.5 w-3.5" />
+                            £{rec.toFixed(2)}
+                          </span>
+                        );
+                      }
+                      if (d.disputed_amount && d.disputed_amount > 0) {
+                        return (
+                          <span className="text-amber-600 font-semibold">£{d.disputed_amount.toFixed(2)}</span>
+                        );
+                      }
+                      return null;
+                    })()}
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusConf.className}`}>
                       {statusConf.label}
                     </span>

@@ -201,6 +201,11 @@ export async function PATCH(
         .from('disputes')
         .update({
           status: statusMap[body.outcome] || 'closed',
+          // Write both columns. recovered_amount_gbp is canonical
+          // going forward, money_recovered is kept in sync so reads
+          // that still hit the legacy column (e.g. the RPC summary
+          // path) keep returning the same number.
+          recovered_amount_gbp: moneyRecovered,
           money_recovered: moneyRecovered,
           outcome_notes: body.outcome_notes || null,
           resolved_at: new Date().toISOString(),

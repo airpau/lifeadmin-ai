@@ -26,7 +26,7 @@ export async function GET() {
   // Fallback: compute from direct queries
   const { data: disputes } = await supabase
     .from('disputes')
-    .select('status, disputed_amount, money_recovered')
+    .select('status, disputed_amount, recovered_amount_gbp, money_recovered')
     .eq('user_id', user.id);
 
   if (!disputes) {
@@ -50,9 +50,12 @@ export async function GET() {
   const total_disputed_amount = disputes
     .filter(d => !terminalStatuses.includes(d.status))
     .reduce((sum, d) => sum + (d.disputed_amount || 0), 0);
+  // COALESCE(recovered_amount_gbp, money_recovered). Backfill aligned
+  // the two columns for existing rows, but the fallback keeps the
+  // figure correct if a row predates the backfill.
   const total_recovered = disputes
     .filter(d => wonStatuses.includes(d.status))
-    .reduce((sum, d) => sum + (d.money_recovered || 0), 0);
+    .reduce((sum, d) => sum + Number(d.recovered_amount_gbp ?? d.money_recovered ?? 0), 0);
 
   return NextResponse.json({
     total_open,

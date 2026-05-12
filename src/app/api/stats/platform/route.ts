@@ -31,10 +31,10 @@ export async function GET() {
 
   const supabase = getAdmin();
 
-  // Schema note: the column is `disputes.money_recovered` and the won
-  // state is `status = 'resolved_won'` (no separate `outcome` / no
-  // `recovered_amount_gbp` column exists in this codebase — see
-  // migration 20260327000000_disputes_and_correspondence.sql).
+  // Schema: status = 'resolved_won' is the won state. Money lives in
+  // `recovered_amount_gbp` (canonical going forward); the legacy
+  // `money_recovered` column is the fallback for rows that predate
+  // the platform-wide backfill on 2026-05-12.
   const [won, recovered, users] = await Promise.all([
     supabase
       .from('disputes')
@@ -42,16 +42,15 @@ export async function GET() {
       .eq('status', 'resolved_won'),
     supabase
       .from('disputes')
-      .select('money_recovered')
-      .eq('status', 'resolved_won')
-      .gt('money_recovered', 0),
+      .select('recovered_amount_gbp, money_recovered')
+      .eq('status', 'resolved_won'),
     supabase
       .from('profiles')
       .select('id', { count: 'exact', head: true }),
   ]);
 
   const total_recovered_gbp = (recovered.data ?? []).reduce(
-    (sum, d) => sum + Number(d.money_recovered ?? 0),
+    (sum, d) => sum + Number(d.recovered_amount_gbp ?? d.money_recovered ?? 0),
     0,
   );
 

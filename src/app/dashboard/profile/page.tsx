@@ -44,15 +44,17 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
       const TERMINAL = ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'];
       const [letters, won, disputes] = await Promise.all([
         supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
-        // Sum money_recovered across resolved_won disputes. This is the
-        // authoritative source — profiles.total_money_recovered is a
-        // separately-maintained tally that drifts when the
-        // subscription auto-cancel path runs without updating profiles.
-        supabase.from('disputes').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved_won'),
+        // Sum across resolved_won disputes. recovered_amount_gbp is
+        // canonical going forward; money_recovered is the legacy
+        // fallback for rows that predate the platform backfill on
+        // 2026-05-12. profiles.total_money_recovered is NOT used as
+        // the primary source — it drifts when the subscription
+        // auto-cancel path runs without re-aggregating.
+        supabase.from('disputes').select('recovered_amount_gbp, money_recovered').eq('user_id', user.id).eq('status', 'resolved_won'),
         supabase.from('disputes').select('status').eq('user_id', user.id),
       ]);
       setLettersWritten(letters.count || 0);
-      const totalRecovered = (won.data || []).reduce((sum, d) => sum + (parseFloat(String(d.money_recovered)) || 0), 0);
+      const totalRecovered = (won.data || []).reduce((sum, d: any) => sum + Number(d.recovered_amount_gbp ?? d.money_recovered ?? 0), 0);
       setMoneyRecovered(Math.max(totalRecovered, fallbackRecovered));
       setActiveDisputes((disputes.data || []).filter(d => !TERMINAL.includes(d.status)).length);
       setLoaded(true);
