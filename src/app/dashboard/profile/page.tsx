@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download, Lock, X, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download, Lock, X, Eye, EyeOff, Scale } from 'lucide-react';
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
@@ -33,28 +33,35 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
   const [lettersWritten, setLettersWritten] = useState(0);
   const [moneyRecovered, setMoneyRecovered] = useState(fallbackRecovered);
   const [activeDisputes, setActiveDisputes] = useState(0);
-  const [loaded, setLoaded] = useState(false);
+  const [, setLoaded] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
-      const [letters, resolved, disputes] = await Promise.all([
+      // Active = anything that isn't terminal. Mirrors the Disputes
+      // Centre's status taxonomy in /api/disputes/summary.
+      const TERMINAL = ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'];
+      const [letters, won, disputes] = await Promise.all([
         supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
-        supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
-        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'open'),
+        // Sum money_recovered across resolved_won disputes. This is the
+        // authoritative source — profiles.total_money_recovered is a
+        // separately-maintained tally that drifts when the
+        // subscription auto-cancel path runs without updating profiles.
+        supabase.from('disputes').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved_won'),
+        supabase.from('disputes').select('status').eq('user_id', user.id),
       ]);
       setLettersWritten(letters.count || 0);
-      const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
+      const totalRecovered = (won.data || []).reduce((sum, d) => sum + (parseFloat(String(d.money_recovered)) || 0), 0);
       setMoneyRecovered(Math.max(totalRecovered, fallbackRecovered));
-      setActiveDisputes(disputes.count || 0);
+      setActiveDisputes((disputes.data || []).filter(d => !TERMINAL.includes(d.status)).length);
       setLoaded(true);
     };
     load();
   }, [supabase, fallbackRecovered]);
 
   return (
-    <div className="grid md:grid-cols-2 gap-6 mb-6">
+    <div className="grid md:grid-cols-3 gap-6 mb-6">
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6">
         <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
           <CheckCircle2 className="h-6 w-6 text-blue-500" />
@@ -63,6 +70,16 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
           {lettersWritten}
         </h3>
         <p className="text-slate-600 text-sm">Letters written</p>
+      </div>
+
+      <div className="bg-white backdrop-blur-sm border border-emerald-500/30 rounded-2xl shadow-[--shadow-card] p-6">
+        <div className="bg-emerald-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+          <Scale className="h-6 w-6 text-emerald-600" />
+        </div>
+        <h3 className="text-3xl font-bold text-emerald-600 mb-1">
+          £{moneyRecovered.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </h3>
+        <p className="text-slate-600 text-sm">Recovered via disputes</p>
       </div>
 
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6">

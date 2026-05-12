@@ -1,8 +1,9 @@
 'use client';
 
 import { fmtNum } from '@/lib/format';
-import { TrendingUp, TrendingDown, Target, Wallet, BarChart3 } from 'lucide-react';
-import { useState } from 'react';
+import { TrendingUp, TrendingDown, Target, Wallet, BarChart3, Scale } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import CategoryDrillDownModal from './CategoryDrillDownModal';
 
 const INCOME_LABELS: Record<string, { label: string; icon: string; color: string }> = {
@@ -94,6 +95,22 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
   const [drillSpendingCategory, setDrillSpendingCategory] = useState<string | null>(null);
   const [showAllIncome, setShowAllIncome] = useState(false);
   const [showAllSpending, setShowAllSpending] = useState(false);
+  // Total recovered via won disputes — lifetime sum, not month-bound,
+  // because that's how it reads on the Disputes Centre too. Sourced
+  // from /api/disputes/summary which uses the same RPC the Disputes
+  // page does, so the two numbers always agree.
+  const [disputeRecovered, setDisputeRecovered] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/disputes/summary')
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive && !d.error) setDisputeRecovered(Number(d.total_recovered) || 0);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const { overview, healthScore, spending } = data;
   const { monthlyIncome, monthlyOutgoings, savingsRate, incomeBreakdown } = overview;
@@ -125,6 +142,32 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
 
   return (
     <div className="space-y-4">
+      {/* Money recovered via disputes — positive highlight, lifetime
+          sum of money_recovered across resolved_won disputes. Hidden
+          while the fetch is in flight (null) and when the user hasn't
+          won anything yet (0) to avoid drawing attention to an empty
+          state on the main dashboard. */}
+      {disputeRecovered !== null && disputeRecovered > 0 && (
+        <Link
+          href="/dashboard/disputes"
+          className="card p-4 flex items-center justify-between gap-3 border border-emerald-500/30 bg-gradient-to-r from-emerald-50 to-white hover:border-emerald-500/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="bg-emerald-500/10 rounded-full p-2 shrink-0">
+              <Scale className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">Total saved via disputes</p>
+              <p className="text-2xl md:text-3xl font-bold text-emerald-600">
+                £{disputeRecovered.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-sm text-slate-500 font-normal ml-2">recovered</span>
+              </p>
+            </div>
+          </div>
+          <span className="text-xs text-emerald-700 hover:text-emerald-800 font-medium hidden sm:inline">View disputes →</span>
+        </Link>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card p-5">

@@ -171,6 +171,46 @@ function Counter({
 }
 
 // ---------------------------------------------------------------------------
+// LiveRecoveredCounter — pulls platform-wide aggregate from
+// /api/stats/platform and animates the £-recovered total up when
+// scrolled into view. Public endpoint, no PII; only renders once the
+// fetch resolves with a non-zero figure so the hero never shows a
+// dead £0 while the network is in flight.
+// ---------------------------------------------------------------------------
+function LiveRecoveredCounter() {
+  const [total, setTotal] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/stats/platform')
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive) setTotal(Number(d.total_recovered_gbp) || 0);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  if (total === null || total <= 0) return null;
+  // Whole pounds only — homepage social proof reads better without
+  // pence noise; the Disputes Centre keeps 2dp precision for users.
+  const rounded = Math.round(total);
+
+  return (
+    <div className="hero-ticker">
+      <span className="pulse" />
+      <span>
+        Paybacker users have recovered{' '}
+        <strong>
+          <Counter to={rounded} prefix="£" />
+        </strong>{' '}
+        so far.
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Nav — pill nav with scroll-shrink + scroll-progress bar
 // ---------------------------------------------------------------------------
 function Nav() {
@@ -849,6 +889,7 @@ export default function HomepageV3PreviewPage() {
                   <strong>£1,000+ a year</strong> — we find it.
                 </span>
               </div>
+              <LiveRecoveredCounter />
             </Reveal>
 
             <HeroVisual />
