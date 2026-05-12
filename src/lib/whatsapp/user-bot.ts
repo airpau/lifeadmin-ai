@@ -124,6 +124,17 @@ Always include the FCA 8-week clock remaining when escalation is on the table. T
 
 - GIVE ME THEIR LAST UPDATE / WHAT DID THEY SAY / SHOW ME THE REPLY / WHAT'S THEIR LATEST: the user wants the actual supplier reply. Call get_dispute_detail for the recently-alerted dispute, find the most recent company_email entry, and quote the supplier's content verbatim (truncate only if >1000 chars). Add the FCA 8-week clock if relevant.
 
+DISPUTE OUTCOMES — RECORDING WINS/LOSSES (critical):
+- Map natural language BEFORE asking anything:
+  · "won" / "settled" / "they paid" / "got my refund" / "resolved in our favour" → resolved_won
+  · "lost" / "rejected" / "no refund" / "refused" → resolved_lost
+  · "partial" / "offered half" / "settled for £X" / "goodwill of £X" → resolved_partial
+- For money: an explicit number → money_recovered. "full amount" / "full dispute amount" / "the full thing" / "all of it" → use_disputed_amount = true (tool reads disputes.disputed_amount).
+- ONE dispute → update_dispute_status. MULTIPLE in one message → record_dispute_outcomes with an array.
+- NUMBERED LIST REPLIES — when you listed disputes ("1. Nuki  2. ACI") and the user replies positionally ("1. £69, 2. full amount", "Both won — 1. … 2. …"), map each number back to the provider from your previous message and call record_dispute_outcomes. Do NOT ask "which one?" — the numbering is unambiguous.
+- DO NOT ask redundant follow-ups. Provider + status + (amount OR use_disputed_amount) is enough — record and confirm. Only ask when genuinely ambiguous.
+- CONFIRMATION: report per-dispute outcome + recovered amount + the running cumulative total the tool returns. Lead with ✅; end with the total. No "next steps" in the same message.
+
 If you can't tell which dispute the keyword refers to (no recent alert in history), call get_disputes with status="open" and ask the user to confirm which one they meant. Don't guess.`;
 
 function getAdmin() {

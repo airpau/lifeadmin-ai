@@ -889,22 +889,22 @@ export const telegramTools: Tool[] = [
   {
     name: 'update_dispute_status',
     description:
-      "Update the status of an existing dispute — mark it resolved, escalate it, or add a note. Use when the user provides an update from a company (e.g. an email they received). Always include the full 'provider_response' if they give one, and if you draft them a response to send back, include it in 'draft_reply' so both are logged to the dispute history audit trail.",
+      "Update a SINGLE dispute's status — mark it resolved (won / partial / lost), escalate it, or add a note. Use for one dispute at a time; for multiple disputes in one user message (e.g. \"both won, 1. £69, 2. full amount\"), use record_dispute_outcomes instead.\n\nWhen the user declares a win in natural language (\"won\", \"settled\", \"they paid\", \"got my refund\", \"resolved in our favour\") set new_status='resolved_won'. \"Lost\", \"rejected\", \"no refund\" → 'resolved_lost'. \"Partial\", \"offered half\", \"settled for £X\" → 'resolved_partial'. If the user gives an explicit £ amount, pass it as money_recovered. If they say \"full amount\", \"full dispute amount\", \"the full thing\", \"all of it\" — pass use_disputed_amount=true and the tool will read disputes.disputed_amount from the database. Do NOT ask follow-up questions when you already have enough to record the outcome — just record it and confirm.\n\nAlways include the full 'provider_response' if the user pasted one, and if you drafted a reply include it in 'draft_reply' — both go to the dispute history audit trail.",
     input_schema: {
       type: 'object' as const,
       properties: {
         provider: {
           type: 'string',
-          description: 'Provider name of the dispute to update (partial match, case-insensitive).',
+          description: 'Provider name of the dispute to update (partial match, case-insensitive). E.g. "Nuki", "E.ON", "British Gas". If the user just gave a list-position ("1." / "2."), resolve it to the provider name from your recent message before calling.',
         },
         new_status: {
           type: 'string',
           enum: ['open', 'awaiting_response', 'escalated', 'resolved_won', 'resolved_partial', 'resolved_lost', 'closed'],
-          description: 'The new status for the dispute.',
+          description: 'The new status for the dispute. Resolved_won/partial/lost auto-set outcome, outcome_set_at, outcome_set_by, outcome_confidence and resolved_at.',
         },
         notes: {
           type: 'string',
-          description: 'Optional notes about the update (e.g. "Company replied refusing refund", "Ombudsman case opened").',
+          description: 'Brief description of the outcome (e.g. "Refund agreed in full", "Offered £50 goodwill, accepted", "Final response, refused"). Saved as outcome_notes.',
         },
         provider_response: {
           type: 'string',
@@ -916,10 +916,70 @@ export const telegramTools: Tool[] = [
         },
         money_recovered: {
           type: 'number',
-          description: 'Amount of money recovered in GBP — only for resolved_won or resolved_partial.',
+          description: 'Amount of money recovered in GBP — only for resolved_won or resolved_partial. Set this OR use_disputed_amount, not both.',
+        },
+        use_disputed_amount: {
+          type: 'boolean',
+          description: 'Set to true when the user says the FULL disputed amount was recovered ("full amount", "the full thing", "all of it"). The tool will look up disputes.disputed_amount from the database and use that as money_recovered. Don\'t combine with an explicit money_recovered value.',
         },
       },
       required: ['provider', 'new_status'],
+    },
+  },
+  {
+    name: 'record_dispute_outcomes',
+    description:
+      "Record the outcome of MULTIPLE disputes in one call. Use this when the user resolves several disputes in a single message — e.g. you listed \"1. Nuki  2. ACI / E.On Next\" and they reply \"Both won. 1. £69. 2. full dispute amount.\" You MUST map their numbered/positional reply back to the providers from your previous message before calling.\n\nEach item in `outcomes` is processed independently — partial success is fine. Pass `dispute_id` when you know it (from get_disputes), otherwise pass `provider` and the tool will fuzzy-match. Use `use_disputed_amount: true` for items the user described as the \"full amount\" — the tool will read disputes.disputed_amount and use it as money_recovered. The response includes a running cumulative total of money recovered via Paybacker, so the user sees their lifetime tally.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        outcomes: {
+          type: 'array',
+          description: 'List of dispute outcomes to record. Length must be >= 1.',
+          items: {
+            type: 'object' as const,
+            properties: {
+              dispute_id: {
+                type: 'string',
+                description: 'UUID of the dispute (preferred if you have it from get_disputes — skips the fuzzy provider lookup).',
+              },
+              provider: {
+                type: 'string',
+                description: 'Provider name (used when dispute_id is not given). Case-insensitive substring match. Resolve list-positions to providers BEFORE calling.',
+              },
+              new_status: {
+                type: 'string',
+                enum: ['open', 'awaiting_response', 'escalated', 'resolved_won', 'resolved_partial', 'resolved_lost', 'closed'],
+                description: "New status for this dispute. Map natural language: 'won/settled/they paid/got refund' → resolved_won, 'partial/offered half/settled for X' → resolved_partial, 'lost/rejected/refused' → resolved_lost.",
+              },
+              notes: {
+                type: 'string',
+                description: 'Short outcome note (e.g. "Full refund", "Final response, refused", "£25 goodwill accepted").',
+              },
+              money_recovered: {
+                type: 'number',
+                description: 'Recovered amount in GBP. Set this OR use_disputed_amount, not both.',
+              },
+              use_disputed_amount: {
+                type: 'boolean',
+                description: 'True when the user said "full amount" / "the full thing" / "all of it" — looks up disputes.disputed_amount and uses that.',
+              },
+            },
+            required: ['new_status'],
+          },
+        },
+      },
+      required: ['outcomes'],
+    },
+  },
+  {
+    name: 'get_total_recovered',
+    description:
+      "Get the user's running total of money recovered via Paybacker disputes — the sum of recovered_amount_gbp (falling back to legacy money_recovered) across all disputes where outcome is 'won' or 'partial'. Returns the total, the count of won vs partial disputes, and the most recent 5 wins. Use when the user asks \"how much have I recovered?\", \"what's my total?\", or \"how much money saved?\" specifically about disputes. For broader savings (which include cancellations and price reverts), use get_savings_total instead.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
     },
   },
   {

@@ -262,14 +262,36 @@ export async function executeToolCall(
         priority: (toolInput.priority as string | undefined) ?? 'medium',
       });
     case 'update_dispute_status':
-      return updateDisputeStatus(supabase, userId, {
-        provider: toolInput.provider as string,
-        new_status: toolInput.new_status as string,
-        notes: toolInput.notes as string | undefined,
-        money_recovered: toolInput.money_recovered as number | undefined,
-        provider_response: toolInput.provider_response as string | undefined,
-        draft_reply: toolInput.draft_reply as string | undefined,
-      });
+      return updateDisputeStatus(
+        supabase,
+        userId,
+        {
+          provider: toolInput.provider as string,
+          new_status: toolInput.new_status as string,
+          notes: toolInput.notes as string | undefined,
+          money_recovered: toolInput.money_recovered as number | undefined,
+          use_disputed_amount: toolInput.use_disputed_amount as boolean | undefined,
+          provider_response: toolInput.provider_response as string | undefined,
+          draft_reply: toolInput.draft_reply as string | undefined,
+        },
+        channel,
+      );
+    case 'record_dispute_outcomes':
+      return recordDisputeOutcomes(
+        supabase,
+        userId,
+        (toolInput.outcomes as Array<{
+          dispute_id?: string;
+          provider?: string;
+          new_status: string;
+          notes?: string;
+          money_recovered?: number;
+          use_disputed_amount?: boolean;
+        }>) ?? [],
+        channel,
+      );
+    case 'get_total_recovered':
+      return getTotalRecovered(supabase, userId);
     case 'add_contract':
       return addContract(supabase, userId, {
         provider_name: toolInput.provider_name as string,
@@ -921,7 +943,7 @@ async function getDisputes(
 ): Promise<ToolResult> {
   let query = supabase
     .from('disputes')
-    .select('provider_name, issue_type, status, disputed_amount, money_recovered, created_at, updated_at')
+    .select('id, provider_name, issue_type, status, disputed_amount, money_recovered, recovered_amount_gbp, outcome, created_at, updated_at')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
     .limit(20);
@@ -947,6 +969,9 @@ async function getDisputes(
     closed: '⚫',
   };
 
+  // The id + disputed_amount fields are included so the agent can pass
+  // dispute_id and "full amount" outcomes back via record_dispute_outcomes
+  // without a second lookup.
   let text = `*Disputes (${data.length})*\n\n`;
   for (const d of data) {
     const emoji = statusEmoji[d.status] ?? '⚪';
@@ -963,12 +988,17 @@ async function getDisputes(
       (Date.now() - new Date(d.updated_at).getTime()) / (1000 * 60 * 60 * 24),
     );
     text += `${emoji} *${d.provider_name}* — ${d.issue_type.replace(/_/g, ' ')}\n`;
+    text += `   id: ${d.id}\n`;
     text += `   Status: ${d.status.replace(/_/g, ' ')} · opened ${openedDays}d ago (${fmtDate(d.created_at)})`;
     if (lastActivityDays !== openedDays) {
       text += ` · last activity ${lastActivityDays}d ago`;
     }
-    if (d.money_recovered && Number(d.money_recovered) > 0) {
-      text += ` · Recovered: ${fmt(d.money_recovered)}`;
+    const recovered = Number(d.recovered_amount_gbp ?? d.money_recovered) || 0;
+    if (recovered > 0) {
+      text += ` · Recovered: ${fmt(recovered)}`;
+    }
+    if (d.disputed_amount && Number(d.disputed_amount) > 0) {
+      text += ` · Disputed: ${fmt(d.disputed_amount)}`;
     }
     text += '\n';
   }
@@ -3304,41 +3334,156 @@ async function createTask(
 // DISPUTE STATUS HANDLER
 // ============================================================
 
-async function updateDisputeStatus(
+const RESOLVED_STATUSES = new Set(['resolved_won', 'resolved_partial', 'resolved_lost', 'closed']);
+
+const STATUS_TO_OUTCOME: Record<string, 'won' | 'partial' | 'lost' | 'withdrawn' | null> = {
+  open: null,
+  awaiting_response: null,
+  escalated: null,
+  resolved_won: 'won',
+  resolved_partial: 'partial',
+  resolved_lost: 'lost',
+  closed: 'withdrawn',
+};
+
+interface DisputeOutcomeUpdate {
+  /** Direct dispute UUID (preferred when known — skips fuzzy provider match). */
+  dispute_id?: string;
+  /** Provider name (fuzzy substring match, used when dispute_id is not given). */
+  provider?: string;
+  new_status: string;
+  notes?: string;
+  money_recovered?: number;
+  /** When true, fall back to disputes.disputed_amount for money_recovered. Used when the user says "full amount", "the full thing", "all of it". */
+  use_disputed_amount?: boolean;
+  provider_response?: string;
+  draft_reply?: string;
+  outcome_set_by?: 'user' | 'agent' | 'system' | 'telegram' | 'whatsapp';
+  outcome_confidence?: 'confirmed' | 'inferred' | 'unverified';
+}
+
+interface DisputeOutcomeResult {
+  ok: boolean;
+  provider_name: string;
+  status: string;
+  outcome: string | null;
+  recovered: number;
+  /** Diagnostic when ok=false. */
+  reason?: string;
+}
+
+/**
+ * Update a single dispute outcome and log it to the audit trail.
+ *
+ * Designed to be safe to call multiple times in a single turn (from
+ * recordDisputeOutcomes) — each call does its own lookup and update,
+ * but does not throw. Callers get a structured result they can
+ * aggregate into a confirmation message.
+ *
+ * Auto-fills money_recovered from disputes.disputed_amount when the
+ * caller passes use_disputed_amount=true and no explicit amount.
+ * This is what makes "full dispute amount" / "the full thing" work
+ * without an extra round trip.
+ *
+ * On resolved_won / resolved_partial we also insert a verified_savings
+ * row so the running "total saved with Paybacker" counter stays in
+ * step with the dispute table. The row is keyed on dispute_id, so
+ * re-marking the same dispute won't double-count (we upsert).
+ */
+async function applyDisputeOutcomeUpdate(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
-  params: { provider: string; new_status: string; notes?: string; money_recovered?: number; provider_response?: string; draft_reply?: string },
-): Promise<ToolResult> {
-  const { data: dispute, error: fetchError } = await supabase
-    .from('disputes')
-    .select('id, provider_name, status, issue_type')
-    .eq('user_id', userId)
-    .ilike('provider_name', `%${params.provider}%`)
-    .not('status', 'in', '("resolved_won","resolved_partial","resolved_lost","closed")')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-
-  if (fetchError || !dispute) {
-    return { text: `No open dispute found matching "${params.provider}". Use get_disputes to see all disputes.` };
+  params: DisputeOutcomeUpdate,
+  channel: 'telegram' | 'whatsapp' | 'chatbot' = 'telegram',
+): Promise<DisputeOutcomeResult> {
+  // 1. Find the dispute. Prefer dispute_id, fall back to provider fuzzy
+  //    match. When matching by provider we deliberately allow already-
+  //    resolved disputes through, so the agent can correct a mistaken
+  //    outcome ("I told you we won but we actually lost").
+  let dispute: { id: string; provider_name: string; status: string; issue_type: string; disputed_amount: number | null } | null = null;
+  if (params.dispute_id) {
+    const { data } = await supabase
+      .from('disputes')
+      .select('id, provider_name, status, issue_type, disputed_amount')
+      .eq('user_id', userId)
+      .eq('id', params.dispute_id)
+      .maybeSingle();
+    dispute = data;
+  } else if (params.provider) {
+    const { data } = await supabase
+      .from('disputes')
+      .select('id, provider_name, status, issue_type, disputed_amount')
+      .eq('user_id', userId)
+      .ilike('provider_name', `%${params.provider}%`)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    dispute = data;
   }
 
+  if (!dispute) {
+    return {
+      ok: false,
+      provider_name: params.provider ?? 'unknown',
+      status: params.new_status,
+      outcome: null,
+      recovered: 0,
+      reason: params.dispute_id
+        ? `No dispute found with id ${params.dispute_id}.`
+        : `No dispute found matching "${params.provider}".`,
+    };
+  }
+
+  // 2. Resolve the money figure.
+  //    - explicit money_recovered wins
+  //    - else use_disputed_amount + disputes.disputed_amount fallback
+  //    - else 0 (only meaningful for won / partial; lost stays 0)
+  let recovered = 0;
+  if (params.money_recovered !== undefined && params.money_recovered !== null) {
+    recovered = Number(params.money_recovered) || 0;
+  } else if (params.use_disputed_amount && dispute.disputed_amount) {
+    recovered = Number(dispute.disputed_amount) || 0;
+  }
+
+  const isResolved = RESOLVED_STATUSES.has(params.new_status);
+  const outcome = STATUS_TO_OUTCOME[params.new_status] ?? null;
+  const nowIso = new Date().toISOString();
+
+  // 3. Build the update. Always write the new audit fields when we're
+  //    setting an outcome — that's the whole point of this fix.
   const updates: Record<string, unknown> = {
     status: params.new_status,
-    updated_at: new Date().toISOString(),
+    updated_at: nowIso,
   };
   if (params.notes) updates.outcome_notes = params.notes;
-  if (params.money_recovered !== undefined) updates.money_recovered = params.money_recovered;
-
-  const isResolved = ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'].includes(params.new_status);
-  if (isResolved) updates.resolved_at = new Date().toISOString();
-
-  const { error } = await supabase.from('disputes').update(updates).eq('id', dispute.id);
-
-  if (error) {
-    return { text: `Failed to update dispute: ${error.message}` };
+  if (recovered > 0) {
+    updates.money_recovered = recovered;
+    updates.recovered_amount_gbp = recovered;
+  }
+  if (isResolved) {
+    updates.resolved_at = nowIso;
+  }
+  if (outcome) {
+    updates.outcome = outcome;
+    updates.outcome_set_at = nowIso;
+    updates.outcome_set_by = params.outcome_set_by ?? channel;
+    updates.outcome_confidence = params.outcome_confidence ?? 'confirmed';
   }
 
+  const { error } = await supabase.from('disputes').update(updates).eq('id', dispute.id);
+  if (error) {
+    return {
+      ok: false,
+      provider_name: dispute.provider_name,
+      status: params.new_status,
+      outcome,
+      recovered,
+      reason: error.message,
+    };
+  }
+
+  // 4. Audit trail for any provider response / draft reply text passed
+  //    alongside the outcome.
   if (params.provider_response) {
     await supabase.from('correspondence').insert({
       dispute_id: dispute.id,
@@ -3348,7 +3493,6 @@ async function updateDisputeStatus(
       content: params.provider_response,
     });
   }
-
   if (params.draft_reply) {
     await supabase.from('correspondence').insert({
       dispute_id: dispute.id,
@@ -3359,16 +3503,279 @@ async function updateDisputeStatus(
     });
   }
 
+  // 5. Log a verified_savings row on win/partial so the savings
+  //    counter stays in step. Keyed on (user_id, dispute_id) via
+  //    onConflict so re-marking the same dispute updates rather than
+  //    duplicates. We only do this when recovered > 0 — a "won with
+  //    £0 recovered" outcome (rare, e.g. a principle-only win)
+  //    shouldn't appear in savings totals.
+  if ((outcome === 'won' || outcome === 'partial') && recovered > 0) {
+    const savingTypeLabel = outcome === 'won' ? 'Dispute won' : 'Dispute partially resolved';
+    await supabase.from('verified_savings').upsert(
+      {
+        user_id: userId,
+        saving_type: 'dispute_won',
+        title: `${dispute.provider_name} — ${savingTypeLabel}`,
+        description: params.notes ?? null,
+        amount_saved: recovered,
+        dispute_id: dispute.id,
+        confirmed_by: channel,
+        confirmed_at: nowIso,
+        evidence_notes: params.notes ?? null,
+      },
+      { onConflict: 'dispute_id' },
+    );
+  }
+
+  return {
+    ok: true,
+    provider_name: dispute.provider_name,
+    status: params.new_status,
+    outcome,
+    recovered,
+  };
+}
+
+async function updateDisputeStatus(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider: string;
+    new_status: string;
+    notes?: string;
+    money_recovered?: number;
+    use_disputed_amount?: boolean;
+    provider_response?: string;
+    draft_reply?: string;
+  },
+  channel: 'telegram' | 'whatsapp' | 'chatbot' = 'telegram',
+): Promise<ToolResult> {
+  const result = await applyDisputeOutcomeUpdate(
+    supabase,
+    userId,
+    {
+      provider: params.provider,
+      new_status: params.new_status,
+      notes: params.notes,
+      money_recovered: params.money_recovered,
+      use_disputed_amount: params.use_disputed_amount,
+      provider_response: params.provider_response,
+      draft_reply: params.draft_reply,
+    },
+    channel,
+  );
+
+  if (!result.ok) {
+    return {
+      text: `${result.reason ?? 'Failed to update dispute.'} Use get_disputes to see all disputes.`,
+    };
+  }
+
   const statusEmoji: Record<string, string> = {
     open: '🔴', awaiting_response: '🟡', escalated: '🟠',
     resolved_won: '✅', resolved_partial: '🟢', resolved_lost: '❌', closed: '⚫',
   };
 
-  const emoji = statusEmoji[params.new_status] ?? '⚪';
-  let text = `${emoji} *${dispute.provider_name}* dispute updated to: *${params.new_status.replace(/_/g, ' ')}*`;
+  const emoji = statusEmoji[result.status] ?? '⚪';
+  let text = `${emoji} *${result.provider_name}* — *${result.status.replace(/_/g, ' ')}*`;
   if (params.notes) text += `\nNotes: ${params.notes}`;
-  if (params.money_recovered) text += `\nRecovered: *${fmt(params.money_recovered)}*`;
-  if (params.new_status === 'resolved_won') text += `\n\n🎉 Well done on winning this dispute!`;
+  if (result.recovered > 0) text += `\nRecovered: *${fmt(result.recovered)}*`;
+
+  if (result.outcome === 'won' || result.outcome === 'partial') {
+    // Pull the running total so the user gets the cumulative figure
+    // in the same response — saves a follow-up "how much in total?".
+    const { data: wonRows } = await supabase
+      .from('disputes')
+      .select('recovered_amount_gbp, money_recovered')
+      .eq('user_id', userId)
+      .in('outcome', ['won', 'partial']);
+    const total = (wonRows ?? []).reduce(
+      (sum: number, r: { recovered_amount_gbp: number | string | null; money_recovered: number | string | null }) =>
+        sum + (Number(r.recovered_amount_gbp ?? r.money_recovered) || 0),
+      0,
+    );
+    if (total > 0) {
+      text += `\n\nTotal recovered via Paybacker: *${fmt(total)}* 🎉`;
+    } else if (result.outcome === 'won') {
+      text += `\n\n🎉 Well done on winning this dispute!`;
+    }
+  }
+
+  return { text };
+}
+
+// ============================================================
+// BATCH DISPUTE OUTCOME HANDLER
+// ============================================================
+//
+// Called when the user resolves multiple disputes in one go — e.g.
+// after the Watchdog alert lists 2 disputes that received replies and
+// the user replies "Both won. 1. £69. 2. full amount." The agent
+// resolves the list-position → provider mapping from conversation
+// history, then hands us one call with both outcomes.
+//
+// Each item in `outcomes` is processed independently. We never abort
+// the batch on a single failure — partial success is reported back so
+// the user sees what landed and what didn't.
+
+async function recordDisputeOutcomes(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  outcomes: Array<{
+    dispute_id?: string;
+    provider?: string;
+    new_status: string;
+    notes?: string;
+    money_recovered?: number;
+    use_disputed_amount?: boolean;
+  }>,
+  channel: 'telegram' | 'whatsapp' | 'chatbot' = 'telegram',
+): Promise<ToolResult> {
+  if (!Array.isArray(outcomes) || outcomes.length === 0) {
+    return { text: 'No outcomes provided. Pass at least one dispute outcome to record.' };
+  }
+
+  const results: DisputeOutcomeResult[] = [];
+  for (const o of outcomes) {
+    results.push(
+      await applyDisputeOutcomeUpdate(
+        supabase,
+        userId,
+        {
+          dispute_id: o.dispute_id,
+          provider: o.provider,
+          new_status: o.new_status,
+          notes: o.notes,
+          money_recovered: o.money_recovered,
+          use_disputed_amount: o.use_disputed_amount,
+        },
+        channel,
+      ),
+    );
+  }
+
+  const wins = results.filter((r) => r.ok && r.outcome === 'won');
+  const partials = results.filter((r) => r.ok && r.outcome === 'partial');
+  const losses = results.filter((r) => r.ok && r.outcome === 'lost');
+  const failures = results.filter((r) => !r.ok);
+
+  let text = '';
+  if (wins.length > 0) {
+    text += wins.length === 1 ? `✅ *Dispute marked as won!*\n` : `✅ *${wins.length} disputes marked as won!*\n`;
+    for (const r of wins) {
+      text += `• ${r.provider_name}${r.recovered > 0 ? ` — *${fmt(r.recovered)}* recovered` : ''}\n`;
+    }
+  }
+  if (partials.length > 0) {
+    text += text ? '\n' : '';
+    text += partials.length === 1 ? `🟢 *Dispute partially resolved.*\n` : `🟢 *${partials.length} disputes partially resolved.*\n`;
+    for (const r of partials) {
+      text += `• ${r.provider_name}${r.recovered > 0 ? ` — *${fmt(r.recovered)}* recovered` : ''}\n`;
+    }
+  }
+  if (losses.length > 0) {
+    text += text ? '\n' : '';
+    text += losses.length === 1 ? `❌ *Dispute marked as lost.*\n` : `❌ *${losses.length} disputes marked as lost.*\n`;
+    for (const r of losses) {
+      text += `• ${r.provider_name}\n`;
+    }
+  }
+
+  const recoveredThisBatch = [...wins, ...partials].reduce((s, r) => s + r.recovered, 0);
+  if (recoveredThisBatch > 0) {
+    text += `\nTotal recovered this batch: *${fmt(recoveredThisBatch)}* 🎉\n`;
+
+    // Running cumulative total across all won/partial disputes.
+    const { data: wonRows } = await supabase
+      .from('disputes')
+      .select('recovered_amount_gbp, money_recovered')
+      .eq('user_id', userId)
+      .in('outcome', ['won', 'partial']);
+    const total = (wonRows ?? []).reduce(
+      (sum: number, r: { recovered_amount_gbp: number | string | null; money_recovered: number | string | null }) =>
+        sum + (Number(r.recovered_amount_gbp ?? r.money_recovered) || 0),
+      0,
+    );
+    if (total > recoveredThisBatch) {
+      text += `Total recovered via Paybacker: *${fmt(total)}*`;
+    }
+  }
+
+  if (failures.length > 0) {
+    text += text ? '\n\n' : '';
+    text += `⚠️ Couldn't record ${failures.length} outcome${failures.length === 1 ? '' : 's'}:\n`;
+    for (const r of failures) {
+      text += `• ${r.provider_name}: ${r.reason ?? 'unknown error'}\n`;
+    }
+  }
+
+  if (!text) {
+    text = 'No outcomes were recorded.';
+  }
+
+  return { text };
+}
+
+// ============================================================
+// TOTAL RECOVERED COUNTER
+// ============================================================
+//
+// SUM(recovered_amount_gbp) over disputes with outcome IN ('won','partial').
+// Use the new column with a fallback to the legacy money_recovered so the
+// number doesn't drop to zero for rows resolved before the migration.
+
+async function getTotalRecovered(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data, error } = await supabase
+    .from('disputes')
+    .select('provider_name, recovered_amount_gbp, money_recovered, outcome, status, resolved_at')
+    .eq('user_id', userId)
+    .or('outcome.eq.won,outcome.eq.partial,status.eq.resolved_won,status.eq.resolved_partial')
+    .order('resolved_at', { ascending: false, nullsFirst: false });
+
+  if (error) {
+    return { text: `Couldn't load recovered total: ${error.message}` };
+  }
+
+  const rows = data ?? [];
+  if (rows.length === 0) {
+    return {
+      text: `You haven't recovered any money via Paybacker yet.\n\nWhen a dispute is resolved in your favour, tell me "won — £X" or "they paid the full amount" and I'll log it here.`,
+    };
+  }
+
+  let won = 0;
+  let partial = 0;
+  let wonCount = 0;
+  let partialCount = 0;
+  for (const r of rows) {
+    const amount = Number(r.recovered_amount_gbp ?? r.money_recovered) || 0;
+    if (r.outcome === 'won' || r.status === 'resolved_won') {
+      won += amount;
+      wonCount += 1;
+    } else if (r.outcome === 'partial' || r.status === 'resolved_partial') {
+      partial += amount;
+      partialCount += 1;
+    }
+  }
+  const total = won + partial;
+
+  let text = `💰 *Total recovered via Paybacker: ${fmt(total)}*\n\n`;
+  if (wonCount > 0) text += `✅ Disputes won (${wonCount}): ${fmt(won)}\n`;
+  if (partialCount > 0) text += `🟢 Partial wins (${partialCount}): ${fmt(partial)}\n`;
+
+  const recent = rows.slice(0, 5);
+  if (recent.length > 0) {
+    text += `\n*Most recent:*\n`;
+    for (const r of recent) {
+      const amount = Number(r.recovered_amount_gbp ?? r.money_recovered) || 0;
+      if (amount > 0) {
+        text += `• ${r.provider_name} — *${fmt(amount)}*\n`;
+      }
+    }
+  }
 
   return { text };
 }
