@@ -2526,4 +2526,28 @@ export const telegramTools: Tool[] = [
       required: ['liability_id', 'lender_name'],
     },
   },
+  {
+    name: 'set_money_threshold',
+    description:
+      "Set the minimum amount for money-in or upcoming-bill alerts. Use when the user says 'only notify me when I get paid more than £100', 'don't alert me for bills under £200', 'remind me 3 days before bills are due', 'alert me 14 days before any bill'. For 'money_received' set `amount` (the minimum credit value). For 'large_upcoming_bill' set `amount` (minimum bill size to flag) and/or `days_ahead` (how many days before the bill is due).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['money_received', 'large_upcoming_bill'],
+          description: 'Which threshold the user is configuring.',
+        },
+        amount: {
+          type: 'number',
+          description: 'Threshold amount in £. For money_received: minimum credit to alert on. For large_upcoming_bill: minimum bill size to flag.',
+        },
+        days_ahead: {
+          type: 'number',
+          description: 'Only for large_upcoming_bill — how many days before the bill is due to alert. Must be 1-30.',
+        },
+      },
+      required: ['kind'],
+    },
+  },
 ];

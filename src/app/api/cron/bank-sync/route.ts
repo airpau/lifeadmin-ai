@@ -5,6 +5,7 @@ import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
+import { dispatchMoneyInAlertsForUser } from '@/lib/alerts/money-in';
 import {
   TIER_CONFIG,
   GLOBAL_DAILY_API_CEILING,
@@ -400,6 +401,20 @@ export async function GET(request: NextRequest) {
 
       // Run recurring detection (JS-side; the DB function above is also called server-side)
       const recurringDetected = await detectRecurring(connection.user_id, supabase);
+
+      // Fire money-in alerts for any credits inserted in the last 24h.
+      // Idempotent + respects per-user threshold + transfer detection.
+      // Non-fatal: a notification dispatch failure must never break sync.
+      try {
+        const moneyInResult = await dispatchMoneyInAlertsForUser(supabase, connection.user_id);
+        if (moneyInResult.alerted > 0) {
+          console.log(
+            `[bank-sync] money-in alerts: user=${connection.user_id} alerted=${moneyInResult.alerted} skipped=${moneyInResult.skipped}`,
+          );
+        }
+      } catch (err: any) {
+        console.error(`[bank-sync] money-in dispatch threw for user ${connection.user_id}:`, err?.message);
+      }
 
       // Update last synced; reset token_expired back to active since refresh succeeded
       await supabase
