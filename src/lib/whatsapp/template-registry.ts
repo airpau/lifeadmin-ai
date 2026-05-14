@@ -92,6 +92,29 @@ export type TemplateCategory = 'UTILITY' | 'AUTHENTICATION' | 'MARKETING';
  *  rather than handing it to Twilio. */
 export const PENDING_RESUBMISSION = 'PENDING_RESUBMISSION' as const;
 
+/**
+ * Declarative quick-reply button on a template.
+ *
+ * `id` is the stable payload returned to us by the webhook when the user
+ * taps the button (Meta puts it in `button_reply.id`; on the Twilio
+ * `twilio/quick-reply` Content type each button has its own `id` field).
+ * `title` is what shows on the button — capped at 20 chars by Meta, 25 by
+ * Twilio; clipped to 20 for safety.
+ *
+ * Declaring buttons here doesn't *send* them — that's a property of the
+ * approved template at the provider. This is the typed source of truth
+ * the resubmission script and the inbound payload router agree on, so
+ * when Meta re-approves a template with buttons we already know:
+ *   1. which template carries which button labels and ids
+ *   2. what the inbound webhook should map button taps to
+ */
+export interface TemplateButton {
+  /** Stable id (max ~256 chars, but keep it short and routing-relevant). */
+  id: string;
+  /** Display title — clipped to 20 chars at send time. */
+  title: string;
+}
+
 export interface WhatsAppTemplate {
   /** Twilio Content SID — what we pass as `contentSid` when sending.
    *  May be `PENDING_RESUBMISSION` while awaiting Meta approval. */
@@ -107,6 +130,18 @@ export interface WhatsAppTemplate {
   /** Canonical body text submitted to Meta. Source-of-truth for resubmission.
    *  Must NOT end on a `{{N}}` placeholder (Meta rejects those). */
   body: string;
+  /**
+   * Optional quick-reply buttons attached to the template. When present:
+   *   - The template at Meta MUST have matching buttons in the same order.
+   *   - Inbound taps come back via the webhook as
+   *     kind='interactive' + interactivePayload=<id> + text=<title>.
+   *   - The agent reads the title as the user's message — so a "Won"
+   *     button on the outcome_check template fires the same intent as
+   *     the user typing "won" (and the 793a345c intelligence resolves
+   *     the right dispute).
+   * When absent the template is plain text-only.
+   */
+  buttons?: readonly TemplateButton[];
 }
 
 /**
@@ -151,6 +186,15 @@ export const TEMPLATES = {
     description: 'Subscription price hike detected',
     proOnly: true,
     body: 'Heads up — {{1}} is going up from £{{2}} to £{{3}} on {{4}}. Tap to switch or cancel.',
+    // Button taps land in the webhook with these titles in `text`:
+    //   "Dismiss"            → agent calls dismiss_price_alert
+    //   "Draft dispute"      → agent calls draft_dispute_letter for this merchant
+    // Both intents already exist in tool-handlers.ts; the agent picks
+    // them up naturally because the parser surfaces the title as text.
+    buttons: [
+      { id: 'price_dismiss', title: 'Dismiss' },
+      { id: 'price_draft_dispute', title: 'Draft dispute' },
+    ] as const,
   },
   /** Contract end ≤30 days, looks at contract_end_date on subscriptions */
   paybacker_alert_renewal: {
@@ -161,6 +205,14 @@ export const TEMPLATES = {
     description: 'Contract renewal approaching',
     proOnly: true,
     body: 'Your {{1}} contract renews in {{2}} days at £{{3}}/month. Tap to review or cancel.',
+    // "Cancel"             → generate_cancellation_email
+    // "Keep it"            → no-op acknowledgement
+    // "Find alternatives"  → agent surfaces deals + suggests switch
+    buttons: [
+      { id: 'renewal_cancel', title: 'Cancel' },
+      { id: 'renewal_keep', title: 'Keep it' },
+      { id: 'renewal_alternatives', title: 'Find alternatives' },
+    ] as const,
   },
   /** Bank scanner spots a charge >20% above the merchant's rolling avg */
   paybacker_alert_unusual_charge: {
@@ -222,6 +274,17 @@ export const TEMPLATES = {
     description: 'Outcome check after dispute / cancellation',
     proOnly: true,
     body: 'A week ago you sent a {{2}} to {{1}}. Did it work? Tap to log the outcome.',
+    // Taps surface as text — and the 793a345c natural-language outcome
+    // intelligence in tool-handlers.ts already understands "won", "lost"
+    // and "still waiting" against the most recent dispute. So:
+    //   "Won"           → resolved_won + writes recovered_amount_gbp
+    //   "Lost"          → resolved_lost
+    //   "Still waiting" → awaiting_response (and may re-arm the nudge)
+    buttons: [
+      { id: 'outcome_won', title: 'Won' },
+      { id: 'outcome_lost', title: 'Lost' },
+      { id: 'outcome_waiting', title: 'Still waiting' },
+    ] as const,
   },
   /** Pro-only daily 8am brief */
   paybacker_morning_summary: {
