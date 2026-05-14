@@ -86,6 +86,20 @@ interface Subscription {
   contract_end_source?: string | null;
   logo_url?: string | null;
   needs_review?: boolean;
+  cancellation_info?: {
+    method?: string;
+    email?: string;
+    phone?: string;
+    url?: string;
+    tips?: string;
+    notice_period_days?: number | null;
+    last_verified_at?: string | null;
+    confidence?: string | null;
+    data_source?: string | null;
+    display_name?: string | null;
+    city?: string | null;
+  } | null;
+  has_cancellation_info?: boolean;
 }
 
 interface BankConnection {
@@ -2347,11 +2361,24 @@ export default function SubscriptionsPage() {
                 onClick={() => {
                   setSelectedSub(sub);
                   setCancellationEmail(null);
-                  setCancelInfo(null);
-                  fetch(`/api/subscriptions/cancel-info?provider=${encodeURIComponent(sub.provider_name)}`)
-                    .then(r => r.json())
-                    .then(d => setCancelInfo(d.info || null))
-                    .catch(() => {});
+                  // Prefer the cancellation_info inlined by /api/subscriptions
+                  // (batched server-side from provider_cancellation_info — see
+                  // PR#389). Only fall back to the on-demand lookup when the
+                  // inline row is missing, which means we have no record for
+                  // this provider yet and need to trigger AI research.
+                  if (sub.cancellation_info && sub.cancellation_info.method) {
+                    // Shape matches /api/subscriptions/cancel-info (both rows
+                    // come from provider_cancellation_info) so a structural
+                    // assignment is safe; cast satisfies the narrower local
+                    // union types for confidence/data_source.
+                    setCancelInfo(sub.cancellation_info as typeof cancelInfo);
+                  } else {
+                    setCancelInfo(null);
+                    fetch(`/api/subscriptions/cancel-info?provider=${encodeURIComponent(sub.provider_name)}`)
+                      .then(r => r.json())
+                      .then(d => setCancelInfo(d.info || null))
+                      .catch(() => {});
+                  }
                 }}
               >
                 <div className="flex items-start">
