@@ -42,6 +42,11 @@ export type NotificationEventType =
   | 'deal_alert'             // Personalised switching deal
   | 'targeted_deal'          // Category-specific offer
   | 'daily_digest'           // Consolidated daily alerts
+  | 'reconnect_required'     // Bank/email connection expired — needs action
+  | 'trial_ending'           // Free trial → first charge in <=3 days
+  | 'complaint_letter_ready' // Complaint letter generated and ready
+  | 'outcome_check'          // T+7d follow-up nudge after dispute sent
+  | 'welcome'                // First-touch welcome after channel opt-in
   | 'onboarding';            // Onboarding email sequence
 
 export type NotificationChannel = 'email' | 'telegram' | 'whatsapp' | 'push';
@@ -324,6 +329,54 @@ export const EVENT_CATALOG: EventMeta[] = [
     group: 'marketing',
     scheduleKind: 'cron',
     defaultCron: '0 8 * * *',
+  },
+  {
+    event: 'reconnect_required',
+    label: 'Reconnect needed',
+    description: 'A bank or email connection has expired and needs reauthorisation.',
+    defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'service',
+    scheduleKind: 'system',
+    critical: true,
+    mandatory: true,
+  },
+  {
+    event: 'trial_ending',
+    label: 'Trial ending soon',
+    description: 'Free trial about to convert to a paid subscription.',
+    defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'system',
+    critical: true,
+  },
+  {
+    event: 'complaint_letter_ready',
+    label: 'Complaint letter ready',
+    description: 'A generated complaint letter is ready to download.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'system',
+  },
+  {
+    event: 'outcome_check',
+    label: 'Outcome check',
+    description: 'T+7 day follow-up after a dispute is sent.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: false,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'reminders',
+    scheduleKind: 'system',
+  },
+  {
+    event: 'welcome',
+    label: 'Welcome message',
+    description: 'First-touch welcome after Pocket Agent channel link.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: false,
+    allowedChannels: ['telegram', 'whatsapp'],
+    group: 'service',
+    scheduleKind: 'none',
   },
   {
     event: 'onboarding',

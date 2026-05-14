@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -173,5 +174,100 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, sent, errors: errors.length });
+  // ----------------------------------------------------------------
+  // WhatsApp pass — fire the Meta-approved
+  // `paybacker_savings_goal_milestone` template against the user's
+  // active savings goals when they cross a milestone band. Distinct
+  // from the rotating £-amount milestones (50/100/250/...) above —
+  // these are explicit user-set goals.
+  // ----------------------------------------------------------------
+  let waSent = 0;
+  const { data: waSessions } = await supabase
+    .from('whatsapp_sessions')
+    .select('user_id, whatsapp_phone')
+    .eq('is_active', true)
+    .is('opted_out_at', null);
+
+  if (waSessions && waSessions.length > 0) {
+    const waUserIds = waSessions.map((s) => s.user_id);
+    const { data: waProfiles } = await supabase
+      .from('profiles')
+      .select(
+        'id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at',
+      )
+      .in('id', waUserIds);
+    const waProIds = new Set(
+      (waProfiles ?? []).filter((p) => isProPocketAgentEligible(p)).map((p) => p.id),
+    );
+
+    for (const session of waSessions) {
+      if (!waProIds.has(session.user_id)) continue;
+
+      try {
+        const { data: savings } = await supabase
+          .from('verified_savings')
+          .select('amount_saved')
+          .eq('user_id', session.user_id);
+        const totalSaved = (savings ?? []).reduce(
+          (s, r) => s + (Number(r.amount_saved) || 0),
+          0,
+        );
+        if (totalSaved <= 0) continue;
+
+        const crossed = MILESTONES.filter((m) => totalSaved >= m);
+        if (crossed.length === 0) continue;
+
+        const { data: existing } = await supabase
+          .from('notification_log')
+          .select('reference_key')
+          .eq('user_id', session.user_id)
+          .eq('notification_type', 'savings_milestone_wa');
+        const celebrated = new Set((existing ?? []).map((e) => e.reference_key));
+        const newOnes = crossed.filter((m) => !celebrated.has(`milestone_${m}`));
+        if (newOnes.length === 0) continue;
+
+        const highest = newOnes[newOnes.length - 1];
+        const pct =
+          newOnes.length > 0
+            ? Math.min(100, Math.round((totalSaved / (MILESTONES[MILESTONES.findIndex((m) => m === highest) + 1] ?? highest * 2)) * 100))
+            : 100;
+
+        // Template variables: goal_name, percent, amount_saved, target_amount
+        const result = await sendNotification(supabase, {
+          userId: session.user_id,
+          event: 'savings_milestone',
+          whatsapp: {
+            templateName: 'paybacker_savings_goal_milestone',
+            templateParameters: [
+              `£${highest} saved`,
+              String(pct),
+              `£${totalSaved.toFixed(2)}`,
+              `£${highest.toFixed(2)}`,
+            ],
+          },
+        });
+
+        if (result.delivered.includes('whatsapp')) {
+          waSent++;
+          for (const m of newOnes) {
+            await supabase
+              .from('notification_log')
+              .insert({
+                user_id: session.user_id,
+                notification_type: 'savings_milestone_wa',
+                reference_key: `milestone_${m}`,
+              })
+              .select()
+              .single();
+          }
+        }
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        console.error(`[telegram-savings-milestone][wa] ${session.user_id}: ${m}`);
+        errors.push(`wa:${session.user_id}: ${m}`);
+      }
+    }
+  }
+
+  return NextResponse.json({ ok: true, sent, waSent, errors: errors.length });
 }

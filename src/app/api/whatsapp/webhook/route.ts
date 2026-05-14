@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import {
   parseWhatsAppWebhook,
+  sendWhatsAppTemplate,
   sendWhatsAppText,
   verifyWhatsAppWebhook,
 } from '@/lib/whatsapp';
@@ -244,11 +245,46 @@ export async function POST(req: NextRequest) {
                 .eq('id', codeRow.user_id);
             }
 
-            await safeReply(
-              msg.from,
-              `✓ Linked! I'm your Paybacker Pocket Agent.\n\n` +
-                `Ask me anything — "show my subs", "write a complaint to EE", "what's due this week", or forward me a bill to look at. Reply STOP any time to opt out.`,
-            );
+            // Fetch the user's first name so the Meta-approved
+            // `paybacker_welcome` template renders properly. Falling
+            // back to "there" mirrors the rest of the codebase.
+            const { data: nameRow } = await sb
+              .from('profiles')
+              .select('first_name, full_name')
+              .eq('id', codeRow.user_id)
+              .maybeSingle();
+            const welcomeName =
+              nameRow?.first_name || nameRow?.full_name?.split(' ')[0] || 'there';
+
+            // Send the Meta-approved welcome template instead of free-form
+            // text. Free-form is unreliable for first-touch because Meta
+            // sometimes rejects it if the 24h customer-service window isn't
+            // confirmed open on their end yet. The link-redeem flow tells
+            // us the user just messaged us, so the window IS open — but the
+            // approved template is the policy-correct route either way.
+            try {
+              const tplResult = await sendWhatsAppTemplate({
+                to: msg.from,
+                templateName: 'paybacker_welcome',
+                parameters: [welcomeName],
+              });
+              await sb.from('whatsapp_message_log').insert({
+                user_id: codeRow.user_id,
+                whatsapp_phone: msg.from,
+                direction: 'outbound',
+                message_type: 'template',
+                template_name: 'paybacker_welcome',
+                provider: tplResult.provider,
+                provider_message_id: tplResult.providerMessageId,
+              });
+            } catch (err) {
+              console.error('[whatsapp/webhook] welcome template failed, falling back to text:', err);
+              await safeReply(
+                msg.from,
+                `✓ Linked! I'm your Paybacker Pocket Agent.\n\n` +
+                  `Ask me anything — "show my subs", "write a complaint to EE", "what's due this week", or forward me a bill. Reply STOP any time to opt out.`,
+              );
+            }
           }
           processed += 1;
           continue;
