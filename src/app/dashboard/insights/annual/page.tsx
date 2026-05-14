@@ -148,6 +148,19 @@ export default function AnnualInsightsPage() {
 
   const spendCategories = data.spendingByCategory.slice(0, 8);
 
+  // Savings rate as a percentage. Replaces the prior "Net position" card
+  // so the headline KPI shows a flow metric rather than a £ balance
+  // (FCA compliance, same pattern as Money Hub OverviewPanel).
+  const currentSavingsRate = data.totalIncome > 0
+    ? ((data.totalIncome - data.totalOutgoings) / data.totalIncome) * 100
+    : 0;
+  const prevSavingsRate = data.yoy && data.yoy.previousIncome > 0
+    ? ((data.yoy.previousIncome - data.yoy.previousSpend) / data.yoy.previousIncome) * 100
+    : null;
+  const savingsRateDelta = prevSavingsRate !== null
+    ? currentSavingsRate - prevSavingsRate
+    : null;
+
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -181,10 +194,10 @@ export default function AnnualInsightsPage() {
         />
         <Kpi
           icon={<PiggyBank className="h-5 w-5" />}
-          label="Net position"
-          value={fmtGBP(data.netPosition)}
-          delta={data.yoy ? data.yoy.netDeltaPct : null}
-          deltaPositive={(data.yoy?.netDeltaPct ?? 0) >= 0}
+          label="Savings rate"
+          value={`${currentSavingsRate.toFixed(1)}%`}
+          delta={savingsRateDelta}
+          deltaPositive={(savingsRateDelta ?? 0) >= 0}
         />
         <Kpi
           icon={<Target className="h-5 w-5" />}
