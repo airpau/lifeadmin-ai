@@ -24,6 +24,7 @@ import {
 import { verifyMetaWebhookChallenge } from '@/lib/whatsapp/meta-provider';
 import { canUseWhatsApp } from '@/lib/plan-limits';
 import { handleWhatsAppInbound } from '@/lib/whatsapp/user-bot';
+import type { InboundMediaType } from '@/lib/whatsapp/types';
 
 const NON_PRO_UPGRADE_NUDGE =
   "Hi! 👋 The WhatsApp Pocket Agent is part of Paybacker Pro (£9.99/mo).\n\n" +
@@ -135,15 +136,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Log inbound (attributed to user when we have one).
+    // Log inbound (attributed to user when we have one). The log type
+    // mirrors the parser's classification so downstream analytics can
+    // tell text from media from button taps.
+    //
+    // For media we also persist the URL/MIME so a future OCR worker can
+    // dereference the asset without re-reading the provider webhook
+    // (Twilio media URLs require Basic auth and Meta media IDs need a
+    // separate Graph round-trip — both are easier with the metadata
+    // already in our DB).
+    const logType =
+      msg.kind === 'media'
+        ? 'media'
+        : msg.kind === 'interactive'
+          ? 'interactive'
+          : msg.kind === 'location' || msg.kind === 'unsupported'
+            ? 'system'
+            : 'text';
     await sb.from('whatsapp_message_log').insert({
       user_id: userId,
       whatsapp_phone: msg.from,
       direction: 'inbound',
-      message_type: 'text',
+      message_type: logType,
       message_text: msg.text,
       provider: msg.provider,
       provider_message_id: msg.providerMessageId,
+      media_url: msg.mediaUrl ?? null,
+      media_mime_type: msg.mediaMimeType ?? null,
     });
 
     // Honour an explicit prior STOP. If they opted out, only the link-flow
@@ -315,13 +334,54 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // Media / location / unsupported: we can't read these yet (OCR + bill
+    // parsing is on the roadmap but not wired). Send a friendly reply that
+    // tells the user what to do next, and skip the agent so we don't burn
+    // Anthropic tokens on an empty prompt. If a caption was attached we
+    // surface it back — that lets a user send "this bill is wrong:
+    // <photo>" and we can still respond to the text portion.
+    if (msg.kind === 'media') {
+      const fallback = mediaFallback(msg.mediaType, msg.text);
+      await safeReply(msg.from, fallback);
+      processed += 1;
+      continue;
+    }
+    if (msg.kind === 'location') {
+      await safeReply(
+        msg.from,
+        "Thanks for the location — I can't act on shared locations yet. If this is about a parking ticket or a charge tied to that spot, just describe it in a message and I'll help.",
+      );
+      processed += 1;
+      continue;
+    }
+    if (msg.kind === 'unsupported') {
+      await safeReply(
+        msg.from,
+        "I didn't catch that — could you send it as text? You can ask anything: \"show my subs\", \"draft a complaint to EE\", \"what's due this week\".",
+      );
+      processed += 1;
+      continue;
+    }
+
+    // Empty text after all the parsing (e.g. an interactive payload with no
+    // title, or a text message with whitespace only). Don't fire the agent
+    // on an empty user message — it will hallucinate.
+    if (!msg.text || !msg.text.trim()) {
+      processed += 1;
+      continue;
+    }
+
     // Hand off to the Pocket Agent. Pro users get the full Claude
     // tool-calling brain — same intelligence as the Telegram bot,
     // same dashboard data. user-bot.ts handles rate limits, history,
     // sending and logging.
+    //
+    // For kind='interactive' the parser already lifted the button label
+    // into msg.text, so the agent reads "Won" / "Lost" / "Still waiting"
+    // exactly as if the user had typed it. No special routing needed.
     const agentResult = await handleWhatsAppInbound({
       phone: msg.from,
-      text: msg.text ?? '',
+      text: msg.text,
       userId,
     });
     if (!agentResult.ok) {
@@ -332,6 +392,63 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, processed });
+}
+
+/**
+ * Per-media-type fallback. OCR / bill parsing isn't wired yet; until it is
+ * we want the user to know we saw the attachment, what they could send
+ * instead, and the alternative path (forwarding the bill by email or
+ * pasting the relevant text). If they included a caption we acknowledge it
+ * so the conversation doesn't feel one-sided.
+ */
+function mediaFallback(
+  mediaType: InboundMediaType | undefined,
+  caption: string,
+): string {
+  const captionAck =
+    caption && caption.trim()
+      ? `\n\nYou wrote: "${caption.trim().slice(0, 200)}" — happy to help with that if you can paste the key numbers / wording.`
+      : '';
+
+  switch (mediaType) {
+    case 'image':
+      return (
+        "Got the photo — I can't read images yet, but I will soon. " +
+        "For now, the fastest path:\n\n" +
+        '1. Paste the supplier name + the disputed amount, and I\'ll draft a complaint citing UK consumer law.\n' +
+        '2. Or forward the bill to hello@paybacker.co.uk and the scanner will pick it up.' +
+        captionAck
+      );
+    case 'audio':
+      return (
+        "Got the voice note — I can't transcribe audio yet. Could you type the gist in a message? " +
+        'Even a one-liner like "EE bill went up by £8, dispute it" is enough for me to draft a letter.' +
+        captionAck
+      );
+    case 'video':
+      return (
+        "Got the video — I can't watch videos yet. If there's a bill or charge in it, paste the supplier name " +
+        "and the amount in a message and I'll take it from there." + captionAck
+      );
+    case 'document':
+      return (
+        "Got the document — I can't parse PDFs over WhatsApp yet. " +
+        'For bills, the fastest path is to forward it to hello@paybacker.co.uk — the inbox scanner will pull out ' +
+        'the charges and surface any disputes on your dashboard.' +
+        captionAck
+      );
+    case 'sticker':
+      return (
+        "Cheers for the sticker. If there's something you'd like help with, just send a quick message — " +
+        '"show my subs", "draft a complaint to EE", "what\'s due this week".'
+      );
+    default:
+      return (
+        "Got the attachment — I can't process that file type yet. " +
+        'Paste the key details as text and I\'ll help. Or forward bills to hello@paybacker.co.uk.' +
+        captionAck
+      );
+  }
 }
 
 async function safeReply(to: string, text: string): Promise<void> {
