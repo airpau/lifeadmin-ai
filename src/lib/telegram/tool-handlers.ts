@@ -2250,17 +2250,77 @@ async function updateDisputeStatus(
   userId: string,
   params: { provider: string; new_status: string; notes?: string; money_recovered?: number; provider_response?: string; draft_reply?: string },
 ): Promise<ToolResult> {
-  const { data: dispute, error: fetchError } = await supabase
+  const TERMINAL_STATUSES = ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed', 'withdrawn'];
+
+  // First try to find an OPEN dispute matching the provider. Most updates
+  // hit this path.
+  const { data: openDispute } = await supabase
     .from('disputes')
-    .select('id, provider_name, status, issue_type')
+    .select('id, provider_name, status, issue_type, money_recovered, outcome_notes')
     .eq('user_id', userId)
     .ilike('provider_name', `%${params.provider}%`)
-    .not('status', 'in', '("resolved_won","resolved_partial","resolved_lost","closed")')
+    .not('status', 'in', `("${TERMINAL_STATUSES.join('","')}")`)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  if (fetchError || !dispute) {
+  let dispute = openDispute as {
+    id: string;
+    provider_name: string;
+    status: string;
+    issue_type: string;
+    money_recovered: number | null;
+    outcome_notes: string | null;
+  } | null;
+
+  // No open dispute matched — check if a resolved one matches so we can
+  // tell the agent (and the user) that it's already done. Without this
+  // the agent gets "no dispute found" and then asks the user to
+  // clarify which dispute, even when both copies are already marked won.
+  if (!dispute) {
+    const { data: resolvedMatches } = await supabase
+      .from('disputes')
+      .select('id, provider_name, status, issue_type, money_recovered, outcome_notes, resolved_at')
+      .eq('user_id', userId)
+      .ilike('provider_name', `%${params.provider}%`)
+      .in('status', TERMINAL_STATUSES)
+      .order('resolved_at', { ascending: false, nullsFirst: false })
+      .limit(5);
+
+    if (resolvedMatches && resolvedMatches.length > 0) {
+      const statusLabel: Record<string, string> = {
+        resolved_won: 'won',
+        resolved_partial: 'partially resolved',
+        resolved_lost: 'lost',
+        closed: 'closed',
+        withdrawn: 'withdrawn',
+      };
+      // Idempotent shortcut: if the user is asking to set the SAME
+      // terminal status that's already on a matching dispute, just
+      // confirm it instead of erroring out.
+      const sameStatus = resolvedMatches.find((d) => d.status === params.new_status);
+      if (sameStatus) {
+        const recovered = sameStatus.money_recovered ? ` Recovered: ${fmt(sameStatus.money_recovered)}.` : '';
+        const notes = sameStatus.outcome_notes ? ` Notes on file: ${sameStatus.outcome_notes}.` : '';
+        return {
+          text:
+            `Your *${sameStatus.provider_name}* dispute is already marked as *${statusLabel[sameStatus.status] ?? sameStatus.status.replace(/_/g, ' ')}* — I already have that recorded.${recovered}${notes} If something new has happened, tell me what changed and I'll log it.`,
+        };
+      }
+      // Different terminal status (e.g. they want to upgrade
+      // resolved_partial → resolved_won). Surface the resolved dispute
+      // so the agent can decide; we DON'T silently overwrite without
+      // user confirmation.
+      const summary = resolvedMatches
+        .map((d) => `• ${d.provider_name} — already ${statusLabel[d.status] ?? d.status.replace(/_/g, ' ')}`)
+        .join('\n');
+      return {
+        text:
+          `No open dispute found matching "${params.provider}", but I have ${resolvedMatches.length} resolved one(s) on file:\n${summary}\n\n` +
+          `These are already marked as resolved — tell me which one to re-open or what's changed and I'll update it.`,
+      };
+    }
+
     return { text: `No open dispute found matching "${params.provider}". Use get_disputes to see all disputes.` };
   }
 

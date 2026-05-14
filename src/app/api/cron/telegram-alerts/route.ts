@@ -401,7 +401,56 @@ export async function GET(request: NextRequest) {
       .is('follow_up_sent_at', null)
       .limit(3);
 
+    // Drop follow-ups whose parent dispute has already been resolved or
+    // closed since the detected_issue was created. Without this, the
+    // Pocket Agent ends up asking "have you heard back?" on disputes
+    // the user has already marked won/lost — looking dumb and burning
+    // a paid WhatsApp template send.
+    const followUpDisputeIds = (followUpIssues ?? [])
+      .map((i) => i.source_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    const resolvedDisputeIds = new Set<string>();
+    if (followUpDisputeIds.length > 0) {
+      const { data: parentDisputes } = await supabase
+        .from('disputes')
+        .select('id, status')
+        .in('id', followUpDisputeIds);
+      for (const d of parentDisputes ?? []) {
+        if (
+          d.status === 'resolved_won' ||
+          d.status === 'resolved_lost' ||
+          d.status === 'resolved_partial' ||
+          d.status === 'closed' ||
+          d.status === 'withdrawn'
+        ) {
+          resolvedDisputeIds.add(d.id as string);
+        }
+      }
+    }
+
     for (const issue of followUpIssues ?? []) {
+      if (
+        issue.source_id &&
+        resolvedDisputeIds.has(String(issue.source_id))
+      ) {
+        // Parent dispute is already resolved — close the detected_issue
+        // so it never fires again, and skip the send.
+        await supabase
+          .from('detected_issues')
+          .update({
+            status: 'resolved',
+            resolved_at: new Date().toISOString(),
+            follow_up_sent_at: new Date().toISOString(),
+          })
+          .eq('id', issue.id);
+        results.push({
+          userId,
+          type: 'dispute_follow_up',
+          sent: false,
+          reason: 'dispute already resolved',
+        });
+        continue;
+      }
       // Dispute follow-ups are time-sensitive — send immediately with resolution buttons
       const followUpText = {
         title: `${issue.title} — 14-day deadline passed`,
