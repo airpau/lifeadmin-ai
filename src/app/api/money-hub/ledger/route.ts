@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     let query = sb
       .from('bank_transactions')
-      .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type, account_id')
+      .select('id, amount, description, category, timestamp, merchant_name, user_category, user_subcategory, income_type, account_id')
       .eq('user_id', user.id)
       .order('timestamp', { ascending: false })
       // Pull MORE than the requested page — the resolver below filters
@@ -121,6 +121,7 @@ export async function GET(request: NextRequest) {
         timestamp: txn.timestamp as string,
         account_id: (txn.account_id as string | null) ?? null,
         user_category: (txn.user_category as string | null) ?? null,
+        user_subcategory: (txn.user_subcategory as string | null) ?? null,
         kind: r.kind,
         spendingCategory: r.spendingCategory ?? null,
         incomeType: r.incomeType ?? null,

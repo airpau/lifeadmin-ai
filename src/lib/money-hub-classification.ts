@@ -536,6 +536,17 @@ export function isCountableIncomeType(value: string | null | undefined) {
 export function detectFallbackSpendingCategory(description: string): string | null {
   const d = ` ${description.toLowerCase()} `;
 
+  // Rent — checked before mortgage / other housing because the word "rent"
+  // in the description is a strong tenant signal. Excludes "rent received"
+  // (handled upstream as rental income) and car-hire merchants that include
+  // the word "rent" (matched later under travel).
+  if (
+    /\b(rent payment|monthly rent|rent due|tenancy|landlord|letting agent|estate agent|rentmaster)\b/.test(d) &&
+    !/(rent received|rental income|enterprise rent|sixt rent|avis rent|hertz)/.test(d)
+  ) {
+    return 'rent';
+  }
+
   if (/\b(skipton|nationwide|halifax|santander.*mortgage|barclays.*mortgage|natwest.*mortgage|hsbc.*mortgage|virgin.*money|coventry|leeds building|yorkshire building|accord|godiva|paratus|lendinvest|platform.*home|kent reliance)\b/.test(d)) return 'mortgage';
   if (/\b(santander.*loan|amigo|zopa|ratesetter|lending works|funding circle|hitachi.*capital|creation.*finance|motonovo|loqbox|drafty)\b/.test(d)) return 'loans';
   if (/\b(council|borough|district|city.*of)\b/.test(d) && /\btax\b/.test(d)) return 'council_tax';
