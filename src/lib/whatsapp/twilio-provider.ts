@@ -13,7 +13,9 @@
 import crypto from 'node:crypto';
 import { TEMPLATES, type TemplateName } from './template-registry';
 import type {
+  InboundMediaType,
   InboundMessage,
+  InboundMessageKind,
   SendTemplateOptions,
   SendTextOptions,
   WhatsAppMessageResult,
@@ -151,21 +153,86 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
   }
 
   parseWebhook(rawBody: string): InboundMessage[] {
-    // Twilio inbound is form-encoded. One message per request.
+    // Twilio inbound is form-encoded. One message per request. The shape varies
+    // by content type:
+    //   - Plain text:           Body
+    //   - Media (image/audio):  Body (caption, may be empty) + NumMedia=N +
+    //                           MediaUrl0..N-1 + MediaContentType0..N-1
+    //   - Quick reply button:   Body=<button label> + ButtonText=<same> +
+    //                           OriginalRepliedMessageSid (the template msg
+    //                           the button was attached to). Twilio collapses
+    //                           the tap into a normal text inbound — we still
+    //                           tag it as 'interactive' so the webhook can log
+    //                           it accurately and we have a hook for future
+    //                           payload-aware routing.
     const params = new URLSearchParams(rawBody);
     const from = params.get('From');
-    const text = params.get('Body');
     const sid = params.get('MessageSid');
     if (!from || !sid) return [];
+
+    const text = params.get('Body') ?? '';
+    const numMedia = parseInt(params.get('NumMedia') ?? '0', 10);
+    const buttonText = params.get('ButtonText');
+    const originalReplied = params.get('OriginalRepliedMessageSid');
+
+    const base = {
+      from: fromWhatsAppAddress(from),
+      displayName: params.get('ProfileName') ?? undefined,
+      providerMessageId: sid,
+      sentAt: new Date(),
+      provider: 'twilio' as const,
+    };
+
+    if (numMedia > 0) {
+      // We only inspect the first media item — Twilio supports up to 10
+      // per message but the agent can't process any of them yet, so the
+      // count doesn't matter; we just need enough metadata to log it and
+      // tell the user.
+      const mediaUrl = params.get('MediaUrl0') ?? undefined;
+      const mime = params.get('MediaContentType0') ?? undefined;
+      const mediaType = mediaTypeFromMime(mime);
+      return [
+        {
+          ...base,
+          text, // caption, may be empty
+          kind: 'media' as InboundMessageKind,
+          mediaType,
+          mediaUrl,
+          mediaMimeType: mime,
+        },
+      ];
+    }
+
+    // Interactive: Twilio sets ButtonText when a quick-reply was tapped, and
+    // OriginalRepliedMessageSid when the user replied to a specific message.
+    // Either signal is enough to mark this as interactive — we still pass the
+    // label through `text` so the Claude brain sees what the user "said".
+    if (buttonText || originalReplied) {
+      return [
+        {
+          ...base,
+          text: text || buttonText || '',
+          kind: 'interactive' as InboundMessageKind,
+          interactivePayload: buttonText ?? undefined,
+        },
+      ];
+    }
+
     return [
       {
-        from: fromWhatsAppAddress(from),
-        displayName: params.get('ProfileName') ?? undefined,
-        text: text ?? '',
-        providerMessageId: sid,
-        sentAt: new Date(),
-        provider: 'twilio',
+        ...base,
+        text,
+        kind: 'text' as InboundMessageKind,
       },
     ];
   }
+}
+
+function mediaTypeFromMime(mime?: string | null): InboundMediaType | undefined {
+  if (!mime) return undefined;
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  // application/pdf, application/msword, text/plain, etc.
+  return 'document';
 }

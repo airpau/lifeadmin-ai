@@ -13,7 +13,9 @@
 
 import crypto from 'node:crypto';
 import type {
+  InboundMediaType,
   InboundMessage,
+  InboundMessageKind,
   SendTemplateOptions,
   SendTextOptions,
   WhatsAppMessageResult,
@@ -129,7 +131,11 @@ export class MetaCloudWhatsAppProvider implements WhatsAppProvider {
   }
 
   parseWebhook(rawBody: string): InboundMessage[] {
-    // Meta sends JSON. Multiple messages possible per request.
+    // Meta sends JSON; one webhook delivery can contain multiple inbound
+    // messages (entry[].changes[].value.messages[]). The shape varies by
+    // m.type. We classify into the four InboundMessageKind buckets the
+    // webhook knows how to handle. Anything we can't classify becomes
+    // 'unsupported' so the user still gets a reply instead of silence.
     let payload: any;
     try {
       payload = JSON.parse(rawBody);
@@ -140,17 +146,99 @@ export class MetaCloudWhatsAppProvider implements WhatsAppProvider {
     for (const entry of payload?.entry ?? []) {
       for (const change of entry?.changes ?? []) {
         const value = change?.value ?? {};
-        const contactName: string | undefined = value?.contacts?.[0]?.profile?.name;
+        const contactName: string | undefined =
+          value?.contacts?.[0]?.profile?.name;
         for (const m of value?.messages ?? []) {
-          if (m?.type !== 'text') continue; // ignore media for now
-          messages.push({
+          const base = {
             from: `+${m.from}`,
             displayName: contactName,
-            text: m?.text?.body ?? '',
             providerMessageId: m.id,
-            sentAt: new Date((Number(m.timestamp) || Date.now() / 1000) * 1000),
-            provider: 'meta',
-          });
+            sentAt: new Date(
+              (Number(m.timestamp) || Date.now() / 1000) * 1000,
+            ),
+            provider: 'meta' as const,
+          };
+
+          switch (m?.type) {
+            case 'text':
+              messages.push({
+                ...base,
+                text: m?.text?.body ?? '',
+                kind: 'text' as InboundMessageKind,
+              });
+              break;
+
+            case 'interactive': {
+              // Quick-reply button or list item from a template the user
+              // received earlier. Both `button_reply` and `list_reply` have
+              // { id, title } — we lift the human-readable title into `text`
+              // so the agent reads it like the user typed those words.
+              const inter = m.interactive ?? {};
+              const reply = inter.button_reply ?? inter.list_reply ?? null;
+              messages.push({
+                ...base,
+                text: reply?.title ?? '',
+                kind: 'interactive' as InboundMessageKind,
+                interactivePayload: reply?.id ?? undefined,
+              });
+              break;
+            }
+
+            case 'button': {
+              // Legacy quick-reply on a marketing template — same idea, different payload shape.
+              const btn = m.button ?? {};
+              messages.push({
+                ...base,
+                text: btn.text ?? '',
+                kind: 'interactive' as InboundMessageKind,
+                interactivePayload: btn.payload ?? undefined,
+              });
+              break;
+            }
+
+            case 'image':
+            case 'video':
+            case 'audio':
+            case 'voice':
+            case 'document':
+            case 'sticker': {
+              const media = m[m.type] ?? {};
+              const mediaType: InboundMediaType =
+                m.type === 'voice'
+                  ? 'audio'
+                  : (m.type as InboundMediaType);
+              messages.push({
+                ...base,
+                // Captions sometimes ride on the same payload (image/video/document).
+                text: media.caption ?? '',
+                kind: 'media' as InboundMessageKind,
+                mediaType,
+                // Meta returns a media ID, not a URL. To fetch the bytes we'd
+                // need a second GET /{media-id} call. We store the ID so a
+                // future OCR worker can dereference it; for now the webhook
+                // just sends a friendly fallback.
+                mediaUrl: media.id ?? undefined,
+                mediaMimeType: media.mime_type ?? undefined,
+              });
+              break;
+            }
+
+            case 'location':
+              messages.push({
+                ...base,
+                text: '',
+                kind: 'location' as InboundMessageKind,
+              });
+              break;
+
+            default:
+              messages.push({
+                ...base,
+                text: '',
+                kind: 'unsupported' as InboundMessageKind,
+              });
+              break;
+          }
         }
       }
     }

@@ -36,12 +36,52 @@ export interface SendTemplateOptions {
   idempotencyKey?: string;
 }
 
+/**
+ * What kind of inbound this is. The webhook routes on `kind`:
+ *   - 'text'         — plain user text, hand off to the Claude tool-use brain.
+ *   - 'interactive'  — the user tapped a quick-reply button or list item on a
+ *                      previous template. Twilio collapses both into a text
+ *                      payload (`ButtonText` / `OriginalRepliedMessage`); Meta
+ *                      sends `interactive.button_reply` / `list_reply`. Either
+ *                      way we lift the human-readable label into `text` and
+ *                      route through the agent — the agent treats it like the
+ *                      user typed the label themselves, which is exactly the
+ *                      semantics we want.
+ *   - 'media'        — photo / video / document / audio / sticker. We don't
+ *                      yet parse bills from images, so the webhook sends a
+ *                      polite "I can't read attachments yet" reply and logs
+ *                      the media URL + mime for later analysis. Captions, if
+ *                      present, are still surfaced as `text`.
+ *   - 'location'     — a shared pin. Same handling as media for now.
+ *   - 'unsupported'  — provider parsed the envelope but we don't know the
+ *                      type (sticker reaction, contact card, etc.). Reply
+ *                      with the same fallback, never crash.
+ */
+export type InboundMessageKind =
+  | 'text'
+  | 'interactive'
+  | 'media'
+  | 'location'
+  | 'unsupported';
+
+/** Sub-type of a media inbound, used to pick the right fallback wording. */
+export type InboundMediaType =
+  | 'image'
+  | 'video'
+  | 'audio' // includes voice notes (Meta calls them 'voice', Twilio reports audio/ogg)
+  | 'document'
+  | 'sticker';
+
 export interface InboundMessage {
   /** Sender phone in E.164 format. */
   from: string;
   /** WhatsApp display name (may be undefined for unsaved contacts). */
   displayName?: string;
-  /** The message body (text only — media handled separately later). */
+  /**
+   * The message body. For text/interactive this is what the user said (or the
+   * label they tapped). For media this is the caption, if any (empty string
+   * otherwise — the webhook decides what fallback to send).
+   */
   text: string;
   /** Provider's message ID for the inbound message, used for read-receipts and dedupe. */
   providerMessageId: string;
@@ -49,6 +89,22 @@ export interface InboundMessage {
   sentAt: Date;
   /** Which provider received this message. */
   provider: WhatsAppProviderName;
+
+  /** What kind of inbound this is. Defaults to 'text' for back-compat. */
+  kind?: InboundMessageKind;
+  /** For kind='media': the specific media sub-type. */
+  mediaType?: InboundMediaType;
+  /**
+   * For kind='media': URL to the media. Twilio serves it directly behind
+   * Basic auth (use the account creds); Meta returns a media ID that needs a
+   * second Graph API round-trip — we store the ID here and dereference lazily
+   * if/when we wire OCR.
+   */
+  mediaUrl?: string;
+  /** For kind='media': MIME type as reported by the provider. */
+  mediaMimeType?: string;
+  /** For kind='interactive': the payload/ID behind the button (Meta only). */
+  interactivePayload?: string;
 }
 
 export interface WhatsAppProvider {
