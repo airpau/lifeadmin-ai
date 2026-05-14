@@ -21,16 +21,11 @@ interface BankConnection {
   id: string;
   user_id: string;
   provider: string;
-  // Yapily fields
   consent_token: string | null;
   consent_expires_at: string | null;
-  // TrueLayer fields (legacy — provider='truelayer' connections were
-  // archived 2026-04-27, kept here only so the type still matches old
-  // bank_connections rows in the result set if filtering ever drifts)
   access_token: string | null;
   refresh_token: string | null;
   token_expires_at: string | null;
-  // Common
   account_ids: string[] | null;
   account_identifications_hashes: string[] | null;
   account_display_names: string[] | null;
@@ -125,7 +120,7 @@ export async function POST(request: NextRequest) {
     // No body — sync all connections
   }
 
-  // Fetch active bank connection(s) — TrueLayer and Yapily
+  // Fetch active bank connection(s).
   let connectionsQuery = supabase
     .from('bank_connections')
     .select('*')
@@ -176,7 +171,6 @@ export async function POST(request: NextRequest) {
   for (const conn of connections as BankConnection[]) {
     let transactionSyncSucceeded = false;
 
-      // === Yapily path ===
       if (!conn.consent_token) {
         await supabase
           .from('bank_connections')

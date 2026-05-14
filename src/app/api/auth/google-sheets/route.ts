@@ -1,6 +1,6 @@
 // src/app/api/auth/google-sheets/route.ts
 // Initiates Google OAuth flow with Sheets scope
-// FCA note: This exports user's own bank data (held as AISP via TrueLayer) to their own
+// FCA note: This exports user's own bank data (held as AISP via Yapily) to their own
 // Google account — user-consented data portability, no additional FCA registration required.
 //
 // Pro-only per the tier matrix in src/lib/plan-limits.ts. Free + Essential

@@ -125,7 +125,7 @@ export function sumRealSpend(rows: ReadonlyArray<SpendingTxn>): number {
  * Effective category to use when grouping. Falls back through:
  *   user_category → category → 'other'
  * (the digest cron previously read only `category`, which is null on
- * every row Yapily/TrueLayer ingest now writes — every txn ended up
+ * every row Yapily ingest now writes — every txn ended up
  * in 'Other'.)
  */
 export function effectiveCategory(tx: SpendingTxn): string {

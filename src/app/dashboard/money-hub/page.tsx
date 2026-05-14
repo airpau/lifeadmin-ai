@@ -441,7 +441,7 @@ export default function MoneyHubPage() {
  if (user) {
  setUserId(user.id);
  // Include 'revoked' so users can see + remove connections they
- // intentionally disconnected. Without this, revoked Yapily/TrueLayer
+ // intentionally disconnected. Without this, revoked Yapily
  // rows live forever in the DB but are invisible in the UI — no way
  // for the user to clean them up.
  const { data: conns } = await supabase.from('bank_connections')
@@ -514,7 +514,7 @@ export default function MoneyHubPage() {
 
  // The disconnect modal now supports per-account scoping. The `accounts`
  // array is passed verbatim from connection.account_ids/display_names so
- // a multi-account consent (Yapily/TrueLayer with current + savings, or
+ // a multi-account consent (Yapily with current + savings, or
  // Paul's modelo-sandbox with three accounts) renders a scope picker
  // letting the user disconnect ONE account without dropping the others.
  const [disconnectModal, setDisconnectModal] = useState<{
@@ -1096,7 +1096,7 @@ export default function MoneyHubPage() {
 
  {/* Active bank connections — one row per connection (the unit you can
       revoke). Multi-account consents (e.g. NatWest current + business on
-      one TrueLayer consent) cannot be partially revoked, so previously
+      one Yapily consent) cannot be partially revoked, so previously
       rendering one row per account with the trash gated to i===0 misled
       users into thinking they could remove a single account. */}
  {activeConnections.length > 0 && (

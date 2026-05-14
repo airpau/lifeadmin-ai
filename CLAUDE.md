@@ -212,8 +212,8 @@ separate marketing opt-in before send).
   (`trial_ends_at > now() && !trial_converted_at && !trial_expired_at`)
   returns `'pro'` for the trial window.
 - Bank/email caps are enforced at the connect endpoints
-  (`/api/auth/truelayer`, `/api/auth/google`, `/api/auth/microsoft`,
-  `/api/auth/yapily`) reading `PLAN_LIMITS[tier].maxBanks` /
+  (`/api/auth/yapily`, `/api/auth/google`, `/api/auth/microsoft`)
+  reading `PLAN_LIMITS[tier].maxBanks` /
   `maxEmails`. Over-cap attempts return 403 (bank APIs) or redirect
   to `/dashboard/profile?email_limit_reached=1` (OAuth flows).
 
@@ -226,7 +226,7 @@ separate marketing opt-in before send).
 - **AI:** Claude API (complaint letters, chatbot, email scanning, agent intelligence)
 - **Billing:** Stripe
 - **Email:** Resend
-- **Open Banking:** TrueLayer
+- **Open Banking:** Yapily
 - **Hosting:** Vercel Pro
 - **Analytics:** PostHog
 - **Image/Video Generation:** fal.ai (primary), Runway ML (backup)
@@ -334,8 +334,8 @@ ANTHROPIC_AGENTS_API_KEY=       # Separate key for AI agent cost tracking
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 RESEND_API_KEY=
-TRUELAYER_CLIENT_ID=
-TRUELAYER_CLIENT_SECRET=
+YAPILY_APPLICATION_UUID=
+YAPILY_APPLICATION_SECRET=
 
 # Content Generation (Casey)
 FAL_KEY=                        # fal.ai/dashboard
@@ -485,7 +485,7 @@ phase the cron chains must follow the same pattern.
 - Add manually or detect automatically via bank connection
 - Shows monthly and annual spend totals
 
-### 3. Bank Connection (Open Banking via TrueLayer)
+### 3. Bank Connection (Open Banking via Yapily)
 - Securely connects bank accounts (read-only)
 - Automatically detects all subscriptions and recurring payments
 - Spending intelligence dashboard with 20+ categories

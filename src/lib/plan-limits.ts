@@ -5,7 +5,7 @@ export type PlanTier = 'free' | 'essential' | 'pro';
 export interface PlanLimits {
   complaintsPerMonth: number | null; // null = unlimited
   scanRunsPerMonth: number | null;
-  // null = unlimited. Enforced at the connect endpoints (truelayer/yapily/google/microsoft).
+  // null = unlimited. Enforced at the connect endpoints (yapily/google/microsoft).
   maxBanks: number | null;
   maxEmails: number | null;
   // Custom Account Spaces. Default "Everything" Space is always free; this
