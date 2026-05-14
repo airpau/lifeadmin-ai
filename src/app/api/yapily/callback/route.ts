@@ -174,6 +174,17 @@ export async function GET(request: NextRequest) {
   }
 
   const accountSnapshots = snapshotAccounts(accounts);
+
+  // POT-only edge case: a Monzo consent that returned only POT accounts
+  // would otherwise persist a "connected" bank with empty account_ids
+  // and trigger a no-op initial sync, leaving the user with a ghost
+  // connection that can never produce transactions.
+  if (accountSnapshots.length === 0) {
+    return NextResponse.redirect(
+      new URL('/dashboard/money-hub?error=no_usable_accounts', request.url),
+    );
+  }
+
   const bankName = accounts[0]?.institution?.name || institutionId;
 
   // ── 90-day UK consent expiry ──

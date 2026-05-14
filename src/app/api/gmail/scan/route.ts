@@ -354,12 +354,26 @@ export async function POST(request: NextRequest) {
               .filter((k: string | null): k is string => !!k)
           );
 
+          // Two passes of dedup:
+          //  1. Drop providers already tracked in DB (existingKeysSet).
+          //  2. Dedup duplicates *within this scan result* by
+          //     recurring_group — without this, two opportunities that
+          //     normalise to the same key would violate the partial
+          //     unique index from 20260422020000 and the whole batch
+          //     would fail.
+          const seenKeys = new Set<string>();
           const subsToInsert = subs
             .map((o: any) => {
               const providerName = o.provider || 'Unknown';
               return { o, providerName, key: deriveRecurringGroup(providerName) };
             })
             .filter(({ key }: { key: string | null }) => !key || !existingKeysSet.has(key))
+            .filter(({ key }: { key: string | null }) => {
+              if (!key) return true;
+              if (seenKeys.has(key)) return false;
+              seenKeys.add(key);
+              return true;
+            })
             .map(({ o, providerName, key }: { o: any; providerName: string; key: string | null }) => ({
               user_id: user.id,
               provider_name: providerName,
