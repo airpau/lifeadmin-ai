@@ -322,9 +322,59 @@ export async function executeToolCall(
         start: toolInput.start as string,
         end: toolInput.end as string,
       });
+    case 'set_money_threshold':
+      return setMoneyThreshold(supabase, userId, {
+        kind: toolInput.kind as 'money_received' | 'large_upcoming_bill',
+        amount: toolInput.amount as number | null | undefined,
+        daysAhead: toolInput.days_ahead as number | null | undefined,
+      });
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
+}
+
+async function setMoneyThreshold(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    kind: 'money_received' | 'large_upcoming_bill';
+    amount?: number | null;
+    daysAhead?: number | null;
+  },
+): Promise<ToolResult> {
+  const updates: Record<string, number | null> = {};
+  if (params.kind === 'money_received') {
+    if (typeof params.amount === 'number' && Number.isFinite(params.amount)) {
+      updates.money_received_min_amount = Math.max(0, Math.round(params.amount * 100) / 100);
+    }
+  } else if (params.kind === 'large_upcoming_bill') {
+    if (typeof params.amount === 'number' && Number.isFinite(params.amount)) {
+      updates.upcoming_bill_threshold = Math.max(0, Math.round(params.amount * 100) / 100);
+    }
+    if (typeof params.daysAhead === 'number' && params.daysAhead > 0 && params.daysAhead <= 30) {
+      updates.upcoming_bill_days_ahead = Math.round(params.daysAhead);
+    }
+  }
+  if (Object.keys(updates).length === 0) {
+    return { text: "I need an amount (and optionally days-ahead for bills) to update." };
+  }
+
+  const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
+  if (error) return { text: `Couldn't update threshold: ${error.message}` };
+
+  if (params.kind === 'money_received') {
+    return {
+      text: `✓ I'll alert you when £${(updates.money_received_min_amount ?? 0).toFixed(2)} or more lands in your account.`,
+    };
+  }
+  const parts: string[] = [];
+  if (updates.upcoming_bill_threshold !== undefined) {
+    parts.push(`bills over £${(updates.upcoming_bill_threshold ?? 0).toFixed(2)}`);
+  }
+  if (updates.upcoming_bill_days_ahead !== undefined) {
+    parts.push(`${updates.upcoming_bill_days_ahead} days ahead`);
+  }
+  return { text: `✓ I'll flag upcoming ${parts.join(' · ')}.` };
 }
 
 // ============================================================

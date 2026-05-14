@@ -30,7 +30,9 @@ export type NotificationEventType =
   | 'savings_milestone'      // £500/£1000/£5000 saved
   | 'overcharge_detected'    // Duplicate charge detected
   | 'new_opportunity'        // Email scan found something to action
+  | 'money_received'         // Generic credit landed in a connected account
   | 'money_recovered'        // Refund hit account from a tracked dispute
+  | 'large_upcoming_bill'    // Big scheduled debit due in the next few days
   | 'unusual_charge'         // Bank charge >20% above merchant rolling avg
   | 'support_reply'          // Support ticket reply landed
   | 'weekly_digest'          // Weekly spending/savings summary
@@ -205,6 +207,24 @@ export const EVENT_CATALOG: EventMeta[] = [
     group: 'alerts',
     scheduleKind: 'system',
     critical: true,
+  },
+  {
+    event: 'money_received',
+    label: 'Money received',
+    description: 'A credit (salary, customer payment, refund) has landed in a connected account.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'threshold',
+  },
+  {
+    event: 'large_upcoming_bill',
+    label: 'Large upcoming bill',
+    description: 'A scheduled payment over your configured threshold is due soon.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'threshold',
   },
   {
     event: 'unusual_charge',

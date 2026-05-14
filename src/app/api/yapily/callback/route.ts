@@ -242,6 +242,17 @@ export async function GET(request: NextRequest) {
     }),
   }).catch((err) => console.error('[yapily.callback] initial-sync trigger failed:', err));
 
+  // ── Also kick the upcoming-payments sync once. The cron at 06:00 UTC
+  // pulls scheduled payments + standing orders + direct debits, but on a
+  // fresh connect the user expects "Upcoming pending payments" to
+  // populate immediately rather than waiting for tomorrow. The endpoint
+  // is single-use per consent for each deterministic source, so calling
+  // it here is safe — the cron will short-circuit when it next runs.
+  fetch(`${appUrl}/api/cron/sync-upcoming`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+  }).catch((err) => console.error('[yapily.callback] sync-upcoming trigger failed:', err));
+
   return NextResponse.redirect(
     new URL(`${returnTo}?connected=true${upsertResult.reused ? '&merged=1' : ''}`, request.url),
   );
