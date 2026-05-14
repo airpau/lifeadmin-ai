@@ -20,6 +20,12 @@ function getAdmin() {
  * - { merchantPattern, newCategory, applyToAll?: true }
  * - { transactionId, newCategory }
  * - { merchantPattern, newIncomeType }
+ *
+ * Optional on any spending-category form:
+ * - userSubcategory: TEXT — Tier-2 personal label (e.g. "Groceries → Organic").
+ *   Stored on bank_transactions.user_subcategory. Reporting RPCs aggregate on
+ *   the canonical Tier-1 (`user_category`) and ignore this field — so subcats
+ *   are pure display sugar and never fragment cross-user statistics.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -28,7 +34,10 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json();
-    const { transactionId, merchantPattern, newCategory, newIncomeType, applyToAll } = body;
+    const { transactionId, merchantPattern, newCategory, newIncomeType, applyToAll, userSubcategory } = body;
+    const subcat = typeof userSubcategory === 'string' && userSubcategory.trim().length > 0
+      ? userSubcategory.trim().slice(0, 50)
+      : null;
 
     if (!newCategory && !newIncomeType) {
       return NextResponse.json({ error: 'newCategory or newIncomeType required' }, { status: 400 });
@@ -161,9 +170,14 @@ export async function POST(request: NextRequest) {
           const negativeIds = matching.filter(t => Number(t.amount) <= 0).map(t => t.id);
 
           const isIncomeRecat = newCategory === 'income';
-          const positivePatch = isIncomeRecat
+          const positivePatch: Record<string, unknown> = isIncomeRecat
             ? { user_category: newCategory, income_type: null }
             : { user_category: newCategory, income_type: 'credit_loan' };
+          const negativePatch: Record<string, unknown> = { user_category: newCategory };
+          if (subcat !== null) {
+            positivePatch.user_subcategory = subcat;
+            negativePatch.user_subcategory = subcat;
+          }
 
           for (let i = 0; i < positiveIds.length; i += 50) {
             const batch = positiveIds.slice(i, i + 50);
@@ -175,7 +189,7 @@ export async function POST(request: NextRequest) {
           for (let i = 0; i < negativeIds.length; i += 50) {
             const batch = negativeIds.slice(i, i + 50);
             const { count } = await admin.from('bank_transactions')
-              .update({ user_category: newCategory })
+              .update(negativePatch)
               .in('id', batch);
             if (count) updated += count;
           }
@@ -226,6 +240,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       const txnPatch: Record<string, any> = { user_category: newCategory };
+      if (subcat !== null) txnPatch.user_subcategory = subcat;
       // For positive-amount transactions:
       // - re-tagged as a non-income category → stamp 'credit_loan' so Money Hub
       //   excludes it from monthly income

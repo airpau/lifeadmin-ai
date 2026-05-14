@@ -22,8 +22,9 @@
 
 export const CATEGORIES = [
   // ── Home & Bills ────────────────────────────────────────────────────────
+  { id: 'rent',          label: 'Rent',                   emoji: '🔑', group: 'Home & Bills' },
   { id: 'mortgage',      label: 'Mortgage',              emoji: '🏠', group: 'Home & Bills' },
-  { id: 'housing',       label: 'Rent & Housing',         emoji: '🔑', group: 'Home & Bills' },
+  { id: 'housing',       label: 'Housing (other)',       emoji: '🏡', group: 'Home & Bills' },
   { id: 'council_tax',   label: 'Council Tax',            emoji: '🏛️', group: 'Home & Bills' },
   { id: 'energy',        label: 'Energy',                 emoji: '⚡', group: 'Home & Bills' },
   { id: 'water',         label: 'Water',                  emoji: '💧', group: 'Home & Bills' },
@@ -176,12 +177,23 @@ export const CATEGORY_ALIASES: Record<string, Category> = {
   subscriptions:          'software',
   apps:                   'software',
 
-  // Housing — both underscore and space variants
+  // Housing — property-side bucket (deposits, ground rent, service charges).
+  // Tenant-facing rent moved to its own canonical ID on 2026-05-14.
   property_management:    'housing',
   'property management':  'housing',
-  rent:                   'housing',
-  letting:                'housing',
-  landlord:               'housing',
+  freehold:               'housing',
+  leasehold:              'housing',
+  ground_rent:            'housing',
+  'ground rent':          'housing',
+  service_charge:         'housing',
+  'service charge':       'housing',
+
+  // Rent — tenant-paying-landlord side
+  letting:                'rent',
+  landlord:               'rent',
+  'letting agent':        'rent',
+  tenancy:                'rent',
+  'monthly rent':         'rent',
 
   // Transfers — singular form (TrueLayer raw, older data)
   transfer:               'transfers',

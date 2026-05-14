@@ -872,6 +872,12 @@ export default function MoneyHubPage() {
  >
  Browse all transactions →
  </a>
+ <a
+ href="/dashboard/money-hub/categories"
+ className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-800"
+ >
+ Manage categories →
+ </a>
  </div>
  </div>
 
