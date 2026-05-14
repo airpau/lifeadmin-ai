@@ -140,7 +140,7 @@ const respondToTicket: ToolDef = {
 
     // GUARDRAIL: Block any response containing sensitive internal information
     const blockedTerms = [
-      'next.js', 'nextjs', 'supabase', 'truelayer', 'claude', 'anthropic',
+      'next.js', 'nextjs', 'supabase', 'yapily', 'claude', 'anthropic',
       'stripe', 'vercel', 'railway', 'posthog', 'perplexity', 'fal.ai',
       'resend', 'awin', 'typescript', 'tailwind', 'react', 'node.js',
       'postgresql', 'gemini', 'imagen', 'elevenlabs', 'openai', 'gpt',

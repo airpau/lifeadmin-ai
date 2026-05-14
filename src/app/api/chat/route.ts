@@ -633,7 +633,7 @@ ${userTier === 'pro' ? `
 
         // Categorise based on keywords
         const allText = conversationSummary.toLowerCase();
-        const category = allText.includes('bank') || allText.includes('truelayer') || allText.includes('sync') ? 'technical'
+        const category = allText.includes('bank') || allText.includes('yapily') || allText.includes('sync') ? 'technical'
           : allText.includes('billing') || allText.includes('payment') || allText.includes('charge') || allText.includes('refund') ? 'billing'
           : allText.includes('cancel') || allText.includes('subscription') ? 'billing'
           : allText.includes('letter') || allText.includes('complaint') ? 'feature'

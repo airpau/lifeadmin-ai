@@ -3,7 +3,7 @@
  *
  * Returns any of the current user's email AND bank connections that
  * need attention. Used by <ConnectionHealthBanner /> on the dashboard
- * layout so silent OAuth expiry or IMAP / TrueLayer / Yapily consent
+ * layout so silent OAuth expiry or IMAP / Yapily consent
  * expiry surfaces as a "your sync is paused" callout, instead of the
  * background cron quietly stopping with no UI trace.
  *

@@ -55,8 +55,6 @@ export interface UpcomingApiResponse {
   hasBankConnected: boolean;
   // Whether any of the connected banks are on a provider that
   // actually feeds upcoming_payments (currently Yapily only).
-  // TrueLayer-only users will see a "nothing scheduled" state
-  // because upcoming-payments data is not available for them.
   hasUpcomingCapableBank: boolean;
 }
 

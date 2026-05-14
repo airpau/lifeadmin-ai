@@ -24,7 +24,7 @@ import './styles.css';
  * Content-accuracy deviations vs the design file:
  * - Telegram + Sheets marked "Coming soon" (CLAUDE.md: both on roadmap, not live).
  * - "53+ UK partners" replaced with "UK partner network" (no specific count to commit to).
- * - Bank connection copy references Yapily (current provider) rather than TrueLayer.
+ * - Bank connection copy references Yapily (the Open Banking provider).
  */
 
 export const metadata: Metadata = {

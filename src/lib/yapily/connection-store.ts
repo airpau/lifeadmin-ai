@@ -382,18 +382,32 @@ function buildCandidate(input: TransactionUpsertInput, tx: YapilyTransaction) {
   const ts = tx.bookingDateTime || tx.date;
   if (typeof amount !== 'number' || !ts) return null;
 
-  // Yapily's standard model has positive numbers and uses
-  // transactionInformation.creditDebitIndicator for direction. Some
-  // providers instead encode sign in the amount. We normalise here:
-  // if amount is already signed (one of them is negative on a CREDIT
-  // / DEBIT mismatch), we trust the sign of `amount`. Otherwise we
-  // default to DEBIT — that's the conservative choice, and the
-  // initial-sync usually has DEBIT for spending which is the dominant
-  // class.
-  // The Yapily lib doesn't currently expose creditDebitIndicator on
-  // YapilyTransaction; we infer it from amount sign for now and can
-  // tighten later by extending the type.
-  const signCode: 'CREDIT' | 'DEBIT' = amount >= 0 ? 'CREDIT' : 'DEBIT';
+  // Direction resolution. Two upstream conventions exist:
+  //   1. Signed amount: negative = debit, positive = credit. Most UK
+  //      retail current accounts (e.g. Monzo via Yapily) follow this.
+  //   2. Unsigned amount + creditDebitIndicator: positive for both,
+  //      direction in the indicator. HSBC Business and several
+  //      corporate banks follow this. Until 2026-05-14 we treated every
+  //      unsigned amount as CREDIT, which is why HSBC Business showed
+  //      £0 income — every credit landed with signCode=CREDIT but every
+  //      debit ALSO came through positive and got the same signCode,
+  //      meaning debits became phantom credits in signed_amount_pence
+  //      and credits in turn matched the transfer-pair heuristic. Fix:
+  //      trust the indicator when it's present.
+  const indicator = String(tx.creditDebitIndicator || '').toUpperCase();
+  let signCode: 'CREDIT' | 'DEBIT';
+  if (indicator === 'CREDIT' || indicator === 'DEBIT') {
+    signCode = indicator;
+  } else if (amount < 0) {
+    signCode = 'DEBIT';
+  } else if (amount > 0) {
+    signCode = 'CREDIT';
+  } else {
+    // amount === 0 — extremely rare, treat as DEBIT to keep it out of
+    // income totals. signed_amount_pence will be 0 either way.
+    signCode = 'DEBIT';
+  }
+
   const description =
     tx.description ||
     (Array.isArray(tx.transactionInformation) ? tx.transactionInformation.join(' ') : '') ||
@@ -409,6 +423,12 @@ function buildCandidate(input: TransactionUpsertInput, tx: YapilyTransaction) {
     description,
   });
   const signedPence = Math.round(Math.abs(amount) * 100) * (signCode === 'CREDIT' ? 1 : -1);
+  // `amount` column is the signed view that the rest of the app reads
+  // (auto_categorise + get_monthly_*). If Yapily handed us an unsigned
+  // amount + indicator, we re-sign it here so downstream queries that
+  // depend on `amount > 0` / `amount < 0` (every income/spending RPC)
+  // see the correct direction.
+  const signedAmount = signCode === 'CREDIT' ? Math.abs(amount) : -Math.abs(amount);
 
   return {
     row: {
@@ -419,11 +439,15 @@ function buildCandidate(input: TransactionUpsertInput, tx: YapilyTransaction) {
       account_identifications_hash: input.account.accountIdentificationsHash!,
       stable_tx_hash: stableTxHash,
       signed_amount_pence: signedPence,
-      amount,
+      amount: signedAmount,
       currency,
       description: description || null,
       merchant_name: tx.merchantName || null,
-      category: null,
+      // Persist the bank-side direction in the `category` column so the
+      // Money Hub classifier and the get_monthly_income_total RPC both
+      // pick it up — both use UPPER(category) IN ('CREDIT', 'INTEREST')
+      // to identify income, and previously this column was always NULL.
+      category: signCode,
       timestamp: ts,
     },
   };

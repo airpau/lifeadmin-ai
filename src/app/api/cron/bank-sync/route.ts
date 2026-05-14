@@ -20,14 +20,11 @@ interface BankConnection {
   id: string;
   user_id: string;
   provider: string;
-  // Yapily fields
   consent_token: string | null;
   consent_expires_at: string | null;
-  // TrueLayer fields (legacy — archived 2026-04-27)
   access_token: string | null;
   refresh_token: string | null;
   token_expires_at: string | null;
-  // Common
   account_ids: string[] | null;
   account_identifications_hashes: string[] | null;
   account_display_names: string[] | null;
@@ -111,7 +108,7 @@ export async function GET(request: NextRequest) {
 
   const orderedUserIds = sortedProfiles.map((p) => p.id);
 
-  // Fetch active bank connections for these users (TrueLayer + Yapily)
+  // Fetch active bank connections for these users.
   // Also include 'token_expired' connections — we attempt a token refresh and reset to active on success
   const { data: connections, error: connError } = await supabase
     .from('bank_connections')
@@ -172,17 +169,7 @@ export async function GET(request: NextRequest) {
       let transactionSyncSucceeded = false;
       const accountErrors: string[] = [];
 
-      // === TrueLayer deprecated 2026-04-27 ===
-      // TL connections are archived in DB and will not be returned by the
-      // bank_connections query (.eq provider=yapily below). The skip here
-      // is defensive — anything else means corrupted state.
-      if (connection.provider !== "yapily") {
-        console.warn(`Bank sync: skipping non-Yapily connection ${connection.id} (provider=${connection.provider})`);
-        totalApiCalls += connectionApiCalls;
-        continue;
-      }
       {
-        // === Yapily path ===
         if (!connection.consent_token) {
           console.error(`Bank sync: no consent token for ${connection.id}`);
           await supabase

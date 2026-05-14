@@ -2,7 +2,7 @@
 // src/app/onboarding/page.tsx
 // Four-step onboarding wizard ported from batch5 Onboarding.
 // Shown after signup — each step wires to the real OAuth endpoint
-// (bank via /api/auth/truelayer, inbox via /api/auth/google or /microsoft).
+// (bank via /api/auth/yapily, inbox via /api/auth/google or /microsoft).
 // Step progress is read from live account state (has bank connection,
 // has email connection, has run first scan) so refresh-and-resume works.
 
@@ -242,7 +242,7 @@ function OnboardingInner() {
             <div style={{ fontSize: 11, fontWeight: 700, color: '#4B5563', marginBottom: 4 }}>
               🔒 Your data is yours
             </div>
-            Bank access via <strong style={{ color: '#4B5563' }}>TrueLayer</strong> (FCA-authorised).
+            Bank access via <strong style={{ color: '#4B5563' }}>Yapily</strong> (FCA-authorised).
             Revoke anytime. We never store your login.
           </div>
         </aside>
@@ -418,7 +418,7 @@ function OnboardingInner() {
                     Connect bank &rarr;
                   </a>
                   <p style={{ fontSize: 11.5, color: '#6B7280', margin: 0, lineHeight: 1.4 }}>
-                    Read-only via TrueLayer (FCA-authorised). No password ever touches Paybacker.
+                    Read-only via Yapily (FCA-authorised). No password ever touches Paybacker.
                   </p>
                 </div>
 
@@ -564,10 +564,10 @@ function OnboardingInner() {
                       gap: 8,
                     }}
                   >
-                    <CreditCard style={{ width: 16, height: 16 }} /> Connect bank via TrueLayer
+                    <CreditCard style={{ width: 16, height: 16 }} /> Connect bank via Yapily
                   </a>
                   <p style={{ fontSize: 12.5, color: '#6B7280', marginTop: 10, maxWidth: 440, lineHeight: 1.5, textAlign: 'center' }}>
-                    You&rsquo;ll be securely redirected to your bank&rsquo;s own login screen via TrueLayer (FCA-authorised). No password ever touches Paybacker.
+                    You&rsquo;ll be securely redirected to your bank&rsquo;s own login screen via Yapily (FCA-authorised). No password ever touches Paybacker.
                   </p>
                   <button
                     onClick={() => gotoStep(3)}

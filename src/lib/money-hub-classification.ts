@@ -241,7 +241,16 @@ export function resolveMoneyHubTransaction(
       };
     }
 
-    return { amount, kind: 'other', spendingCategory: storedCategory || null, incomeType: effectiveIncomeType };
+    // 6. Default for any positive amount the rules didn't claim:
+    //    treat it as income. Emma / Monzo / Snoop all do this — a
+    //    credit that doesn't look like a transfer or a known-spending
+    //    refund is income by default. Users can recategorise individual
+    //    rows via the overrides UI if a refund got mis-tagged.
+    //    This is the rule that unblocks UK business accounts (HSBC
+    //    Business, Tide, Starling Business) where customer credits
+    //    arrive as plain BACS / FPS CR / faster-payment rows without
+    //    "salary" or "invoice" anywhere in the description.
+    return { amount, kind: 'income', spendingCategory: null, incomeType: 'other' };
   }
 
   if (isTransferLikeTransaction(txn, effectiveIncomeType)) {

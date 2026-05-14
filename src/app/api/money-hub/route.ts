@@ -34,7 +34,7 @@ function isTransactionInMonth(timestamp: string | null | undefined, monthKey: st
  * Client-side deduplication of bank transactions.
  * Matches the DB-level deduplicate_bank_transactions RPC logic:
  * same amount + same date + same merchant/description → keep only the first (newest sync).
- * This catches duplicates from overlapping TrueLayer/Yapily connections.
+ * This catches duplicates from overlapping bank connections.
  */
 function deduplicateTransactions(txns: any[]): any[] {
   const seen = new Map<string, boolean>();
@@ -329,7 +329,7 @@ export async function GET(request: Request) {
     // Compute top merchants from JS-based current summary (RPCs don't provide per-merchant data)
     const merchantTotals: Record<string, number> = {};
     for (const t of currentSummary.spendingTransactions) {
-      // TrueLayer sometimes returns junk (e.g. merchant_name='ad') from an
+      // Yapily sometimes returns junk (e.g. merchant_name='ad') from an
       // upstream field extraction — pickRawMerchantSource falls back to the
       // description when the merchant_name field is clearly garbage so the
       // "Top merchants" list doesn't collapse unrelated payments under a 2-
