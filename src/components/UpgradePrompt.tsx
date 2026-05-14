@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { X, Sparkles, ArrowRight } from 'lucide-react';
+import { isNativeShell } from '@/lib/native-shell';
+import NativeIapButtons from './NativeIapButtons';
 
 interface UpgradePromptProps {
   variant: 'banner' | 'modal' | 'inline';
@@ -11,6 +13,19 @@ interface UpgradePromptProps {
 
 export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) {
   const [dismissed, setDismissed] = useState(false);
+  const [isNative, setIsNative] = useState(false);
+
+  useEffect(() => {
+    setIsNative(isNativeShell());
+    // Listen for successful native purchases — auto-dismiss the modal so
+    // the user lands back on the freshly-upgraded experience.
+    const onPurchased = () => {
+      setDismissed(true);
+      onClose?.();
+    };
+    window.addEventListener('paybacker:iap-purchased', onPurchased);
+    return () => window.removeEventListener('paybacker:iap-purchased', onPurchased);
+  }, [onClose]);
 
   const handleClose = () => {
     setDismissed(true);
@@ -65,12 +80,23 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
               <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Price-increase alerts by email</li>
             </ul>
           </div>
-          <div className="flex flex-col gap-3">
-            <Link href="/pricing" className="w-full py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-bold rounded-xl transition-all text-center">
-              Upgrade — from £4.99/mo
-            </Link>
-            <button onClick={handleClose} className="text-slate-500 hover:text-slate-900 text-sm transition-colors">Maybe later</button>
-          </div>
+          {isNative ? (
+            // In-app: native StoreKit 2 / Play Billing buttons
+            <NativeIapButtons />
+          ) : (
+            // Web: Stripe checkout link
+            <div className="flex flex-col gap-3">
+              <Link href="/pricing" className="w-full py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-bold rounded-xl transition-all text-center">
+                Upgrade — from £4.99/mo
+              </Link>
+              <button onClick={handleClose} className="text-slate-500 hover:text-slate-900 text-sm transition-colors">Maybe later</button>
+            </div>
+          )}
+          {isNative && (
+            <button onClick={handleClose} className="w-full text-slate-500 hover:text-slate-900 text-sm transition-colors mt-4">
+              Maybe later
+            </button>
+          )}
         </div>
       </div>
     );
