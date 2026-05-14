@@ -16,11 +16,17 @@ import type {
   InboundMediaType,
   InboundMessage,
   InboundMessageKind,
+  SendInteractiveOptions,
   SendTemplateOptions,
   SendTextOptions,
   WhatsAppMessageResult,
   WhatsAppProvider,
 } from './types';
+
+// Meta caps quick-reply button titles at 20 chars; we clip below this with a
+// little headroom so we never get a 400 from the Graph API.
+const META_BUTTON_TITLE_MAX = 20;
+const META_MAX_BUTTONS = 3;
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v20.0';
 
@@ -99,6 +105,50 @@ export class MetaCloudWhatsAppProvider implements WhatsAppProvider {
     if (!res.ok || !data.messages?.[0]?.id) {
       throw new Error(
         `[whatsapp/meta] sendTemplate failed ${res.status}: ${data.error?.message ?? 'unknown'}`,
+      );
+    }
+    return {
+      provider: 'meta',
+      providerMessageId: data.messages[0].id,
+      acceptedAt: new Date(),
+    };
+  }
+
+  async sendInteractive(
+    opts: SendInteractiveOptions,
+  ): Promise<WhatsAppMessageResult> {
+    // Meta supports quick-reply buttons natively on free-form messages
+    // (within the 24h customer-service window) — no template approval
+    // needed. The user's tap comes back as a webhook with
+    // `interactive.button_reply.{id, title}`, which our meta-provider
+    // parser already lifts into kind='interactive' + interactivePayload.
+    const phoneNumberId = requireEnv('WHATSAPP_PHONE_NUMBER_ID');
+    const buttons = opts.buttons.slice(0, META_MAX_BUTTONS);
+    if (buttons.length === 0) {
+      throw new Error('[whatsapp/meta] sendInteractive requires at least one button');
+    }
+    const res = await postGraph(`/${phoneNumberId}/messages`, {
+      messaging_product: 'whatsapp',
+      to: normalisePhone(opts.to),
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: opts.text },
+        action: {
+          buttons: buttons.map((b) => ({
+            type: 'reply',
+            reply: {
+              id: b.id,
+              title: b.title.slice(0, META_BUTTON_TITLE_MAX),
+            },
+          })),
+        },
+      },
+    });
+    const data = (await res.json()) as MetaSendResponse;
+    if (!res.ok || !data.messages?.[0]?.id) {
+      throw new Error(
+        `[whatsapp/meta] sendInteractive failed ${res.status}: ${data.error?.message ?? 'unknown'}`,
       );
     }
     return {

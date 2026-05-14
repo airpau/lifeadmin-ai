@@ -16,11 +16,17 @@ import type {
   InboundMediaType,
   InboundMessage,
   InboundMessageKind,
+  SendInteractiveOptions,
   SendTemplateOptions,
   SendTextOptions,
   WhatsAppMessageResult,
   WhatsAppProvider,
 } from './types';
+
+// Twilio's quick-reply Content type caps button titles at 25 chars; we
+// clip below this so we never bounce the create-content API.
+const TWILIO_BUTTON_TITLE_MAX = 24;
+const TWILIO_MAX_BUTTONS = 3;
 
 const TWILIO_API_BASE = 'https://api.twilio.com/2010-04-01';
 
@@ -120,6 +126,76 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
       body = body.replace(new RegExp(`\\{\\{${i + 1}\\}\\}`, 'g'), val);
     });
     return this.sendText({ to: opts.to, text: body, idempotencyKey: opts.idempotencyKey });
+  }
+
+  async sendInteractive(
+    opts: SendInteractiveOptions,
+  ): Promise<WhatsAppMessageResult> {
+    // Twilio doesn't let us send arbitrary inline buttons — every quick-
+    // reply set lives behind a pre-created Content SID (`twilio/quick-reply`
+    // type). SID resolution order:
+    //   1. Explicit opts.interactiveContentSid (caller supplied)
+    //   2. Env override TWILIO_INTERACTIVE_<NAME> (lets ops swap SIDs
+    //      without a deploy, e.g. when a button label changes)
+    //   3. Numbered-text fallback (no SID configured yet)
+    //
+    // The fallback is what makes this useful in practice: the cron alerts
+    // that *should* carry buttons (price-increase, outcome-check) often
+    // run before ops has created the matching Content SID. Numbered text
+    // still gets the choices in front of the user, and the agent's
+    // numbered-reply intelligence (793a345c on master) maps "1" / "2" /
+    // "3" back to the right action.
+    const buttons = opts.buttons.slice(0, TWILIO_MAX_BUTTONS);
+    if (buttons.length === 0) {
+      throw new Error('[whatsapp/twilio] sendInteractive requires at least one button');
+    }
+    const envOverride = opts.interactiveName
+      ? process.env[`TWILIO_INTERACTIVE_${opts.interactiveName.toUpperCase()}`]
+      : undefined;
+    const contentSid = opts.interactiveContentSid || envOverride;
+    const from = requireEnv('TWILIO_WHATSAPP_FROM');
+
+    if (contentSid) {
+      // Content variables shape: {{1}} = body, {{2..N+1}} = button titles
+      // in declaration order. This must match the Content shape ops
+      // configured at content.twilio.com.
+      const vars: Record<string, string> = { '1': opts.text };
+      buttons.forEach((b, i) => {
+        vars[String(i + 2)] = b.title.slice(0, TWILIO_BUTTON_TITLE_MAX);
+      });
+      const params: Record<string, string> = {
+        From: toWhatsAppAddress(from),
+        To: toWhatsAppAddress(opts.to),
+        ContentSid: contentSid,
+        ContentVariables: JSON.stringify(vars),
+      };
+      const res = await postForm('/Messages.json', params);
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(
+          `[whatsapp/twilio] sendInteractive failed ${res.status}: ${body}`,
+        );
+      }
+      const data = (await res.json()) as { sid: string; date_created: string };
+      return {
+        provider: 'twilio',
+        providerMessageId: data.sid,
+        acceptedAt: new Date(data.date_created || Date.now()),
+      };
+    }
+
+    // Numbered-text fallback. Inbound parser tags `text` taps as kind='text',
+    // so the agent's existing brain handles "1" / "2" naturally.
+    const numbered = buttons
+      .map(
+        (b, i) => `${i + 1}. ${b.title.slice(0, TWILIO_BUTTON_TITLE_MAX)}`,
+      )
+      .join('\n');
+    return this.sendText({
+      to: opts.to,
+      text: `${opts.text}\n\n${numbered}\n\nReply with the number.`,
+      idempotencyKey: opts.idempotencyKey,
+    });
   }
 
   verifyWebhookSignature(rawBody: string, headers: Record<string, string>): boolean {
