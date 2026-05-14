@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { detectPriceIncreases } from '@/lib/price-increase-detector';
+import { buildPriceAlertSuppressor } from '@/lib/price-alerts/suppression';
 
 function getAdmin() {
   return createAdminClient(
@@ -30,16 +31,15 @@ export async function POST() {
   const increases = await detectPriceIncreases(user.id);
 
   if (increases.length > 0) {
-    // Fetch ALL existing alerts (active, dismissed, actioned) to prevent duplicate inserts.
-    // Without this, dismissed alerts get recreated on the next detection run.
-    const { data: existing } = await admin
-      .from('price_increase_alerts')
-      .select('merchant_normalized')
-      .eq('user_id', user.id)
-      .in('status', ['active', 'dismissed', 'actioned']);
-
-    const existingMerchants = new Set((existing || []).map((a: { merchant_normalized: string }) => a.merchant_normalized));
-    const newAlerts = increases.filter(i => !existingMerchants.has(i.merchantNormalized));
+    // Active alerts suppress same-merchant duplicates; dismissed/actioned
+    // alerts suppress same merchant+amounts fingerprint for 30 days. See
+    // lib/price-alerts/suppression.ts for the rationale.
+    const isSuppressed = await buildPriceAlertSuppressor(admin, user.id);
+    const newAlerts = increases.filter(i => !isSuppressed({
+      merchantNormalized: i.merchantNormalized,
+      oldAmount: i.oldAmount,
+      newAmount: i.newAmount,
+    }));
 
     if (newAlerts.length > 0) {
       await admin.from('price_increase_alerts').insert(
