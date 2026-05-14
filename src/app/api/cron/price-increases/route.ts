@@ -4,6 +4,7 @@ import { detectPriceIncreases } from '@/lib/price-increase-detector';
 import { buildPriceIncreaseEmail } from '@/lib/email/price-increase-alerts';
 import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
+import { priceIncreaseTemplateVars } from '@/lib/notifications/brief-builder';
 
 export const maxDuration = 60;
 
@@ -125,11 +126,31 @@ export async function GET(request: NextRequest) {
           : `💸 *${newIncreases.length} price increases detected* on your bills`;
         const telegramText = `${headline}\n\n${newIncreases.map(i => `• ${i.merchantNormalized}: £${i.oldAmount} → £${i.newAmount} (+${i.increasePct}%)`).join('\n')}\n\nOpen Paybacker → Dashboard → Price increase alerts to action.`;
 
+        // WhatsApp uses the Meta-approved paybacker_alert_price_increase
+        // template, which requires merchant/old/new/effective_date vars.
+        // For multi-merchant batches we send the single biggest hike (by
+        // annual impact) — the email + telegram messages cover the rest.
+        // We never send N templates in one shot; that's spammy and Meta
+        // charges per send.
+        const topIncrease = [...newIncreases].sort(
+          (a, b) => Math.abs(b.annualImpact) - Math.abs(a.annualImpact),
+        )[0];
+        const waVars = priceIncreaseTemplateVars({
+          merchantName: topIncrease.merchantNormalized,
+          oldAmount: topIncrease.oldAmount,
+          newAmount: topIncrease.newAmount,
+          effectiveDate: topIncrease.newDate,
+        });
+
         const result = await sendNotification(supabase, {
           userId,
           event: 'price_increase',
           email: emailAllowed ? { subject, html } : undefined,
           telegram: { text: telegramText },
+          whatsapp: {
+            templateName: waVars.templateName,
+            templateParameters: waVars.parameters,
+          },
           push: { title: 'Price hike detected', body: headline.replace(/\*/g, '') },
         });
         if (result.delivered.includes('email')) {
