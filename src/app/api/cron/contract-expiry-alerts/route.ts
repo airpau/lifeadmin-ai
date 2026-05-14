@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendContractEndAlert } from '@/lib/email/contract-end-alerts';
+import { buildContractEndEmail } from '@/lib/email/contract-end-alerts';
 import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
+import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const maxDuration = 60;
 
@@ -181,9 +182,11 @@ export async function GET(request: NextRequest) {
       const rateCheck = await canSendEmail(supabase, userId, 'contract_expiry_alert');
       if (!rateCheck.allowed) continue;
 
-      // Send email
-      const sent = await sendContractEndAlert(
-        profile.email,
+      // Multi-channel dispatch — email + telegram + whatsapp. Email is
+      // gated on rate limit (already checked above), telegram + whatsapp
+      // route through the unified dispatcher which respects channel
+      // preferences and the Pocket Agent mutex.
+      const { subject, html } = buildContractEndEmail(
         userName,
         [{
           provider_name: contract.providerName,
@@ -197,8 +200,36 @@ export async function GET(request: NextRequest) {
           potential_saving_monthly: null,
           deal_url: null,
         }],
-        daysLeft
+        daysLeft,
       );
+
+      const telegramText =
+        `📋 *Contract ending in ${daysLeft} days*\n\n` +
+        `*${contract.providerName}*${contract.monthlyCost ? ` — £${contract.monthlyCost.toFixed(2)}/mo` : ''}\n` +
+        `Ends ${new Date(contract.contractEndDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` +
+        (contract.autoRenews
+          ? '\n\n⚠️ Auto-renews — switch or cancel before renewal to avoid the loyalty premium.'
+          : '\n\nReply with "find me a better deal on this" to start switching.');
+
+      const dispatch = await sendNotification(supabase, {
+        userId,
+        event: 'contract_expiry',
+        email: { subject, html, to: profile.email },
+        telegram: { text: telegramText },
+        whatsapp: {
+          templateName: 'paybacker_alert_renewal',
+          templateParameters: [
+            contract.providerName,
+            String(daysLeft),
+            `£${(contract.monthlyCost || 0).toFixed(2)}`,
+          ],
+        },
+        push: {
+          title: `${contract.providerName} contract ending`,
+          body: `Ends in ${daysLeft} days`,
+        },
+      });
+      const sent = dispatch.delivered.includes('email');
 
       if (sent) {
         // Mark this threshold as sent

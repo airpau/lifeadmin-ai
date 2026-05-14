@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -248,5 +249,81 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, sent, errors: errors.length });
+  // ----------------------------------------------------------------
+  // WhatsApp pass — fan out the weekly recovery digest via the
+  // Meta-approved `paybacker_recovery_total_weekly` template. The
+  // Pocket Agent mutex guarantees a user is in either telegram_sessions
+  // OR whatsapp_sessions, never both.
+  // ----------------------------------------------------------------
+  let waSent = 0;
+  const { data: waSessions } = await supabase
+    .from('whatsapp_sessions')
+    .select('user_id, whatsapp_phone')
+    .eq('is_active', true)
+    .is('opted_out_at', null);
+
+  if (waSessions && waSessions.length > 0) {
+    const waUserIds = waSessions.map((s) => s.user_id);
+    const { data: waProfiles } = await supabase
+      .from('profiles')
+      .select(
+        'id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at',
+      )
+      .in('id', waUserIds);
+    const waProIds = new Set(
+      (waProfiles ?? []).filter((p) => isProPocketAgentEligible(p)).map((p) => p.id),
+    );
+
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - 7);
+
+    for (const session of waSessions) {
+      if (!waProIds.has(session.user_id)) continue;
+
+      try {
+        // Verified savings this week + lifetime total.
+        const { data: weekly } = await supabase
+          .from('verified_savings')
+          .select('amount_saved')
+          .eq('user_id', session.user_id)
+          .gte('created_at', weekStart.toISOString());
+
+        const { data: all } = await supabase
+          .from('verified_savings')
+          .select('amount_saved')
+          .eq('user_id', session.user_id);
+
+        const amountThisWeek = (weekly ?? []).reduce(
+          (s, r) => s + (Number(r.amount_saved) || 0),
+          0,
+        );
+        const lifetimeAmount = (all ?? []).reduce(
+          (s, r) => s + (Number(r.amount_saved) || 0),
+          0,
+        );
+
+        // Only send if there's actually something to celebrate.
+        if (amountThisWeek <= 0 && lifetimeAmount <= 0) continue;
+
+        const result = await sendNotification(supabase, {
+          userId: session.user_id,
+          event: 'weekly_digest',
+          whatsapp: {
+            templateName: 'paybacker_recovery_total_weekly',
+            templateParameters: [
+              `£${amountThisWeek.toFixed(2)}`,
+              `£${lifetimeAmount.toFixed(2)}`,
+            ],
+          },
+        });
+        if (result.delivered.includes('whatsapp')) waSent++;
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        console.error(`[telegram-weekly-summary][wa] ${session.user_id}: ${m}`);
+        errors.push(`wa:${session.user_id}: ${m}`);
+      }
+    }
+  }
+
+  return NextResponse.json({ ok: true, sent, waSent, errors: errors.length });
 }

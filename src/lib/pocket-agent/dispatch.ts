@@ -34,7 +34,15 @@ export type AlertType =
   | 'dispute_followup'
   | 'subscription_renewing'
   | 'unusual_charge'
-  | 'money_recovered';
+  | 'money_recovered'
+  | 'morning_summary'
+  | 'weekly_digest'
+  | 'savings_milestone'
+  | 'reconnect_required'
+  | 'trial_ending'
+  | 'complaint_letter_ready'
+  | 'outcome_check'
+  | 'welcome';
 
 export interface ActiveSession {
   user_id: string;
@@ -206,6 +214,22 @@ function templateForAlertType(alertType: AlertType): string | null {
       return 'paybacker_dispute_reply';
     case 'budget_overrun':
       return 'paybacker_budget_alert';
+    case 'morning_summary':
+      return 'paybacker_morning_summary';
+    case 'weekly_digest':
+      return 'paybacker_recovery_total_weekly';
+    case 'savings_milestone':
+      return 'paybacker_savings_goal_milestone';
+    case 'reconnect_required':
+      return 'paybacker_reconnect_required';
+    case 'trial_ending':
+      return 'paybacker_alert_trial_ending';
+    case 'complaint_letter_ready':
+      return 'paybacker_complaint_letter_ready';
+    case 'outcome_check':
+      return 'paybacker_outcome_check';
+    case 'welcome':
+      return 'paybacker_welcome';
     default:
       return null;
   }

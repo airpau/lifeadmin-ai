@@ -125,11 +125,29 @@ export async function GET(request: NextRequest) {
           : `💸 *${newIncreases.length} price increases detected* on your bills`;
         const telegramText = `${headline}\n\n${newIncreases.map(i => `• ${i.merchantNormalized}: £${i.oldAmount} → £${i.newAmount} (+${i.increasePct}%)`).join('\n')}\n\nOpen Paybacker → Dashboard → Price increase alerts to action.`;
 
+        // WhatsApp template only fires when there's exactly one merchant
+        // (the Meta-approved template has 4 fixed slots for a single
+        // merchant). Multi-merchant alerts fall back to email + telegram
+        // + push so users still see the consolidated update.
+        const single = newIncreases.length === 1 ? newIncreases[0] : null;
+        const whatsappPayload = single
+          ? {
+              templateName: 'paybacker_alert_price_increase',
+              templateParameters: [
+                single.merchantNormalized,
+                `£${single.oldAmount.toFixed(2)}`,
+                `£${single.newAmount.toFixed(2)}`,
+                single.newDate ?? new Date().toISOString().split('T')[0],
+              ],
+            }
+          : undefined;
+
         const result = await sendNotification(supabase, {
           userId,
           event: 'price_increase',
           email: emailAllowed ? { subject, html } : undefined,
           telegram: { text: telegramText },
+          whatsapp: whatsappPayload,
           push: { title: 'Price hike detected', body: headline.replace(/\*/g, '') },
         });
         if (result.delivered.includes('email')) {

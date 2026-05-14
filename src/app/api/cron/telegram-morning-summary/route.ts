@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -359,8 +360,133 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // ----------------------------------------------------------------
+  // WhatsApp pass — same data, sent as the Meta-approved
+  // `paybacker_morning_summary` template. The Pocket Agent mutex
+  // guarantees a user is either telegram_sessions OR whatsapp_sessions,
+  // never both, so users in the Telegram loop above are NOT in this set.
+  // ----------------------------------------------------------------
+  let waSent = 0;
+  const { data: waSessions } = await supabase
+    .from('whatsapp_sessions')
+    .select('user_id, whatsapp_phone')
+    .eq('is_active', true)
+    .is('opted_out_at', null);
+
+  if (waSessions && waSessions.length > 0) {
+    const waUserIds = waSessions.map((s) => s.user_id);
+    const { data: waProfiles } = await supabase
+      .from('profiles')
+      .select(
+        'id, first_name, full_name, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at',
+      )
+      .in('id', waUserIds);
+
+    const waProMap = new Map(
+      (waProfiles ?? []).filter((p) => isProPocketAgentEligible(p)).map((p) => [p.id, p]),
+    );
+
+    for (const session of waSessions) {
+      const profile = waProMap.get(session.user_id);
+      if (!profile) continue;
+
+      try {
+        const userName = profile.first_name || profile.full_name?.split(' ')[0] || 'there';
+
+        // Lightweight aggregate counts — the WhatsApp template only has 4
+        // slots (name, scanned, opportunities, top_focus), so we don't
+        // need the full rich breakdown.
+        const [{ count: txCount }, { data: openRenewals }, { data: openContracts }, { data: openDisputes }, { data: budgets }, monthSpend] = await Promise.all([
+          supabase
+            .from('bank_transactions')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', session.user_id)
+            .gte('timestamp', yesterdayStart.toISOString())
+            .lt('timestamp', todayStart.toISOString()),
+          supabase
+            .from('subscriptions')
+            .select('provider_name')
+            .eq('user_id', session.user_id)
+            .eq('status', 'active')
+            .gte('next_billing_date', todayStr)
+            .lte('next_billing_date', tomorrowStr),
+          supabase
+            .from('subscriptions')
+            .select('provider_name')
+            .eq('user_id', session.user_id)
+            .eq('status', 'active')
+            .not('contract_end_date', 'is', null)
+            .gte('contract_end_date', todayStr)
+            .lte('contract_end_date', in7DaysStr),
+          supabase
+            .from('disputes')
+            .select('provider_name')
+            .eq('user_id', session.user_id)
+            .not('status', 'in', '(resolved,dismissed)'),
+          supabase
+            .from('money_hub_budgets')
+            .select('category, monthly_limit')
+            .eq('user_id', session.user_id),
+          supabase.rpc('get_monthly_spending', {
+            p_user_id: session.user_id,
+            p_year: now.getFullYear(),
+            p_month: now.getMonth() + 1,
+          }),
+        ]);
+
+        // Find the most-stretched budget category for topFocus.
+        let topFocus: string = 'No urgent items today';
+        if (budgets && budgets.length > 0) {
+          const spent: Record<string, number> = {};
+          for (const row of (monthSpend.data ?? []) as Array<{ category: string; category_total: string }>) {
+            spent[row.category] = Number(row.category_total) || 0;
+          }
+          const pcts = budgets
+            .map((b) => ({
+              category: b.category,
+              pct: Number(b.monthly_limit) > 0 ? (spent[b.category] ?? 0) / Number(b.monthly_limit) * 100 : 0,
+            }))
+            .sort((a, b) => b.pct - a.pct);
+          if (pcts.length > 0 && pcts[0].pct >= 80) {
+            topFocus = `${pcts[0].category} budget at ${Math.round(pcts[0].pct)}%`;
+          } else if (openContracts && openContracts.length > 0) {
+            topFocus = `${openContracts[0].provider_name} contract ending`;
+          } else if (openRenewals && openRenewals.length > 0) {
+            topFocus = `${openRenewals[0].provider_name} renewing`;
+          } else if (openDisputes && openDisputes.length > 0) {
+            topFocus = `${openDisputes[0].provider_name} dispute open`;
+          }
+        }
+
+        const opportunityCount =
+          (openRenewals?.length ?? 0) +
+          (openContracts?.length ?? 0) +
+          (openDisputes?.length ?? 0);
+
+        const result = await sendNotification(supabase, {
+          userId: session.user_id,
+          event: 'morning_summary',
+          whatsapp: {
+            templateName: 'paybacker_morning_summary',
+            templateParameters: [
+              userName,
+              String(txCount ?? 0),
+              String(opportunityCount),
+              topFocus,
+            ],
+          },
+        });
+        if (result.delivered.includes('whatsapp')) waSent++;
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        console.error(`[telegram-morning-summary][wa] ${session.user_id}: ${m}`);
+        errors.push(`wa:${session.user_id}: ${m}`);
+      }
+    }
+  }
+
   console.log(
-    `[telegram-morning-summary] Processed ${proSessions.length} users, sent ${sent}, skipped ${skipped}, errors ${errors.length}`,
+    `[telegram-morning-summary] Processed ${proSessions.length} users, tg-sent ${sent}, wa-sent ${waSent}, skipped ${skipped}, errors ${errors.length}`,
   );
 
   // Alert founder if the cron ran with eligible users but sent nothing
@@ -380,6 +506,7 @@ export async function GET(request: NextRequest) {
     ok: true,
     users: proSessions.length,
     sent,
+    waSent,
     skipped,
     errors: errors.length,
   });
