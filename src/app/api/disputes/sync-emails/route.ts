@@ -29,7 +29,11 @@ function admin() {
 }
 
 async function getUserId(request: NextRequest): Promise<string | null> {
-  // Try session cookie first (browser / dashboard context)
+  // Session cookie auth — Telegram bot calls syncLinkedThread() directly,
+  // so this route never needs an out-of-band identity claim. Removed the
+  // prior `Bearer user_<uuid>` fallback: it accepted any UUID without
+  // signature verification and then ran syncs with service-role
+  // privileges, allowing arbitrary user impersonation if a UUID leaked.
   const cookieStore = await cookies();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -44,14 +48,7 @@ async function getUserId(request: NextRequest): Promise<string | null> {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (user?.id) return user.id;
-
-  // Fallback: Bearer token containing userId (used by internal Telegram tool handler)
-  const auth = request.headers.get('authorization') ?? '';
-  const match = auth.match(/^Bearer user_(.+)$/);
-  if (match) return match[1];
-
-  return null;
+  return user?.id ?? null;
 }
 
 export async function POST(request: NextRequest) {
