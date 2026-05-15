@@ -11,9 +11,13 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 // @PaybackerAssistantBot — admin/founder bot only.
-// Token is separate from the customer-facing @Paybackercoukbot.
-// Set TELEGRAM_ADMIN_BOT_TOKEN in Vercel env vars.
-const TELEGRAM_TOKEN = process.env.TELEGRAM_ADMIN_BOT_TOKEN || '';
+// Prefer TELEGRAM_ADMIN_BOT_TOKEN if it's been split out from the
+// customer-facing token, but fall back to TELEGRAM_BOT_TOKEN. Vercel only
+// has TELEGRAM_BOT_TOKEN today, and shipping without the fallback meant
+// every reply silently 404'd against the token-less Telegram URL — webhook
+// returned 200, but the founder never saw a response.
+const TELEGRAM_TOKEN =
+  process.env.TELEGRAM_ADMIN_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 
 // Only the founder can use this bot
