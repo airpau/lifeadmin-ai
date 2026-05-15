@@ -680,6 +680,479 @@ export function DisputesDemo() {
 
 // ---------------------------------------------------------------------------
 // 2 · Pocket Agent · WhatsApp (Pro driver — see CLAUDE.md "main drivers")
+//
+// Ported from Claude Design v2 "demos-v2/scenes-5to8.jsx → Demo08" (May 2026).
+// 11s loop:
+//   t0–1.5  : hero counter £0 → £412 "Spent on food this month"
+//   t1.5–2.4: dark green gradient + WhatsApp phone fades in
+//   t2.4–4.0: user types "How much on food this month?"
+//   t4.0–5.5: bot reply £412.30 + breakdown
+//   t5.5–7.5: alert bubble "British Gas hiked £22 — draft complaint?"
+//   t7.5–8.4: user replies "Yes please"
+//   t8.4–9.5: bot final "Letter drafted citing CRA 2015 s.49"
+//   t9.5–10.8: caption "Ask your money. By text."
+// ---------------------------------------------------------------------------
+export function PocketAgentDemo() {
+  const { ref, t } = useInViewTicker(11);
+  const userQ = 'How much on food this month?';
+  const userTyped =
+    t > 2.4 && t < 4.0
+      ? userQ.slice(0, Math.floor(((t - 2.4) / 1.5) * userQ.length))
+      : t >= 4.0
+        ? userQ
+        : '';
+
+  // Hero counter (£0 → £412) — fades out after t=1.5
+  const heroVisible = t <= 1.5 + 0.5;
+  const cT0 = 0;
+  const cT1 = 1.5 - 0.4; // count finishes 0.4s before fade-out
+  const cK = t < cT0 ? 0 : t >= cT1 ? 1 : (t - cT0) / (cT1 - cT0);
+  const cE = 1 - Math.pow(1 - cK, 3); // easeOutCubic
+  const heroNum = Math.round(0 + (412 - 0) * cE);
+  const heroOpacity = t > 1.5 ? Math.max(0, 1 - (t - 1.5) / 0.5) : 1;
+
+  const showChat = t > 1.5;
+  const showCaption = t > 9.5 && t < 10.8;
+
+  return (
+    <div className="demo-stage dark" ref={ref}>
+      <span className="demo-label">
+        Pocket Agent · WhatsApp · 11s loop · ported from Demo08
+      </span>
+
+      {/* Hero opener — black gradient, big £ count-up */}
+      {heroVisible && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 30,
+            background: 'linear-gradient(160deg,#0B1220 0%,#112038 100%)',
+            color: '#fff',
+            textAlign: 'center',
+            opacity: heroOpacity,
+            transition: 'opacity 200ms',
+            pointerEvents: 'none',
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: 14,
+                color: '#34D399',
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                fontWeight: 700,
+              }}
+            >
+              Spent on food
+            </div>
+            <div
+              style={{
+                fontSize: 'clamp(72px, 14vw, 140px)',
+                fontWeight: 900,
+                letterSpacing: '-0.04em',
+                lineHeight: 1,
+                fontVariantNumeric: 'tabular-nums',
+                color: '#fff',
+                margin: '14px 0 8px',
+              }}
+            >
+              £{heroNum.toLocaleString('en-GB')}
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: '#9CA3AF',
+                textTransform: 'uppercase',
+                letterSpacing: '0.16em',
+                fontWeight: 600,
+              }}
+            >
+              this month · text Paybacker to find out
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat stage — WhatsApp green gradient with a phone */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          opacity: showChat ? 1 : 0,
+          transition: 'opacity 400ms',
+          background: 'linear-gradient(160deg,#075E54,#128C7E)',
+          display: 'grid',
+          placeItems: 'center',
+        }}
+      >
+        <div
+          style={{
+            position: 'relative',
+            width: 'min(280px, 46%)',
+            aspectRatio: '280 / 560',
+            background: '#0B1220',
+            borderRadius: 38,
+            padding: 9,
+            boxShadow: '0 24px 60px -16px rgba(0,0,0,.45)',
+          }}
+        >
+          {/* Phone screen */}
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              background: '#fff',
+              borderRadius: 30,
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
+            {/* Notch */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 10,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 80,
+                height: 22,
+                background: '#0B1220',
+                borderRadius: 12,
+                zIndex: 2,
+              }}
+              aria-hidden="true"
+            />
+            <div
+              style={{
+                position: 'absolute',
+                top: 14,
+                left: 0,
+                right: 0,
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '0 24px',
+                fontSize: 11,
+                fontWeight: 700,
+                zIndex: 1,
+              }}
+              aria-hidden="true"
+            >
+              <span>9:41</span>
+              <span>●●●</span>
+            </div>
+
+            {/* Chat surface */}
+            <div
+              style={{
+                height: '100%',
+                background: '#E5DDD5',
+                display: 'flex',
+                flexDirection: 'column',
+                paddingTop: 36,
+              }}
+            >
+              {/* WA header */}
+              <div
+                style={{
+                  background: '#075E54',
+                  color: '#fff',
+                  padding: '10px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: '50%',
+                    background: '#34D399',
+                    display: 'grid',
+                    placeItems: 'center',
+                    fontWeight: 900,
+                    color: '#0B1220',
+                    fontSize: 13,
+                  }}
+                >
+                  P
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Paybacker</div>
+                  <div style={{ fontSize: 10, opacity: 0.75 }}>online · read-only</div>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div
+                style={{
+                  flex: 1,
+                  padding: '14px 12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                  overflow: 'hidden',
+                }}
+              >
+                {/* User question */}
+                {t > 2.4 && (
+                  <div
+                    style={{
+                      alignSelf: 'flex-end',
+                      background: '#DCF8C6',
+                      padding: '7px 10px',
+                      borderRadius: '10px 10px 2px 10px',
+                      fontSize: 11.5,
+                      maxWidth: '80%',
+                      animation: 'demoMsgIn 250ms',
+                      color: '#0A0F1C',
+                    }}
+                  >
+                    {userTyped}
+                    {t < 4.0 && <span className="caret" />}
+                    <div
+                      style={{
+                        fontSize: 8.5,
+                        color: 'rgba(0,0,0,.4)',
+                        textAlign: 'right',
+                        marginTop: 2,
+                      }}
+                      aria-hidden="true"
+                    >
+                      9:41 ✓✓
+                    </div>
+                  </div>
+                )}
+
+                {/* Bot spend reply */}
+                {t > 4.0 && (
+                  <div
+                    style={{
+                      alignSelf: 'flex-start',
+                      background: '#fff',
+                      padding: '8px 11px',
+                      borderRadius: '10px 10px 10px 2px',
+                      fontSize: 11.5,
+                      maxWidth: '82%',
+                      animation: 'demoMsgIn 300ms',
+                      lineHeight: 1.4,
+                      color: '#0A0F1C',
+                    }}
+                  >
+                    <b>£412.30</b> across 28 transactions.
+                    <br />
+                    <span style={{ color: '#B45309' }}>32% above</span> your monthly avg.
+                    <div
+                      style={{
+                        marginTop: 6,
+                        padding: '6px 8px',
+                        background: '#FAFAF7',
+                        borderRadius: 6,
+                        fontSize: 10,
+                        color: '#4B5563',
+                      }}
+                    >
+                      Tesco £148 · Sainsburys £92 · Pret £68 …
+                    </div>
+                    <div
+                      style={{ fontSize: 8.5, color: '#6B7280', marginTop: 3 }}
+                      aria-hidden="true"
+                    >
+                      9:41
+                    </div>
+                  </div>
+                )}
+
+                {/* Alert bubble */}
+                {t > 5.5 && (
+                  <div
+                    style={{
+                      alignSelf: 'flex-start',
+                      background: '#FFF7E1',
+                      padding: '8px 11px',
+                      borderRadius: '10px 10px 10px 2px',
+                      fontSize: 11.5,
+                      maxWidth: '82%',
+                      animation: 'demoMsgIn 350ms',
+                      lineHeight: 1.4,
+                      border: '1px solid #FCD34D',
+                      color: '#0A0F1C',
+                    }}
+                  >
+                    ⚠ <b>British Gas direct debit went up £22</b> on 1 Nov.
+                    <br />
+                    Want me to draft a complaint?
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                      <span
+                        style={{
+                          padding: '4px 9px',
+                          background: '#0B1220',
+                          color: '#fff',
+                          borderRadius: 14,
+                          fontSize: 10,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Yes please
+                      </span>
+                      <span
+                        style={{
+                          padding: '4px 9px',
+                          background: '#fff',
+                          color: '#4B5563',
+                          borderRadius: 14,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          border: '1px solid #E5E7EB',
+                        }}
+                      >
+                        Not now
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* User accepts */}
+                {t > 7.5 && (
+                  <div
+                    style={{
+                      alignSelf: 'flex-end',
+                      background: '#DCF8C6',
+                      padding: '7px 10px',
+                      borderRadius: '10px 10px 2px 10px',
+                      fontSize: 11.5,
+                      animation: 'demoMsgIn 250ms',
+                      color: '#0A0F1C',
+                    }}
+                  >
+                    Yes please
+                    <div
+                      style={{
+                        fontSize: 8.5,
+                        color: 'rgba(0,0,0,.4)',
+                        textAlign: 'right',
+                        marginTop: 2,
+                      }}
+                      aria-hidden="true"
+                    >
+                      9:42 ✓✓
+                    </div>
+                  </div>
+                )}
+
+                {/* Bot final: letter drafted */}
+                {t > 8.4 && (
+                  <div
+                    style={{
+                      alignSelf: 'flex-start',
+                      background: '#fff',
+                      padding: '8px 11px',
+                      borderRadius: '10px 10px 10px 2px',
+                      fontSize: 11.5,
+                      maxWidth: '80%',
+                      animation: 'demoMsgIn 350ms',
+                      lineHeight: 1.4,
+                      color: '#0A0F1C',
+                    }}
+                  >
+                    Letter drafted citing{' '}
+                    <mark
+                      style={{
+                        background: 'rgba(52,211,153,.2)',
+                        color: '#065F46',
+                        fontWeight: 700,
+                        padding: '1px 3px',
+                        borderRadius: 3,
+                      }}
+                    >
+                      Consumer Rights Act 2015 s.49
+                    </mark>
+                    .
+                    <br />
+                    Approve here ✓
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* "● LIVE on WhatsApp" pill — top right, only after chat opens */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 18,
+          right: 18,
+          zIndex: 40,
+          opacity: showChat ? 1 : 0,
+          transition: 'opacity 400ms',
+        }}
+        aria-hidden="true"
+      >
+        <span
+          style={{
+            background: '#25D366',
+            color: '#fff',
+            fontSize: 11,
+            padding: '5px 12px',
+            borderRadius: 999,
+            fontWeight: 700,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            boxShadow: '0 4px 12px -2px rgba(0,0,0,.25)',
+          }}
+        >
+          ● LIVE on WhatsApp
+        </span>
+      </div>
+
+      {/* Caption */}
+      {showCaption && (
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            bottom: '6%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(11,18,32,.92)',
+            color: '#fff',
+            padding: '10px 18px',
+            borderRadius: 10,
+            fontSize: 15,
+            fontWeight: 600,
+            letterSpacing: '-0.01em',
+            maxWidth: '80%',
+            textAlign: 'center',
+            lineHeight: 1.3,
+            boxShadow: '0 12px 30px -8px rgba(0,0,0,.4)',
+            zIndex: 60,
+            backdropFilter: 'blur(8px)',
+            animation: 'demoFadeIn 350ms backwards',
+          }}
+        >
+          Ask your money. By text.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 2a · Pocket Agent · WhatsApp · LEGACY (15s "do-everything" demo)
+//
+// Superseded May 2026 by the shorter, more focused Demo08 port above
+// (`PocketAgentDemo`). Kept around behind `PocketAgentDemoLegacy` so we
+// can A/B compare or revert without trawling git history. Not currently
+// imported anywhere on the homepage — safe to delete if the new demo
+// holds up after a few weeks in production.
 // ---------------------------------------------------------------------------
 type PAMsg =
   | { from: number; kind: 'bot-alert' }
@@ -690,7 +1163,7 @@ type PAMsg =
   | { from: number; kind: 'bot-draft' }
   | { from: number; kind: 'user-accept' };
 
-export function PocketAgentDemo() {
+export function PocketAgentDemoLegacy() {
   const { ref, t } = useInViewTicker(15);
 
   const msgs: PAMsg[] = [

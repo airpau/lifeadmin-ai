@@ -347,6 +347,16 @@
 
 .m-v2-root .hero-visual .float { animation: float 6s ease-in-out infinite; }
 
+/* Hero-stage — wraps a looping product demo (PocketAgentDemo by default)
+   inside the hero. Constrains the demo's natural 980px max-width so it
+   doesn't dominate the hero column, while keeping its 16:10 aspect. */
+.m-v2-root .hero-stage {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.m-v2-root .hero-stage .demo-stage { max-width: 100%; }
+
 @keyframes float {
   0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); }
   50% { transform: translateY(-4px) rotate(var(--r, 0deg)); }

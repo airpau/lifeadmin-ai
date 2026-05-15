@@ -400,7 +400,14 @@ function Nav() {
 // HeroVisual — mini-card + dashboard card (3D tilt on mouse) + agent bubble.
 // The live DisputesDemo lives inside its own feature section further down so
 // it isn't repeated twice on the page.
+//
+// NOTE (May 2026): the hero now renders <PocketAgentDemo /> instead, so this
+// component is kept around as a fallback we can swap back in if the looping
+// demo causes performance, accessibility or "too busy" feedback. Leaving it
+// defined-but-unused is deliberate — the eslint-disable line below is the
+// signal that it's parked, not orphaned.
 // ---------------------------------------------------------------------------
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function HeroVisual() {
   const dashRef = useRef<HTMLDivElement | null>(null);
 
@@ -859,7 +866,15 @@ export default function HomepageV3PreviewPage() {
               </div>
             </Reveal>
 
-            <HeroVisual />
+            {/* Hero visual — the WhatsApp Pocket Agent demo (Demo08 port,
+                May 2026). Replaced the static `<HeroVisual />` 3-card
+                composition because the looping product walkthrough shows
+                people exactly how the product works in the first scroll.
+                `HeroVisual` is still defined above and can be swapped back
+                in if the looping demo causes issues. */}
+            <div className="hero-stage">
+              <PocketAgentDemo />
+            </div>
           </div>
         </div>
       </section>
