@@ -24,6 +24,7 @@ import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { generateAnnualReportData, generateOnDemandReportData } from '@/lib/report-generator';
 import { predictMonthlyIncome } from '@/lib/income-prediction';
+import { isValidCategory, normaliseCategory, USER_SELECTABLE_IDS } from '@/lib/categories';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -1702,10 +1703,25 @@ async function recategoriseTransactions(
   merchantName: string,
   newCategory: string,
 ): Promise<ToolResult> {
-  // Update user_category, which is our internal system rule
+  // Honour the user's exact word when it's a valid canonical category.
+  // If the model passed a legacy synonym (food → groceries, fitness → health,
+  // property_management → housing, etc.), normaliseCategory maps it through
+  // CATEGORY_ALIASES. Lowercase + trim first so "Rent" / " rent " both
+  // resolve to "rent" (which was added as a canonical ID on 2026-05-14).
+  // Anything truly unknown falls through to 'other' rather than triggering
+  // a CHECK constraint failure on the DB write.
+  const rawInput = (newCategory ?? '').toLowerCase().trim();
+  const resolvedCategory = isValidCategory(rawInput) ? rawInput : normaliseCategory(rawInput);
+
+  if (!isValidCategory(resolvedCategory)) {
+    return {
+      text: `Couldn't recognise the category "${newCategory}". Valid categories: ${USER_SELECTABLE_IDS.join(', ')}.`,
+    };
+  }
+
   const { data, error } = await supabase
     .from('bank_transactions')
-    .update({ user_category: newCategory })
+    .update({ user_category: resolvedCategory })
     .eq('user_id', userId)
     .or(`merchant_name.ilike.%${merchantName}%,description.ilike.%${merchantName}%`)
     .select('id, amount, description, merchant_name');
@@ -1723,11 +1739,11 @@ async function recategoriseTransactions(
   try {
     const { learnFromCorrection } = await import('@/lib/learning-engine');
     // We only need to learn once per merchant batch
-    const sample = data[0]; 
+    const sample = data[0];
     await learnFromCorrection({
       rawName: sample.description || sample.merchant_name || merchantName,
       displayName: merchantName,
-      category: newCategory,
+      category: resolvedCategory,
       amount: sample.amount,
       userId: userId,
     });
@@ -1735,7 +1751,7 @@ async function recategoriseTransactions(
     console.error('[UserBot] Error pushing to learning engine:', err.message);
   }
 
-  return { text: `Recategorised ${count} transaction${count !== 1 ? 's' : ''} matching "${merchantName}" to "${newCategory}". Future transactions from this merchant will also be categorised as "${newCategory}".` };
+  return { text: `Recategorised ${count} transaction${count !== 1 ? 's' : ''} matching "${merchantName}" to "${resolvedCategory}". Future transactions from this merchant will also be categorised as "${resolvedCategory}".` };
 }
 
 async function setBudget(

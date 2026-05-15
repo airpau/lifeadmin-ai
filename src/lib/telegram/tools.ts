@@ -1,4 +1,5 @@
 import type { Tool } from '@anthropic-ai/sdk/resources/messages';
+import { USER_SELECTABLE_IDS } from '@/lib/categories';
 
 export const telegramTools: Tool[] = [
   // ============================================================
@@ -620,7 +621,13 @@ export const telegramTools: Tool[] = [
   {
     name: 'recategorise_transactions',
     description:
-      'Change the category of bank transactions matching a merchant name. For example, recategorise all "Costa" transactions from "other" to "food". Returns how many transactions were updated.',
+      'Change the category of bank transactions matching a merchant name. ' +
+      'IMPORTANT: When the user specifies a category by name (e.g. "to rent", "as groceries", "as bills"), ' +
+      'pass that exact word in new_category — do not substitute a synonym. ' +
+      'Only infer a category when the user is vague (e.g. "something more appropriate"). ' +
+      'For example: "recategorise PCL transport to rent" → new_category: "rent" (NOT "housing" or "property_management"). ' +
+      '"categorise Tesco as groceries" → new_category: "groceries". ' +
+      'Returns how many transactions were updated.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -630,13 +637,12 @@ export const telegramTools: Tool[] = [
         },
         new_category: {
           type: 'string',
-          enum: [
-            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
-            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
-            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
-            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management', 'transfers',
-          ],
-          description: 'The category to assign to matching transactions.',
+          enum: [...USER_SELECTABLE_IDS],
+          description:
+            'The category to assign. Use the exact word the user said when they named one — e.g. ' +
+            '"rent" for rent, "groceries" for shopping food, "eating_out" for restaurants, ' +
+            '"transport" for travel-to-work, "bills" for utility-style payments. ' +
+            'Do NOT substitute synonyms (rent is NOT housing or property_management).',
         },
       },
       required: ['merchant_name', 'new_category'],
