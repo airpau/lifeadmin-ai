@@ -1,19 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applySpaceToTxnQuery, resolveActiveSpaceFromRequest } from '@/lib/spaces';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // Budgets are user-level (not per-Space), but spend totals respect the
+  // active Space so a "Business" view doesn't count personal grocery
+  // against a business-only category budget.
+  const activeSpace = await resolveActiveSpaceFromRequest(supabase, user.id, request);
+  let txnQuery = supabase.from('bank_transactions')
+    .select('amount, description, category, user_category, merchant_name, connection_id, account_id')
+    .eq('user_id', user.id)
+    .lt('amount', 0)
+    .gte('timestamp', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+    .limit(10000);
+  txnQuery = applySpaceToTxnQuery(txnQuery, activeSpace);
+
   const [budgetsRes, txnRes] = await Promise.all([
     supabase.from('money_hub_budgets').select('*').eq('user_id', user.id),
-    supabase.from('bank_transactions')
-      .select('amount, description, category, user_category, merchant_name')
-      .eq('user_id', user.id)
-      .lt('amount', 0)
-      .gte('timestamp', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
-      .limit(10000),
+    txnQuery,
   ]);
 
   const budgets = budgetsRes.data || [];

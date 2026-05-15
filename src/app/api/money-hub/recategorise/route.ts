@@ -220,11 +220,14 @@ export async function POST(request: NextRequest) {
           category: resolvedCategory,
           userId: user.id,
         }).catch((e) => console.error('Learn error (non-fatal):', e.message)),
-        admin.rpc('upsert_merchant_wisdom', {
-          p_pattern: merchantPattern.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^a-z0-9 ]/g, '').substring(0, 60),
-          p_category: resolvedCategory,
-          p_source: 'user',
-        }).catch((e: Error) => console.error('Wisdom upsert error (non-fatal):', e.message)),
+        (async () => {
+          const { error: wisdomErr } = await admin.rpc('upsert_merchant_wisdom', {
+            p_pattern: merchantPattern.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^a-z0-9 ]/g, '').substring(0, 60),
+            p_category: resolvedCategory,
+            p_source: 'user',
+          });
+          if (wisdomErr) console.error('Wisdom upsert error (non-fatal):', wisdomErr.message);
+        })(),
       ]);
 
       // 4. Reverse-sync to subscriptions: if the user recategorised a

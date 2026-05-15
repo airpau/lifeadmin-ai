@@ -162,7 +162,7 @@ export async function POST() {
   let incomeDetected = 0;
 
   // Phase 1: Apply user overrides and keyword rules
-  const needsAI: Array<{ id: string; description: string; amount: number; category: string }> = [];
+  const needsAI: Array<{ id: string; description: string; amount: number; category: string; merchant: string }> = [];
 
   for (const txn of transactions) {
     const desc = txn.description || '';

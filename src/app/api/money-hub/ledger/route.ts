@@ -34,6 +34,7 @@ import {
   resolveMoneyHubTransaction,
 } from '@/lib/money-hub-classification';
 import { loadLearnedRules } from '@/lib/learning-engine';
+import { applySpaceToTxnQuery, resolveActiveSpaceFromRequest } from '@/lib/spaces';
 
 export const runtime = 'nodejs';
 
@@ -62,9 +63,11 @@ export async function GET(request: NextRequest) {
 
     const sb = admin();
 
+    const activeSpace = await resolveActiveSpaceFromRequest(supabase, user.id, request);
+
     let query = sb
       .from('bank_transactions')
-      .select('id, amount, description, category, timestamp, merchant_name, user_category, user_subcategory, income_type, account_id')
+      .select('id, amount, description, category, timestamp, merchant_name, user_category, user_subcategory, income_type, account_id, connection_id')
       .eq('user_id', user.id)
       .order('timestamp', { ascending: false })
       // Pull MORE than the requested page — the resolver below filters
@@ -85,6 +88,7 @@ export async function GET(request: NextRequest) {
       const term = `%${q}%`;
       query = query.or(`merchant_name.ilike.${term},description.ilike.${term}`);
     }
+    query = applySpaceToTxnQuery(query, activeSpace);
 
     const [{ data: txns }, { data: overrideRows }, { data: bankConns }] = await Promise.all([
       query,

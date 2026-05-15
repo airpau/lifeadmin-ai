@@ -16,6 +16,7 @@ interface PatchBody {
   connection_ids?: string[];
   account_refs?: string[];
   sort_order?: number;
+  space_type?: 'personal' | 'business' | 'mixed';
 }
 
 export async function PATCH(
@@ -39,6 +40,12 @@ export async function PATCH(
   if (body.emoji !== undefined) update.emoji = body.emoji;
   if (body.color !== undefined) update.color = body.color;
   if (body.sort_order !== undefined) update.sort_order = body.sort_order;
+  if (body.space_type !== undefined) {
+    if (!['personal', 'business', 'mixed'].includes(body.space_type)) {
+      return NextResponse.json({ error: 'invalid space_type' }, { status: 400 });
+    }
+    update.space_type = body.space_type;
+  }
 
   if (body.connection_ids !== undefined || body.account_refs !== undefined) {
     const connectionIds = Array.from(new Set(body.connection_ids ?? []));

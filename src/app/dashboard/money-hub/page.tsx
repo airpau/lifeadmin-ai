@@ -108,7 +108,7 @@ export default function MoneyHubPage() {
  const [error, setError] = useState<string | null>(null);
  const [syncing, setSyncing] = useState(false);
  const [selectedMonth, setSelectedMonth] = useState('');
- const [spaces, setSpaces] = useState<Array<{ id: string; name: string; emoji: string | null; is_default: boolean; created_at?: string | null }>>([]);
+ const [spaces, setSpaces] = useState<Array<{ id: string; name: string; emoji: string | null; is_default: boolean; created_at?: string | null; space_type?: 'personal' | 'business' | 'mixed' }>>([]);
  const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
  const [preferredSpaceId, setPreferredSpaceId] = useState<string | null>(null);
  // Separate flag for Space / month switches — initial load uses `loading`.
@@ -257,7 +257,11 @@ export default function MoneyHubPage() {
  const fetchExpectedBills = async (month?: string) => {
  try {
  const targetMonth = month ?? selectedMonth;
- const url = targetMonth ? `/api/money-hub/expected-bills?month=${targetMonth}` : '/api/money-hub/expected-bills';
+ const params = new URLSearchParams();
+ if (targetMonth) params.set('month', targetMonth);
+ if (activeSpaceId) params.set('space_id', activeSpaceId);
+ const qs = params.toString();
+ const url = qs ? `/api/money-hub/expected-bills?${qs}` : '/api/money-hub/expected-bills';
  const res = await fetch(url);
  const d = await res.json();
  if (!d.error && d.bills) {
@@ -313,7 +317,8 @@ export default function MoneyHubPage() {
  const fetchFac = async () => {
  setFacLoading(true);
  try {
- const res = await fetch('/api/money-hub/fac');
+ const url = activeSpaceId ? `/api/money-hub/fac?space_id=${activeSpaceId}` : '/api/money-hub/fac';
+ const res = await fetch(url);
  const d = await res.json();
  if (!d.error) {
  // Align Money Hub's "active subscriptions" list with Dashboard Overview
@@ -1168,7 +1173,13 @@ export default function MoneyHubPage() {
  })()}
 
  {/* OVERVIEW (Summary cards + Income breakdown + Monthly trends) */}
- <OverviewPanel data={data} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
+ <OverviewPanel
+   data={data}
+   refreshData={refreshData}
+   selectedMonth={selectedMonth || data.selectedMonth}
+   activeSpaceId={activeSpaceId}
+   activeSpaceType={(spaces.find(s => s.id === activeSpaceId)?.space_type) ?? null}
+ />
 
  {/* MAIN GRID: Spending + Budgets & Goals */}
  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

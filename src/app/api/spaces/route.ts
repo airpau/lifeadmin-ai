@@ -48,6 +48,7 @@ interface CreateBody {
   color?: string | null;
   connection_ids?: string[];
   account_refs?: string[];
+  space_type?: 'personal' | 'business' | 'mixed';
 }
 
 export async function POST(request: Request) {
@@ -99,6 +100,10 @@ export async function POST(request: Request) {
     }
   }
 
+  const spaceType = body.space_type && ['personal', 'business', 'mixed'].includes(body.space_type)
+    ? body.space_type
+    : 'personal';
+
   const { data, error } = await supabase
     .from('account_spaces')
     .insert({
@@ -109,6 +114,7 @@ export async function POST(request: Request) {
       is_default: false,
       connection_ids: connectionIds,
       account_refs: accountRefs,
+      space_type: spaceType,
     })
     .select('*')
     .single();

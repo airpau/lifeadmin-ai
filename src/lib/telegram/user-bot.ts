@@ -563,7 +563,8 @@ export function createUserBot(): Bot<UserBotContext> {
       .from('telegram_sessions')
       .select('id')
       .eq('telegram_chat_id', chatId)
-      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single();
 
     if (!session) {
@@ -752,7 +753,8 @@ export function createUserBot(): Bot<UserBotContext> {
       .from('telegram_sessions')
       .select('user_id')
       .eq('telegram_chat_id', chatId)
-      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single();
 
     if (!session) {
@@ -817,7 +819,7 @@ export function createUserBot(): Bot<UserBotContext> {
 
       const [issueResult, sessionResult] = await Promise.all([
         supabase.from('detected_issues').select('*').eq('id', issueId).single(),
-        supabase.from('telegram_sessions').select('user_id').eq('telegram_chat_id', chatId).eq('is_active', true).single(),
+        supabase.from('telegram_sessions').select('user_id').eq('telegram_chat_id', chatId).order('created_at', { ascending: false }).limit(1).single(),
       ]);
 
       const issue = issueResult.data;
@@ -1320,7 +1322,8 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .from('telegram_sessions')
         .select('user_id')
         .eq('telegram_chat_id', chatId)
-        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
       if (!session || session.user_id !== supplierMsg.user_id) {
         await bot.api.sendMessage(chatId, "I can't access that dispute from this Telegram account.");
@@ -1565,7 +1568,8 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .from('telegram_sessions')
         .select('user_id')
         .eq('telegram_chat_id', chatId)
-        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (!supplierMsg || !session || session.user_id !== supplierMsg.user_id) {
@@ -1617,7 +1621,8 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .from('telegram_sessions')
         .select('user_id')
         .eq('telegram_chat_id', chatId)
-        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (!draft || !session || session.user_id !== draft.user_id) {
@@ -1771,7 +1776,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
     try {
       const [alertRes, sessionRes] = await Promise.all([
         supabase.from('telegram_pending_alerts').select('*').eq('id', alertId).single(),
-        supabase.from('telegram_sessions').select('user_id').eq('telegram_chat_id', chatId).eq('is_active', true).single(),
+        supabase.from('telegram_sessions').select('user_id').eq('telegram_chat_id', chatId).order('created_at', { ascending: false }).limit(1).single(),
       ]);
       const alert = alertRes.data;
       const session = sessionRes.data;
@@ -1808,7 +1813,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
     try {
       const [alertRes, sessionRes] = await Promise.all([
         supabase.from('telegram_pending_alerts').select('*').eq('id', alertId).single(),
-        supabase.from('telegram_sessions').select('user_id').eq('telegram_chat_id', chatId).eq('is_active', true).single(),
+        supabase.from('telegram_sessions').select('user_id').eq('telegram_chat_id', chatId).order('created_at', { ascending: false }).limit(1).single(),
       ]);
       const alert = alertRes.data;
       const session = sessionRes.data;

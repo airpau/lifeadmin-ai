@@ -14,6 +14,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+export type SpaceType = 'personal' | 'business' | 'mixed';
+
 export interface AccountSpace {
   id: string;
   user_id: string;
@@ -21,6 +23,10 @@ export interface AccountSpace {
   emoji: string | null;
   color: string | null;
   is_default: boolean;
+  /** Drives Space-aware categorisation: a Business Space surfaces the
+   *  business category set; a Personal Space surfaces consumer ones.
+   *  Defaults to 'personal' for back-compat. */
+  space_type: SpaceType;
   connection_ids: string[];
   /** Per-account refs in `"connectionId:providerAccountId"` format.
    *  Use these when a single connection contains both personal
@@ -120,6 +126,51 @@ export function spaceTransactionFilter(space: AccountSpace | null):
     accountPairs.push({ connectionId: connId, accountId });
   }
   return { connectionIds: Array.from(conns), accountPairs };
+}
+
+/**
+ * Apply a Space's filter to a transactions-like PostgREST query (one
+ * that exposes `connection_id` and `account_id`). Returns the query
+ * unchanged when the Space is the default "Everything" (no filter).
+ *
+ * `tableShorthand` is purely a label for the .or() expressions —
+ * leaving it as the default is fine for any non-joined query.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function applySpaceToTxnQuery<Q extends { in: (col: string, vals: string[]) => Q; or: (filter: string) => Q }>(
+  query: Q,
+  space: AccountSpace | null,
+): Q {
+  const txFilter = spaceTransactionFilter(space);
+  if (!txFilter) return query;
+  if (txFilter.accountPairs.length === 0) {
+    if (txFilter.connectionIds.length === 0) return query;
+    return query.in('connection_id', txFilter.connectionIds);
+  }
+  const parts: string[] = [];
+  if (txFilter.connectionIds.length > 0) {
+    parts.push(`connection_id.in.(${txFilter.connectionIds.join(',')})`);
+  }
+  for (const { connectionId, accountId } of txFilter.accountPairs) {
+    parts.push(`and(connection_id.eq.${connectionId},account_id.eq.${accountId})`);
+  }
+  return query.or(parts.join(','));
+}
+
+/**
+ * Resolve the active Space from a `request` (URL ?space_id=) or fall
+ * back to the user's default Space. Used by Money Hub sub-endpoints
+ * that need to honour the same filter as `/api/money-hub`.
+ */
+export async function resolveActiveSpaceFromRequest(
+  supabase: SupabaseClient,
+  userId: string,
+  request: Request,
+): Promise<AccountSpace | null> {
+  const url = new URL(request.url);
+  const requestedSpaceId = url.searchParams.get('space_id');
+  await ensureDefaultSpace(supabase, userId);
+  return getSpace(supabase, userId, requestedSpaceId);
 }
 
 /**

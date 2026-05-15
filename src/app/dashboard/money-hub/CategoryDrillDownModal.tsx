@@ -13,6 +13,14 @@ interface CategoryDrillDownModalProps {
   searchQuery?: string | null;
   selectedMonth: string;
   onRecategorised: () => void;
+  /** Forwarded to /api/money-hub/transactions so the drill-down shows
+   *  only transactions in the active Space. */
+  activeSpaceId?: string | null;
+  /** Drives whether the reassign dropdown surfaces the Business
+   *  category group. 'business' / 'mixed' show it; 'personal' hides
+   *  it even if the user has business bank connections. Undefined =
+   *  fall back to the legacy hasBusinessAccount check. */
+  activeSpaceType?: 'personal' | 'business' | 'mixed' | null;
 }
 
 // Derived from the canonical category taxonomy — always in sync with categories.ts.
@@ -30,7 +38,7 @@ const INCOME_TYPES = [
 // non-income (income_type = 'credit_loan') and labels it on the spending side.
 const NON_INCOME_CATEGORIES = ['transfers', 'loans', 'mortgage', 'credit'];
 
-export default function CategoryDrillDownModal({ isOpen, onClose, category, incomeType, searchQuery, selectedMonth, onRecategorised }: CategoryDrillDownModalProps) {
+export default function CategoryDrillDownModal({ isOpen, onClose, category, incomeType, searchQuery, selectedMonth, onRecategorised, activeSpaceId, activeSpaceType }: CategoryDrillDownModalProps) {
   const [data, setData] = useState<{ transactions: any[]; merchants: any[]; totalSpent: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [recatDropdown, setRecatDropdown] = useState<string | null>(null);
@@ -50,7 +58,8 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
       setData(null);
       setErrorMsg(null);
     }
-  }, [isOpen, category, incomeType, searchQuery, selectedMonth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, category, incomeType, searchQuery, selectedMonth, activeSpaceId]);
 
   // Detect business accounts once on first open — drives whether the Business
   // category group appears in the reassign dropdown.
@@ -76,13 +85,14 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
     setLoading(true);
     setErrorMsg(null);
     try {
-      const monthParam = selectedMonth ? `&month=${selectedMonth}` : '';
-      let typeParam = '';
-      if (searchQuery) typeParam = `searchQuery=${encodeURIComponent(searchQuery)}`;
-      else if (incomeType) typeParam = `income_type=${encodeURIComponent(incomeType)}`;
-      else typeParam = `category=${encodeURIComponent(category!)}`;
+      const params = new URLSearchParams();
+      if (searchQuery) params.set('searchQuery', searchQuery);
+      else if (incomeType) params.set('income_type', incomeType);
+      else if (category) params.set('category', category);
+      if (selectedMonth) params.set('month', selectedMonth);
+      if (activeSpaceId) params.set('space_id', activeSpaceId);
 
-      const res = await fetch(`/api/money-hub/transactions?${typeParam}${monthParam}`);
+      const res = await fetch(`/api/money-hub/transactions?${params.toString()}`);
       if (!res.ok) {
         setErrorMsg('Could not load transactions — please retry.');
         setData(null);
@@ -196,10 +206,19 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
         </>
       );
     }
-    // Filter categories: always show consumer groups; show Business group only
-    // for users who have at least one business bank connection.
+    // Filter categories by active Space type when set; otherwise fall back
+    // to the legacy "user has any business connection" check. In a Personal
+    // Space we hide Business categories even if the user has business
+    // connections (they aren't part of this view). In Business / Mixed we
+    // show them. Default Space gets the legacy behaviour.
+    const showBusiness =
+      activeSpaceType === 'business' || activeSpaceType === 'mixed'
+        ? true
+        : activeSpaceType === 'personal'
+          ? false
+          : hasBusinessAccount;
     const visibleCategories = USER_SELECTABLE_CATEGORIES.filter(
-      c => c.group !== 'Business' || hasBusinessAccount,
+      c => c.group !== 'Business' || showBusiness,
     );
 
     // Group categories for display

@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { loadLearnedRules } from '@/lib/learning-engine';
+import { applySpaceToTxnQuery, resolveActiveSpaceFromRequest } from '@/lib/spaces';
 import {
   buildMoneyHubOverrideMaps,
   findMatchingCategoryOverride,
@@ -62,7 +63,7 @@ function summariseTransactions(
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -70,6 +71,7 @@ export async function GET() {
 
     const admin = getAdmin();
     const now = new Date();
+    const activeSpace = await resolveActiveSpaceFromRequest(supabase, user.id, request);
 
     // Previous month boundaries
     const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 15);
@@ -85,13 +87,16 @@ export async function GET() {
     const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString();
     await loadLearnedRules();
 
+    let txnQuery = admin
+      .from('bank_transactions')
+      .select('id, amount, user_category, description, category, merchant_name, income_type, timestamp, connection_id, account_id')
+      .eq('user_id', user.id)
+      .gte('timestamp', sixMonthsAgo)
+      .limit(10000);
+    txnQuery = applySpaceToTxnQuery(txnQuery, activeSpace);
+
     const [{ data: allTxns }, { data: overrideRows }] = await Promise.all([
-      admin
-        .from('bank_transactions')
-        .select('id, amount, user_category, description, category, merchant_name, income_type, timestamp')
-        .eq('user_id', user.id)
-        .gte('timestamp', sixMonthsAgo)
-        .limit(10000),
+      txnQuery,
       admin
         .from('money_hub_category_overrides')
         .select('merchant_pattern, transaction_id, user_category')

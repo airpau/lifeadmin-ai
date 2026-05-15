@@ -1,11 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { predictMonthlyIncome } from '@/lib/income-prediction';
+import { applySpaceToTxnQuery, resolveActiveSpaceFromRequest } from '@/lib/spaces';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -66,14 +67,18 @@ export async function GET() {
       (b: any) => b.occurrence_count >= 2 && b.occurrence_count <= 30
     );
 
-    // Check which bills are paid
+    // Check which bills are paid — Space-aware so a Business view doesn't
+    // mark personal direct debits as paid.
+    const activeSpace = await resolveActiveSpaceFromRequest(supabase, user.id, request);
     const startOfMonth = new Date(year, month - 1, 1).toISOString();
-    const { data: thisMonthTxns } = await admin
+    let thisMonthTxnsQuery = admin
       .from('bank_transactions')
-      .select('merchant_name, description, amount')
+      .select('merchant_name, description, amount, connection_id, account_id')
       .eq('user_id', user.id)
       .lt('amount', 0)
       .gte('timestamp', startOfMonth);
+    thisMonthTxnsQuery = applySpaceToTxnQuery(thisMonthTxnsQuery, activeSpace);
+    const { data: thisMonthTxns } = await thisMonthTxnsQuery;
 
     const paidMerchants = (thisMonthTxns || []).map((t) =>
       (t.merchant_name || t.description || '')

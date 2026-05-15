@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { applySpaceToTxnQuery, resolveActiveSpaceFromRequest } from '@/lib/spaces';
 
 export const runtime = 'nodejs';
 
@@ -70,7 +71,7 @@ export interface FacItem {
   } | null;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -82,6 +83,15 @@ export async function GET() {
     const today = new Date().toISOString().split('T')[0];
     const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+    const activeSpace = await resolveActiveSpaceFromRequest(supabase, user.id, request);
+    let txnQuery = admin
+      .from('bank_transactions')
+      .select('merchant_name, description, amount, timestamp, connection_id, account_id')
+      .eq('user_id', user.id)
+      .gte('timestamp', ninetyDaysAgo)
+      .lt('amount', 0);
+    txnQuery = applySpaceToTxnQuery(txnQuery, activeSpace);
+
     const [{ data: subs, error: subsError }, { data: txns, error: txnsError }] = await Promise.all([
       admin
         .from('subscriptions')
@@ -90,12 +100,7 @@ export async function GET() {
         .eq('status', 'active')
         .is('dismissed_at', null)
         .order('provider_name', { ascending: true }),
-      admin
-        .from('bank_transactions')
-        .select('merchant_name, description, amount, timestamp')
-        .eq('user_id', user.id)
-        .gte('timestamp', ninetyDaysAgo)
-        .lt('amount', 0),  // spending only (negative = money out)
+      txnQuery,
     ]);
 
     if (subsError) {

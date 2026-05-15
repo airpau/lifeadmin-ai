@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applySpaceToTxnQuery, resolveActiveSpaceFromRequest } from '@/lib/spaces';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,10 +79,14 @@ export async function GET(request: NextRequest) {
   const horizon = new Date(today.getTime() + days * 86_400_000);
   const to = horizon.toISOString().slice(0, 10);
 
+  // Resolve the active Space so this endpoint matches the filter the
+  // main Money Hub view is showing. Default Space → no filter.
+  const activeSpace = await resolveActiveSpaceFromRequest(supabase, user.id, request);
+
   let query = supabase
     .from('upcoming_payments')
     .select(
-      'id, account_id, source, direction, counterparty, amount, currency, expected_date, confidence, yapily_resource_id',
+      'id, connection_id, account_id, source, direction, counterparty, amount, currency, expected_date, confidence, yapily_resource_id',
     )
     .eq('user_id', user.id)
     .gte('expected_date', from)
@@ -91,25 +96,45 @@ export async function GET(request: NextRequest) {
   if (!includePredicted) {
     query = query.neq('source', 'predicted_recurring');
   }
+  query = applySpaceToTxnQuery(query, activeSpace);
 
-  // Also fetch future-dated transactions from bank_transactions.
-  // Yapily sometimes returns transactions with a future timestamp (e.g. scheduled
-  // BACS payments, bill payments dated ahead). These won't be in upcoming_payments
-  // yet (the sync-upcoming cron runs daily) but should show immediately.
+  let connQuery = supabase
+    .from('bank_connections')
+    .select('id, provider, status')
+    .eq('user_id', user.id)
+    .neq('status', 'revoked');
+
+  let futureTxnQuery = supabase
+    .from('bank_transactions')
+    .select('id, amount, description, merchant_name, timestamp, category, user_category, connection_id, account_id')
+    .eq('user_id', user.id)
+    .gt('timestamp', new Date().toISOString())
+    .lte('timestamp', horizon.toISOString())
+    .order('timestamp', { ascending: true });
+  futureTxnQuery = applySpaceToTxnQuery(futureTxnQuery, activeSpace);
+
+  // Apply space filter to connections list too (used for hasBankConnected)
+  // so that a Business-only space doesn't say "you have a bank" when the
+  // user's only connection in that space is excluded.
+  const spaceTxnFilter = (() => {
+    const refs = activeSpace?.account_refs ?? [];
+    const conns = activeSpace?.connection_ids ?? [];
+    if (conns.length === 0 && refs.length === 0) return null;
+    const set = new Set<string>(conns);
+    for (const r of refs) {
+      const id = r.split(':')[0];
+      if (id) set.add(id);
+    }
+    return Array.from(set);
+  })();
+  if (spaceTxnFilter) {
+    connQuery = connQuery.in('id', spaceTxnFilter);
+  }
+
   const [{ data, error }, { data: connections }, { data: futureTxns }] = await Promise.all([
     query,
-    supabase
-      .from('bank_connections')
-      .select('provider, status')
-      .eq('user_id', user.id)
-      .neq('status', 'revoked'),
-    supabase
-      .from('bank_transactions')
-      .select('id, amount, description, merchant_name, timestamp, category, user_category')
-      .eq('user_id', user.id)
-      .gt('timestamp', new Date().toISOString())
-      .lte('timestamp', horizon.toISOString())
-      .order('timestamp', { ascending: true }),
+    connQuery,
+    futureTxnQuery,
   ]);
   if (error) {
     console.error('[upcoming] list failed:', error.message);

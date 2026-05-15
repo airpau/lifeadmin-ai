@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { applySpaceToTxnQuery, resolveActiveSpaceFromRequest } from '@/lib/spaces';
 
 export const runtime = 'nodejs';
 
@@ -180,13 +181,18 @@ export async function GET(request: Request) {
     // Extend end window by 5 days for late-posting bills
     const endOfWindow = new Date(year, month, 5, 23, 59, 59, 999).toISOString();
 
-    const { data: currentMonthTxns } = await admin
+    // Space-aware: a Business view should only mark a bill as "paid" when
+    // the paying transaction is itself in the active Space.
+    const activeSpace = await resolveActiveSpaceFromRequest(supabase, user.id, request);
+    let currentMonthTxnsQuery = admin
       .from('bank_transactions')
-      .select('merchant_name, description, amount, timestamp')
+      .select('merchant_name, description, amount, timestamp, connection_id, account_id')
       .eq('user_id', user.id)
       .lt('amount', 0)
       .gte('timestamp', startOfMonth)
       .lte('timestamp', endOfWindow);
+    currentMonthTxnsQuery = applySpaceToTxnQuery(currentMonthTxnsQuery, activeSpace);
+    const { data: currentMonthTxns } = await currentMonthTxnsQuery;
 
     const paidTransactions = (currentMonthTxns || []).map(t => ({
       name: (t.merchant_name || t.description || '').substring(0, 60).trim().toLowerCase(),

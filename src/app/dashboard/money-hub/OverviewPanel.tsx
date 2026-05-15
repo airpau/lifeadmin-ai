@@ -89,7 +89,7 @@ function getSpendMeta(key: string) {
   return SPEND_LABELS[key] || { label: titleCaseLabel(key), icon: '📋', color: '#475569' };
 }
 
-export default function OverviewPanel({ data, refreshData, selectedMonth }: { data: any, refreshData?: () => void, selectedMonth?: string }) {
+export default function OverviewPanel({ data, refreshData, selectedMonth, activeSpaceId, activeSpaceType }: { data: any, refreshData?: () => void, selectedMonth?: string, activeSpaceId?: string | null, activeSpaceType?: 'personal' | 'business' | 'mixed' | null }) {
   const [drillIncomeType, setDrillIncomeType] = useState<string | null>(null);
   const [drillSpendingCategory, setDrillSpendingCategory] = useState<string | null>(null);
   const [showAllIncome, setShowAllIncome] = useState(false);
@@ -391,6 +391,8 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
           incomeType={drillIncomeType}
           selectedMonth={selectedMonth || ''}
           onRecategorised={() => { setDrillIncomeType(null); refreshData?.(); }}
+          activeSpaceId={activeSpaceId}
+          activeSpaceType={activeSpaceType}
         />
       )}
 
@@ -401,6 +403,8 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
           category={drillSpendingCategory}
           selectedMonth={selectedMonth || ''}
           onRecategorised={() => { setDrillSpendingCategory(null); refreshData?.(); }}
+          activeSpaceId={activeSpaceId}
+          activeSpaceType={activeSpaceType}
         />
       )}
     </div>

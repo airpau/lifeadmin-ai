@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { applySpaceToTxnQuery, resolveActiveSpaceFromRequest } from '@/lib/spaces';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { isGarbageMerchantName, pickRawMerchantSource } from '@/lib/merchant-utils';
 import { loadLearnedRules } from '@/lib/learning-engine';
@@ -35,8 +36,12 @@ export async function GET(request: NextRequest) {
   const admin = getAdmin();
   const { start, end } = getMoneyHubMonthBounds(selectedMonth);
 
+  // Honour the Space filter passed through ?space_id — Money Hub view
+  // changes Space context for every sub-query.
+  const activeSpace = await resolveActiveSpaceFromRequest(supabase, user.id, request);
+
   let query = admin.from('bank_transactions')
-    .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type, account_id')
+    .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type, account_id, connection_id')
     .eq('user_id', user.id)
     .gte('timestamp', start.toISOString())
     .lte('timestamp', end.toISOString())
@@ -47,6 +52,7 @@ export async function GET(request: NextRequest) {
     const term = `%${searchQuery.trim()}%`;
     query = query.or(`merchant_name.ilike.${term},description.ilike.${term}`);
   }
+  query = applySpaceToTxnQuery(query, activeSpace);
 
   const [{ data: txns }, { data: overrideRows }] = await Promise.all([
     query,
