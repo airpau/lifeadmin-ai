@@ -1235,7 +1235,7 @@ async function getBudgetStatus(
           .join('\n');
 
         const msg = await anthropic.messages.create({
-          model: 'claude-3-5-haiku-20241022',
+          model: 'claude-haiku-4-5-20251001',
           max_tokens: 512,
           messages: [{
             role: 'user',
@@ -5517,7 +5517,7 @@ Return as JSON: { "subject": "...", "body": "..." }`;
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 800,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -7329,7 +7329,7 @@ Return ONLY valid JSON, no other text. Example: {"merchant":"EE","amount":42.50,
   let extracted: { merchant?: string; amount?: number | string; date?: string | null; category?: string; reference?: string | null } = {};
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       messages: [{ role: 'user', content: prompt }],
     });

@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
   // Generate reply via Claude
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-haiku-20241022',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 300,
     system: `You are Paybacker's friendly Instagram assistant. Reply to DMs helpfully and conversationally. Keep replies under 200 words. Always end with a call to action pointing to paybacker.co.uk.
 

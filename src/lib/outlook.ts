@@ -371,7 +371,7 @@ export async function scanOutlookForOpportunities(
   const { logClaudeCall } = await import('@/lib/claude-rate-limit');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const SCAN_MODEL = 'claude-3-5-haiku-20241022';
+  const SCAN_MODEL = 'claude-haiku-4-5-20251001';
   const allOpportunities: Opportunity[] = [];
 
   logClaudeCall({
@@ -583,7 +583,7 @@ async function runOutlookPriceFallback(
     }
     try {
       const resp = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 120,
         system: 'You extract recurring subscription prices from UK emails. Return STRICT JSON only.',
         messages: [{

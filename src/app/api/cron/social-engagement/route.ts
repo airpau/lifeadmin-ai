@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
   for (const { postMessage, comment } of fbComments) {
     try {
       const aiRes = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 300,
         system: `You are Paybacker's social media manager responding to comments on Facebook. Be friendly, helpful, and professional. Keep replies short (1-3 sentences). British English.
 
@@ -177,7 +177,7 @@ Rules:
   for (const { mediaId, comment } of igComments) {
     try {
       const aiRes = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 200,
         system: `You are Paybacker's Instagram manager. Reply to comments briefly and warmly. 1-2 sentences max. Use emojis sparingly. British English. Never share internal info. If spam, respond SKIP. Never use em dashes.`,
         messages: [{
@@ -216,7 +216,7 @@ Rules:
   for (const { sender, lastMsg, chatHistory } of fbDms) {
     try {
       const aiRes = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
         system: `You are a friendly support person at Paybacker, chatting with someone on Facebook Messenger. This is a real conversation, not a support ticket. Be natural, warm, and helpful. You can give detailed consumer law advice when asked.
 

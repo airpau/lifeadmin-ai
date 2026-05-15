@@ -383,7 +383,7 @@ export async function POST(request: NextRequest) {
 
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const response = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
         system: `You are Charlie, Executive Assistant at Paybacker. Respond to Telegram commands concisely. Use Markdown formatting. Never use em dashes.\n\n${context}`,
         messages: [{ role: 'user', content: section }],
@@ -457,7 +457,7 @@ export async function POST(request: NextRequest) {
 
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const response = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1500,
         system: `You are ${agentName.charAt(0).toUpperCase() + agentName.slice(1)}, the ${agentRole} at Paybacker LTD. The founder Paul asked you a direct question. You just ran a fresh analysis.
 
@@ -678,7 +678,7 @@ ${liveData}`,
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       system: `You are Charlie, Executive Assistant at Paybacker LTD. You're chatting with Paul (the founder) via Telegram. You have persistent memory of the conversation and full access to business data.
 

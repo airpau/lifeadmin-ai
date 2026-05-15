@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
   try {
     for (const mention of mentions.slice(0, 5)) {
       const response = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 280,
         system: `You are the Paybacker social media team replying to a tweet that mentioned us. Be helpful, friendly, and concise. UK English. Never use em dashes. Max 280 characters. If they have a consumer rights question, give a brief helpful answer and mention paybacker.co.uk can help further. If it's just a mention/shoutout, thank them warmly.\n\n${PRODUCT_CONTEXT}`,
         messages: [{ role: 'user', content: `Reply to this tweet: "${mention.text}"` }],
@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
   try {
     for (const tweet of questionTweets) {
       const response = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 280,
         system: `You are Paybacker's social media team. Someone tweeted about a UK consumer issue. Write a genuinely helpful reply (max 280 chars). Give useful advice first, then briefly mention paybacker.co.uk only if relevant. Do NOT be salesy. UK English. Never use em dashes. Be warm and empathetic.`,
         messages: [{ role: 'user', content: `Reply helpfully to: "${tweet.text}"` }],

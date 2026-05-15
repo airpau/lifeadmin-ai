@@ -271,6 +271,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  let chatIdForError: number | null = null;
   try {
     const body = await request.json();
     const message = body.message;
@@ -280,6 +281,7 @@ export async function POST(request: NextRequest) {
     }
 
     const chatId = message.chat.id;
+    chatIdForError = chatId;
     const text = message.text.trim();
     const firstName = message.from?.first_name || 'Paul';
     const supabase = getAdmin();
@@ -405,7 +407,7 @@ export async function POST(request: NextRequest) {
 
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const response = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
         system: `You are Charlie, Executive Assistant at Paybacker. Respond to Telegram commands concisely. Use Markdown formatting. Never use em dashes.\n\n${context}`,
         messages: [{ role: 'user', content: section }],
@@ -482,7 +484,7 @@ export async function POST(request: NextRequest) {
 
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const response = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1500,
         system: `You are ${agentName.charAt(0).toUpperCase() + agentName.slice(1)}, the ${agentRole} at Paybacker LTD. The founder Paul asked you a direct question. You just ran a fresh analysis.
 
@@ -748,7 +750,7 @@ ${context}${agentContext}`;
     ];
 
     let response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       tools: TOOL_DEFINITIONS,
@@ -797,7 +799,7 @@ ${context}${agentContext}`;
       messageHistory.push({ role: 'user', content: toolResults });
 
       response = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         tools: TOOL_DEFINITIONS,
@@ -841,7 +843,21 @@ ${context}${agentContext}`;
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    console.error('[admin-bot] Error:', err instanceof Error ? err.message : err);
+    const errMessage = err instanceof Error ? err.message : String(err);
+    const errStack = err instanceof Error && err.stack
+      ? err.stack.split('\n').slice(0, 4).join('\n')
+      : '';
+    console.error('[admin-bot] Error:', errMessage, errStack);
+
+    if (chatIdForError !== null) {
+      const body = `⚠️ Admin bot error\n\n\`\`\`\n${errMessage}${errStack ? `\n\n${errStack}` : ''}\n\`\`\``;
+      try {
+        await sendTelegram(chatIdForError, body);
+      } catch (sendErr) {
+        console.error('[admin-bot] Failed to notify chat of error:', sendErr);
+      }
+    }
+
     return NextResponse.json({ ok: true });
   }
 }

@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
   // 2. AI fallback for unknown providers.
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 300,
       system: `You provide UK-specific cancellation instructions for subscription services. Return ONLY a JSON object with these keys:
 - method: a clear 1-2 sentence description of how to cancel (e.g. "Cancel in the app under Settings > Account > Cancel subscription")
