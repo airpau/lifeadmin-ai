@@ -4,10 +4,11 @@ export const maxDuration = 120;
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { scanEmailsForOpportunities, refreshAccessToken } from '@/lib/gmail';
-import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { checkUsageLimit, incrementUsage, checkFreeScanGate } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
 import { getUserPlan } from '@/lib/get-user-plan';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
+import { deriveRecurringGroup } from '@/lib/subscription-key';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -23,11 +24,22 @@ export async function POST(request: NextRequest) {
   const isAdmin = user.email === 'aireypaul@googlemail.com';
 
   if (!isAdmin) {
+    // Free-tier monthly gate: free users may scan once per 30 days. We let them
+    // *try* (so we can surface the upgrade nudge) but 429 when the cooldown
+    // hasn't elapsed. Paid tiers fall through to the usual usage check.
     if (plan.tier === 'free') {
-      return NextResponse.json(
-        { error: 'Inbox scanning is available on Essential and Pro plans. Upgrade to automatically find hidden subscriptions and savings.', upgradeRequired: true },
-        { status: 403 }
-      );
+      const gate = await checkFreeScanGate(user.id);
+      if (!gate.allowed) {
+        return NextResponse.json(
+          {
+            error: `Free tier scans monthly. Next scan available ${gate.nextAvailableISO}. Upgrade for unlimited scans.`,
+            upgrade_url: '/pricing',
+            nextAvailableISO: gate.nextAvailableISO,
+            lastScanISO: gate.lastScanISO,
+          },
+          { status: 429 }
+        );
+      }
     }
 
     if (!usageCheck.allowed) {
@@ -80,9 +92,27 @@ export async function POST(request: NextRequest) {
 
   try {
     // Use the comprehensive scanning function from gmail.ts
-    // This fetches full email bodies, uses targeted queries, and has a robust Claude prompt
-    console.log('[gmail-scan] Starting comprehensive email scan...');
-    const scanResult = await scanEmailsForOpportunities(accessToken);
+    // This fetches full email bodies, uses targeted queries, and has a robust Claude prompt.
+    //
+    // Incremental scans: if the user already has `last_full_scanned_at`, we
+    // narrow the recency window to messages since `last_scanned_at` (default
+    // 30 days back). The query parameter `?full=1` forces a fresh 2-year sweep
+    // and resets `last_full_scanned_at`.
+    const url = new URL(request.url);
+    const forceFull = url.searchParams.get('full') === '1';
+    const { data: connRow } = await admin
+      .from('email_connections')
+      .select('last_scanned_at, last_full_scanned_at')
+      .eq('user_id', user.id)
+      .eq('provider_type', 'google')
+      .eq('status', 'active')
+      .maybeSingle();
+    const isFullScan = forceFull || !connRow?.last_full_scanned_at;
+    const sinceISO = isFullScan
+      ? null
+      : (connRow?.last_scanned_at || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+    console.log(`[gmail-scan] Starting ${isFullScan ? 'FULL' : 'INCREMENTAL'} scan (since=${sinceISO})...`);
+    const scanResult = await scanEmailsForOpportunities(accessToken, { sinceISO, userId: user.id });
     let opportunities = scanResult.opportunities;
 
     console.log(`[gmail-scan] Scan complete: ${scanResult.emailsFound} found, ${scanResult.emailsScanned} scanned, ${opportunities.length} opportunities`);
@@ -308,21 +338,63 @@ export async function POST(request: NextRequest) {
         );
 
         if (subs.length > 0) {
-          await admin.from('subscriptions').insert(
-            subs.map((o: any) => ({
+          // Only insert providers that aren't already tracked (by canonical
+          // recurring_group). Without this filter the partial unique index
+          // from 20260422020000 would reject the whole batch and nothing
+          // would land. Also fixes a latent bug: the previous code wrote
+          // `next_payment_date`, which isn't a column on `subscriptions` —
+          // the correct field is `next_billing_date`.
+          const { data: existingKeysRows } = await admin
+            .from('subscriptions')
+            .select('recurring_group')
+            .eq('user_id', user.id);
+          const existingKeysSet = new Set(
+            (existingKeysRows || [])
+              .map((r: { recurring_group: string | null }) => r.recurring_group)
+              .filter((k: string | null): k is string => !!k)
+          );
+
+          // Two passes of dedup:
+          //  1. Drop providers already tracked in DB (existingKeysSet).
+          //  2. Dedup duplicates *within this scan result* by
+          //     recurring_group — without this, two opportunities that
+          //     normalise to the same key would violate the partial
+          //     unique index from 20260422020000 and the whole batch
+          //     would fail.
+          const seenKeys = new Set<string>();
+          const subsToInsert = subs
+            .map((o: any) => {
+              const providerName = o.provider || 'Unknown';
+              return { o, providerName, key: deriveRecurringGroup(providerName) };
+            })
+            .filter(({ key }: { key: string | null }) => !key || !existingKeysSet.has(key))
+            .filter(({ key }: { key: string | null }) => {
+              if (!key) return true;
+              if (seenKeys.has(key)) return false;
+              seenKeys.add(key);
+              return true;
+            })
+            .map(({ o, providerName, key }: { o: any; providerName: string; key: string | null }) => ({
               user_id: user.id,
-              provider_name: o.provider || 'Unknown',
+              provider_name: providerName,
               amount: o.amount || o.paymentAmount || 0,
               billing_cycle: o.paymentFrequency === 'yearly' ? 'yearly' : (o.paymentFrequency === 'quarterly' ? 'quarterly' : 'monthly'),
               status: 'active',
               source: 'gmail_scan',
               category: o.category || 'other',
-              next_payment_date: o.nextPaymentDate || null,
+              next_billing_date: o.nextPaymentDate || null,
               contract_end_date: o.contractEndDate || null,
               notes: o.description,
               detected_at: new Date().toISOString(),
-            }))
-          ).then(({ error: e }) => { if (e) console.error('[gmail-scan] subscriptions insert:', e.message); });
+              recurring_group: key,
+            }));
+
+          if (subsToInsert.length > 0) {
+            await admin.from('subscriptions').insert(subsToInsert)
+              .then(({ error: e }: { error: { message: string } | null }) => {
+                if (e) console.error('[gmail-scan] subscriptions insert:', e.message);
+              });
+          }
         }
 
         const alerts = newOpportunities.filter((o: any) => o.type !== 'subscription' && o.type !== 'forgotten_subscription');
@@ -446,8 +518,11 @@ export async function POST(request: NextRequest) {
 
     // Stamp last_scanned_at so the dashboard staleness check won't re-fire on the next page load.
     // Scoped to provider_type=google so Outlook/IMAP connections are not incorrectly marked as scanned.
+    // On a full scan, also stamp last_full_scanned_at so subsequent scans run incrementally.
+    const stamp: Record<string, string> = { last_scanned_at: new Date().toISOString() };
+    if (isFullScan) stamp.last_full_scanned_at = new Date().toISOString();
     await admin.from('email_connections')
-      .update({ last_scanned_at: new Date().toISOString() })
+      .update(stamp)
       .eq('user_id', user.id)
       .eq('provider_type', 'google')
       .eq('status', 'active');

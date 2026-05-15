@@ -22,6 +22,8 @@
  * "send_to" label of the form AW-xxx/yyy. Save the parts to Vercel.
  */
 
+import { hasConsent } from '@/lib/consent';
+
 declare global {
   interface Window {
     gtag?: (...args: unknown[]) => void;
@@ -74,10 +76,13 @@ export function trackSignupCompleted(opts: { dedupeKey?: string; email?: string 
     ...(opts.dedupeKey ? { user_id: opts.dedupeKey } : {}),
   });
 
-  // Google Ads conversion (fires only if the env vars are set)
+  // Google Ads conversion — gated on marketing consent. TrackingScripts
+  // loads gtag under analytics consent, but the Google Ads conversion
+  // event is itself an ad-cookie write and must respect the marketing
+  // category to stay GDPR-compliant.
   const adsId = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID;
   const signupLabel = process.env.NEXT_PUBLIC_GOOGLE_ADS_SIGNUP_LABEL;
-  if (adsId && signupLabel) {
+  if (adsId && signupLabel && hasConsent('marketing')) {
     gtag('event', 'conversion', {
       send_to: `${adsId}/${signupLabel}`,
       ...(opts.dedupeKey ? { transaction_id: opts.dedupeKey } : {}),
@@ -133,10 +138,11 @@ export function trackPaidUpgrade(opts: {
     ],
   });
 
-  // Google Ads conversion (fires only if the env vars are set)
+  // Google Ads conversion — gated on marketing consent (see signup
+  // helper above for rationale).
   const adsId = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID;
   const upgradeLabel = process.env.NEXT_PUBLIC_GOOGLE_ADS_UPGRADE_LABEL;
-  if (adsId && upgradeLabel) {
+  if (adsId && upgradeLabel && hasConsent('marketing')) {
     gtag('event', 'conversion', {
       send_to: `${adsId}/${upgradeLabel}`,
       value,

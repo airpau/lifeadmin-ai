@@ -8,6 +8,7 @@ import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, T
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
+import { NotificationsManager } from '@/components/profile/NotificationsManager';
 import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
 
 interface Profile {
@@ -39,10 +40,30 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
+      // "Letters written" = number of complaint-letter tasks the user has
+      // generated (each /api/complaints/generate insert is one letter).
+      // The previous query counted rows in `disputes` instead, which is
+      // a strict undercount — a single dispute often has multiple letters
+      // (initial, follow-up, escalation, ombudsman draft).
+      //
+      // "Active disputes" = anything NOT in a terminal/closed status.
+      // The previous query used `.eq('status','open')`, which is just one
+      // of several active states. Disputes in `responded`, `escalated`,
+      // `awaiting_user_input`, `still_open`, etc. were silently dropped
+      // from the count — visible to the founder as "2 Active disputes"
+      // when reality was substantially higher.
       const [letters, resolved, disputes] = await Promise.all([
-        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('type', 'complaint_letter'),
         supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
-        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'open'),
+        supabase
+          .from('disputes')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .not('status', 'in', '("resolved_won","resolved_partial","resolved_lost","closed")'),
       ]);
       setLettersWritten(letters.count || 0);
       const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
@@ -786,7 +807,7 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-7xl mx-auto w-full">
       {/* Billing update message */}
       {billingMessage && (
         <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2">
@@ -1302,81 +1323,9 @@ export default function ProfilePage() {
       </>)}
 
       {section === 'notifications' && (<>
-      {/* Notification preferences */}
-      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
-        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-          <Mail className="h-5 w-5 text-emerald-600" />
-          Where should alerts land?
-        </h2>
-        <p className="text-slate-600 text-sm mb-4">
-          Choose email, Telegram, WhatsApp or push per event type — and set quiet hours if you&apos;d like the buzzes paused at night.
-        </p>
-        <Link
-          href="/dashboard/settings/notifications"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 rounded-xl text-sm font-medium transition-colors"
-        >
-          Manage notification preferences
-        </Link>
-      </div>
-
-      {/* Pocket Agent — pick a channel. Telegram XOR WhatsApp.
-          Telegram is free on every plan; WhatsApp is Pro-only.
-          Mutex enforced server-side so only one is ever active. */}
-      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
-        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-          Pocket Agent
-        </h2>
-        <p className="text-slate-600 text-sm mb-4">
-          Talk to your financial agent on your phone — proactive alerts, spending queries, complaint letters. Pick one channel; we&apos;ll keep them mutually exclusive so you never get double-pinged.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Telegram */}
-          <div className={`border rounded-xl p-4 ${telegramLinked ? 'border-emerald-300 bg-emerald-50/40' : 'border-slate-200'}`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold text-slate-900">Telegram</span>
-              {telegramLinked && <span className="text-xs text-emerald-600 font-semibold">Connected</span>}
-            </div>
-            <p className="text-xs text-slate-500 mb-3">Free on every plan.</p>
-            <Link
-              href="/dashboard/settings/telegram"
-              className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
-            >
-              {telegramLinked ? 'Manage' : 'Set up'}
-            </Link>
-          </div>
-          {/* WhatsApp */}
-          <div className={`border rounded-xl p-4 ${whatsappLinked ? 'border-emerald-300 bg-emerald-50/40' : whatsappCanUse === false ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200'}`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold text-slate-900">
-                WhatsApp
-                {whatsappCanUse === false && <span className="ml-2 text-[10px] uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Pro</span>}
-              </span>
-              {whatsappLinked && <span className="text-xs text-emerald-600 font-semibold">Connected</span>}
-            </div>
-            <p className="text-xs text-slate-500 mb-3">
-              {whatsappCanUse ? 'Included in Pro.' : 'Upgrade to Pro to unlock.'}
-            </p>
-            {whatsappCanUse === false ? (
-              <Link
-                href="/pricing?from=whatsapp"
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 rounded-lg text-xs font-semibold transition-colors"
-              >
-                Upgrade to Pro
-              </Link>
-            ) : (
-              <Link
-                href="/dashboard/settings/whatsapp"
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
-              >
-                {whatsappLinked ? 'Manage' : 'Set up'}
-              </Link>
-            )}
-          </div>
+        <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
+          <NotificationsManager />
         </div>
-        <p className="text-[11px] text-slate-500 mt-3">
-          Connecting one disconnects the other automatically.
-        </p>
-      </div>
       </>)}
 
       {section === 'privacy' && (<>

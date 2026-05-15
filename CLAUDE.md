@@ -212,8 +212,8 @@ separate marketing opt-in before send).
   (`trial_ends_at > now() && !trial_converted_at && !trial_expired_at`)
   returns `'pro'` for the trial window.
 - Bank/email caps are enforced at the connect endpoints
-  (`/api/auth/truelayer`, `/api/auth/google`, `/api/auth/microsoft`,
-  `/api/auth/yapily`) reading `PLAN_LIMITS[tier].maxBanks` /
+  (`/api/auth/yapily`, `/api/auth/google`, `/api/auth/microsoft`)
+  reading `PLAN_LIMITS[tier].maxBanks` /
   `maxEmails`. Over-cap attempts return 403 (bank APIs) or redirect
   to `/dashboard/profile?email_limit_reached=1` (OAuth flows).
 
@@ -226,13 +226,41 @@ separate marketing opt-in before send).
 - **AI:** Claude API (complaint letters, chatbot, email scanning, agent intelligence)
 - **Billing:** Stripe
 - **Email:** Resend
-- **Open Banking:** TrueLayer
+- **Open Banking:** Yapily
 - **Hosting:** Vercel Pro
 - **Analytics:** PostHog
 - **Image/Video Generation:** fal.ai (primary), Runway ML (backup)
 - **Social Posting:** Late API (getlate.dev) — ALL platforms via one integration
 - **Web Research:** Perplexity API (used by Leo and Nico agents)
 - **IP Intelligence:** ipapi.co (used by Finn agent)
+
+**API cost tracking:** every paid third-party API call (Anthropic, Perplexity, Resend, Stripe, TrueLayer) should fire-and-forget a row into `api_cost_ledger` via the helpers in `src/lib/cost-ledger.ts` (`logAnthropicCall`, `logPerplexityCall`, `logResendCall`). The founder-only billing dashboard at `/dashboard/admin/billing` reads from that table — its accuracy depends on every call site being instrumented.
+
+## Compliance citation principle (non-negotiable)
+
+No code path may directly mutate a citation's `law_name`, `source_url`,
+`source_type` or `verification_status` to a non-pending value without
+passing through `legal_ref_corrections` and a founder approval click.
+
+Automated verifiers (Perplexity, Haiku) propose corrections to that
+table — they never overwrite canonical fields. The pre-send guardrail
+in `src/lib/legal-refs-guardrail.ts` enforces this at the engine level
+for both B2C complaints and B2B disputes.
+
+If you're tempted to add a "trust the AI, just write through" path
+because it would be more elegant, don't. Compliance correctness wins.
+
+## Source authority is non-negotiable
+
+A citation is only as valid as its source. Even a correctly-stated
+statute is unusable if it links to a trade-association site or a
+news article. The UK_LEGAL_AUTHORITY_DOMAINS allowlist in
+src/lib/legal-refs-authority.ts is the canonical list of sources
+the engine will accept. The verifier and discovery cron both gate
+on this list; non-authority sources are dropped, not queued.
+
+If a real citation needs a source we haven't allowlisted, ADD the
+domain to the list — don't bypass the gate.
 
 ---
 
@@ -306,8 +334,8 @@ ANTHROPIC_AGENTS_API_KEY=       # Separate key for AI agent cost tracking
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 RESEND_API_KEY=
-TRUELAYER_CLIENT_ID=
-TRUELAYER_CLIENT_SECRET=
+YAPILY_APPLICATION_UUID=
+YAPILY_APPLICATION_SECRET=
 
 # Content Generation (Casey)
 FAL_KEY=                        # fal.ai/dashboard
@@ -366,6 +394,84 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 
 ---
 
+## Compliance citation principle (refined 2026-04-30, simplified 2026-04-29)
+
+Citation correctness is non-negotiable. We achieve it by tiering by risk:
+
+- FAST-PATH (added in feat/compliance-end-to-end-sync): a same-host URL
+  redirect within the authority allowlist (e.g. legislation.gov.uk/x/y →
+  legislation.gov.uk/x/y/contents) auto-applies WITHOUT requiring
+  enrichment. Same hostname + authority allowlist + identical law_name =
+  no semantic change is possible by definition. This is the common case
+  and shouldn't burden the founder.
+
+- LOW-risk mechanical changes that are NOT same-host redirects (cross-
+  domain authority moves, capitalisation, punctuation) MAY be auto-applied
+  if AND ONLY IF all three corroboration gates in `evaluateCorrection`
+  pass: risk_score='low', source-text corroborates the proposed name AND
+  URL, and no semantic change is detected.
+
+- MEDIUM and HIGH-risk changes (section numbers, year changes, act
+  renames, supersessions, jurisdiction changes) MUST pass through
+  `legal_ref_corrections.status='approved'` via founder click.
+
+- NON-AUTHORITY proposals (proposed_source_url that returns rejected /
+  unrecognised from `checkUkLegalAuthority`) are auto-rejected by the
+  daily compliance-sync pipeline before they reach the founder queue.
+
+- DISCOVERY of new refs ALWAYS goes to `legal_ref_candidates.status='pending'`
+  and requires founder approval — discovery is never auto-applied.
+
+The pipeline runs as ONE chained cron at `/api/cron/compliance-sync`
+(daily 03:00 UTC) — recover url_dead → authority audit → discover →
+enrich → auto-reject non-authority → auto-apply low-risk → email
+punch-list to hello@paybacker.co.uk. The same chain is the founder's
+"Run sync now" admin button.
+
+The auto-apply audit trail (`legal_ref_verifications` rows with
+verifier='auto-apply-low-risk') and the admin "Auto-applied (last 7
+days)" panel give the founder full visibility + one-click revert. The
+pending queue defaults to showing only enriched MEDIUM/HIGH risk so
+the founder isn't reading the noise.
+
+If you're tempted to widen auto-apply beyond the fast-path or the three
+gates in `evaluateCorrection` — don't. The rule "100% correct" depends
+on this being conservative. Founder review only when enrichment can't
+decide.
+
+### Compliance dashboard — daily-driver UX (added 2026-04-29)
+
+The admin page at `/dashboard/admin/legal-refs` is structured for
+glance-then-act, not browse-and-explore:
+
+1. "What needs your attention" — bordered amber panel at the top.
+   Surfaces only action items: pending corrections, url_dead refs
+   needing recovery, "AI auto-correction" rows needing eyeball,
+   discovery candidates pending approval, and last sync outcome.
+   Empty state: "Nothing needs your attention. Last sync clean."
+2. "Compliance ops" toolbar — primary "Run sync now" button.
+3. Pending corrections + Review queue — visible by default.
+4. "All references" — wrapped in `<details>` so the 124-row dump
+   collapses past unless the founder explicitly expands it.
+5. Auto-corrected rows in the full table get an amber row tint and
+   a "⚠ Auto-corrected — verify" badge so Perplexity-overwritten
+   citations stand out for founder review.
+
+If you add a new compliance op, surface it as a counter in the action
+panel rather than a row in the big table — the panel is the
+daily-driver, the table is reference data.
+
+### Compliance endpoint auth (added 2026-04-29)
+
+Admin compliance endpoints that the chained `/api/cron/compliance-sync`
+calls must accept BOTH founder cookie auth AND `Bearer ${CRON_SECRET}`.
+Use `authorizeAdminOrCron(request)` from `src/lib/admin-auth.ts` — never
+the cookie-only `supabase.auth.getUser()` pattern, or the cron leg will
+401. Currently wired: `recover-url-dead`, `audit-authority`. Any new
+phase the cron chains must follow the same pattern.
+
+---
+
 ## CORE FEATURES
 
 ### 1. AI Complaint and Form Letters
@@ -379,7 +485,7 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 - Add manually or detect automatically via bank connection
 - Shows monthly and annual spend totals
 
-### 3. Bank Connection (Open Banking via TrueLayer)
+### 3. Bank Connection (Open Banking via Yapily)
 - Securely connects bank accounts (read-only)
 - Automatically detects all subscriptions and recurring payments
 - Spending intelligence dashboard with 20+ categories
@@ -411,6 +517,20 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 ### 10. Loyalty Rewards
 - Points for every action. Tiers: Bronze, Silver, Gold, Platinum. Redeem for subscription discounts.
 
+### 11a. Consumer abandonment nurture CRM (B2C only)
+- B2C-only abandoned-checkout / pricing-page nurture funnel. **Does not touch the B2B path** — B2B keeps its founder-direct Telegram + email alerts.
+- Tables: `consumer_leads` (funnel state) + `consumer_lead_email_log` (ICO audit). Migration: `supabase/migrations/20260430170000_consumer_leads_nurture.sql`.
+- Capture points: (1) Stripe `checkout.session.expired` (consumer branch only — B2B `metadata.product='b2b_api'` early-returns), (2) `POST /api/leads/capture` from pricing-page subscribe clicks (logged-out users).
+- Conversion: `checkout.session.completed` (consumer branch) flips matching `consumer_leads` rows to `converted_paid`.
+- 4-email sequence via daily cron `/api/cron/consumer-nurture` at 10:00 UTC: T+1h soft reminder → T+24h value nudge → T+72h 10% discount + Stripe coupon → T+7d final.
+- Discount via `src/lib/stripe/coupons.ts → createOneOffDiscountCoupon()` — Stripe Coupon (one-off, max_redemptions=1, redeem_by=+7d) + Promotion Code `WELCOME10-XXXXXX` (6 friendly chars).
+- Email templates: `src/lib/email/consumer-nurture.ts` — same wrap pattern as `dispute-reminders.ts`. RFC 8058 one-click List-Unsubscribe header.
+- Public unsubscribe: `GET/POST /api/unsubscribe?token=…` → success page at `/unsubscribe`. Honoured immediately.
+- Admin dashboard: `/dashboard/admin/consumer-leads` — funnel bar + filterable table + drill-in drawer with timeline, notes, manual actions (mark converted/unsubscribed, generate fresh code, manual email, move to manual_handling).
+- Lawful basis: PECR reg. 22(3) "soft opt-in" — recipient gave details during sale-negotiation, marketing relates to similar products, one-click unsubscribe in every send. Documented in `docs/consumer-abandonment-system-design.md`.
+- PostHog events: `lead_captured`, `nurture_email_sent`, `discount_code_issued`, `lead_converted`, `lead_unsubscribed` — distinct id `consumer_lead:<id>`.
+- Research + design: `docs/consumer-abandonment-research.md`, `docs/consumer-abandonment-system-design.md`.
+
 ### 11. Money Hub Financial Intelligence Centre
 - Complete financial dashboard with income tracking, spending intelligence, and net worth
 - AI-powered transaction categorisation with user recategorisation
@@ -421,6 +541,31 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 - Guided walkthrough tour for new users
 - Pro AI chatbot with dashboard customisation (pie charts, bar charts via conversation)
 - Dynamic widget generation through AI conversation
+
+### 12. Dispute outcome intelligence (the flywheel)
+- **Strategic premise:** every dispute outcome (won / partial / lost / withdrawn / timeout / still_open) is training data competitors can't buy. The dataset compounds with usage and is the moat.
+- **Dataset:** `disputes` row tagged with `outcome`, `recovered_amount_gbp`, `resolution_time_days`, `merchant_normalised`, `merchant_industry`, `dispute_type`, `escalation_path`, `closed_by`. Per-tag-event log in `dispute_outcome_events` (every change in outcome state, with the AI evidence excerpt when source='ai_extracted'). Migration: `supabase/migrations/20260501090000_dispute_outcome_dataset.sql` — strictly additive.
+- **Capture:** existing ResolveDisputeModal in `/dashboard/disputes` now fires `POST /api/disputes/[id]/outcome` (fire-and-forget) alongside the existing PATCH so the dataset metadata is populated without changing legacy semantics.
+- **AI extraction:** `src/lib/dispute-outcome/ai-extract.ts` runs Claude Haiku over incoming `company_email | company_letter | company_response` correspondence. Returns `{suggested_outcome, recovered_amount_gbp, confidence, evidence_excerpt, reasoning}`. **Human-in-loop is non-negotiable** — the model PROPOSES; user clicks Confirm to lock in via the same `/outcome` endpoint with `source='ai_extracted'`. We never auto-write a terminal outcome.
+- **Stats cron:** `/api/cron/compute-dispute-intelligence` (daily 02:00 UTC, before compliance-sync at 03:00). Computes scopes: `overall`, `merchant`, `industry`, `dispute_type`, `legal_ref` (joined via `legal_ref_usages.artefact_kind='dispute_letter'`), `merchant_x_legal_ref`. Appends snapshots — never overwrites — so the trend chart sees history. Cap 1000 rows / run.
+- **Engine feedback loop:** `ComplaintInput.historicalSteer` is an additive optional field on `generateComplaintLetter`. Callers hydrate it from `getTopLegalRefsForMerchant(merchantNormalised)` (top 3 by win rate, min sample 5). Trigger condition: caller has identified a merchant AND `dispute_intelligence_stats` has >=5 cases at `scope_kind='merchant_x_legal_ref'` for `(merchant, legal_ref)`. The engine surfaces these to the LLM as historical win-rate context — the model still chooses based on case facts.
+- **B2B exposure:** `DisputeResponse.historical_success_rate` — additive optional field. Populated only when the resolver can identify the merchant AND sample size >=5 at `scope_kind='merchant'`. Includes `{merchant, cases_evaluated, win_rate, avg_recovered_gbp, source: 'paybacker_dispute_dataset_v1'}`. Backward-compatible (Codex review: never required, never breaking).
+- **Admin dashboard:** `/dashboard/admin/dispute-intelligence` — founder-gated. 5 headline cards (total disputes, total won, total recovered £, overall win rate, avg resolution days), industry win-rate bars, top-10 merchants table, top legal arguments by win rate (min sample 5), merchant×legal_ref heatmap, dataset growth narrative card with the "largest UK consumer dispute outcome dataset outside FOS" framing.
+- **Public moat surface:** `/dispute-success-rates` — anonymised aggregates, `noindex` until dataset is mature (>=1000 cases). Only publishes rows with sample >=5.
+
+### 13. Dispute Agent (autonomous state machine)
+- **Strategic premise:** the dataset (Feature 12) is the brain — what works. The Dispute Agent is the body — it executes. Every decision + the resulting outcome becomes additional training signal, closing the flywheel.
+- See `~/.claude/projects/-Users-paul-ops/memory/project_dispute_agent_flywheel.md` for the full strategic framing.
+- **State machine** on `disputes`: `draft → sent → responded → awaiting_user_input → escalation_due → escalated → resolved_{won/partial/lost} | withdrawn | timeout | still_open`. Columns: `agent_state`, `agent_state_set_at`, `agent_paused_until`, `agent_disabled`, `first_letter_sent_at`, `fca_8_week_deadline`, `expected_response_by`, `next_agent_action_at`. Migration: `supabase/migrations/20260501100000_dispute_agent.sql` — strictly additive.
+- **Decision log:** `dispute_agent_decisions` records `(from_state, to_state, recommended_action, rationale, data_grounded, historical_signal, surfaced_via, user_action)` for every tick. Visible to user via the per-dispute decision-log expander; the user's approve / override / snooze response is recorded so the engine learns from disagreement.
+- **Engine:** `src/lib/dispute-agent/state-machine.ts → decideNextAction(dispute, recentCorrespondence, intelligenceStats, merchantLegalRefStats)`. Heuristic-first rules (FCA 8-week clock, 14-day no-response, AI extraction of inbound replies via `inferOutcomeFromCorrespondence`); switches to **data-grounded** ranking when `dispute_intelligence_stats` has ≥5 cases at `merchant_x_legal_ref` scope. `data_grounded=true` flips and `historical_signal` is populated.
+- **Cron:** `/api/cron/dispute-agent` runs 4× daily (00:00 / 06:00 / 12:00 / 18:00 UTC). Caps 100 disputes/run. Loads each due dispute + last 30 days of correspondence + relevant intelligence_stats scopes, calls `decideNextAction`, persists, advances state, surfaces high-signal actions via `dispatchPocketAgentAlert` (Telegram/WhatsApp Pro) with email fallback.
+- **WhatsApp template:** new `paybacker_dispute_agent_action` (UTILITY, Pro-only, 3 vars: merchant / action_summary / cta). Body skeleton: `"Update on your {{1}} dispute: {{2}}. Tap to {{3}} — open Paybacker to review."` SID set to `PENDING_RESUBMISSION` — submit via `/dashboard/admin/whatsapp` Resubmit panel.
+- **User-facing endpoints:** `POST /api/disputes/[id]/agent-decision` (approve / override / snooze) + `GET /api/disputes/[id]/agent-decisions/latest` (banner data).
+- **UI:** `<DisputeAgentBanner>` client component (`src/components/disputes/DisputeAgentBanner.tsx`) drops into the existing 3,190-line disputes-page monolith without refactoring — embedded at the top of `DisputeDetail`. Shows recommended action, rationale, historical signal (when available), Approve / Override / Snooze buttons, and a decision-log expander.
+- **Admin dashboard:** `/dashboard/admin/dispute-agent` — active managed disputes, decisions/dispute, approve/override rates, decisions firing now, frequency by recommendation, and the key feedback signal — **effectiveness by recommendation** (when the agent says escalate, what % end won?).
+- **B2B exposure:** `DisputeResponse.agent_recommendation` — additive optional field with `recommended_action / rationale / next_review_in_days / data_grounded / historical_signal`. Only populated when the caller registers the dispute with Paybacker's autonomous agent (per-active-case pricing). Backward-compatible.
+- **Hard rule:** AI proposes — user approves. The cron NEVER auto-sends a letter. Approving `escalate_ombudsman` drafts the escalation letter; the user files via the regulator's website (Ombudsman APIs are not public).
 
 ---
 

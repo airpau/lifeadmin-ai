@@ -70,6 +70,10 @@ export interface YapilyTransaction {
   status: string;
   transactionInformation: string[];
   merchantName: string | null;
+  // Some Yapily institutions return positive amounts for BOTH credits and
+  // debits, with the direction encoded here (HSBC Business in particular).
+  // When present, treat as authoritative over the sign of `amount`.
+  creditDebitIndicator?: 'CREDIT' | 'DEBIT' | string | null;
 }
 
 // ── Consent ──

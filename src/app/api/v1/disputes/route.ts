@@ -25,9 +25,14 @@ import { createClient } from '@supabase/supabase-js';
 import { authenticate, logUsage } from '@/lib/b2b/auth';
 import { validateRequest, resolveDispute } from '@/lib/b2b/disputes';
 import { publishUsageThreshold } from '@/lib/b2b/webhook-publisher';
+import { resend, FROM_EMAIL } from '@/lib/resend';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+// Same engine as consumer /api/complaints/generate — worst case is two
+// Claude calls (citation-guarantee retry) plus retrieval + context.
+// Consumer route uses 120s after 60s proved too tight. B2B must match
+// or paying customers will see 504s on complex disputes.
+export const maxDuration = 120;
 
 const IDEMPOTENCY_TTL_HOURS = 24;
 const RESPONSE_BYTES_CAP = 64 * 1024; // 64 KB — refuse to cache larger
@@ -112,6 +117,115 @@ async function maybeFireThresholdWebhook(args: {
 
 function hashKey(plaintext: string): string {
   return createHash('sha256').update(plaintext).digest('base64');
+}
+
+/**
+ * 503 alarm — fires when the freshness cascade (tier 1-4 + chain
+ * fallback) couldn't salvage at least one ref AND the post-flight had
+ * no fresh substitute either. Should be vanishingly rare; when it fires
+ * the founder needs to know within seconds because the API is shipping
+ * 503s to a paying B2B customer.
+ *
+ * Idempotent per (category, UTC date) via `compliance_alerts_sent.alert_key`
+ * so a burst of 503s in the same category on the same day fires exactly
+ * one Telegram + one email. Both channels are fire-and-forget — failure
+ * never affects the API response.
+ */
+async function fireStaleCitation503Alarm(args: {
+  categories: string[];
+  refIds: string[];
+  scenario: string;
+  keyPrefix: string;
+  requestId: string;
+}): Promise<void> {
+  // Pick the primary category for the alert key. Multiple categories on
+  // a single 503 is rare; we dedupe on the first one and fold the rest
+  // into the body so the email still surfaces them all.
+  const primaryCategory = args.categories[0] || 'unknown';
+  const today = new Date().toISOString().slice(0, 10);
+  const alertKey = `b2b-503:${primaryCategory}:${today}`;
+  const sb = admin();
+
+  // Claim the alert key. Unique violation = already alerted today.
+  try {
+    const { error } = await sb.from('compliance_alerts_sent').insert({
+      alert_key: alertKey,
+      channel: 'multi',
+      metadata: {
+        categories: args.categories,
+        ref_ids: args.refIds,
+        request_id: args.requestId,
+        key_prefix: args.keyPrefix,
+      },
+    });
+    if (error) return; // already fired today
+  } catch {
+    // Dedup table unavailable — bail rather than risk a flood. Better to
+    // miss an alert than spam the founder during a Supabase incident.
+    return;
+  }
+
+  const truncatedScenario = args.scenario.length > 400
+    ? args.scenario.slice(0, 400) + '…'
+    : args.scenario;
+  const ts = new Date().toISOString();
+
+  // Telegram (founder chat) — fire-and-forget.
+  const tgToken = process.env.TELEGRAM_BOT_TOKEN;
+  const tgChat = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+  if (tgToken && tgChat) {
+    void fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: Number(tgChat),
+        text: [
+          `🚨 *B2B 503 — STALE_CITATION*`,
+          ``,
+          `Category: \`${primaryCategory}\`${args.categories.length > 1 ? ` (+${args.categories.length - 1})` : ''}`,
+          `Refs: ${args.refIds.length}`,
+          `Key: \`${args.keyPrefix}\``,
+          `Request: \`${args.requestId}\``,
+          ``,
+          `Cascade exhausted (tier 1-4 + chain fallback). Re-verify the category urgently.`,
+        ].join('\n'),
+        parse_mode: 'Markdown',
+      }),
+    }).catch(() => undefined);
+  }
+
+  // Email to hello@paybacker.co.uk via Resend — fire-and-forget.
+  if (process.env.RESEND_API_KEY) {
+    void resend.emails.send({
+      from: FROM_EMAIL,
+      to: 'hello@paybacker.co.uk',
+      subject: `[B2B URGENT] STALE_CITATION 503 — ${primaryCategory} category exhausted`,
+      html: `<div style="font-family:-apple-system,system-ui,sans-serif;max-width:640px;margin:auto;color:#0f172a;">
+        <div style="background:#7f1d1d;color:#fee2e2;padding:8px 14px;border-radius:6px;display:inline-block;font-size:12px;font-weight:700;letter-spacing:0.5px;">B2B 503</div>
+        <h2 style="margin:14px 0 8px;">STALE_CITATION 503 — ${escapeHtml(primaryCategory)} exhausted</h2>
+        <p style="color:#475569;">The freshness cascade (tier 1 → 4 + category chain fallback) produced no usable ref. The /v1/disputes endpoint is currently returning 503 for matching scenarios in this category.</p>
+        <table style="width:100%;font-size:13px;color:#0f172a;border-collapse:collapse;margin-top:12px;">
+          <tr><td style="color:#64748b;padding:4px 12px 4px 0;">Categories</td><td>${escapeHtml(args.categories.join(', '))}</td></tr>
+          <tr><td style="color:#64748b;padding:4px 12px 4px 0;">Unsalvageable refs</td><td><code>${args.refIds.map(escapeHtml).join(', ') || '(none — post-flight rogue path)'}</code></td></tr>
+          <tr><td style="color:#64748b;padding:4px 12px 4px 0;">Timestamp</td><td>${escapeHtml(ts)}</td></tr>
+          <tr><td style="color:#64748b;padding:4px 12px 4px 0;">API key prefix</td><td><code>${escapeHtml(args.keyPrefix)}</code></td></tr>
+          <tr><td style="color:#64748b;padding:4px 12px 4px 0;">Request ID</td><td><code>${escapeHtml(args.requestId)}</code></td></tr>
+        </table>
+        <h3 style="margin-top:18px;font-size:14px;">Scenario (truncated)</h3>
+        <pre style="background:#f1f5f9;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;color:#0f172a;">${escapeHtml(truncatedScenario)}</pre>
+        <p style="margin-top:18px;"><a href="https://paybacker.co.uk/dashboard/admin/legal-refs" style="background:#0f172a;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Open legal-refs admin</a></p>
+        <p style="color:#64748b;font-size:12px;margin-top:14px;">Idempotent: one alert per (category, UTC date). Further 503s in '${escapeHtml(primaryCategory)}' today will be silenced.</p>
+      </div>`,
+    }).catch(() => undefined);
+  }
+}
+
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /**
@@ -247,20 +361,40 @@ export async function POST(request: NextRequest) {
 
   const result = await resolveDispute(validated as any);
   if ('code' in result) {
-    const status = result.code === 'NO_STATUTE_MATCH' ? 422 : 500;
+    const status = result.code === 'NO_STATUTE_MATCH'
+      ? 422
+      : result.code === 'STALE_CITATION'
+        ? 503
+        : 500;
     await logUsage(key.id, '/v1/disputes', status, Date.now() - t0, {
       error_code: result.code,
     });
-    const errBody = { error: result.message, code: result.code };
+    const errBody: Record<string, unknown> = { error: result.message, code: result.code };
+    if (result.code === 'STALE_CITATION') {
+      errBody.ref_ids = result.ref_ids ?? [];
+      errBody.retry_after = result.retry_after ?? 60;
+    }
     // 422 is a stable engine verdict — caching is correct (replay
-    // returns the same NO_STATUTE_MATCH). 500 is a transient engine
-    // failure; we DON'T cache those, so the caller's retry actually
-    // retries the engine.
+    // returns the same NO_STATUTE_MATCH). 500 / 503 are transient
+    // failures; we DON'T cache those, so the caller's retry actually
+    // re-runs the engine (and re-checks freshness).
     if (idemKey && status === 422) await writeIdempotencyCache(key.id, idemKey, status, errBody);
-    return NextResponse.json(errBody, {
-      status,
-      headers: { 'X-Request-Id': requestId },
-    });
+    const headers: Record<string, string> = { 'X-Request-Id': requestId };
+    if (result.code === 'STALE_CITATION') {
+      headers['Retry-After'] = String(result.retry_after ?? 60);
+      // 503 alarm — fire-and-forget Telegram + email to founder so a
+      // production stale-citation outage is detected within seconds.
+      // Idempotent per (category, UTC date) so a burst doesn't spam.
+      const scenarioStr = (validated as { scenario?: unknown }).scenario;
+      void fireStaleCitation503Alarm({
+        categories: result.unsalvageable_categories ?? [],
+        refIds: result.ref_ids ?? [],
+        scenario: typeof scenarioStr === 'string' ? scenarioStr : '',
+        keyPrefix: key.keyPrefix,
+        requestId,
+      });
+    }
+    return NextResponse.json(errBody, { status, headers });
   }
 
   await logUsage(key.id, '/v1/disputes', 200, Date.now() - t0, {

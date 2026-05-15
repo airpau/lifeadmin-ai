@@ -18,7 +18,7 @@ export const resend = new Proxy({} as Resend, {
 // mail.paybacker.co.uk is the receiving-enabled domain — user replies MUST route there or
 // they vanish into the void (verified via Resend domains API 2026-04-26).
 // FROM stays on the apex so the visible sender looks clean (noreply@paybacker.co.uk).
-// REPLY-TO is on the receiving-enabled subdomain so /api/support/inbound-email fires
+// REPLY-TO is on the receiving-enabled subdomain so /api/webhooks/resend-inbound fires
 // when users reply, which re-opens the ticket so Riley can re-engage.
 // Override at deploy-time via RESEND_REPLY_TO env var if you ever flip the apex domain
 // to receiving=enabled in Resend.
@@ -26,27 +26,24 @@ export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@p
 export const REPLY_TO = process.env.RESEND_REPLY_TO || 'support@mail.paybacker.co.uk';
 
 export async function sendWaitlistConfirmation(name: string, email: string) {
-  return resend.emails.send({
-    from: FROM_EMAIL,
-    replyTo: REPLY_TO,
+  // Migrated to canonical PaybackerEmailLayout (2026-05-01).
+  // Imported lazily to avoid pulling layout module into bundles that don't need it.
+  const { sendPaybackerEmail } = await import('@/lib/email/send');
+  const { card, unorderedList } = await import('@/lib/email/PaybackerEmailLayout');
+  return sendPaybackerEmail({
     to: email,
-    subject: "You're on the Paybacker waitlist 🎉",
-    html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; padding: 40px; border-radius: 16px;">
-        <h1 style="color: #34d399; font-size: 28px; margin-bottom: 8px;">You're on the list, ${name}!</h1>
-        <p style="color: #94a3b8; font-size: 16px; line-height: 1.6;">
-          Thanks for joining Paybacker. We're building an AI that fights your bills, cancels forgotten subscriptions, and gets your money back — automatically.
-        </p>
-        <div style="background: #1e293b; border-radius: 12px; padding: 24px; margin: 24px 0;">
-          <p style="color: #34d399; font-weight: bold; margin: 0 0 8px;">What happens next?</p>
-          <ul style="color: #94a3b8; padding-left: 20px; line-height: 2;">
-            <li>We'll email you when we launch (coming soon)</li>
-            <li>Early access members get 3 months free</li>
-            <li>First look at every new feature we ship</li>
-          </ul>
-        </div>
-        <p style="color: #64748b; font-size: 14px;">— The Paybacker team</p>
-      </div>
-    `,
+    subject: "You're on the Paybacker waitlist",
+    preheader: "You're on the list — early access perks ahead",
+    heading: `You're on the list, ${name}`,
+    intro:
+      "Thanks for joining Paybacker. We're building an AI that fights your bills, cancels forgotten subscriptions, and gets your money back — automatically.",
+    body: card(
+      unorderedList([
+        "We'll email you when we launch (coming soon)",
+        'Early access members get 3 months free',
+        'First look at every new feature we ship',
+      ]),
+      { eyebrow: 'What happens next' },
+    ),
   });
 }

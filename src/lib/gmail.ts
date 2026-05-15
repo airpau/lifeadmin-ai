@@ -200,6 +200,15 @@ export interface Opportunity {
   urgency: 'immediate' | 'soon' | 'routine';
 }
 
+/**
+ * Replace the recency portion of a Gmail query with a different clause.
+ * Used to switch between full scans (`newer_than:730d`) and incremental
+ * scans (`after:<unix-timestamp>`).
+ */
+function withRecency(query: string, clause: string): string {
+  return query.replace(/newer_than:\d+d/g, clause);
+}
+
 // Multiple focused queries run in parallel for comprehensive scanning.
 // Query A: subject/keyword based (catches billing emails from any provider)
 const SCAN_QUERY_SUBJECT =
@@ -274,8 +283,20 @@ const SCAN_QUERY_GOVERNMENT =
   '(from:(hmrc.gov.uk gov.uk dvla.gov.uk nhs.uk dwp.gov.uk studentfinance pension) OR subject:("self assessment" OR "tax return" OR "tax code" OR "P60" OR "P45" OR "P800" OR "council tax" OR "MOT reminder" OR "vehicle tax" OR "HMRC" OR "DVLA" OR "student loan" OR "national insurance" OR "tax rebate" OR "overpayment")) newer_than:730d';
 
 export async function scanEmailsForOpportunities(
-  accessToken: string
-): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
+  accessToken: string,
+  options?: {
+    /** If provided, scan only emails newer than this date (incremental scan). */
+    sinceISO?: string | null;
+    /** User ID — used for the email_scan_cache + cost-ledger attribution. */
+    userId?: string | null;
+  }
+): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number; cacheHits?: number }> {
+  // Build the recency clause once. Default = 2 years for full scans;
+  // when sinceISO is supplied, narrow the window so Gmail API returns
+  // far fewer messages and Claude does less work.
+  const sinceClause = options?.sinceISO
+    ? `after:${Math.floor(new Date(options.sinceISO).getTime() / 1000)}`
+    : 'newer_than:730d';
   // Run all queries in parallel for comprehensive scanning
   // Scan up to 250 emails per query for thorough coverage (2 years of history)
   const [
@@ -285,21 +306,21 @@ export async function scanEmailsForOpportunities(
     trialMessages, insuranceRenewalMessages, ddMessages,
     energyBroadbandMessages, governmentMessages,
   ] = await Promise.all([
-    fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 250),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_1, 250),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_2, 250),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_3, 250),
-    fetchEmailList(accessToken, SCAN_QUERY_EXPIRATIONS, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_PAYMENTS, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_PRICE_CHANGES, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_BILLS, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_DISPUTE_RESPONSES, 50),
-    fetchEmailList(accessToken, SCAN_QUERY_CANCELLATIONS, 50),
-    fetchEmailList(accessToken, SCAN_QUERY_TRIALS, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_INSURANCE_RENEWALS, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_DD_NOTICES, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_ENERGY_BROADBAND, 150),
-    fetchEmailList(accessToken, SCAN_QUERY_GOVERNMENT, 100),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_SUBJECT, sinceClause), 250),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_SENDERS_1, sinceClause), 250),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_SENDERS_2, sinceClause), 250),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_SENDERS_3, sinceClause), 250),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_EXPIRATIONS, sinceClause), 100),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_PAYMENTS, sinceClause), 100),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_PRICE_CHANGES, sinceClause), 100),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_BILLS, sinceClause), 100),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_DISPUTE_RESPONSES, sinceClause), 50),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_CANCELLATIONS, sinceClause), 50),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_TRIALS, sinceClause), 100),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_INSURANCE_RENEWALS, sinceClause), 100),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_DD_NOTICES, sinceClause), 100),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_ENERGY_BROADBAND, sinceClause), 150),
+    fetchEmailList(accessToken, withRecency(SCAN_QUERY_GOVERNMENT, sinceClause), 100),
   ]);
 
   const seen = new Set<string>();
@@ -333,16 +354,75 @@ export async function scanEmailsForOpportunities(
 
   const details = allDetails;
 
-  const emails = details
+  const fulfilledEmails = details
     .filter((r): r is PromiseFulfilledResult<EmailData> => r.status === 'fulfilled')
     .map((r) => r.value);
+
+  // Cheap regex pre-filter — drop emails whose subject+snippet don't contain
+  // any of the obvious financial keywords. The Gmail queries already filter
+  // by sender/subject keyword but this catches stragglers (e.g. unrelated
+  // marketing emails from financial brands) before they hit Claude.
+  const { isLikelyFinancialEmail, buildCacheKey } = await import('@/lib/email-scan-prefilter');
+  const preFiltered = fulfilledEmails.filter((e) =>
+    isLikelyFinancialEmail(e.subject, `${e.snippet} ${e.body?.slice(0, 200) || ''}`)
+  );
+  console.log(`[gmail] Pre-filter: ${fulfilledEmails.length} → ${preFiltered.length} emails after regex screen`);
+
+  // Cache lookup — for any email whose (sender|subject) hash already has a
+  // recent classification, skip Claude. We still include cached opportunities
+  // in the result. Cache misses go through Claude as normal.
+  let cacheHits = 0;
+  const cachedOpportunities: Opportunity[] = [];
+  let emails = preFiltered;
+  if (options?.userId) {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const cacheAdmin = createClient(
+        (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim(),
+        (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+      );
+      const senderOf = (e: EmailData) => (e.from || '').replace(/^.*<([^>]+)>.*$/, '$1');
+      const keyed = await Promise.all(
+        preFiltered.map(async (e) => ({ email: e, key: await buildCacheKey(senderOf(e), e.subject) }))
+      );
+      const allKeys = keyed.map((k) => k.key);
+      if (allKeys.length > 0) {
+        const { data: cacheRows } = await cacheAdmin
+          .from('email_scan_cache')
+          .select('cache_key, classification')
+          .eq('user_id', options.userId)
+          .in('cache_key', allKeys)
+          .gt('expires_at', new Date().toISOString());
+        const hitMap = new Map<string, any>(
+          (cacheRows || []).map((r: any) => [r.cache_key, r.classification])
+        );
+        const remaining: EmailData[] = [];
+        for (const { email, key } of keyed) {
+          const hit = hitMap.get(key);
+          if (hit && hit.type && hit.type !== 'not_subscription') {
+            cacheHits++;
+            cachedOpportunities.push({ ...(hit as Opportunity), emailId: email.id, status: 'new' });
+          } else if (hit) {
+            cacheHits++;
+            // not_subscription cache hit — drop entirely, don't re-classify
+          } else {
+            remaining.push(email);
+          }
+        }
+        emails = remaining;
+        console.log(`[gmail] Cache: ${cacheHits} hits, ${remaining.length} need classification`);
+      }
+    } catch (cacheErr: any) {
+      console.warn('[gmail] cache lookup failed:', cacheErr?.message || cacheErr);
+    }
+  }
 
   // Use Claude Haiku to analyse the emails (cost-efficient for categorisation)
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const { logClaudeCall } = await import('@/lib/claude-rate-limit');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const SCAN_MODEL = 'claude-haiku-4-5-20251001';
+  const SCAN_MODEL = 'claude-3-5-haiku-20241022';
   const allOpportunities: Opportunity[] = [];
 
   // Group emails by sender for efficient analysis
@@ -386,6 +466,12 @@ export async function scanEmailsForOpportunities(
 
   try {
     const today = new Date().toISOString().split('T')[0];
+    // If everything came from cache, skip the Claude call entirely.
+    if (emails.length === 0 && cachedOpportunities.length > 0) {
+      console.log('[gmail] All emails served from cache — skipping Claude call');
+      allOpportunities.push(...cachedOpportunities);
+      return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: fulfilledEmails.length, cacheHits };
+    }
     const message = await anthropic.messages.create({
       model: SCAN_MODEL,
       max_tokens: 8192,
@@ -543,6 +629,19 @@ Look for: emails from gov.uk, hmrc.gov.uk, dvla.gov.uk, nhs.uk, student finance,
     messages: [{ role: 'user', content: `Analyse these ${senderMap.size} email providers and find every financial opportunity. Extract all dates, amounts, and frequencies you can find:\n\n${truncatedSummary}` }],
   });
 
+  // Log to internal cost ledger (fire-and-forget).
+  try {
+    const { logAnthropicCall } = await import('@/lib/cost-ledger');
+    logAnthropicCall({
+      model: SCAN_MODEL,
+      inputTokens: message.usage?.input_tokens ?? 0,
+      outputTokens: message.usage?.output_tokens ?? 0,
+      endpoint: 'lib/gmail.scanEmailsForOpportunities',
+      userId: options?.userId ?? null,
+      metadata: { senders: senderMap.size },
+    });
+  } catch { /* never throw from cost-ledger */ }
+
   const content = message.content[0];
   if (content.type === 'text') {
     let raw = content.text.trim();
@@ -559,6 +658,37 @@ Look for: emails from gov.uk, hmrc.gov.uk, dvla.gov.uk, nhs.uk, student finance,
         const parsed: Opportunity[] = JSON.parse(cleaned);
         console.log(`[gmail] Found ${parsed.length} opportunities`);
         allOpportunities.push(...parsed.map((o) => ({ ...o, status: 'new' as const })));
+
+        // Persist classifications to email_scan_cache so re-scans skip Claude.
+        // Don't cache `not_subscription` (cheap to re-derive) — but Claude only
+        // returns positive opportunities, so every entry here is positive.
+        if (options?.userId && parsed.length > 0) {
+          try {
+            const { createClient } = await import('@supabase/supabase-js');
+            const cacheAdmin = createClient(
+              (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim(),
+              (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+            );
+            const senderOf = (e: EmailData) => (e.from || '').replace(/^.*<([^>]+)>.*$/, '$1');
+            const emailIdToEmail = new Map(emails.map((e) => [e.id, e]));
+            const rows: any[] = [];
+            for (const opp of parsed) {
+              const email = emailIdToEmail.get(opp.emailId);
+              if (!email) continue;
+              const key = await buildCacheKey(senderOf(email), email.subject);
+              rows.push({
+                user_id: options.userId,
+                cache_key: key,
+                classification: opp,
+              });
+            }
+            if (rows.length > 0) {
+              await cacheAdmin.from('email_scan_cache').insert(rows);
+            }
+          } catch (writeErr: any) {
+            console.warn('[gmail] cache write failed:', writeErr?.message || writeErr);
+          }
+        }
       } catch (e) {
         console.error(`[gmail] JSON parse error:`, e);
       }
@@ -570,5 +700,122 @@ Look for: emails from gov.uk, hmrc.gov.uk, dvla.gov.uk, nhs.uk, student finance,
     console.error(`[gmail] Claude API error: ${claudeErr.message}`);
   }
 
-  return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: emails.length };
+  // Merge cached opportunities (already added if early-return path) into final list.
+  if (cachedOpportunities.length > 0 && !allOpportunities.some((o) => cachedOpportunities.includes(o as any))) {
+    allOpportunities.push(...cachedOpportunities);
+  }
+
+  // ---- £ body-fallback pass ----
+  // For high-confidence opportunities where Claude returned no paymentAmount,
+  // fetch the full message body and try regex first, then fall back to a
+  // cheap targeted Claude call.
+  await runPriceFallback(allOpportunities, fulfilledEmails, accessToken, anthropic);
+
+  return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: fulfilledEmails.length, cacheHits };
+}
+
+const PRICEY_CONTEXT_RE = /(total|amount|charged|due|pay|renews|renewal|subscription|premium|bill|invoice|cost|price)/i;
+
+/** Pulls the largest GBP amount in a "price-y" context (within 80 chars). */
+export function extractPriceFromBody(body: string): number | null {
+  if (!body) return null;
+  const re = /£\s?(\d{1,4}(?:[.,]\d{2})?)/g;
+  let best: number | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const start = Math.max(0, m.index - 80);
+    const end = Math.min(body.length, m.index + m[0].length + 80);
+    const window = body.slice(start, end);
+    if (!PRICEY_CONTEXT_RE.test(window)) continue;
+    const num = parseFloat(m[1].replace(',', '.'));
+    if (!isFinite(num)) continue;
+    if (best === null || num > best) best = num;
+  }
+  return best;
+}
+
+async function runPriceFallback(
+  opportunities: Opportunity[],
+  emails: EmailData[],
+  accessToken: string,
+  anthropic: any,
+): Promise<void> {
+  const targets = opportunities.filter(
+    (o) => (o.paymentAmount === null || o.paymentAmount === undefined) && (o.confidence ?? 0) >= 70 && o.emailId,
+  );
+  if (!targets.length) return;
+
+  const emailById = new Map(emails.map((e) => [e.id, e]));
+
+  for (const opp of targets.slice(0, 20)) {
+    const cached = emailById.get(opp.emailId!);
+    let body = cached?.body || '';
+
+    // The cached body is truncated to 1500 chars. For the fallback, fetch the
+    // full message body from Gmail.
+    try {
+      const res = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${opp.emailId}?format=full`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (res.ok) {
+        const msg = await res.json();
+        const extract = (part: any): string => {
+          if (part.mimeType === 'text/plain' && part.body?.data) {
+            return Buffer.from(part.body.data, 'base64').toString('utf-8');
+          }
+          if (part.parts) {
+            for (const p of part.parts) {
+              const t = extract(p);
+              if (t) return t;
+            }
+          }
+          return '';
+        };
+        const full = extract(msg.payload || {});
+        if (full) body = full.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+    } catch {
+      // ignore — fall through with whatever body we have
+    }
+
+    if (!body) continue;
+
+    const regexHit = extractPriceFromBody(body);
+    if (regexHit !== null) {
+      opp.paymentAmount = regexHit;
+      if (!opp.amount) opp.amount = regexHit;
+      continue;
+    }
+
+    // Final attempt: ask Claude haiku one targeted question.
+    try {
+      const resp = await anthropic.messages.create({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 120,
+        system: 'You extract recurring subscription prices from UK emails. Return STRICT JSON only.',
+        messages: [{
+          role: 'user',
+          content: `Extract the recurring subscription amount in GBP from this email. Return JSON {amount: number|null, frequency: 'monthly'|'yearly'|'weekly'|null}.\n\nEmail body (first 4000 chars):\n${body.slice(0, 4000)}`,
+        }],
+      });
+      const txt = resp.content?.[0];
+      if (txt?.type === 'text') {
+        const cleaned = txt.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]);
+          if (typeof parsed.amount === 'number') {
+            opp.paymentAmount = parsed.amount;
+            if (!opp.amount) opp.amount = parsed.amount;
+          }
+          if (parsed.frequency && !opp.paymentFrequency) {
+            opp.paymentFrequency = parsed.frequency;
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('[gmail] body-fallback haiku failed:', err?.message || err);
+    }
+  }
 }

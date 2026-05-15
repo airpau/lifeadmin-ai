@@ -241,7 +241,16 @@ export function resolveMoneyHubTransaction(
       };
     }
 
-    return { amount, kind: 'other', spendingCategory: storedCategory || null, incomeType: effectiveIncomeType };
+    // 6. Default for any positive amount the rules didn't claim:
+    //    treat it as income. Emma / Monzo / Snoop all do this — a
+    //    credit that doesn't look like a transfer or a known-spending
+    //    refund is income by default. Users can recategorise individual
+    //    rows via the overrides UI if a refund got mis-tagged.
+    //    This is the rule that unblocks UK business accounts (HSBC
+    //    Business, Tide, Starling Business) where customer credits
+    //    arrive as plain BACS / FPS CR / faster-payment rows without
+    //    "salary" or "invoice" anywhere in the description.
+    return { amount, kind: 'income', spendingCategory: null, incomeType: 'other' };
   }
 
   if (isTransferLikeTransaction(txn, effectiveIncomeType)) {
@@ -274,19 +283,37 @@ export function resolveMoneyHubTransaction(
 
 export function applyInternalTransferHeuristic(txns: any[]) {
   const matchedAsTransfers = new Set<string>();
-  
+
   // Terms that strongly imply this is an external payment/mortgage, not an internal hop
   const excludedTerms = /skipton|nationwide|mortgage|halifax|santander.*mortgage|barclays.*mortgage|coventry|leeds|yorkshire|accord|auto|car/i;
-  // Terms that strongly imply a transfer
-  const transferTerms = /tfr|transfer|to a\/c|from a\/c|fp |fps |via mobile/i;
+  // Terms that strongly imply a transfer between own accounts
+  const transferTerms = /\btfr\b|\btrf\b|transfer|to a\/c|from a\/c|own account|between accounts|via mobile xfer/i;
+  // Terms that strongly imply external receipts (customer/payroll payments,
+  // bank credits) — never collapse these into transfers even if a same-day
+  // outgoing of equal size happens to exist. Critical for business
+  // accounts where genuine income and supplier debits co-occur.
+  const externalIncomeTerms = /bacs|bgc|payroll|salary|wage|invoice|payment from|customer|sales|stripe|gocardless|paypal|sumup|square|worldpay|takepayments|hmrc|pension|dividend|refund/i;
+
+  // Helper: does this transaction look like real income? Either the bank
+  // tagged it as CREDIT/INTEREST, OR an income_type was already resolved
+  // by the categoriser, OR the description carries an external-receipt
+  // keyword. Any of these means: do NOT pair-match.
+  const looksLikeIncome = (txn: any): boolean => {
+    const bankCategory = String(txn.category || '').toUpperCase().trim();
+    if (CREDIT_BANK_CATEGORIES.has(bankCategory)) return true;
+    const incomeType = normalizeIncomeTypeKey(txn.income_type);
+    if (incomeType && !isExcludedIncomeType(incomeType) && incomeType !== 'other') return true;
+    const desc = [txn.merchant_name, txn.description].filter(Boolean).join(' ').toLowerCase();
+    return externalIncomeTerms.test(desc);
+  };
 
   for (let i = 0; i < txns.length; i++) {
     const txnA = txns[i];
     if (matchedAsTransfers.has(txnA.id)) continue;
-    
+
     const amtA = parseFloat(String(txnA.amount)) || 0;
     if (amtA === 0) continue;
-    
+
     const descA = [txnA.merchant_name, txnA.description].join(' ').toLowerCase();
     if (excludedTerms.test(descA)) continue;
 
@@ -294,34 +321,44 @@ export function applyInternalTransferHeuristic(txns: any[]) {
     if (!tsA) continue;
     const accA = txnA.account_id;
 
+    // Skip if this side looks like real income — protects business
+    // customer credits from being silently zeroed.
+    if (amtA > 0 && looksLikeIncome(txnA)) continue;
+
     for (let j = i + 1; j < txns.length; j++) {
       const txnB = txns[j];
       if (matchedAsTransfers.has(txnB.id)) continue;
-      
+
       const amtB = parseFloat(String(txnB.amount)) || 0;
-      
+
       // Exact opposite
       if (Math.abs(amtA + amtB) < 0.01) {
         const descB = [txnB.merchant_name, txnB.description].join(' ').toLowerCase();
         if (excludedTerms.test(descB)) continue;
 
+        // Skip if the other side looks like real income too.
+        if (amtB > 0 && looksLikeIncome(txnB)) continue;
+
         const tsB = txnB.timestamp ? new Date(txnB.timestamp).getTime() : 0;
         if (!tsB) continue;
-        
+        const accB = txnB.account_id;
+
         // within 3 days (259200000 ms)
-        if (Math.abs(tsA - tsB) <= 3 * 24 * 60 * 60 * 1000) {          
-          // To prevent accidental pairing of Salary + Car Purchase,
-          // we enforce that either one description explicitly says transfer,
-          // or the amount is fairly precise (not a flat round number < £500).
-          // We remove the strict accA !== accB check because bank plugins sometimes log inbound/outbound on identical keys.
+        if (Math.abs(tsA - tsB) <= 3 * 24 * 60 * 60 * 1000) {
           const hasTransferKeyword = transferTerms.test(descA) || transferTerms.test(descB);
-            
-          // Allow if >= £500 (more likely to be related moving of funds) 
-          // AND we have transfer keywords
-          if (hasTransferKeyword || Math.abs(amtA) >= 500) {
-              matchedAsTransfers.add(txnA.id);
-              matchedAsTransfers.add(txnB.id);
-              break; // found the pair for txnA
+
+          // Conservative rule (tightened 2026-05-14 for business accounts):
+          //   1. Both rows must explicitly look like a transfer, OR
+          //   2. The rows are on DIFFERENT accounts of the user (the
+          //      canonical "moved money between own accounts" case).
+          // We dropped the old ">= £500 = automatic transfer" rule —
+          // it silently zeroed business income whenever a same-day
+          // supplier payment matched.
+          const crossAccount = !!accA && !!accB && accA !== accB;
+          if (hasTransferKeyword || crossAccount) {
+            matchedAsTransfers.add(txnA.id);
+            matchedAsTransfers.add(txnB.id);
+            break; // found the pair for txnA
           }
         }
       }
@@ -498,6 +535,17 @@ export function isCountableIncomeType(value: string | null | undefined) {
 
 export function detectFallbackSpendingCategory(description: string): string | null {
   const d = ` ${description.toLowerCase()} `;
+
+  // Rent — checked before mortgage / other housing because the word "rent"
+  // in the description is a strong tenant signal. Excludes "rent received"
+  // (handled upstream as rental income) and car-hire merchants that include
+  // the word "rent" (matched later under travel).
+  if (
+    /\b(rent payment|monthly rent|rent due|tenancy|landlord|letting agent|estate agent|rentmaster)\b/.test(d) &&
+    !/(rent received|rental income|enterprise rent|sixt rent|avis rent|hertz)/.test(d)
+  ) {
+    return 'rent';
+  }
 
   if (/\b(skipton|nationwide|halifax|santander.*mortgage|barclays.*mortgage|natwest.*mortgage|hsbc.*mortgage|virgin.*money|coventry|leeds building|yorkshire building|accord|godiva|paratus|lendinvest|platform.*home|kent reliance)\b/.test(d)) return 'mortgage';
   if (/\b(santander.*loan|amigo|zopa|ratesetter|lending works|funding circle|hitachi.*capital|creation.*finance|motonovo|loqbox|drafty)\b/.test(d)) return 'loans';

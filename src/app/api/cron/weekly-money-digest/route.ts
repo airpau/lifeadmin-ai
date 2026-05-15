@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
       const userName = profile.first_name || profile.full_name?.split(' ')[0] || 'there';
 
       // This week's transactions. Pull user_category alongside category
-      // because Yapily/TrueLayer writes the auto-category into
+      // because Yapily writes the auto-category into
       // user_category — the `category` column is null on every row
       // ingest writes today, which is why every digest used to show
       // "Other 100%". See lib/spending.ts for the resolution rule.

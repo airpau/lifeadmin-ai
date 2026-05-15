@@ -48,6 +48,7 @@ interface Payload {
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
   timezone: string;
+  newsletter_opted_in: boolean;
 }
 
 const GROUP_LABELS: Record<EventRow['group'], { label: string; icon: any; blurb: string }> = {
@@ -83,6 +84,17 @@ export default function NotificationsSettingsPage() {
 
   useEffect(() => { void load(); }, []);
 
+  const toggleAll = (channel: Channel, enable: boolean) => {
+    if (!data) return;
+    setData({
+      ...data,
+      events: data.events.map((e) => {
+        if (!e.allowedChannels.includes(channel)) return e;
+        return { ...e, channels: { ...e.channels, [channel]: enable } };
+      }),
+    });
+  };
+
   const toggle = (event: string, channel: Channel) => {
     if (!data) return;
     setData({
@@ -94,8 +106,18 @@ export default function NotificationsSettingsPage() {
   };
 
   const setQuietHour = (key: 'quiet_hours_start' | 'quiet_hours_end', value: string) => {
-    if (!data) return;
-    setData({ ...data, [key]: value || null });
+    // Functional updater so back-to-back calls (preset chips, "Disable
+    // quiet hours") compose correctly. With `setData({ ...data, ... })`
+    // both calls in the same event read the same captured `data`
+    // snapshot and the second overwrites the first — leaving start/end
+    // out of sync and saving an unintended window.
+    setData((prev) => (prev ? { ...prev, [key]: value || null } : prev));
+  };
+
+  const setQuietWindow = (start: string | null, end: string | null) => {
+    setData((prev) =>
+      prev ? { ...prev, quiet_hours_start: start, quiet_hours_end: end } : prev,
+    );
   };
 
   const switchPocketAgent = async (target: PocketAgentChannel) => {
@@ -155,6 +177,26 @@ export default function NotificationsSettingsPage() {
     }
   };
 
+  const setNewsletterOptIn = async (next: boolean) => {
+    setData((prev) => prev ? { ...prev, newsletter_opted_in: next } : prev);
+    try {
+      const res = await fetch('/api/notification-preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ newsletter_opted_in: next }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Update failed (${res.status})`);
+      }
+    } catch (e: any) {
+      // Roll back on failure so the UI reflects truth.
+      setData((prev) => prev ? { ...prev, newsletter_opted_in: !next } : prev);
+      setError(e?.message || 'Could not update newsletter preference');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -182,6 +224,52 @@ export default function NotificationsSettingsPage() {
       <p className="text-sm text-slate-500 mb-6">
         Pick where each kind of alert lands. Turn off the channels you don&apos;t want — leave Paybacker to reach you how you prefer.
       </p>
+
+      {/* Weekly newsletter — opt-OUT by default. Every confirmed
+          Paybacker user is in the audience unless they flip this off
+          (or use the one-click footer link in any send). The toggle
+          writes profiles.newsletter_unsubscribed_at and the
+          newsletter_audience view filters on it. */}
+      <section className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-emerald-100 flex-shrink-0">
+            <Mail className="h-5 w-5 text-emerald-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Weekly newsletter</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Every Thursday morning. UK consumer-rights wins, recent law changes, the Paybacker Index, and one quick action you can take that week. Free for every Paybacker member.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={data.newsletter_opted_in}
+                onClick={() => setNewsletterOptIn(!data.newsletter_opted_in)}
+                className={[
+                  'relative inline-flex h-7 w-12 items-center rounded-full transition-colors flex-shrink-0',
+                  data.newsletter_opted_in ? 'bg-emerald-600' : 'bg-slate-300',
+                ].join(' ')}
+              >
+                <span
+                  className={[
+                    'inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform',
+                    data.newsletter_opted_in ? 'translate-x-6' : 'translate-x-1',
+                  ].join(' ')}
+                />
+                <span className="sr-only">Toggle weekly newsletter</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-2">
+              {data.newsletter_opted_in
+                ? "You're subscribed. Toggle off to opt out — every send also has a one-click unsubscribe link in the footer."
+                : 'Opted out. Toggle on to start receiving the Thursday newsletter.'}
+            </p>
+          </div>
+        </div>
+      </section>
 
       {/* Pocket Agent channel picker — telegram XOR whatsapp */}
       <section className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
@@ -246,15 +334,62 @@ export default function NotificationsSettingsPage() {
 
       {/* Quiet hours */}
       <section className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="p-2 rounded-lg bg-slate-100">
-            <Moon className="h-5 w-5 text-slate-700" />
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-slate-100">
+              <Moon className="h-5 w-5 text-slate-700" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Quiet hours</h2>
+              <p className="text-xs text-slate-500">We hold push, Telegram and WhatsApp during this window. Emails still land in your inbox. Urgent alerts override.</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Quiet hours</h2>
-            <p className="text-xs text-slate-500">We hold push, Telegram and WhatsApp during these hours. Emails still land in your inbox.</p>
-          </div>
+          <span
+            className={
+              data.quiet_hours_start && data.quiet_hours_end
+                ? 'text-[11px] uppercase tracking-wider bg-emerald-100 text-emerald-700 font-semibold px-2 py-1 rounded'
+                : 'text-[11px] uppercase tracking-wider bg-slate-100 text-slate-500 font-semibold px-2 py-1 rounded'
+            }
+          >
+            {data.quiet_hours_start && data.quiet_hours_end ? 'On' : 'Off'}
+          </span>
         </div>
+
+        {/* Presets */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          {[
+            { label: 'Sleep (22:00 – 07:00)', start: '22:00', end: '07:00' },
+            { label: 'Late nights (23:00 – 08:00)', start: '23:00', end: '08:00' },
+            { label: 'Work hours only (09:00 – 18:00)', start: '18:00', end: '09:00' },
+          ].map((preset) => {
+            const active = data.quiet_hours_start === preset.start && data.quiet_hours_end === preset.end;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => setQuietWindow(preset.start, preset.end)}
+                className={
+                  'text-xs px-3 py-1.5 rounded-full border transition-colors ' +
+                  (active
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700 font-semibold'
+                    : 'bg-white border-slate-300 text-slate-700 hover:border-slate-400')
+                }
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+          {(data.quiet_hours_start || data.quiet_hours_end) && (
+            <button
+              type="button"
+              onClick={() => setQuietWindow(null, null)}
+              className="text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+            >
+              Disable quiet hours
+            </button>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 gap-3 max-w-md">
           <label className="text-sm">
             <span className="block text-slate-500 text-xs mb-1">Start</span>
@@ -275,9 +410,48 @@ export default function NotificationsSettingsPage() {
             />
           </label>
         </div>
-        <p className="text-xs text-slate-500 mt-2">
-          Timezone: {data.timezone} · Leave blank for 24/7 delivery.
+
+        <p className="text-xs text-slate-500 mt-3">
+          Timezone: <span className="font-semibold text-slate-700">{data.timezone}</span>{' '}
+          {data.quiet_hours_start && data.quiet_hours_end ? (
+            <>
+              · We&rsquo;ll hold non-urgent push, Telegram and WhatsApp messages between{' '}
+              <strong>{data.quiet_hours_start}</strong> and <strong>{data.quiet_hours_end}</strong>.
+            </>
+          ) : (
+            <>· Both fields blank = 24/7 delivery (no quiet window).</>
+          )}
         </p>
+      </section>
+
+      {/* Quick actions */}
+      <section className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
+        <h2 className="text-base font-semibold text-slate-900 mb-3">Quick actions</h2>
+        <div className="flex flex-wrap gap-2">
+          {(['email', 'telegram', 'whatsapp', 'push'] as Channel[]).map((ch) => {
+            const lockedByTier = ch === 'whatsapp' && !isPro;
+            if (lockedByTier) return null;
+            return (
+              <div key={ch} className="flex gap-1 items-center bg-slate-50 border border-slate-200 rounded-lg p-1">
+                <span className="text-xs uppercase tracking-wider text-slate-500 font-medium px-2">{ch}</span>
+                <button
+                  type="button"
+                  onClick={() => toggleAll(ch, true)}
+                  className="px-2 py-1 text-xs rounded hover:bg-emerald-100 hover:text-emerald-700 text-slate-600 transition-colors"
+                >
+                  All on
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleAll(ch, false)}
+                  className="px-2 py-1 text-xs rounded hover:bg-rose-100 hover:text-rose-700 text-slate-600 transition-colors"
+                >
+                  All off
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       {/* Event matrix grouped */}

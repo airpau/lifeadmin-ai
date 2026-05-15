@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Legislation xmlns:ukm="http://www.legislation.gov.uk/namespaces/metadata"
+             xmlns:dc="http://purl.org/dc/elements/1.1/"
+             xmlns="http://www.legislation.gov.uk/namespaces/legislation">
+  <ukm:Metadata>
+    <dc:title>Consumer Rights Act 2015</dc:title>
+    <ukm:PrimaryMetadata>
+      <ukm:DocumentMainType Value="UnitedKingdomPublicGeneralAct"/>
+      <ukm:Year Value="2015"/>
+      <ukm:Number Value="15"/>
+      <ukm:DocumentVersion date="2015-03-26"/>
+      <ukm:Modified Date="2024-04-06"/>
+    </ukm:PrimaryMetadata>
+    <ukm:UnappliedEffects>
+      <ukm:UnappliedEffect EffectId="key-foo" Type="words substituted" AffectingURI="/id/ukpga/2024/13"/>
+    </ukm:UnappliedEffects>
+  </ukm:Metadata>
+  <Body>
+    <Part>
+      <Number>1</Number>
+      <Section>
+        <Number>9</Number>
+        <Title>Goods to be of satisfactory quality</Title>
+        <P1>
+          <P1para>
+            <Text>(1) Every contract to supply goods is to be treated as including a term that the quality of the goods is satisfactory.</Text>
+          </P1para>
+        </P1>
+        <P1>
+          <P1para>
+            <Text>(2) The quality of goods is satisfactory if they meet the standard that a reasonable person would consider satisfactory, taking account of any description of the goods, the price or other consideration for the goods (if relevant), and all the other relevant circumstances (see subsection (5)).</Text>
+          </P1para>
+        </P1>
+      </Section>
+    </Part>
+  </Body>
+</Legislation>

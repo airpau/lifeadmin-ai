@@ -1,5 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { sendNotification } from '@/lib/notifications/dispatch';
+
+/**
+ * Fire a money_recovered alert across email + Pocket Agent channels
+ * when a dispute is resolved with non-zero money recovered. Idempotent —
+ * dedup by dispute_id reference key so multiple PATCH calls won't re-fire.
+ */
+async function fireMoneyRecoveredAlert(args: {
+  userId: string;
+  disputeId: string;
+  amount: number;
+  merchant: string;
+}): Promise<void> {
+  if (args.amount <= 0) return;
+  const sb = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
+  // Idempotency check
+  const { data: already } = await sb
+    .from('notification_log')
+    .select('id')
+    .eq('user_id', args.userId)
+    .eq('notification_type', 'money_recovered')
+    .eq('reference_key', args.disputeId)
+    .maybeSingle();
+  if (already) return;
+
+  // Lifetime total for the template footer
+  const { data: allRecovered } = await sb
+    .from('disputes')
+    .select('money_recovered')
+    .eq('user_id', args.userId)
+    .not('money_recovered', 'is', null);
+  const lifetime = (allRecovered ?? []).reduce(
+    (s, r) => s + (Number(r.money_recovered) || 0),
+    0,
+  );
+
+  await sendNotification(sb, {
+    userId: args.userId,
+    event: 'money_recovered',
+    telegram: {
+      text:
+        `💸 *Money recovered: £${args.amount.toFixed(2)}*\n\n` +
+        `*${args.merchant}* paid out on a dispute you opened with Paybacker.\n\n` +
+        `Lifetime recovery: *£${lifetime.toFixed(2)}*`,
+    },
+    whatsapp: {
+      templateName: 'paybacker_money_recovered',
+      templateParameters: [
+        `£${args.amount.toFixed(2)}`,
+        args.merchant,
+        `£${lifetime.toFixed(2)}`,
+      ],
+    },
+    push: {
+      title: 'Money recovered!',
+      body: `£${args.amount.toFixed(2)} back from ${args.merchant}`,
+    },
+  });
+
+  await sb.from('notification_log').insert({
+    user_id: args.userId,
+    notification_type: 'money_recovered',
+    reference_key: args.disputeId,
+  });
+}
 
 // GET /api/disputes/[id] — get full dispute with correspondence thread
 export async function GET(
@@ -179,6 +249,21 @@ export async function PATCH(
 
     const moneyRecovered = body.money_recovered ? parseFloat(body.money_recovered) : 0;
 
+    // Outcome audit payload — set on every code path (RPC success + fallback).
+    // PATCH is user-driven from the web UI: confidence='confirmed', set_by='user'.
+    // Mirrors the schema in 20260512000000_dispute_outcome_audit_fields.sql.
+    const nowIso = new Date().toISOString();
+    const outcomeAudit = {
+      outcome: body.outcome as 'won' | 'partial' | 'lost' | 'withdrawn',
+      outcome_set_at: nowIso,
+      outcome_set_by: 'user' as const,
+      outcome_confidence: 'confirmed' as const,
+      recovered_amount_gbp: moneyRecovered,
+    };
+    if (moneyRecovered === 0 && (body.outcome === 'won' || body.outcome === 'partial')) {
+      console.warn(`[disputes.resolve] dispute ${id} resolved as '${body.outcome}' with recovered_amount_gbp=0 — confirm with user`);
+    }
+
     // Try the RPC first
     const { error: rpcError } = await supabase.rpc('resolve_dispute', {
       p_user_id: user.id,
@@ -203,8 +288,9 @@ export async function PATCH(
           status: statusMap[body.outcome] || 'closed',
           money_recovered: moneyRecovered,
           outcome_notes: body.outcome_notes || null,
-          resolved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          resolved_at: nowIso,
+          updated_at: nowIso,
+          ...outcomeAudit,
         })
         .eq('id', id)
         .eq('user_id', user.id)
@@ -218,6 +304,16 @@ export async function PATCH(
       // Same subscription auto-cancel as the RPC path — same guards:
       // outcome='won' AND issue_type='cancellation'. See the longer
       // comment below for rationale.
+      // Fire money_recovered alert across channels if a non-zero amount
+      // was recovered. Non-blocking — failures don't break the API.
+      if (moneyRecovered > 0 && data?.provider_name) {
+        fireMoneyRecoveredAlert({
+          userId: user.id,
+          disputeId: id,
+          amount: moneyRecovered,
+          merchant: data.provider_name,
+        }).catch((e) => console.error('[disputes.PATCH] money_recovered alert failed:', e));
+      }
       if (body.outcome === 'won' && data?.provider_name && data?.issue_type === 'cancellation') {
         const { error: cancelErr } = await supabase
           .from('subscriptions')
@@ -234,6 +330,20 @@ export async function PATCH(
         }
       }
       return NextResponse.json(data);
+    }
+
+    // Defensive: ensure the outcome audit fields are populated even if the
+    // resolve_dispute RPC doesn't (it predates these columns). This is
+    // idempotent — running it after a future RPC that already sets them is
+    // a no-op overwrite with the same values. Bug surfaced on dispute
+    // dfcdbc85 (Virgin) which the RPC left with outcome=NULL.
+    const { error: auditErr } = await supabase
+      .from('disputes')
+      .update(outcomeAudit)
+      .eq('id', id)
+      .eq('user_id', user.id);
+    if (auditErr) {
+      console.error('[disputes.resolve] outcome audit update failed:', auditErr.message);
     }
 
     // Re-fetch after RPC success
@@ -259,6 +369,15 @@ export async function PATCH(
     //    energy/refund dispute against the same provider as an active
     //    subscription must NOT auto-cancel that subscription. Only
     //    cancellation-flow disputes signal cancel intent.
+    // Fire money_recovered alert (RPC success path).
+    if (moneyRecovered > 0 && resolved?.provider_name) {
+      fireMoneyRecoveredAlert({
+        userId: user.id,
+        disputeId: id,
+        amount: moneyRecovered,
+        merchant: resolved.provider_name,
+      }).catch((e) => console.error('[disputes.PATCH] money_recovered alert failed:', e));
+    }
     if (body.outcome === 'won' && resolved?.provider_name && resolved?.issue_type === 'cancellation') {
       const { data: matched, error: cancelErr } = await supabase
         .from('subscriptions')
@@ -299,12 +418,34 @@ export async function PATCH(
     if (allowed.has(body.issue_type)) allowedFields.issue_type = body.issue_type;
   }
 
-  // Auto-set resolved_at when status changes to resolved
-  if (body.status?.startsWith('resolved_')) {
-    allowedFields.resolved_at = new Date().toISOString();
+  // Auto-set resolved_at when status changes to resolved, and derive the
+  // outcome audit fields from the status so analytics never sees a
+  // resolved row with NULL outcome (the dfcdbc85 Virgin bug). PATCH from
+  // the web UI is user-driven: set_by='user', confidence='confirmed'.
+  const nowIso = new Date().toISOString();
+  if (body.status?.startsWith('resolved_') || body.status === 'closed') {
+    allowedFields.resolved_at = nowIso;
+    const statusToOutcome: Record<string, 'won' | 'partial' | 'lost' | 'withdrawn'> = {
+      resolved_won: 'won',
+      resolved_partial: 'partial',
+      resolved_lost: 'lost',
+      closed: 'withdrawn',
+    };
+    const derivedOutcome = statusToOutcome[body.status as keyof typeof statusToOutcome];
+    if (derivedOutcome) {
+      allowedFields.outcome = derivedOutcome;
+      allowedFields.outcome_set_at = nowIso;
+      allowedFields.outcome_set_by = 'user';
+      allowedFields.outcome_confidence = 'confirmed';
+      const recovered = (allowedFields.money_recovered as number | undefined) ?? 0;
+      allowedFields.recovered_amount_gbp = recovered;
+      if (recovered === 0 && (derivedOutcome === 'won' || derivedOutcome === 'partial')) {
+        console.warn(`[disputes.patch] dispute ${id} status set to '${body.status}' with recovered_amount_gbp=0 — confirm with user`);
+      }
+    }
   }
 
-  allowedFields.updated_at = new Date().toISOString();
+  allowedFields.updated_at = nowIso;
 
   const { data, error } = await supabase
     .from('disputes')
@@ -317,6 +458,21 @@ export async function PATCH(
   if (error) {
     console.error('Failed to update dispute:', error);
     return NextResponse.json({ error: 'Failed to update dispute' }, { status: 500 });
+  }
+
+  // Fire money_recovered alert when this PATCH set a non-zero amount.
+  // dedup inside the helper means an idempotent send.
+  if (
+    body.money_recovered !== undefined &&
+    parseFloat(body.money_recovered) > 0 &&
+    data?.provider_name
+  ) {
+    fireMoneyRecoveredAlert({
+      userId: user.id,
+      disputeId: id,
+      amount: parseFloat(body.money_recovered),
+      merchant: data.provider_name,
+    }).catch((e) => console.error('[disputes.PATCH] money_recovered alert failed:', e));
   }
 
   return NextResponse.json(data);

@@ -415,3 +415,124 @@
 @media (max-width: 1100px) {
   .shell-v2 .compose-grid { grid-template-columns: 1fr; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Dashboard chrome consistency pass (fix/dashboard-formatting-audit)
+
+   Founder reported: "all the dashboards are not readable, the formatting
+   is still a mess" — across consumer + admin surfaces. The root causes
+   were not bugs in any one page but inconsistent chrome between pages:
+     - admin sub-pages mixing dark (bg-slate-950) and light themes
+     - max-widths varying between max-w-2xl / 5xl / 6xl / 7xl on siblings
+     - <table> without overflow-x wrappers clipping on 390px viewport
+     - heading sizes diverging (text-2xl font-bold vs text-3xl font-bold
+       vs text-2xl font-semibold) across pages with the same role
+
+   These rules don't refactor any page — they normalise chrome at the
+   shell level so every page already inside `.shell-v2 .main-inner`
+   inherits a consistent baseline.
+   ───────────────────────────────────────────────────────────────────── */
+
+/* 1. Heading hierarchy.
+   Default any H1 inside .main-inner to the page-title size, any H2 to
+   a section size. Pages that already set explicit Tailwind sizes win
+   via specificity (Tailwind utilities are typically `font-size:1.5rem`
+   etc. and at the same specificity as these); this only acts as a floor
+   for pages that forgot. */
+.shell-v2 .main-inner h1:not([class*="text-"]) {
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--text);
+}
+.shell-v2 .main-inner h2:not([class*="text-"]) {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* 2. Naked <table> overflow safety.
+   Several admin pages render <table> directly inside a card without
+   wrapping in overflow-x-auto, which clipped their widest column on
+   narrow viewports. Force the table itself to scroll horizontally
+   inside its parent if needed. The `display:block` keeps colgroup
+   layout intact while `overflow-x:auto` adds the scroll affordance. */
+.shell-v2 .main-inner table.w-full {
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+@media (min-width: 768px) {
+  /* On wider viewports give the natural table layout back so columns
+     proportion themselves. We keep the scroll fallback only where it's
+     actually needed (narrow phones). */
+  .shell-v2 .main-inner table.w-full {
+    display: table;
+    white-space: normal;
+  }
+}
+
+/* 3. Admin sub-page chrome.
+   Anchor admin sub-pages to the same paper background + spacing as the
+   rest of the shell. Replaces the dark `bg-slate-950 text-white` look
+   that several admin pages shipped with by setting a light surface for
+   pages wrapped in <AdminPage>. Pages not yet migrated to <AdminPage>
+   are unaffected — this targets the wrapper class only. */
+.shell-v2 .admin-page {
+  color: var(--text);
+}
+.shell-v2 .admin-page :where(h1, h2, h3) { color: var(--text); }
+.shell-v2 .admin-page-head { min-width: 0; }
+
+/* 4. Reusable card baseline class for admin pages.
+   Pages can opt in by adding `admin-card` to a <section> or <div>. */
+.shell-v2 .admin-card {
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+/* 5. AdminTabStrip horizontal-scroll behaviour.
+   The strip is now a single flat row of every admin destination
+   (no More dropdown — the dropdown was clipped inside the iOS
+   Capacitor webview). Always scrolls-x, on every viewport. The
+   right-edge fade hints there's more to swipe to. */
+.shell-v2 .admin-tab-strip {
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+}
+.shell-v2 .admin-tab-strip::-webkit-scrollbar { display: none; }
+.shell-v2 .admin-tab-strip > * { scroll-snap-align: start; }
+.shell-v2 .admin-tab-strip-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 28px;
+  height: calc(100% - 6px);
+  pointer-events: none;
+  background: linear-gradient(to left, var(--paper, #FAFAF7), transparent);
+}
+
+/* 6. Mobile-safe break-words on admin headings + breadcrumb.
+   Some admin titles ("Per-tier cost (last 30d)") wrapped awkwardly on
+   390px because the parent flex column had min-width:auto. */
+.shell-v2 .admin-page h1,
+.shell-v2 .admin-page h2,
+.shell-v2 .admin-page h3 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 7. Mobile padding tightening for admin page wrapper.
+   The shell's .main-inner already drops to 18px 14px below 640px. We
+   want the admin-page to honour that without adding its own outer
+   padding (which would compound to ~32px on each side). */
+.shell-v2 .admin-page { padding-left: 0; padding-right: 0; }

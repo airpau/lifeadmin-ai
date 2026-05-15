@@ -30,7 +30,7 @@
  *     be undone.
  *
  * Per-account scoping (`accountId`):
- *   Yapily / TrueLayer often group multiple accounts (current, savings,
+ *   Yapily often groups multiple accounts (current, savings,
  *   credit card) under one consent — Paul's modelo-sandbox connection
  *   shows three. When the caller supplies `accountId`, we narrow every
  *   operation to that single account: txns are filtered by account_id,

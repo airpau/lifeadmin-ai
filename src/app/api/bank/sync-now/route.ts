@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getAccounts, getTransactions } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
-import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
+import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
@@ -21,16 +21,11 @@ interface BankConnection {
   id: string;
   user_id: string;
   provider: string;
-  // Yapily fields
   consent_token: string | null;
   consent_expires_at: string | null;
-  // TrueLayer fields (legacy — provider='truelayer' connections were
-  // archived 2026-04-27, kept here only so the type still matches old
-  // bank_connections rows in the result set if filtering ever drifts)
   access_token: string | null;
   refresh_token: string | null;
   token_expires_at: string | null;
-  // Common
   account_ids: string[] | null;
   account_identifications_hashes: string[] | null;
   account_display_names: string[] | null;
@@ -125,7 +120,7 @@ export async function POST(request: NextRequest) {
     // No body — sync all connections
   }
 
-  // Fetch active bank connection(s) — TrueLayer and Yapily
+  // Fetch active bank connection(s).
   let connectionsQuery = supabase
     .from('bank_connections')
     .select('*')
@@ -176,7 +171,6 @@ export async function POST(request: NextRequest) {
   for (const conn of connections as BankConnection[]) {
     let transactionSyncSucceeded = false;
 
-      // === Yapily path ===
       if (!conn.consent_token) {
         await supabase
           .from('bank_connections')
@@ -246,6 +240,50 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      // ── Backfill account_identifications_hashes if missing ──
+      // (same logic as the cron — see bank-sync/route.ts for full rationale)
+      let storedHashes: string[] = Array.isArray(conn.account_identifications_hashes)
+        ? conn.account_identifications_hashes
+        : [];
+      let storedDisplayNames: string[] = Array.isArray(conn.account_display_names)
+        ? conn.account_display_names
+        : [];
+
+      if (storedHashes.length === 0 || storedHashes.length < accountIds.length) {
+        try {
+          const accounts = await getAccounts(consentToken);
+          apiCallsMade++;
+          const snapshots = snapshotAccounts(accounts);
+          const newHashes = snapshots.map((s) => s.accountIdentificationsHash ?? '');
+          const newDisplayNames = snapshots.map((s) => s.displayName);
+          if (newHashes.length > 0 && newHashes.some((h) => h.length > 0)) {
+            await admin
+              .from('bank_connections')
+              .update({
+                account_identifications_hashes: newHashes,
+                account_display_names: newDisplayNames,
+                account_ids: snapshots.map((s) => s.yapilyAccountId),
+                updated_at: now,
+              })
+              .eq('id', conn.id);
+            storedHashes = newHashes;
+            storedDisplayNames = newDisplayNames;
+            accountIds = snapshots.map((s) => s.yapilyAccountId);
+          }
+        } catch (err: any) {
+          console.error(`Manual sync: hash backfill failed for ${conn.id}:`, err.message);
+          await supabase.from('bank_sync_log').insert({
+            user_id: user.id,
+            connection_id: conn.id,
+            trigger_type: 'manual',
+            status: 'failed',
+            api_calls_made: apiCallsMade,
+            error_message: `Hash backfill failed: ${err.message}`,
+          });
+          continue;
+        }
+      }
+
       // Route through the connection-store so manual syncs use the
       // same dedup invariants as the OAuth callback's initial-sync.
       // The OLD upsert pattern keyed on (user_id, transaction_id) and
@@ -254,12 +292,6 @@ export async function POST(request: NextRequest) {
       // so each manual Sync click inserted ~2000 phantom duplicates
       // (Paul, 2026-04-28). Keying on stable_tx_hash + account hash
       // makes the second sync a pure no-op.
-      const storedHashes: string[] = Array.isArray(conn.account_identifications_hashes)
-        ? conn.account_identifications_hashes
-        : [];
-      const storedDisplayNames: string[] = Array.isArray(conn.account_display_names)
-        ? conn.account_display_names
-        : [];
       const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);

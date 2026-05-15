@@ -110,7 +110,7 @@ export const AGENTS: Record<string, AgentConfig> = {
     schedule: '0 10 * * *',
     memoryKey: 'feature-tester',
     taskPrompt:
-      `Run your scheduled feature test sweep. Verify the 7 critical flows (signup→onboarded_at, TrueLayer connect, Gmail/Outlook connect, complaint letter generation with UK legislation citations, Stripe upgrade path, renewal reminder dispatch, Watchdog dispute polling). Mark each ✅/⚠️/🔴 with evidence pointers (table+row id). For 🔴 entries write business_log severity warn (or critical if paying-tier flow). Compliance check: any complaint letter generated in the last 24h missing a UK legislation citation = critical ping.${TASK_FOOTER}`,
+      `Run your scheduled feature test sweep. Verify the 7 critical flows (signup→onboarded_at, Yapily bank connect, Gmail/Outlook connect, complaint letter generation with UK legislation citations, Stripe upgrade path, renewal reminder dispatch, Watchdog dispute polling). Mark each ✅/⚠️/🔴 with evidence pointers (table+row id). For 🔴 entries write business_log severity warn (or critical if paying-tier flow). Compliance check: any complaint letter generated in the last 24h missing a UK legislation citation = critical ping.${TASK_FOOTER}`,
   },
   'finance-analyst': {
     // Registered on platform.claude.com 2026-04-25.

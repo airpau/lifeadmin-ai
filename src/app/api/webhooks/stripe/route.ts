@@ -111,6 +111,46 @@ export async function POST(request: NextRequest) {
           } catch (e: any) {
             console.error('[stripe webhook] b2b checkout.expired failed:', e?.message);
           }
+          break;
+        }
+
+        // B2C abandonment capture — feed the consumer nurture funnel.
+        // The B2B path above intentionally returns first; we only land
+        // here for consumer checkouts. Best-effort — never throw out
+        // of the webhook handler.
+        try {
+          const { captureConsumerLead } = await import('@/lib/consumer-leads/capture');
+          const email = session.customer_details?.email || session.customer_email || null;
+          if (email) {
+            // Pull intended tier off the line items if we can.
+            let intendedTier: 'essential' | 'pro' | null = null;
+            let intendedInterval: 'monthly' | 'yearly' | null = null;
+            try {
+              const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1, expand: ['data.price'] });
+              const priceId = lineItems.data[0]?.price?.id;
+              if (priceId && PRICE_ID_TO_TIER[priceId]) {
+                intendedTier = PRICE_ID_TO_TIER[priceId] as 'essential' | 'pro';
+              }
+              const recurring = lineItems.data[0]?.price?.recurring?.interval;
+              if (recurring === 'month') intendedInterval = 'monthly';
+              if (recurring === 'year') intendedInterval = 'yearly';
+            } catch (e: any) {
+              console.warn('[stripe webhook] expired session line-items lookup failed:', e?.message);
+            }
+            const recoveryUrl = session.after_expiration?.recovery?.url ?? null;
+            await captureConsumerLead({
+              email,
+              name: session.customer_details?.name ?? null,
+              source: 'stripe_checkout_abandoned',
+              stripeCheckoutSessionId: session.id,
+              stripeCustomerId: typeof session.customer === 'string' ? session.customer : null,
+              stripeRecoveryUrl: recoveryUrl,
+              intendedTier,
+              intendedBillingInterval: intendedInterval,
+            });
+          }
+        } catch (e: any) {
+          console.error('[stripe webhook] consumer abandonment capture failed:', e?.message);
         }
         break;
       }
@@ -166,6 +206,39 @@ export async function POST(request: NextRequest) {
             session.customer as string,
             session.subscription as string
           );
+        }
+
+        // Mark any matching consumer_leads row as converted_paid so the
+        // nurture funnel stops emailing this user. Best-effort, B2C only —
+        // the `metadata.product==='b2b_api'` branch above already returned.
+        try {
+          const conversionEmail = (session.customer_details?.email || session.customer_email || '').toLowerCase();
+          if (conversionEmail) {
+            const { captureServer } = await import('@/lib/posthog-server');
+            const { data: matchingLeads } = await supabase
+              .from('consumer_leads')
+              .select('id, funnel_stage')
+              .ilike('email', conversionEmail)
+              .not('funnel_stage', 'in', '("converted_paid","unsubscribed","expired")')
+              .order('captured_at', { ascending: false })
+              .limit(5);
+            for (const lead of matchingLeads ?? []) {
+              await supabase
+                .from('consumer_leads')
+                .update({
+                  funnel_stage: 'converted_paid',
+                  converted_at: new Date().toISOString(),
+                  converted_user_id: userId,
+                })
+                .eq('id', lead.id);
+              captureServer('lead_converted', `consumer_lead:${lead.id}`, {
+                tier,
+                from_stage: lead.funnel_stage,
+              });
+            }
+          }
+        } catch (e: any) {
+          console.error('[stripe webhook] consumer-lead conversion mark failed:', e?.message);
         }
 
         // Awin server-to-server conversion tracking

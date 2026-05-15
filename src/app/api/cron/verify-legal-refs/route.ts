@@ -106,6 +106,26 @@ export async function GET(request: NextRequest) {
       } catch (logErr) {
         console.warn('[verify-legal] legal_audit_log insert failed:', logErr);
       }
+      // PR γ — mirror to the new structured audit table so the admin
+      // "Audit trail" drawer surfaces both Perplexity AND Haiku-cron
+      // verification attempts.
+      try {
+        await supabase.from('legal_ref_verifications').insert({
+          ref_id: ref.id,
+          verifier: ref.source_type === 'statute' ? 'haiku-cron-statute' : 'haiku-cron-regulator',
+          triggered_by: 'cron',
+          before_status: (ref as any).verification_status ?? null,
+          after_status: attemptOk ? 'attempted' : 'check_failed',
+          before_url: ref.source_url ?? null,
+          after_url: ref.source_url ?? null,
+          changes: null,
+          cost_gbp: null,
+          perplexity_response: null,
+          notes: attemptErr ?? null,
+        });
+      } catch (auditErr) {
+        console.warn('[verify-legal] legal_ref_verifications insert failed:', auditErr);
+      }
     }
 
     // Small delay to respect rate limits
@@ -433,7 +453,7 @@ async function verifyRegulatorRule(
   // Hash changed (or no hash stored yet) — send to Claude Haiku for comparison
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 512,
       messages: [{
         role: 'user',

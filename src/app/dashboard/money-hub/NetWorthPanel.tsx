@@ -11,14 +11,14 @@ export default function NetWorthPanel({ data, isPro, refreshData }: { data: any,
   const { total, assets, liabilities, assetsList, liabilitiesList } = data.netWorth || { total: 0, assets: 0, liabilities: 0, assetsList: [], liabilitiesList: [] };
 
   return (
-    <div className="card p-5 flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-slate-900 font-semibold text-lg flex items-center gap-2">
-          <PiggyBank className="h-5 w-5 text-mint-400" />
-          Net Worth
+    <div className="card p-5 flex flex-col">
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <h3 className="text-slate-900 font-semibold text-lg flex items-center gap-2 min-w-0">
+          <PiggyBank className="h-5 w-5 text-mint-400 flex-shrink-0" />
+          <span className="truncate">Net Worth</span>
         </h3>
-        <div className="flex items-center gap-3">
-          <span className={`font-bold text-xl ${total >= 0 ? 'text-mint-400' : 'text-red-400'}`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className={`font-bold text-xl truncate ${total >= 0 ? 'text-mint-400' : 'text-red-400'}`}>
             {total >= 0 ? '' : '-'}£{fmtNum(Math.abs(total))}
           </span>
           {isPro && (

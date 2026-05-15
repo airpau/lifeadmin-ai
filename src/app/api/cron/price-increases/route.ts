@@ -4,6 +4,7 @@ import { detectPriceIncreases } from '@/lib/price-increase-detector';
 import { buildPriceIncreaseEmail } from '@/lib/email/price-increase-alerts';
 import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
+import { buildPriceAlertSuppressor } from '@/lib/price-alerts/suppression';
 
 export const maxDuration = 60;
 
@@ -55,19 +56,12 @@ export async function GET(request: NextRequest) {
       const increases = await detectPriceIncreases(userId);
       if (increases.length === 0) continue;
 
-      // Get existing alerts (any status) for this user to prevent duplicates.
-      // Without including dismissed/actioned, every cron run recreates an
-      // alert the user has already dealt with — confirmed in production
-      // where Winchester Council Tax accumulated 7 rows and HMRC 5.
-      const { data: existingAlerts } = await supabase
-        .from('price_increase_alerts')
-        .select('merchant_normalized')
-        .eq('user_id', userId)
-        .in('status', ['active', 'dismissed', 'actioned']);
-
-      const existingMerchants = new Set(
-        (existingAlerts || []).map(a => a.merchant_normalized)
-      );
+      // Active alerts suppress new alerts for the same merchant outright;
+      // dismissed/actioned alerts suppress only for the same merchant+amounts
+      // fingerprint and only for 30 days. Without the dismissed-history check,
+      // every daily run recreates an alert the user has already dealt with
+      // (B/Card Plat Visa, Onestream, Bank Of Scotland in production).
+      const isSuppressed = await buildPriceAlertSuppressor(supabase, userId);
 
       // Get user profile for email and tier
       const { data: profile } = await supabase
@@ -83,8 +77,13 @@ export async function GET(request: NextRequest) {
       const newIncreases: typeof increases = [];
 
       for (const increase of increases) {
-        // Skip if already alerted for this merchant
-        if (existingMerchants.has(increase.merchantNormalized)) continue;
+        // Skip if active alert exists, or user dismissed/actioned the same
+        // merchant+amounts fingerprint within the last 30 days.
+        if (isSuppressed({
+          merchantNormalized: increase.merchantNormalized,
+          oldAmount: increase.oldAmount,
+          newAmount: increase.newAmount,
+        })) continue;
 
         // Insert alert
         const { error: insertError } = await supabase
@@ -125,11 +124,29 @@ export async function GET(request: NextRequest) {
           : `💸 *${newIncreases.length} price increases detected* on your bills`;
         const telegramText = `${headline}\n\n${newIncreases.map(i => `• ${i.merchantNormalized}: £${i.oldAmount} → £${i.newAmount} (+${i.increasePct}%)`).join('\n')}\n\nOpen Paybacker → Dashboard → Price increase alerts to action.`;
 
+        // WhatsApp template only fires when there's exactly one merchant
+        // (the Meta-approved template has 4 fixed slots for a single
+        // merchant). Multi-merchant alerts fall back to email + telegram
+        // + push so users still see the consolidated update.
+        const single = newIncreases.length === 1 ? newIncreases[0] : null;
+        const whatsappPayload = single
+          ? {
+              templateName: 'paybacker_alert_price_increase',
+              templateParameters: [
+                single.merchantNormalized,
+                `£${single.oldAmount.toFixed(2)}`,
+                `£${single.newAmount.toFixed(2)}`,
+                single.newDate ?? new Date().toISOString().split('T')[0],
+              ],
+            }
+          : undefined;
+
         const result = await sendNotification(supabase, {
           userId,
           event: 'price_increase',
           email: emailAllowed ? { subject, html } : undefined,
           telegram: { text: telegramText },
+          whatsapp: whatsappPayload,
           push: { title: 'Price hike detected', body: headline.replace(/\*/g, '') },
         });
         if (result.delivered.includes('email')) {

@@ -441,7 +441,7 @@ export default function MoneyHubPage() {
  if (user) {
  setUserId(user.id);
  // Include 'revoked' so users can see + remove connections they
- // intentionally disconnected. Without this, revoked Yapily/TrueLayer
+ // intentionally disconnected. Without this, revoked Yapily
  // rows live forever in the DB but are invisible in the UI — no way
  // for the user to clean them up.
  const { data: conns } = await supabase.from('bank_connections')
@@ -514,7 +514,7 @@ export default function MoneyHubPage() {
 
  // The disconnect modal now supports per-account scoping. The `accounts`
  // array is passed verbatim from connection.account_ids/display_names so
- // a multi-account consent (Yapily/TrueLayer with current + savings, or
+ // a multi-account consent (Yapily with current + savings, or
  // Paul's modelo-sandbox with three accounts) renders a scope picker
  // letting the user disconnect ONE account without dropping the others.
  const [disconnectModal, setDisconnectModal] = useState<{
@@ -724,7 +724,7 @@ export default function MoneyHubPage() {
 
  if (!data?.accounts?.length) {
  return (
- <div className="max-w-7xl">
+ <div className="max-w-7xl mx-auto w-full">
  <div className="text-center py-10 mb-8">
  <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-200 mb-4">
  <Wallet className="h-8 w-8 text-emerald-600" />
@@ -871,6 +871,12 @@ export default function MoneyHubPage() {
  className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
  >
  Browse all transactions →
+ </a>
+ <a
+ href="/dashboard/money-hub/categories"
+ className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-800"
+ >
+ Manage categories →
  </a>
  </div>
  </div>
@@ -1096,7 +1102,7 @@ export default function MoneyHubPage() {
 
  {/* Active bank connections — one row per connection (the unit you can
       revoke). Multi-account consents (e.g. NatWest current + business on
-      one TrueLayer consent) cannot be partially revoked, so previously
+      one Yapily consent) cannot be partially revoked, so previously
       rendering one row per account with the trash gated to i===0 misled
       users into thinking they could remove a single account. */}
  {activeConnections.length > 0 && (
@@ -1491,7 +1497,7 @@ export default function MoneyHubPage() {
  {/* Inline edit form */}
  {isEditing && (
  <div className="px-3 pb-3 border-t border-slate-200 pt-3">
- <div className="grid grid-cols-3 gap-2 mb-2">
+ <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
  <div>
  <label className="text-[10px] text-slate-600 uppercase tracking-wider block mb-1">Amount (£)</label>
  <input

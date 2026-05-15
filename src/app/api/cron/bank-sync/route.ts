@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAccounts, getTransactions } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
-import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
+import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
+import { dispatchMoneyInAlertsForUser } from '@/lib/alerts/money-in';
 import {
   TIER_CONFIG,
   GLOBAL_DAILY_API_CEILING,
@@ -19,14 +20,11 @@ interface BankConnection {
   id: string;
   user_id: string;
   provider: string;
-  // Yapily fields
   consent_token: string | null;
   consent_expires_at: string | null;
-  // TrueLayer fields (legacy — archived 2026-04-27)
   access_token: string | null;
   refresh_token: string | null;
   token_expires_at: string | null;
-  // Common
   account_ids: string[] | null;
   account_identifications_hashes: string[] | null;
   account_display_names: string[] | null;
@@ -110,7 +108,7 @@ export async function GET(request: NextRequest) {
 
   const orderedUserIds = sortedProfiles.map((p) => p.id);
 
-  // Fetch active bank connections for these users (TrueLayer + Yapily)
+  // Fetch active bank connections for these users.
   // Also include 'token_expired' connections — we attempt a token refresh and reset to active on success
   const { data: connections, error: connError } = await supabase
     .from('bank_connections')
@@ -171,17 +169,7 @@ export async function GET(request: NextRequest) {
       let transactionSyncSucceeded = false;
       const accountErrors: string[] = [];
 
-      // === TrueLayer deprecated 2026-04-27 ===
-      // TL connections are archived in DB and will not be returned by the
-      // bank_connections query (.eq provider=yapily below). The skip here
-      // is defensive — anything else means corrupted state.
-      if (connection.provider !== "yapily") {
-        console.warn(`Bank sync: skipping non-Yapily connection ${connection.id} (provider=${connection.provider})`);
-        totalApiCalls += connectionApiCalls;
-        continue;
-      }
       {
-        // === Yapily path ===
         if (!connection.consent_token) {
           console.error(`Bank sync: no consent token for ${connection.id}`);
           await supabase
@@ -273,21 +261,67 @@ export async function GET(request: NextRequest) {
           throw new Error('No bank accounts available to sync');
         }
 
+        // ── Backfill account_identifications_hashes if missing ──
+        // This can happen when a connection was created before the hash
+        // invariant was enforced, or when a migration gap left the field
+        // null. Without hashes the dedup invariants in connection-store
+        // can't function, so we fetch accounts and compute them now.
+        let storedHashes: string[] = Array.isArray(connection.account_identifications_hashes)
+          ? connection.account_identifications_hashes
+          : [];
+        let storedDisplayNames: string[] = Array.isArray(connection.account_display_names)
+          ? connection.account_display_names
+          : [];
+
+        if (storedHashes.length === 0 || storedHashes.length < accountIds.length) {
+          try {
+            const accounts = await getAccounts(consentToken);
+            connectionApiCalls++;
+            const snapshots = snapshotAccounts(accounts);
+            const newHashes = snapshots.map((s) => s.accountIdentificationsHash ?? '');
+            const newDisplayNames = snapshots.map((s) => s.displayName);
+            // Only update if we got valid hashes back
+            if (newHashes.length > 0 && newHashes.some((h) => h.length > 0)) {
+              await supabase
+                .from('bank_connections')
+                .update({
+                  account_identifications_hashes: newHashes,
+                  account_display_names: newDisplayNames,
+                  account_ids: snapshots.map((s) => s.yapilyAccountId),
+                  updated_at: now,
+                })
+                .eq('id', connection.id);
+              storedHashes = newHashes;
+              storedDisplayNames = newDisplayNames;
+              accountIds = snapshots.map((s) => s.yapilyAccountId);
+              await sendTelegramAlert(
+                `⚠️ *Bank sync hash backfill*\n\n` +
+                `Connection \`${connection.id}\` for user \`${connection.user_id}\` ` +
+                `had missing \`account_identifications_hashes\`. Fetched ${accounts.length} accounts from Yapily and backfilled. ` +
+                `This was a silent skip — no transactions were being synced for this connection.\n\n` +
+                `Next cron run should sync normally.`
+              );
+            }
+          } catch (err: any) {
+            console.error(`Bank sync: hash backfill failed for ${connection.id}:`, err.message);
+            await sendTelegramAlert(
+              `🚨 *Bank sync hash backfill FAILED*\n\n` +
+              `Connection \`${connection.id}\` for user \`${connection.user_id}\`. ` +
+              `Error: ${err.message}\n\n` +
+              `This connection will continue to be skipped until hashes are present.`
+            );
+          }
+        }
+
         // Route through connection-store so the cron uses the same
         // dedup invariants as the OAuth callback's initial-sync.
         // Replaced 2026-04-28 — the OLD upsert pattern keyed on
         // (user_id, transaction_id) and Yapily reissues IDs across
         // calls, so each cron run was inserting phantom duplicates.
-        const storedHashes: string[] = Array.isArray(connection.account_identifications_hashes)
-          ? connection.account_identifications_hashes
-          : [];
-        const storedDisplayNames: string[] = Array.isArray(connection.account_display_names)
-          ? connection.account_display_names
-          : [];
-        const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+        const fromDate = ninetyDaysAgo.toISOString();
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
-        const toDate = tomorrow.toISOString().split('T')[0];
+        const toDate = tomorrow.toISOString();
 
         for (let i = 0; i < accountIds.length; i++) {
           const accountId = accountIds[i];
@@ -354,6 +388,20 @@ export async function GET(request: NextRequest) {
 
       // Run recurring detection (JS-side; the DB function above is also called server-side)
       const recurringDetected = await detectRecurring(connection.user_id, supabase);
+
+      // Fire money-in alerts for any credits inserted in the last 24h.
+      // Idempotent + respects per-user threshold + transfer detection.
+      // Non-fatal: a notification dispatch failure must never break sync.
+      try {
+        const moneyInResult = await dispatchMoneyInAlertsForUser(supabase, connection.user_id);
+        if (moneyInResult.alerted > 0) {
+          console.log(
+            `[bank-sync] money-in alerts: user=${connection.user_id} alerted=${moneyInResult.alerted} skipped=${moneyInResult.skipped}`,
+          );
+        }
+      } catch (err: any) {
+        console.error(`[bank-sync] money-in dispatch threw for user ${connection.user_id}:`, err?.message);
+      }
 
       // Update last synced; reset token_expired back to active since refresh succeeded
       await supabase

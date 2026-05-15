@@ -270,7 +270,7 @@ export async function POST() {
 
       try {
         const res = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-3-5-haiku-20241022',
           max_tokens: 1024,
           system: `Categorise these UK bank transactions. For each, return a JSON array of objects with: {"index": number, "category": string, "income_type": string or null}.
 

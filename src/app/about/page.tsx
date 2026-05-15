@@ -12,9 +12,9 @@ import './styles.css';
  */
 
 export const metadata: Metadata = {
-  title: 'About Paybacker — Lawyers are too expensive. Suppliers know it.',
+  title: 'About Paybacker — Professional help is too expensive. Suppliers know it.',
   description:
-    'Paybacker bridges the gap between an unfair bill and a lawyer who costs more than the refund. Launched March 2026 to help normal working people save money proactively.',
+    'Paybacker bridges the gap between an unfair bill and professional help that costs more than the refund. Launched March 2026 to help normal working people save money proactively.',
   alternates: { canonical: 'https://paybacker.co.uk/about' },
   openGraph: {
     title: 'About Paybacker — Fighting for UK consumers',
@@ -106,6 +106,8 @@ function MarkFoot() {
             <h5>Legal</h5>
             <Link href="/privacy-policy">Privacy</Link>
             <Link href="/terms-of-service">Terms</Link>
+            <Link href="/legal/methodology">Methodology</Link>
+            <Link href="/legal/ethics-code">Ethics Code</Link>
             <Link href="/cookie-policy">Cookies</Link>
           </div>
           <div className="footer-col">
@@ -133,7 +135,7 @@ const TIMELINE: ReadonlyArray<readonly [string, string, string]> = [
   [
     'The problem',
     'Years of quiet overcharging',
-    'Suppliers have been getting away with unfair bills, silent price rises, and forgotten subscriptions for years. The only real recourse is a lawyer — and a lawyer costs more than the overcharge. So most people do nothing.',
+    'Suppliers have been getting away with unfair bills, silent price rises, and forgotten subscriptions for years. The only real recourse is formal action — and professional help costs more than the overcharge. So most people do nothing.',
   ],
   [
     'The gap',
@@ -143,7 +145,7 @@ const TIMELINE: ReadonlyArray<readonly [string, string, string]> = [
   [
     'The idea',
     'What if the fight was free?',
-    'AI can read the Consumer Rights Act. It can draft the letter. It can cite Ofcom General Conditions by section. The expensive part of a lawyer — the reading and the writing — becomes cheap.',
+    'AI can read the Consumer Rights Act. It can draft the letter. It can cite Ofcom General Conditions by section. The expensive part of fighting back — the reading and the writing — becomes cheap.',
   ],
   [
     'March 2026',
@@ -209,7 +211,7 @@ export default function AboutPage() {
               maxWidth: 1000,
             }}
           >
-            <span style={{ display: 'block', color: 'var(--text-primary)' }}>Lawyers are</span>
+            <span style={{ display: 'block', color: 'var(--text-primary)' }}>Legal action is</span>
             <span style={{ display: 'block', color: 'var(--accent-mint-deep)' }}>too expensive.</span>
             <span style={{ display: 'block', color: 'var(--accent-orange-deep)' }}>Suppliers know it.</span>
           </h1>
@@ -282,10 +284,10 @@ export default function AboutPage() {
                   margin: '14px 0 16px',
                 }}
               >
-                The gap between a bill and a lawyer.
+                The gap between a bill and getting help.
               </h2>
               <p style={{ fontSize: 16, lineHeight: 1.6, color: 'var(--text-secondary)', margin: 0 }}>
-                Paybacker exists because suppliers have been getting away with it for years. The overcharges are individually too small to lawyer up for, and collectively too big to ignore. We built the bridge.
+                Paybacker exists because suppliers have been getting away with it for years. The overcharges are individually too small to hire professional help for, and collectively too big to ignore. We built the bridge.
               </p>
             </div>
             <div>
@@ -458,7 +460,7 @@ export default function AboutPage() {
               </p>
               <p>
                 So the system quietly runs on that maths. Companies know
-                most people won&rsquo;t bother. They know a lawyer costs
+                most people won&rsquo;t bother. They know taking formal action costs
                 more than the overcharge. They know you&rsquo;ll sigh, tick
                 the direct debit, and let them have it. And that adds up
                 to over a grand a year for a typical household &mdash;
@@ -469,7 +471,7 @@ export default function AboutPage() {
                 I was done with it. AI can now read the Consumer Rights
                 Act faster than any paralegal, cite the exact statute, and
                 draft a letter that makes a supplier take you seriously
-                in 30 seconds. The expensive part of hiring a lawyer
+                in 30 seconds. The expensive part of fighting back
                 &mdash; the reading and the writing &mdash; just got cheap.
                 So I built Paybacker to pass that power back to people
                 like me, who were tired of being the ones paying for

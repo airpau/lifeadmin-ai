@@ -115,6 +115,8 @@ function MarkFoot() {
             <h5>Legal</h5>
             <Link href="/privacy-policy">Privacy</Link>
             <Link href="/terms-of-service">Terms</Link>
+            <Link href="/legal/methodology">Methodology</Link>
+            <Link href="/legal/ethics-code">Ethics Code</Link>
             <Link href="/cookie-policy">Cookies</Link>
             <Link href="/ico-notice">ICO notice</Link>
           </div>

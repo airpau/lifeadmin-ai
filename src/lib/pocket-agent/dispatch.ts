@@ -34,7 +34,16 @@ export type AlertType =
   | 'dispute_followup'
   | 'subscription_renewing'
   | 'unusual_charge'
-  | 'money_recovered';
+  | 'money_recovered'
+  | 'dispute_agent_action'
+  | 'morning_summary'
+  | 'weekly_digest'
+  | 'savings_milestone'
+  | 'reconnect_required'
+  | 'trial_ending'
+  | 'complaint_letter_ready'
+  | 'outcome_check'
+  | 'welcome';
 
 export interface ActiveSession {
   user_id: string;
@@ -144,23 +153,46 @@ export async function dispatchPocketAgentAlert(args: {
   // WhatsApp path — match alert type to the approved template.
   if (session.channel === 'whatsapp') {
     if (!whatsappVars) {
-      return { ok: false, channel: 'whatsapp', error: 'no whatsapp vars provided' };
+      const err = 'no whatsapp vars provided';
+      await logWhatsAppDispatchOutcome({ session, alertType, ok: false, error: err, templateName: null });
+      return { ok: false, channel: 'whatsapp', error: err };
+    }
+    const templateName = templateForAlertType(alertType);
+    if (!templateName) {
+      const err = `no whatsapp template registered for alert type ${alertType}`;
+      await logWhatsAppDispatchOutcome({ session, alertType, ok: false, error: err, templateName: null });
+      return { ok: false, channel: 'whatsapp', error: err };
     }
     try {
-      const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
-      const templateName = templateForAlertType(alertType);
-      if (!templateName) {
-        return {
-          ok: false,
-          channel: 'whatsapp',
-          error: `no whatsapp template registered for alert type ${alertType}`,
-        };
-      }
       // Send via the existing twilio-provider, which resolves the
       // template SID from the registry (added 2026-04-28 fallback).
       // Template parameters are positional — we get the template
       // shape from the registry to order them correctly.
+      const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
       const { TEMPLATES } = await import('@/lib/whatsapp/template-registry');
+      const { getTemplateSid } = await import('@/lib/whatsapp/template-sids');
+      const liveSid = await getTemplateSid(templateName);
+      if (!liveSid) {
+        // Pre-flight guard: template not approved by Meta yet. Skip the
+        // Twilio call entirely (it would 4xx) and dedup the log so we
+        // don't get a retry storm in business_log when the dispute-agent
+        // cron loops over many users with the same unapproved template.
+        const err = `template not yet approved`;
+        const skipped = await logSkippedDispatch({
+          templateName,
+          userId: session.user_id,
+        });
+        if (!skipped.alreadyLogged) {
+          await logWhatsAppDispatchOutcome({
+            session,
+            alertType,
+            ok: false,
+            error: err,
+            templateName,
+          });
+        }
+        return { ok: false, channel: 'whatsapp', error: err };
+      }
       const tpl = (TEMPLATES as Record<string, { vars: readonly string[] }>)[templateName];
       const positional = tpl.vars.map((name) => {
         const v = whatsappVars[name];
@@ -174,9 +206,39 @@ export async function dispatchPocketAgentAlert(args: {
         templateName,
         parameters: positional,
       });
+      // 2026-04-30 — log every send to whatsapp_message_log so
+      // future silence is visible. Previously only the
+      // dispute_followup path wrote outbound rows, which is why
+      // the founder's price_increase / renewal_imminent alerts
+      // were never visible in the table even when they fired.
+      await logWhatsAppOutbound({
+        session,
+        templateName,
+        providerMessageId: result.providerMessageId,
+        previewText: positional.join(' | '),
+      });
+      await logWhatsAppDispatchOutcome({
+        session,
+        alertType,
+        ok: true,
+        templateName,
+        providerMessageId: result.providerMessageId,
+      });
       return { ok: true, channel: 'whatsapp', messageId: result.providerMessageId };
     } catch (e) {
-      return { ok: false, channel: 'whatsapp', error: e instanceof Error ? e.message : String(e) };
+      const errMsg = e instanceof Error ? e.message : String(e);
+      // Twilio rejects sends for unapproved/paused Meta templates with
+      // 4xx errors. Without this log line, the cron silently swallows
+      // the failure and the founder gets nothing — which is exactly
+      // what was happening on 2026-04-30. Surface every failure.
+      await logWhatsAppDispatchOutcome({
+        session,
+        alertType,
+        ok: false,
+        error: errMsg,
+        templateName,
+      });
+      return { ok: false, channel: 'whatsapp', error: errMsg };
     }
   }
 
@@ -189,6 +251,132 @@ export async function dispatchPocketAgentAlert(args: {
  * alert type — the caller should skip the WhatsApp send and rely
  * on the Telegram cron's queued evening digest path.
  */
+/**
+ * Best-effort write to whatsapp_message_log so every outbound
+ * template send is visible in the table — not just dispute_followup.
+ * Fire-and-forget. Uses its own admin Supabase client (the dispatch
+ * helper is called from contexts where we don't have a Supabase
+ * handle to thread through).
+ */
+async function logWhatsAppOutbound(args: {
+  session: ActiveSession;
+  templateName: string;
+  providerMessageId?: string;
+  previewText: string;
+}): Promise<void> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return;
+    const sb = createClient(url, key);
+    await sb.from('whatsapp_message_log').insert({
+      user_id: args.session.user_id,
+      whatsapp_phone: String(args.session.destination),
+      direction: 'outbound',
+      message_type: 'template',
+      template_name: args.templateName,
+      message_text: `[Pocket Agent template: ${args.templateName}] ${args.previewText}`.slice(0, 500),
+      provider: 'twilio',
+      provider_message_id: args.providerMessageId ?? null,
+    });
+  } catch (e) {
+    // Logging must never break the send path.
+    console.warn('[pocket-agent/dispatch] whatsapp_message_log insert failed:', e);
+  }
+}
+
+/**
+ * Surface dispatch outcome (success + failure) in business_log so
+ * the founder + alert-tester agent can spot silent regressions.
+ *
+ * Why: prior to 2026-04-30 the cron called sendWhatsAppTemplate, got
+ * a Twilio 4xx for unapproved/paused templates, caught the exception,
+ * returned ok=false — and nothing else. No business_log row, no
+ * outbound row, no Telegram ping. Founder got zero alerts and didn't
+ * know why. This helper closes the visibility gap.
+ */
+async function logWhatsAppDispatchOutcome(args: {
+  session: ActiveSession;
+  alertType: AlertType;
+  ok: boolean;
+  error?: string;
+  templateName: string | null;
+  providerMessageId?: string;
+}): Promise<void> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return;
+    const sb = createClient(url, key);
+    const status = args.ok ? 'ok' : 'failed';
+    const title = args.ok
+      ? `WhatsApp template sent: ${args.templateName ?? args.alertType}`
+      : `WhatsApp template send FAILED: ${args.templateName ?? args.alertType}`;
+    const content = JSON.stringify({
+      user_id: args.session.user_id,
+      phone: String(args.session.destination),
+      alert_type: args.alertType,
+      template_name: args.templateName,
+      provider_message_id: args.providerMessageId,
+      error: args.error,
+    });
+    await sb.from('business_log').insert({
+      category: `whatsapp_dispatch_${status}`,
+      title,
+      content,
+    });
+  } catch (e) {
+    console.warn('[pocket-agent/dispatch] business_log insert failed:', e);
+  }
+}
+
+/**
+ * Dedup helper for "template not yet approved" skips. The dispute-agent
+ * cron can loop over hundreds of disputes per tick — without dedup, every
+ * loop iteration writes a business_log row for the same unapproved
+ * template, producing the retry storm seen on 2026-04-29 (10 rows in 11s
+ * for `paybacker_dispute_agent_action`). We piggyback on the existing
+ * compliance_alerts_sent table — its UNIQUE alert_key gives us
+ * one-log-per-(template, user, day) for free.
+ *
+ * Returns { alreadyLogged: true } when the (template_name, user_id, today)
+ * skip is already recorded for the day — caller should suppress the
+ * business_log write. Returns { alreadyLogged: false } on first write.
+ */
+async function logSkippedDispatch(args: {
+  templateName: string;
+  userId: string;
+}): Promise<{ alreadyLogged: boolean }> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return { alreadyLogged: false };
+    const sb = createClient(url, key);
+    const day = new Date().toISOString().slice(0, 10);
+    const alertKey = `wa-skip:${args.templateName}:${args.userId}:${day}`;
+    const { error } = await sb
+      .from('compliance_alerts_sent')
+      .insert({
+        alert_key: alertKey,
+        channel: 'whatsapp_skip',
+        metadata: {
+          template_name: args.templateName,
+          user_id: args.userId,
+          reason: 'template_not_approved',
+        },
+      });
+    // 23505 = unique_violation → already logged today.
+    if (error && (error.code === '23505' || /duplicate key/i.test(error.message))) {
+      return { alreadyLogged: true };
+    }
+    return { alreadyLogged: false };
+  } catch {
+    // On dedup-helper failure, fall through to regular logging — better
+    // to log twice than miss a real signal.
+    return { alreadyLogged: false };
+  }
+}
+
 function templateForAlertType(alertType: AlertType): string | null {
   switch (alertType) {
     case 'price_increase':
@@ -206,6 +394,24 @@ function templateForAlertType(alertType: AlertType): string | null {
       return 'paybacker_dispute_reply';
     case 'budget_overrun':
       return 'paybacker_budget_alert';
+    case 'dispute_agent_action':
+      return 'paybacker_dispute_agent_action';
+    case 'morning_summary':
+      return 'paybacker_morning_summary';
+    case 'weekly_digest':
+      return 'paybacker_recovery_total_weekly';
+    case 'savings_milestone':
+      return 'paybacker_savings_goal_milestone';
+    case 'reconnect_required':
+      return 'paybacker_reconnect_required';
+    case 'trial_ending':
+      return 'paybacker_alert_trial_ending';
+    case 'complaint_letter_ready':
+      return 'paybacker_complaint_letter_ready';
+    case 'outcome_check':
+      return 'paybacker_outcome_check';
+    case 'welcome':
+      return 'paybacker_welcome';
     default:
       return null;
   }

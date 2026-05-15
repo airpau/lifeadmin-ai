@@ -38,11 +38,11 @@ function buildEmail(type: ChurnEmailType, name: string, data: Record<string, any
 
     body = `
       <h1 style="color:#0B1220;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;">We have been keeping an eye on things, ${name}</h1>
-      <p style="color:#E5E7EB;font-size:15px;line-height:1.75;margin:0 0 16px;">While you have been away, Paybacker has been monitoring your finances. Here is what we found:</p>
+      <p style="color:#374151;font-size:15px;line-height:1.75;margin:0 0 16px;">While you have been away, Paybacker has been monitoring your finances. Here is what we found:</p>
 
       <div style="background:#F9FAFB;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #059669;">
         <p style="color:#059669;font-weight:700;margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">Your snapshot</p>
-        <p style="color:#E5E7EB;margin:0 0 8px;font-size:14px;"><strong>${subCount}</strong> active subscriptions costing <strong>${monthlySpend}/month</strong></p>
+        <p style="color:#374151;margin:0 0 8px;font-size:14px;"><strong>${subCount}</strong> active subscriptions costing <strong>${monthlySpend}/month</strong></p>
         ${expiringCount > 0 ? `<p style="color:#059669;margin:0 0 8px;font-size:14px;font-weight:600;">${expiringCount} contract${expiringCount > 1 ? 's' : ''} expiring soon. Review before they auto-renew at a higher rate.</p>` : ''}
         <p style="color:#6B7280;margin:0;font-size:14px;">Log in to see if any of your providers have cheaper deals available.</p>
       </div>
@@ -55,16 +55,16 @@ function buildEmail(type: ChurnEmailType, name: string, data: Record<string, any
   if (type === 'inactive_14d') {
     body = `
       <h1 style="color:#0B1220;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;">It has been a while, ${name}</h1>
-      <p style="color:#E5E7EB;font-size:15px;line-height:1.75;margin:0 0 16px;">We have noticed you haven't logged in for two weeks. Here are three quick things you can do in under 2 minutes:</p>
+      <p style="color:#374151;font-size:15px;line-height:1.75;margin:0 0 16px;">We have noticed you haven't logged in for two weeks. Here are three quick things you can do in under 2 minutes:</p>
 
       <div style="background:#F9FAFB;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #059669;">
-        <p style="color:#E5E7EB;font-weight:600;margin:0 0 6px;font-size:15px;">1. Run a quick scan</p>
+        <p style="color:#374151;font-weight:600;margin:0 0 6px;font-size:15px;">1. Run a quick scan</p>
         <p style="color:#6B7280;margin:0 0 16px;font-size:14px;">Check if any subscriptions have increased their prices since your last visit.</p>
 
-        <p style="color:#E5E7EB;font-weight:600;margin:0 0 6px;font-size:15px;">2. Check your spending</p>
+        <p style="color:#374151;font-weight:600;margin:0 0 6px;font-size:15px;">2. Check your spending</p>
         <p style="color:#6B7280;margin:0 0 16px;font-size:14px;">See where your money went this month with our category breakdown.</p>
 
-        <p style="color:#E5E7EB;font-weight:600;margin:0 0 6px;font-size:15px;">3. Write a complaint letter</p>
+        <p style="color:#374151;font-weight:600;margin:0 0 6px;font-size:15px;">3. Write a complaint letter</p>
         <p style="color:#6B7280;margin:0;font-size:14px;">Been overcharged? Our AI writes a professional complaint citing UK law in 30 seconds.</p>
       </div>
 
@@ -84,15 +84,15 @@ function buildEmail(type: ChurnEmailType, name: string, data: Record<string, any
 
     body = `
       <h1 style="color:#0B1220;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;">Your Paybacker month in review, ${name}</h1>
-      <p style="color:#E5E7EB;font-size:15px;line-height:1.75;margin:0 0 16px;">Your ${tier} plan renews on ${renewalDate}. Here is what Paybacker has done for you:</p>
+      <p style="color:#374151;font-size:15px;line-height:1.75;margin:0 0 16px;">Your ${tier} plan renews on ${renewalDate}. Here is what Paybacker has done for you:</p>
 
       <div style="text-align:center;margin:24px 0;">
         <div style="display:inline-block;background:#F9FAFB;border:1px solid #F9FAFB;border-radius:12px;padding:20px 24px;margin:4px;min-width:120px;">
-          <p style="color:white;font-size:28px;font-weight:800;margin:0;">${lettersGenerated}</p>
+          <p style="color:#0B1220;font-size:28px;font-weight:800;margin:0;">${lettersGenerated}</p>
           <p style="color:#6B7280;font-size:12px;margin:4px 0 0;">Letters generated</p>
         </div>
         <div style="display:inline-block;background:#F9FAFB;border:1px solid #F9FAFB;border-radius:12px;padding:20px 24px;margin:4px;min-width:120px;">
-          <p style="color:white;font-size:28px;font-weight:800;margin:0;">${subsTracked}</p>
+          <p style="color:#0B1220;font-size:28px;font-weight:800;margin:0;">${subsTracked}</p>
           <p style="color:#6B7280;font-size:12px;margin:4px 0 0;">Subscriptions tracked</p>
         </div>
       </div>

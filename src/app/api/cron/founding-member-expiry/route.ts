@@ -84,7 +84,7 @@ function buildExpiredEmail(name: string): string {
     <p style="color:#e2e8f0;font-size:16px;line-height:1.6;">Hi ${name || 'there'},</p>
 
     <p style="color:#94a3b8;font-size:14px;line-height:1.8;">
-      Your free free trial trial has ended and your account has moved to the <strong style="color:#fff;">Free plan</strong>.
+      Your free Pro trial has ended and your account has moved to the <strong style="color:#fff;">Free plan</strong>.
     </p>
 
     <div style="background:#22c55e15;border:1px solid #22c55e30;border-radius:12px;padding:20px;margin:24px 0;">
@@ -204,13 +204,15 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 2. Downgrade expired free trials
+  // 2. Downgrade expired free trials. Skip rows we've already stamped so
+  // a same-day re-run can't double-email the user.
   const now = new Date().toISOString();
   const { data: expired } = await supabase
     .from('profiles')
     .select('id, email, full_name, subscription_tier, stripe_subscription_id')
     .eq('founding_member', true)
-    .lt('founding_member_expires', now);
+    .lt('founding_member_expires', now)
+    .is('trial_expired_at', null);
 
   for (const user of expired || []) {
     // Skip if they've already paid for a subscription via Stripe

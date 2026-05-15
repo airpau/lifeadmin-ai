@@ -11,6 +11,13 @@ import {
   Star,
   ShoppingCart,
   AlertCircle,
+  MessageCircle,
+  Scale,
+  ScrollText,
+  PiggyBank,
+  Bell,
+  Tags,
+  Sparkles,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
@@ -123,6 +130,53 @@ const SAMPLE_ANNUAL: AnnualReportData = {
     spendDeltaPct: -7.1,
     netDeltaPct: 23.6,
   },
+  // v3 sample fields — "How you've used Paybacker" section
+  toolUsage: {
+    pocketAgent: {
+      telegramConnected: true,
+      whatsappConnected: false,
+      telegramLinkedAt: '2025-08-12T10:14:00Z',
+      whatsappLinkedAt: null,
+      lastTelegramAt: '2026-04-29T18:32:00Z',
+      lastWhatsappAt: null,
+    },
+    disputesAI: {
+      totalRaised: 3,
+      won: 2,
+      partial: 0,
+      lost: 0,
+      stillOpen: 1,
+      moneyRecoveredGbp: 476,
+    },
+    complianceCentre: {
+      citationsUsedInYourLetters: 7,
+      topCitedRefs: [
+        { name: 'Consumer Rights Act 2015 (s. 9)', count: 3 },
+        { name: 'Consumer Credit Act 1974 (s. 75)', count: 2 },
+        { name: 'Ofcom General Conditions (C1.4)', count: 1 },
+        { name: 'EU261 / UK261 Regulation', count: 1 },
+      ],
+    },
+    moneyHub: {
+      connectedBanks: 1,
+      connectedEmails: 1,
+      transactionsAnalysed: 1284,
+      monthsOfData: 12,
+    },
+    incomeAlerts: {
+      received: 11,
+      totalLandedGbp: 38600,
+    },
+    subscriptions: {
+      tracked: 10,
+      cancelled: 4,
+      monthlyCostGbp: 52.94,
+      annualSavedFromCancellationsGbp: 371,
+    },
+    deals: {
+      explored: 8,
+    },
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -152,9 +206,18 @@ interface FinancialReportProps {
 export default function FinancialReport({ data, type }: FinancialReportProps) {
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  const isSample = true;
+  // Bug 2026-05-02: these were both hardcoded to `true`, so every Pro
+  // user who clicked "Generate Annual Report" still saw the locked
+  // sample overlay even though their real data had loaded. Now derived
+  // from the prop (the only legit way to enter the SAMPLE state).
+  //
+  // The Quick Summary button passes `type='on_demand'` with an
+  // OnDemandReportData payload, but this component is shaped entirely
+  // around AnnualReportData (monthlyTrends, toolUsage, etc.). Render
+  // the sample for that case until on-demand has its own renderer —
+  // matches the legacy pre-fix behaviour for that path.
+  const isSample = type === 'sample' || type === 'on_demand' || !data;
   const report: AnnualReportData = (data as AnnualReportData) || SAMPLE_ANNUAL;
-  const isAnnual = true;
 
   const handleDownloadPdf = async () => {
     setPdfLoading(true);
@@ -248,6 +311,9 @@ export default function FinancialReport({ data, type }: FinancialReportProps) {
             color="mint"
           />
         </div>
+
+        {/* How you've used Paybacker */}
+        <ToolUsageSection annual={annual} />
 
         {/* Income vs outgoings */}
         <div className="grid md:grid-cols-2 gap-6 mb-6">
@@ -460,6 +526,287 @@ function StatCard({
       </div>
       <p className="text-2xl font-bold text-white">{value}</p>
       <p className="text-sm text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tool usage section — "How you've used Paybacker"                   */
+/* ------------------------------------------------------------------ */
+
+function formatRelativeDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function ToolUsageSection({ annual }: { annual: AnnualReportData }) {
+  const tu = annual.toolUsage;
+  const disputeWinRate =
+    tu.disputesAI.totalRaised > 0
+      ? Math.round(((tu.disputesAI.won + tu.disputesAI.partial) / tu.disputesAI.totalRaised) * 100)
+      : 0;
+
+  return (
+    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 mb-6">
+      <div className="flex items-center gap-2 mb-1">
+        <Sparkles className="h-5 w-5 text-mint-400" />
+        <h3 className="text-lg font-semibold text-white">How you&rsquo;ve used Paybacker</h3>
+      </div>
+      <p className="text-sm text-slate-400 mb-5">
+        Every tool in your account at a glance. Untouched tools are opportunities you haven&rsquo;t cashed in yet.
+      </p>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* Pocket Agent */}
+        <ToolCard
+          icon={<MessageCircle className="h-5 w-5" />}
+          color="blue"
+          title="Pocket Agent"
+          subtitle={
+            tu.pocketAgent.telegramConnected || tu.pocketAgent.whatsappConnected
+              ? 'Active'
+              : 'Not connected'
+          }
+        >
+          <ToolStatRow
+            label="Telegram"
+            value={
+              tu.pocketAgent.telegramConnected
+                ? `Linked ${formatRelativeDate(tu.pocketAgent.telegramLinkedAt)}`
+                : 'Not linked'
+            }
+            highlight={tu.pocketAgent.telegramConnected}
+          />
+          <ToolStatRow
+            label="WhatsApp"
+            value={
+              tu.pocketAgent.whatsappConnected
+                ? `Linked ${formatRelativeDate(tu.pocketAgent.whatsappLinkedAt)}`
+                : 'Pro-only — not linked'
+            }
+            highlight={tu.pocketAgent.whatsappConnected}
+          />
+          {tu.pocketAgent.lastTelegramAt && (
+            <p className="text-xs text-slate-500 mt-2">
+              Last reply: {formatRelativeDate(tu.pocketAgent.lastTelegramAt)}
+            </p>
+          )}
+        </ToolCard>
+
+        {/* Disputes AI */}
+        <ToolCard
+          icon={<Scale className="h-5 w-5" />}
+          color="purple"
+          title="Disputes AI"
+          subtitle={
+            tu.disputesAI.totalRaised > 0
+              ? `${disputeWinRate}% win rate`
+              : 'No disputes filed yet'
+          }
+        >
+          <ToolStatRow label="Disputes raised" value={String(tu.disputesAI.totalRaised)} />
+          <ToolStatRow
+            label="Won / partial"
+            value={`${tu.disputesAI.won} / ${tu.disputesAI.partial}`}
+            highlight={tu.disputesAI.won + tu.disputesAI.partial > 0}
+          />
+          <ToolStatRow label="Still open" value={String(tu.disputesAI.stillOpen)} />
+          <ToolStatRow
+            label="Money recovered"
+            value={formatGBP(tu.disputesAI.moneyRecoveredGbp)}
+            highlight={tu.disputesAI.moneyRecoveredGbp > 0}
+          />
+        </ToolCard>
+
+        {/* Compliance Centre */}
+        <ToolCard
+          icon={<ScrollText className="h-5 w-5" />}
+          color="mint"
+          title="Compliance Centre"
+          subtitle={
+            tu.complianceCentre.citationsUsedInYourLetters > 0
+              ? `${tu.complianceCentre.citationsUsedInYourLetters} citations powering your letters`
+              : 'No citations used yet'
+          }
+        >
+          {tu.complianceCentre.topCitedRefs.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              You haven&rsquo;t generated a complaint letter yet — when you do, the laws we cite show up here.
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {tu.complianceCentre.topCitedRefs.map((ref) => (
+                <li key={ref.name} className="flex justify-between text-sm">
+                  <span className="text-slate-300 truncate pr-2">{ref.name}</span>
+                  <span className="text-mint-400 font-semibold whitespace-nowrap">
+                    {ref.count}×
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </ToolCard>
+
+        {/* Money Hub */}
+        <ToolCard
+          icon={<PiggyBank className="h-5 w-5" />}
+          color="green"
+          title="Money Hub"
+          subtitle={
+            tu.moneyHub.connectedBanks + tu.moneyHub.connectedEmails > 0
+              ? `${tu.moneyHub.monthsOfData} months of financial data`
+              : 'Not connected'
+          }
+        >
+          <ToolStatRow
+            label="Banks connected"
+            value={String(tu.moneyHub.connectedBanks)}
+            highlight={tu.moneyHub.connectedBanks > 0}
+          />
+          <ToolStatRow
+            label="Emails connected"
+            value={String(tu.moneyHub.connectedEmails)}
+            highlight={tu.moneyHub.connectedEmails > 0}
+          />
+          <ToolStatRow
+            label="Transactions analysed"
+            value={tu.moneyHub.transactionsAnalysed.toLocaleString('en-GB')}
+          />
+        </ToolCard>
+
+        {/* Income Alerts */}
+        <ToolCard
+          icon={<Bell className="h-5 w-5" />}
+          color="mint"
+          title="Income Alerts"
+          subtitle={
+            tu.incomeAlerts.received > 0
+              ? `${tu.incomeAlerts.received} pings this year`
+              : 'Connect a bank to enable'
+          }
+        >
+          <ToolStatRow
+            label="Alerts received"
+            value={String(tu.incomeAlerts.received)}
+            highlight={tu.incomeAlerts.received > 0}
+          />
+          <ToolStatRow
+            label="Total income flagged"
+            value={formatGBP(tu.incomeAlerts.totalLandedGbp)}
+            highlight={tu.incomeAlerts.totalLandedGbp > 0}
+          />
+        </ToolCard>
+
+        {/* Subscriptions */}
+        <ToolCard
+          icon={<CreditCard className="h-5 w-5" />}
+          color="blue"
+          title="Subscriptions"
+          subtitle={`${tu.subscriptions.tracked} tracked · ${tu.subscriptions.cancelled} cancelled`}
+        >
+          <ToolStatRow label="Currently tracked" value={String(tu.subscriptions.tracked)} />
+          <ToolStatRow
+            label="Cancelled this year"
+            value={String(tu.subscriptions.cancelled)}
+            highlight={tu.subscriptions.cancelled > 0}
+          />
+          <ToolStatRow
+            label="Monthly cost"
+            value={formatGBP(tu.subscriptions.monthlyCostGbp)}
+          />
+          <ToolStatRow
+            label="Annual saved by cancelling"
+            value={formatGBP(tu.subscriptions.annualSavedFromCancellationsGbp)}
+            highlight={tu.subscriptions.annualSavedFromCancellationsGbp > 0}
+          />
+        </ToolCard>
+
+        {/* Deals */}
+        <ToolCard
+          icon={<Tags className="h-5 w-5" />}
+          color="purple"
+          title="Deals"
+          subtitle={
+            tu.deals.explored > 0
+              ? `${tu.deals.explored} deals explored`
+              : 'No deals explored yet'
+          }
+        >
+          <ToolStatRow
+            label="Switch deals you opened"
+            value={String(tu.deals.explored)}
+            highlight={tu.deals.explored > 0}
+          />
+          {tu.deals.explored === 0 && (
+            <p className="text-xs text-slate-500 mt-2">
+              We surface cheaper alternatives for your existing subs — open a deal to bank the saving.
+            </p>
+          )}
+        </ToolCard>
+      </div>
+    </div>
+  );
+}
+
+function ToolCard({
+  icon,
+  color,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: React.ReactNode;
+  color: 'green' | 'blue' | 'purple' | 'mint';
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  const bg = {
+    green: 'bg-green-500/10',
+    blue: 'bg-blue-500/10',
+    purple: 'bg-purple-500/10',
+    mint: 'bg-mint-400/10',
+  }[color];
+  const text = {
+    green: 'text-green-500',
+    blue: 'text-blue-500',
+    purple: 'text-purple-500',
+    mint: 'text-mint-400',
+  }[color];
+
+  return (
+    <div className="bg-navy-950/50 border border-navy-700/40 rounded-xl p-5">
+      <div className="flex items-center gap-3 mb-3">
+        <div className={`${bg} w-9 h-9 rounded-lg flex items-center justify-center`}>
+          <span className={text}>{icon}</span>
+        </div>
+        <div className="min-w-0">
+          <p className="text-white font-semibold text-sm leading-tight">{title}</p>
+          <p className="text-xs text-slate-400 truncate">{subtitle}</p>
+        </div>
+      </div>
+      <div className="space-y-1.5">{children}</div>
+    </div>
+  );
+}
+
+function ToolStatRow({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className="flex justify-between text-sm">
+      <span className="text-slate-400">{label}</span>
+      <span className={highlight ? 'text-mint-400 font-semibold' : 'text-white font-medium'}>
+        {value}
+      </span>
     </div>
   );
 }

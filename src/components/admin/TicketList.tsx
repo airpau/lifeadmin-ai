@@ -54,7 +54,10 @@ export default function TicketList() {
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('active');
+  // Default to 'all' so the founder sees the full ticket history
+  // (resolved + active) rather than an empty tab when the active
+  // queue is short. Active-only is one click away in the dropdown.
+  const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
 
   const loadTickets = async () => {

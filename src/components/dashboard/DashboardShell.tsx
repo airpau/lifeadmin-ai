@@ -2,6 +2,7 @@
 
 import { Fragment, type ReactNode, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import NotificationBell from '@/components/NotificationBell';
 
@@ -194,7 +195,7 @@ export default function DashboardShell({
       {/* Mobile header — only visible < 980px via CSS */}
       <header className="shell-v2-mob-header">
         <Link href="/dashboard" className="brand">
-          <div className="logo-box">P</div>
+          <Image src="/brand/paybacker-mark-transparent.png" alt="Paybacker" width={28} height={28} className="object-contain" />
           <div className="brand-name">
             Pay<span>backer</span>
           </div>
@@ -278,7 +279,7 @@ function Sidebar({
   return (
     <aside className="sidebar">
       <Link href="/dashboard" className="brand" onClick={onNavigate}>
-        <div className="logo-box">P</div>
+        <Image src="/brand/paybacker-mark-transparent.png" alt="Paybacker" width={28} height={28} className="object-contain" />
         <div className="brand-name">
           Pay<span>backer</span>
         </div>

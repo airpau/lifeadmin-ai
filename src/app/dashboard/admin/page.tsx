@@ -5,15 +5,15 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
-  ShieldAlert, Users, CreditCard, TrendingUp, BarChart3,
+  ShieldAlert, Users, CreditCard, TrendingUp,
   Building2, FileText, Bot, Loader2, ChevronRight, ArrowLeft,
-  Banknote, Clock, Mail, Database, Ticket, Brain, Shield, Tag, RefreshCw, Briefcase,
+  Banknote, Mail, Database, BarChart3, Tag, RefreshCw,
 } from 'lucide-react';
 import TicketList from '@/components/admin/TicketList';
 import AITeamPanel from '@/components/admin/AITeamPanel';
 import MeetingRoom from '@/components/admin/MeetingRoom';
 import LeadsList from '@/components/admin/LeadsList';
-import Link from 'next/link';
+import AdminTabStrip from '@/components/admin/AdminTabStrip';
 
 // Server-side gate now lives in src/app/dashboard/admin/layout.tsx —
 // a non-admin can't reach this component. The client-side check below
@@ -42,6 +42,18 @@ interface Member {
   bank_transactions: number;
 }
 
+interface AdminDeal {
+  id: string;
+  provider: string;
+  category: string;
+  plan_name: string;
+  affiliate_url: string;
+  is_active: boolean;
+  last_verified_at: string | null;
+  price_monthly: number;
+  price_changed_at: string | null;
+}
+
 interface MemberDetail {
   profile: any;
   stats: Record<string, number>;
@@ -59,8 +71,19 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [tab, setTab] = useState<'overview' | 'members' | 'tickets' | 'leads' | 'ai_team'>('overview');
-  const [dealHealth, setDealHealth] = useState<{ active: number; inactive: number; stale: number; lastVerified: string | null } | null>(null);
+  const [dealHealth, setDealHealth] = useState<{
+    active: number;
+    inactive: number;
+    stale: number;
+    lastVerified: string | null;
+    broken: AdminDeal[];
+    staleList: AdminDeal[];
+    healthy: AdminDeal[];
+  } | null>(null);
   const [verifyingDeals, setVerifyingDeals] = useState(false);
+  const [dealFilter, setDealFilter] = useState<'all' | 'broken' | 'stale' | 'healthy'>('all');
+  const [dealSearch, setDealSearch] = useState('');
+  const [showHealthy, setShowHealthy] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
@@ -77,34 +100,27 @@ export default function AdminPage() {
       // No bearer secret needed — the cookie travels with same-origin fetch.
       const [metricsRes, dealsRes] = await Promise.all([
         fetch('/api/admin/metrics', { credentials: 'include' }).then(r => r.json()),
-        // Fetch all deals (active + inactive) for health stats
-        supabase.from('affiliate_deals').select('is_active, last_verified_at'),
+        fetch('/api/admin/deals', { credentials: 'include' }).then(r => r.json()),
       ]);
 
       if (metricsRes.overview) {
         setMetrics(metricsRes);
       }
 
-      // Compute deal health stats
-      const allDeals = dealsRes.data || [];
-      const now = Date.now();
-      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-      let active = 0, inactive = 0, stale = 0;
-      let latestVerified: string | null = null;
-      for (const d of allDeals) {
-        if (d.is_active) {
-          active++;
-          if (d.last_verified_at && (now - new Date(d.last_verified_at).getTime()) > thirtyDaysMs) {
-            stale++;
-          }
-        } else {
-          inactive++;
-        }
-        if (d.last_verified_at && (!latestVerified || d.last_verified_at > latestVerified)) {
-          latestVerified = d.last_verified_at;
-        }
+      if (dealsRes && Array.isArray(dealsRes.broken)) {
+        const broken: AdminDeal[] = dealsRes.broken || [];
+        const staleList: AdminDeal[] = dealsRes.stale || [];
+        const healthy: AdminDeal[] = dealsRes.healthy || [];
+        setDealHealth({
+          active: healthy.length + staleList.length,
+          inactive: broken.length,
+          stale: staleList.length,
+          lastVerified: dealsRes.lastVerifiedAt ?? null,
+          broken,
+          staleList,
+          healthy,
+        });
       }
-      setDealHealth({ active, inactive, stale, lastVerified: latestVerified });
 
       setLoading(false);
     };
@@ -236,67 +252,17 @@ export default function AdminPage() {
 
       {meetingOpen && <MeetingRoom onClose={() => setMeetingOpen(false)} />}
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6">
-        <button onClick={() => { setTab('overview'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'overview' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
-          Overview
-        </button>
-        <button onClick={() => { setTab('members'); loadMembers(); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'members' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
-          Members
-        </button>
-        <button onClick={() => { setTab('tickets'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'tickets' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
-          <Ticket className="h-4 w-4" /> Tickets
-        </button>
-        <button onClick={() => { setTab('leads'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'leads' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
-          <Users className="h-4 w-4" /> Leads
-        </button>
-        <button onClick={() => { setTab('ai_team'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
-          <Brain className="h-4 w-4" /> AI Team
-        </button>
-        <Link
-          href="/dashboard/admin/legal-refs"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-        >
-          <Shield className="h-4 w-4" /> Legal Refs
-        </Link>
-        <Link
-          href="/dashboard/admin/crons"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-        >
-          <Clock className="h-4 w-4" /> Crons
-        </Link>
-        <Link
-          href="/dashboard/admin/analytics"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-        >
-          <BarChart3 className="h-4 w-4" /> Analytics
-        </Link>
-        <Link
-          href="/dashboard/admin/cancel-info"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-        >
-          <Tag className="h-4 w-4" /> Cancel Info
-        </Link>
-        <Link
-          href="/dashboard/admin/b2b"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-          title="B2B waitlist + API keys"
-        >
-          <Briefcase className="h-4 w-4" /> B2B
-        </Link>
-        <Link
-          href="/dashboard/admin/restore-bank-data"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
-          title="Restore a user's soft-deleted bank transactions (within 30-day window)"
-        >
-          <RefreshCw className="h-4 w-4" /> Restore data
-        </Link>
-      </div>
+      {/* Tabs — primary row stays visible (the daily drivers); the
+          long tail of admin sub-pages moves into a "More" popover so
+          the strip never overflows horizontally. Founder feedback
+          (Apr 2026): 14+ tabs were getting cut off / unclickable on
+          narrow laptop screens. */}
+      <AdminTabStrip
+        tab={tab}
+        setTab={setTab}
+        loadMembers={loadMembers}
+        setSelectedMember={setSelectedMember}
+      />
 
       {/* OVERVIEW TAB */}
       {tab === 'overview' && metrics && (
@@ -373,6 +339,22 @@ export default function AdminPage() {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}` },
                       });
+                      // Refresh the drill-in list once the bulk job returns.
+                      const fresh = await fetch('/api/admin/deals', { credentials: 'include' }).then(r => r.json());
+                      if (fresh && Array.isArray(fresh.broken)) {
+                        const broken: AdminDeal[] = fresh.broken || [];
+                        const staleList: AdminDeal[] = fresh.stale || [];
+                        const healthy: AdminDeal[] = fresh.healthy || [];
+                        setDealHealth({
+                          active: healthy.length + staleList.length,
+                          inactive: broken.length,
+                          stale: staleList.length,
+                          lastVerified: fresh.lastVerifiedAt ?? null,
+                          broken,
+                          staleList,
+                          healthy,
+                        });
+                      }
                     } catch (e) { console.error('verify-deals failed', e); }
                     setVerifyingDeals(false);
                   }}
@@ -404,6 +386,132 @@ export default function AdminPage() {
                   </p>
                   <p className="text-slate-500 text-xs">Last Verification</p>
                 </div>
+              </div>
+
+              {/* Deal drill-in: founder needs to see WHICH deals are broken/stale */}
+              <div className="mt-6 pt-6 border-t border-slate-200/60">
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  {(['all', 'broken', 'stale', 'healthy'] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setDealFilter(f)}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                        dealFilter === f ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                      {f === 'broken' && dealHealth.broken.length > 0 && (
+                        <span className="ml-1 text-red-500">({dealHealth.broken.length})</span>
+                      )}
+                      {f === 'stale' && dealHealth.staleList.length > 0 && (
+                        <span className="ml-1 text-amber-600">({dealHealth.staleList.length})</span>
+                      )}
+                      {f === 'healthy' && (
+                        <span className="ml-1 text-green-600">({dealHealth.healthy.length})</span>
+                      )}
+                    </button>
+                  ))}
+                  <input
+                    value={dealSearch}
+                    onChange={(e) => setDealSearch(e.target.value)}
+                    placeholder="Search provider..."
+                    className="ml-auto px-3 py-1 rounded-md text-xs border border-slate-200 bg-white focus:outline-none focus:border-emerald-500 w-40"
+                  />
+                </div>
+
+                {(() => {
+                  const matchSearch = (d: AdminDeal) =>
+                    !dealSearch ||
+                    d.provider.toLowerCase().includes(dealSearch.toLowerCase()) ||
+                    d.plan_name.toLowerCase().includes(dealSearch.toLowerCase());
+                  const renderRow = (d: AdminDeal, kind: 'broken' | 'stale' | 'healthy') => (
+                    <div
+                      key={d.id}
+                      className="flex items-center justify-between bg-slate-50/50 rounded-lg px-3 py-2 border border-slate-200/50 text-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-900 font-medium truncate">{d.provider}</span>
+                          <span className="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{d.category}</span>
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
+                              kind === 'broken'
+                                ? 'bg-red-500/10 text-red-500'
+                                : kind === 'stale'
+                                ? 'bg-amber-500/10 text-amber-600'
+                                : 'bg-green-500/10 text-green-600'
+                            }`}
+                          >
+                            {kind}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-500 truncate mt-0.5">
+                          {d.plan_name} · £{Number(d.price_monthly).toFixed(2)}/mo · last verified{' '}
+                          {d.last_verified_at
+                            ? new Date(d.last_verified_at).toLocaleDateString('en-GB')
+                            : 'never'}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 ml-3 shrink-0">
+                        <a
+                          href={d.affiliate_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-emerald-700 hover:underline"
+                        >
+                          Open URL
+                        </a>
+                      </div>
+                    </div>
+                  );
+
+                  const showBroken = dealFilter === 'all' || dealFilter === 'broken';
+                  const showStale = dealFilter === 'all' || dealFilter === 'stale';
+                  const showHealthyGroup = dealFilter === 'healthy' || (dealFilter === 'all' && showHealthy);
+                  const brokenList = dealHealth.broken.filter(matchSearch);
+                  const staleListFiltered = dealHealth.staleList.filter(matchSearch);
+                  const healthyList = dealHealth.healthy.filter(matchSearch);
+
+                  return (
+                    <div className="space-y-4">
+                      {showBroken && brokenList.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-semibold text-red-500 uppercase tracking-wider mb-2">
+                            Broken ({brokenList.length})
+                          </h4>
+                          <div className="space-y-1">{brokenList.map((d) => renderRow(d, 'broken'))}</div>
+                        </div>
+                      )}
+                      {showStale && staleListFiltered.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">
+                            Stale — needs verification ({staleListFiltered.length})
+                          </h4>
+                          <div className="space-y-1">{staleListFiltered.map((d) => renderRow(d, 'stale'))}</div>
+                        </div>
+                      )}
+                      {dealFilter === 'all' && (
+                        <button
+                          onClick={() => setShowHealthy((v) => !v)}
+                          className="text-xs text-slate-500 hover:text-slate-900"
+                        >
+                          {showHealthy ? 'Hide' : 'Show'} healthy ({dealHealth.healthy.length})
+                        </button>
+                      )}
+                      {showHealthyGroup && healthyList.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2">
+                            Healthy ({healthyList.length})
+                          </h4>
+                          <div className="space-y-1">{healthyList.map((d) => renderRow(d, 'healthy'))}</div>
+                        </div>
+                      )}
+                      {brokenList.length === 0 && staleListFiltered.length === 0 && healthyList.length === 0 && (
+                        <p className="text-sm text-slate-500 text-center py-6">No deals match.</p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}

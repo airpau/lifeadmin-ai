@@ -20,10 +20,31 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 const ADMIN_EMAIL = 'aireypaul@googlemail.com';
-const MIN_SEGMENT_SIZE = 2; // Drop rows where fewer than N distinct users contribute
+// Minimum distinct users required for a segment (category, merchant, income type,
+// subscription provider) to leave the server. Default 2 for production privacy.
+// Override via ANALYTICS_MIN_SEGMENT_SIZE — useful in dev / small datasets where
+// every segment has only a single user and would otherwise be suppressed entirely.
+const MIN_SEGMENT_SIZE = (() => {
+  const raw = process.env.ANALYTICS_MIN_SEGMENT_SIZE;
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 2;
+})();
 
 function monthKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Day-of-month in Europe/London — matches the tz logic introduced in PR #418.
+// We need this so the dashboard can flag "month just started" empty states
+// without misinterpreting a Day-1 zero as broken data.
+function londonDayOfMonth(d = new Date()): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    day: 'numeric',
+  }).formatToParts(d);
+  const dayPart = parts.find((p) => p.type === 'day')?.value;
+  const n = dayPart ? Number(dayPart) : NaN;
+  return Number.isFinite(n) ? n : d.getUTCDate();
 }
 
 function startOfMonth(d = new Date()) {
@@ -75,8 +96,15 @@ export async function GET() {
     agentRunsRes,
     overridesCountRes,
   ] = await Promise.all([
+    // NOTE: profiles has no `last_active_at` or `health_score` columns
+    // (verified against initial_schema.sql + every additive migration).
+    // Selecting non-existent columns made PostgREST return a 400 with
+    // data: null — silently swallowed by `?? []` below — which zeroed
+    // out total users, tier breakdown, new signups, and active counts.
+    // We approximate "last active" via `updated_at` (touched on profile
+    // mutations) until a real activity timestamp is wired up.
     admin.from('profiles')
-      .select('id, subscription_tier, subscription_status, created_at, last_active_at, health_score'),
+      .select('id, subscription_tier, subscription_status, created_at, updated_at'),
     admin.from('bank_transactions')
       .select('user_id, amount, timestamp, category, user_category, income_type, merchant_name, description')
       .gte('timestamp', thisMonthStart)
@@ -115,6 +143,30 @@ export async function GET() {
       .select('id', { count: 'exact', head: true }),
   ]);
 
+  // Surface query failures so the next "all zeros" regression doesn't
+  // hide silently behind ?? [] / ?? 0. Logged once per request.
+  const queryResults: Array<[string, { error?: { message?: string } | null }]> = [
+    ['profiles', profilesRes],
+    ['txnsThisMonth', txnsThisMonthRes],
+    ['txnsLastMonth', txnsLastMonthRes],
+    ['bankConns', bankConnsRes],
+    ['emailConns', emailConnsRes],
+    ['subs', subsRes],
+    ['disputes', disputesRes],
+    ['priceAlerts', priceAlertsRes],
+    ['telegram', telegramRes],
+    ['tasks', tasksRes],
+    ['contractsEnding', contractsEndingRes],
+    ['agentRuns', agentRunsRes],
+    ['overridesCount', overridesCountRes],
+  ];
+  for (const [name, res] of queryResults) {
+    if (res.error) {
+      // eslint-disable-next-line no-console
+      console.error(`[admin/analytics] ${name} query failed:`, res.error);
+    }
+  }
+
   const profiles = profilesRes.data ?? [];
   const txnsThisMonth = txnsThisMonthRes.data ?? [];
   const txnsLastMonth = txnsLastMonthRes.data ?? [];
@@ -139,11 +191,14 @@ export async function GET() {
   const newSignupsThisMonth = profiles.filter(
     (p) => p.created_at && p.created_at >= thisMonthStart,
   ).length;
+  // Approximate "active" via profile.updated_at — set on tier change,
+  // stripe sync, onboarding step completion, etc. Not a perfect activity
+  // signal, but the closest available column today.
   const activeLast7d = profiles.filter(
-    (p) => p.last_active_at && p.last_active_at >= sevenDaysAgo,
+    (p) => p.updated_at && p.updated_at >= sevenDaysAgo,
   ).length;
   const activeLast30d = profiles.filter(
-    (p) => p.last_active_at && p.last_active_at >= thirtyDaysAgo,
+    (p) => p.updated_at && p.updated_at >= thirtyDaysAgo,
   ).length;
 
   // ── Money flowing through platform ───────────────────────────────
@@ -348,14 +403,11 @@ export async function GET() {
     ?? disputes.length > 0 ? new Set(disputes.map((d) => d.user_id)).size : 0;
 
   // ── Health score distribution ────────────────────────────────────
-  const scores = profiles.map((p) => Number(p.health_score)).filter((s) => Number.isFinite(s) && s > 0);
-  const avgHealthScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-  const healthDist = {
-    excellent: scores.filter((s) => s >= 80).length,
-    good: scores.filter((s) => s >= 60 && s < 80).length,
-    fair: scores.filter((s) => s >= 40 && s < 60).length,
-    poor: scores.filter((s) => s < 40).length,
-  };
+  // `profiles.health_score` does not exist in the schema today. Keep the
+  // response shape so the dashboard doesn't error, but report zeros until
+  // the column is added by a future migration.
+  const avgHealthScore = 0;
+  const healthDist = { excellent: 0, good: 0, fair: 0, poor: 0 };
 
   // ── AI usage ─────────────────────────────────────────────────────
   const totalAiCostThisMonth = agentRuns.reduce((s, r) => s + (Number(r.estimated_cost) || 0), 0);
@@ -445,5 +497,6 @@ export async function GET() {
     },
     this_month: thisMonth,
     last_month: lastMonth,
+    days_into_month: londonDayOfMonth(now),
   });
 }

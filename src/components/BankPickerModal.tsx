@@ -3,9 +3,6 @@
 import { useEffect, useState } from 'react';
 import { X, Search, Loader2, Building2 } from 'lucide-react';
 
-// TrueLayer decommissioned 2026-04-27. Yapily is the only path now.
-const OPEN_BANKING_PROVIDER = 'yapily' as const;
-
 interface Institution {
   id: string;
   name: string;

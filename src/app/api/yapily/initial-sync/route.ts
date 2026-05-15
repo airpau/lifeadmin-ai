@@ -73,21 +73,23 @@ export async function POST(request: NextRequest) {
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const toDate = tomorrow.toISOString().split('T')[0];
+  const toDate = tomorrow.toISOString();
 
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  const ninetyDaysAgoIso = ninetyDaysAgo.toISOString().split('T')[0];
+  const ninetyDaysAgoIso = ninetyDaysAgo.toISOString();
 
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
-  const twelveMonthsAgoIso = twelveMonthsAgo.toISOString().split('T')[0];
+  const twelveMonthsAgoIso = twelveMonthsAgo.toISOString();
 
   let totalInserted = 0;
   let totalDuplicateSkipped = 0;
   let totalNoHashSkipped = 0;
   let apiCallsMade = 0;
   let historicalSkipped = 0;
+
+  const perAccountErrors: Array<{ accountId: string; pass: 1 | 2; error: string; status?: number }> = [];
 
   // PASS 1 — last 90 days for every account. Sequential per
   // Migle's "wait for response before next request" rule.
@@ -112,7 +114,10 @@ export async function POST(request: NextRequest) {
       totalDuplicateSkipped += result.skippedAsDuplicate;
       totalNoHashSkipped += result.skippedNoHash;
     } catch (err) {
-      console.error(`[yapily.initial-sync] pass1 account ${account.yapilyAccountId} failed:`, err);
+      const msg = err instanceof Error ? err.message : 'unknown';
+      const status = err && typeof err === 'object' && 'status' in err ? Number((err as { status?: number }).status) : undefined;
+      console.error(`[yapily.initial-sync] pass1 account ${account.yapilyAccountId} failed status=${status}: ${msg}`);
+      perAccountErrors.push({ accountId: account.yapilyAccountId, pass: 1, error: msg, status });
     }
   }
 
@@ -148,7 +153,10 @@ export async function POST(request: NextRequest) {
       totalDuplicateSkipped += result.skippedAsDuplicate;
       totalNoHashSkipped += result.skippedNoHash;
     } catch (err) {
-      console.error(`[yapily.initial-sync] pass2 account ${account.yapilyAccountId} failed:`, err);
+      const msg = err instanceof Error ? err.message : 'unknown';
+      const status = err && typeof err === 'object' && 'status' in err ? Number((err as { status?: number }).status) : undefined;
+      console.error(`[yapily.initial-sync] pass2 account ${account.yapilyAccountId} failed status=${status}: ${msg}`);
+      perAccountErrors.push({ accountId: account.yapilyAccountId, pass: 2, error: msg, status });
     }
   }
 
@@ -183,14 +191,24 @@ export async function POST(request: NextRequest) {
     .update({ last_synced_at: now, updated_at: now })
     .eq('id', connectionId);
 
-  // Log sync
+  // Log sync — status reflects what actually happened. If we had
+  // accounts to sync but every API call threw, this is a failure, not
+  // a success.
+  const overallStatus =
+    accountSnapshots.length > 0 && apiCallsMade === 0 ? 'failed'
+    : perAccountErrors.length > 0 && totalInserted === 0 ? 'failed'
+    : perAccountErrors.length > 0 ? 'partial'
+    : 'success';
   await supabase.from('bank_sync_log').insert({
     user_id: userId,
     connection_id: connectionId,
     trigger_type: 'initial',
-    status: 'success',
+    status: overallStatus,
     api_calls_made: apiCallsMade,
   });
+  if (overallStatus !== 'success') {
+    console.warn(`[yapily.initial-sync] connection=${connectionId} status=${overallStatus} errors=${JSON.stringify(perAccountErrors)}`);
+  }
 
   console.log(
     `[yapily.initial-sync] complete: inserted=${totalInserted}, dup_skipped=${totalDuplicateSkipped}, ` +

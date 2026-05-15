@@ -34,7 +34,7 @@ function isTransactionInMonth(timestamp: string | null | undefined, monthKey: st
  * Client-side deduplication of bank transactions.
  * Matches the DB-level deduplicate_bank_transactions RPC logic:
  * same amount + same date + same merchant/description → keep only the first (newest sync).
- * This catches duplicates from overlapping TrueLayer/Yapily connections.
+ * This catches duplicates from overlapping bank connections.
  */
 function deduplicateTransactions(txns: any[]): any[] {
   const seen = new Map<string, boolean>();
@@ -128,7 +128,19 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const now = new Date();
     const selectedMonth = url.searchParams.get('month') || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString();
+    // History window. The 6-month ceiling was clipping any month older
+    // than ~5 months back to £0 income / £0 spending even when we'd
+    // already pulled 12 months on the initial sync. Open Banking
+    // backfills up to 24 months, so we widen to 24 months and let the
+    // RPCs deal with empty months naturally. Also include the
+    // currently-selected month in case the user is paging back further.
+    const historyStart = new Date(now.getFullYear(), now.getMonth() - 23, 1);
+    if (selectedMonth && /^\d{4}-\d{2}$/.test(selectedMonth)) {
+      const [sy, sm] = selectedMonth.split('-').map(Number);
+      const selStart = new Date(sy, sm - 1, 1);
+      if (selStart < historyStart) historyStart.setTime(selStart.getTime());
+    }
+    const historyStartIso = historyStart.toISOString();
 
     // Parse selected month for RPC calls
     const [selYear, selMonth] = selectedMonth.split('-').map(Number);
@@ -172,9 +184,9 @@ export async function GET(request: Request) {
       .select('id, timestamp, amount, merchant_name, description, category, user_category, income_type, is_recurring, connection_id, account_id, transaction_id')
       .eq('user_id', user.id)
       .is('deleted_at', null)
-      .gte('timestamp', sixMonthsAgo)
+      .gte('timestamp', historyStartIso)
       .order('timestamp', { ascending: false })
-      .limit(20000);
+      .limit(50000);
     let connQuery = admin
       .from('bank_connections')
       .select('id, bank_name, status, last_synced_at, last_manual_sync_at, account_ids, account_display_names')
@@ -317,7 +329,7 @@ export async function GET(request: Request) {
     // Compute top merchants from JS-based current summary (RPCs don't provide per-merchant data)
     const merchantTotals: Record<string, number> = {};
     for (const t of currentSummary.spendingTransactions) {
-      // TrueLayer sometimes returns junk (e.g. merchant_name='ad') from an
+      // Yapily sometimes returns junk (e.g. merchant_name='ad') from an
       // upstream field extraction — pickRawMerchantSource falls back to the
       // description when the merchant_name field is clearly garbage so the
       // "Top merchants" list doesn't collapse unrelated payments under a 2-

@@ -21,6 +21,7 @@
 
 export type NotificationEventType =
   | 'price_increase'         // Bill detected going up
+  | 'income_received'        // Money landed in user's account (Emma-style)
   | 'dispute_reply'          // Provider replied to an active dispute
   | 'dispute_reminder'       // Dispute escalation milestones (14/28/56d)
   | 'renewal_reminder'       // Contract renewing in 30/14/7 days
@@ -30,7 +31,9 @@ export type NotificationEventType =
   | 'savings_milestone'      // £500/£1000/£5000 saved
   | 'overcharge_detected'    // Duplicate charge detected
   | 'new_opportunity'        // Email scan found something to action
+  | 'money_received'         // Generic credit landed in a connected account
   | 'money_recovered'        // Refund hit account from a tracked dispute
+  | 'large_upcoming_bill'    // Big scheduled debit due in the next few days
   | 'unusual_charge'         // Bank charge >20% above merchant rolling avg
   | 'support_reply'          // Support ticket reply landed
   | 'weekly_digest'          // Weekly spending/savings summary
@@ -40,6 +43,12 @@ export type NotificationEventType =
   | 'payday_summary'         // After payday income/bills breakdown (Pro)
   | 'deal_alert'             // Personalised switching deal
   | 'targeted_deal'          // Category-specific offer
+  | 'daily_digest'           // Consolidated daily alerts
+  | 'reconnect_required'     // Bank/email connection expired — needs action
+  | 'trial_ending'           // Free trial → first charge in <=3 days
+  | 'complaint_letter_ready' // Complaint letter generated and ready
+  | 'outcome_check'          // T+7d follow-up nudge after dispute sent
+  | 'welcome'                // First-touch welcome after channel opt-in
   | 'onboarding';            // Onboarding email sequence
 
 export type NotificationChannel = 'email' | 'telegram' | 'whatsapp' | 'push';
@@ -107,6 +116,21 @@ export const EVENT_CATALOG: EventMeta[] = [
     group: 'alerts',
     scheduleKind: 'system',
     critical: true,
+  },
+  {
+    event: 'income_received',
+    label: 'Money received',
+    description: 'A salary, refund, transfer-in, or other income has landed in one of your connected accounts. Emma-style "Good news" buzz. Paid plans only.',
+    // Telegram + WhatsApp + push by default — short positive nudges
+    // that only need a buzz on the user's preferred Pocket Agent.
+    // Email defaults OFF so we don't clog the inbox with one mail per
+    // credit. WhatsApp default false because per-message cost adds up
+    // fast on high-frequency events; users can flip it on if they want.
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'system',
+    proOnly: true,
   },
   {
     event: 'dispute_reply',
@@ -207,6 +231,24 @@ export const EVENT_CATALOG: EventMeta[] = [
     critical: true,
   },
   {
+    event: 'money_received',
+    label: 'Money received',
+    description: 'A credit (salary, customer payment, refund) has landed in a connected account.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'threshold',
+  },
+  {
+    event: 'large_upcoming_bill',
+    label: 'Large upcoming bill',
+    description: 'A scheduled payment over your configured threshold is due soon.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'threshold',
+  },
+  {
     event: 'unusual_charge',
     label: 'Unusual charge',
     description: 'A bank charge that is significantly higher than the merchant\'s usual amount.',
@@ -297,6 +339,64 @@ export const EVENT_CATALOG: EventMeta[] = [
     group: 'marketing',
     scheduleKind: 'cron',
     defaultCron: '0 9 * * 3',
+  },
+  {
+    event: 'daily_digest',
+    label: 'Daily digest',
+    description: 'Daily consolidated alert: price hikes, switching deals, and personalised savings opportunities.',
+    defaultEmail: true, defaultTelegram: false, defaultWhatsapp: false, defaultPush: false,
+    allowedChannels: ['email', 'telegram', 'whatsapp'],
+    group: 'marketing',
+    scheduleKind: 'cron',
+    defaultCron: '0 8 * * *',
+  },
+  {
+    event: 'reconnect_required',
+    label: 'Reconnect needed',
+    description: 'A bank or email connection has expired and needs reauthorisation.',
+    defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'service',
+    scheduleKind: 'system',
+    critical: true,
+    mandatory: true,
+  },
+  {
+    event: 'trial_ending',
+    label: 'Trial ending soon',
+    description: 'Free trial about to convert to a paid subscription.',
+    defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'system',
+    critical: true,
+  },
+  {
+    event: 'complaint_letter_ready',
+    label: 'Complaint letter ready',
+    description: 'A generated complaint letter is ready to download.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'system',
+  },
+  {
+    event: 'outcome_check',
+    label: 'Outcome check',
+    description: 'T+7 day follow-up after a dispute is sent.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: false,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'reminders',
+    scheduleKind: 'system',
+  },
+  {
+    event: 'welcome',
+    label: 'Welcome message',
+    description: 'First-touch welcome after Pocket Agent channel link.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: false,
+    allowedChannels: ['telegram', 'whatsapp'],
+    group: 'service',
+    scheduleKind: 'none',
   },
   {
     event: 'onboarding',

@@ -73,10 +73,14 @@ export interface FcmPayload {
   channelId?: string;
 }
 
+// `messaging/invalid-argument` is a generic Firebase Admin error for
+// malformed requests (bad payload shape, oversized data, etc.) — NOT a
+// signal that the device token itself is dead. Treating it as bad-token
+// caused dispatch-push to delete otherwise-valid Android tokens whenever
+// our outbound payload formatting was wrong.
 const FCM_BAD_TOKEN_CODES = new Set([
   'messaging/registration-token-not-registered',
   'messaging/invalid-registration-token',
-  'messaging/invalid-argument',
 ]);
 
 const FCM_FATAL_CODES = new Set([

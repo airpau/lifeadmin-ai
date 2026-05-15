@@ -92,13 +92,19 @@ export default function PocketAgentPage() {
   const [wa, setWa] = useState<WhatsAppStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Bot's pause_alerts_until tool sets a date on
+  // telegram_alert_preferences. When non-null and in the future,
+  // proactive alerts are silenced until that date — show the user
+  // a status banner with a "resume now" button.
+  const [alertsPausedUntil, setAlertsPausedUntil] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     setError(null);
     try {
-      const [tgRes, waRes] = await Promise.all([
+      const [tgRes, waRes, prefsRes] = await Promise.all([
         fetch('/api/telegram/link-code', { credentials: 'include', cache: 'no-store' }),
         fetch('/api/whatsapp/link-code', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/notification-preferences', { credentials: 'include', cache: 'no-store' }),
       ]);
       const tgData: TelegramStatus = tgRes.ok
         ? await tgRes.json()
@@ -108,6 +114,15 @@ export default function PocketAgentPage() {
         : { canUse: false, linked: false, session: null, pendingCode: null, senderPhone: '+447883318406' };
       setTg(tgData);
       setWa(waData);
+      if (prefsRes.ok) {
+        const prefs = await prefsRes.json();
+        const paused = prefs?.alerts_paused_until as string | null;
+        if (paused && new Date(paused).getTime() > Date.now()) {
+          setAlertsPausedUntil(paused);
+        } else {
+          setAlertsPausedUntil(null);
+        }
+      }
       // Pick the linked tab on first load — most useful to the user.
       if (waData.linked) setTab('whatsapp');
       else if (tgData.linked) setTab('telegram');
@@ -155,6 +170,52 @@ export default function PocketAgentPage() {
         <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           <span className="text-sm">{error}</span>
+        </div>
+      )}
+
+      {/* Alerts-paused banner. Bot's pause_alerts_until tool sets a
+          date on telegram_alert_preferences.alerts_paused_until.
+          While that date is in the future, proactive alerts (price
+          rises, contract renewals, budget overruns) are silenced.
+          Watchdog and dispute follow-ups still fire — only the
+          proactive sweep is paused. */}
+      {alertsPausedUntil && (
+        <div className="flex items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-300 rounded-xl">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🌙</span>
+            <div className="text-sm">
+              <p className="font-semibold text-amber-900">
+                Proactive alerts paused until {new Date(alertsPausedUntil).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+              <p className="text-amber-800 text-xs mt-0.5">
+                Price rises, contract renewals and budget overruns won&apos;t fire.
+                Watchdog dispute replies and Riley support replies still come through.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/notification-preferences', {
+                  method: 'PATCH',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ alerts_paused_until: null }),
+                });
+                if (res.ok) {
+                  setAlertsPausedUntil(null);
+                } else {
+                  setError('Failed to resume alerts. Try again or run "resume alerts" via the Pocket Agent chat.');
+                }
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to resume alerts');
+              }
+            }}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors shrink-0"
+          >
+            Resume now
+          </button>
         </div>
       )}
 

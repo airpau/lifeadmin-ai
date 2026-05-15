@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendRenewalReminder } from '@/lib/email/renewal-reminders';
+import { buildRenewalEmail } from '@/lib/email/renewal-reminders';
 import { canSendEmail } from '@/lib/email-rate-limit';
+import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const maxDuration = 60;
 
@@ -98,20 +99,51 @@ export async function GET(request: NextRequest) {
 
       const userName = user.first_name || user.full_name?.split(' ')[0] || 'there';
 
-      const sent = await sendRenewalReminder(
-        user.email,
-        userName,
-        subs.map(s => ({
-          provider_name: s.provider_name,
-          amount: parseFloat(String(s.amount)),
-          category: s.category,
-          next_billing_date: s.next_billing_date,
-          billing_cycle: s.billing_cycle,
-          contract_type: s.contract_type,
-          provider_type: s.provider_type,
-        })),
-        days
-      );
+      const renewals = subs.map(s => ({
+        provider_name: s.provider_name,
+        amount: parseFloat(String(s.amount)),
+        category: s.category,
+        next_billing_date: s.next_billing_date,
+        billing_cycle: s.billing_cycle,
+        contract_type: s.contract_type,
+        provider_type: s.provider_type,
+      }));
+
+      const { subject, html } = buildRenewalEmail(userName, renewals, days);
+
+      // Build telegram text — one-line summary per renewal.
+      const tgLines = renewals.map(
+        r => `• ${r.provider_name}: £${r.amount.toFixed(2)}/${r.billing_cycle ?? 'month'} on ${new Date(r.next_billing_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`,
+      ).join('\n');
+      const telegramText = renewals.length === 1
+        ? `🔔 *Renewal coming up in ${days} days*\n\n${tgLines}\n\nOpen Paybacker → Subscriptions to review or cancel.`
+        : `🔔 *${renewals.length} renewals coming up in ${days} days*\n\n${tgLines}\n\nOpen Paybacker → Subscriptions to review.`;
+
+      // WhatsApp template only fires for SINGLE-renewal alerts (template
+      // has fixed slots for one service). Multi-renewal alerts fall back
+      // to email + telegram + push.
+      const single = renewals.length === 1 ? renewals[0] : null;
+      const whatsappPayload = single
+        ? {
+            templateName: 'paybacker_alert_renewal',
+            templateParameters: [
+              single.provider_name,
+              String(days),
+              `£${single.amount.toFixed(2)}`,
+            ],
+          }
+        : undefined;
+
+      const dispatchResult = await sendNotification(supabase, {
+        userId,
+        event: 'renewal_reminder',
+        email: { subject, html },
+        telegram: { text: telegramText },
+        whatsapp: whatsappPayload,
+        push: { title: `${renewals.length} renewal${renewals.length === 1 ? '' : 's'} coming up`, body: `£${renewals.reduce((s, r) => s + r.amount, 0).toFixed(2)} renewing in ${days} days` },
+      });
+
+      const sent = dispatchResult.delivered.length > 0;
 
       if (sent) {
         await supabase.from('tasks').insert({

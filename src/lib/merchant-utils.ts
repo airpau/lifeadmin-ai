@@ -27,7 +27,7 @@ const HARDCODED_MERCHANT_RULES: Record<string, string> = {
 };
 
 /**
- * TrueLayer (and occasionally Yapily) sometimes return junk in the
+ * Yapily sometimes returns junk in the
  * `merchant_name` field — 2-letter fragments like "ad", "tr", "d" that look
  * like first-few-chars of the raw description. These produce nonsense
  * "Ad", "Tr" rows in the top-merchants list. This helper detects those
