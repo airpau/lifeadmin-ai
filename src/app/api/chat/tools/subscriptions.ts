@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 import { resolveProviderLogo } from '@/lib/logo-resolver';
 import { deriveRecurringGroup } from '@/lib/subscription-key';
 import { ChatTool } from './registry';
-import { isValidCategory, normaliseCategory, USER_SELECTABLE_IDS } from '@/lib/categories';
 
 function getAdmin() {
   return createClient(
@@ -596,11 +595,7 @@ const recategoriseSubscription: ChatTool = {
 const recategoriseTransactions: ChatTool = {
   name: 'recategorise_transactions',
   description:
-    'Recategorise bank transactions matching a description keyword. ' +
-    'IMPORTANT: When the user specifies a category by name (e.g. "to rent", "as groceries"), ' +
-    'pass that exact word in new_category — do not substitute a synonym. ' +
-    'Only infer a category when the user is vague. ' +
-    'Example: "recategorise PCL transport to rent" → new_category: "rent" (NOT "housing").',
+    'Recategorise bank transactions matching a description keyword. Use when the user says "categorise Tesco as groceries" or "my Costa transactions should be food". Only updates the user_category field on the user\'s own transactions.',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -610,27 +605,13 @@ const recategoriseTransactions: ChatTool = {
       },
       new_category: {
         type: 'string',
-        enum: [...USER_SELECTABLE_IDS],
-        description:
-          'The canonical category ID to assign. Use the exact word the user said (e.g. "rent", ' +
-          '"groceries", "eating_out", "transport", "bills"). Do not substitute synonyms.',
+        description: 'The new category to assign',
       },
     },
     required: ['keyword', 'new_category'],
   },
   handler: async (args: { keyword: string; new_category: string }, userId: string) => {
     const admin = getAdmin();
-
-    // Honour the user's exact word; normalise legacy synonyms via the
-    // alias map; reject anything truly unknown to keep the DB CHECK
-    // constraint happy.
-    const rawInput = (args.new_category ?? '').toLowerCase().trim();
-    const resolvedCategory = isValidCategory(rawInput) ? rawInput : normaliseCategory(rawInput);
-    if (!isValidCategory(resolvedCategory)) {
-      return {
-        error: `Couldn't recognise category "${args.new_category}". Valid: ${USER_SELECTABLE_IDS.join(', ')}.`,
-      };
-    }
 
     // Count matching transactions
     const { data: matches } = await admin
@@ -646,7 +627,7 @@ const recategoriseTransactions: ChatTool = {
     // Update user_category for all matching transactions
     const { error } = await admin
       .from('bank_transactions')
-      .update({ user_category: resolvedCategory })
+      .update({ user_category: args.new_category })
       .eq('user_id', userId)
       .ilike('description', `%${args.keyword}%`);
 
@@ -660,14 +641,14 @@ const recategoriseTransactions: ChatTool = {
         user_id: userId,
         correction_type: 'category',
         original_value: null,
-        corrected_value: resolvedCategory,
+        corrected_value: args.new_category,
         merchant_pattern: args.keyword.toLowerCase().trim(),
-        context: `Recategorised ${matches.length} transaction(s) matching "${args.keyword}" to "${resolvedCategory}"`,
+        context: `Recategorised ${matches.length} transaction(s) matching "${args.keyword}" to "${args.new_category}"`,
       });
     } catch { /* non-critical */ }
 
     return {
-      message: `Updated ${matches.length} transaction(s) matching "${args.keyword}" to category "${resolvedCategory}".`,
+      message: `Updated ${matches.length} transaction(s) matching "${args.keyword}" to category "${args.new_category}".`,
       count: matches.length,
       dashboard_refresh: true,
     };

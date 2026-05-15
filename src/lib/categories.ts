@@ -62,6 +62,31 @@ export const CATEGORIES = [
   { id: 'charity',       label: 'Charity & Donations',    emoji: '❤️', group: 'Personal' },
   { id: 'gambling',      label: 'Gambling',               emoji: '🎰', group: 'Personal' },
 
+  // ── Business Income ──────────────────────────────────────────────────────
+  { id: 'business_income',        label: 'Business Income',        emoji: '📈', group: 'Business' },
+  { id: 'client_payment',         label: 'Client Payment',         emoji: '🤝', group: 'Business' },
+  { id: 'director_salary',        label: 'Director Salary',        emoji: '👔', group: 'Business' },
+  { id: 'dividend',               label: 'Dividend',               emoji: '💹', group: 'Business' },
+
+  // ── Business Spending ────────────────────────────────────────────────────
+  { id: 'wages',                  label: 'Wages (Staff)',           emoji: '👥', group: 'Business' },
+  { id: 'payroll',                label: 'Payroll',                 emoji: '💸', group: 'Business' },
+  { id: 'business_rates',         label: 'Business Rates',         emoji: '🏢', group: 'Business' },
+  { id: 'professional_services',  label: 'Professional Services',  emoji: '💼', group: 'Business' },
+  { id: 'accountancy',            label: 'Accountancy',            emoji: '🧾', group: 'Business' },
+  { id: 'legal_fees',             label: 'Legal Fees',             emoji: '⚖️', group: 'Business' },
+  { id: 'office_supplies',        label: 'Office Supplies',        emoji: '🖊️', group: 'Business' },
+  { id: 'equipment',              label: 'Equipment',              emoji: '🖥️', group: 'Business' },
+  { id: 'marketing',              label: 'Marketing',              emoji: '📣', group: 'Business' },
+  { id: 'business_insurance',     label: 'Business Insurance',     emoji: '🛡️', group: 'Business' },
+  { id: 'vat_payment',            label: 'VAT Payment',            emoji: '🏛️', group: 'Business' },
+  { id: 'corporation_tax',        label: 'Corporation Tax',        emoji: '🏛️', group: 'Business' },
+  { id: 'recruitment',            label: 'Recruitment',            emoji: '🔍', group: 'Business' },
+
+  // ── Business General ─────────────────────────────────────────────────────
+  { id: 'owner_drawings',         label: 'Owner Drawings',         emoji: '🏦', group: 'Business' },
+  { id: 'inter_account_transfer', label: 'Inter-account Transfer', emoji: '🔄', group: 'Business' },
+
   // ── System (not user-selectable in recategorisation flows) ───────────────
   { id: 'income',        label: 'Income',                 emoji: '💵', group: 'System' },
   { id: 'transfers',     label: 'Transfers',              emoji: '🔄', group: 'System' },
@@ -241,6 +266,29 @@ export const CATEGORY_ALIASES: Record<string, Category> = {
   hotel:                  'travel',
   hotels:                 'travel',
   accommodation:          'travel',
+
+  // Business categories
+  'business income':      'business_income',
+  'client payment':       'client_payment',
+  invoice:                'client_payment',
+  'director salary':      'director_salary',
+  'directors salary':     'director_salary',
+  'staff wages':          'wages',
+  'employee wages':       'wages',
+  'business rates':       'business_rates',
+  'professional services': 'professional_services',
+  accountant:             'accountancy',
+  solicitor:              'legal_fees',
+  solicitors:             'legal_fees',
+  'legal fees':           'legal_fees',
+  'office supplies':      'office_supplies',
+  stationery:             'office_supplies',
+  'business insurance':   'business_insurance',
+  'vat payment':          'vat_payment',
+  'corporation tax':      'corporation_tax',
+  'corp tax':             'corporation_tax',
+  'owner drawings':       'owner_drawings',
+  drawings:               'owner_drawings',
 
   // Other / catch-alls
   security:               'other',

@@ -292,14 +292,10 @@ export async function POST(request: NextRequest) {
       // so each manual Sync click inserted ~2000 phantom duplicates
       // (Paul, 2026-04-28). Keying on stable_tx_hash + account hash
       // makes the second sync a pure no-op.
-      // Full ISO 8601 datetime — Yapily rejects date-only strings on
-      // the from / before pagination filters with HTTP 400 (see commit
-      // 1e033d08 from 2026-05-07). The cron path was fixed then; this
-      // manual-sync path was missed.
-      const fromDate = ninetyDaysAgo.toISOString();
+      const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
-      const toDate = tomorrow.toISOString();
+      const toDate = tomorrow.toISOString().split('T')[0];
 
       for (let i = 0; i < accountIds.length; i++) {
         const accountId = accountIds[i];

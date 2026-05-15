@@ -1,5 +1,4 @@
 import type { Tool } from '@anthropic-ai/sdk/resources/messages';
-import { USER_SELECTABLE_IDS } from '@/lib/categories';
 
 export const telegramTools: Tool[] = [
   // ============================================================
@@ -24,7 +23,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'list_transactions',
     description:
-      "List individual bank transactions with merchant name, amount, category, and date. Use this when the user asks to see specific transactions, direct debits, payments, or wants to review what they've been charged. Can filter by category, merchant, or date range. For 'biggest outgoings', 'largest expenses', 'top spending', or 'where did my money go' questions, call this with sort_by='amount_desc' and NO category filter so you scan ALL debits (rent, loans, professional services, etc.) — not just one category like shopping.",
+      "List individual bank transactions with merchant name, amount, category, and date. Use this when the user asks to see specific transactions, direct debits, payments, or wants to review what they've been charged. Can filter by category, merchant, or date range.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -34,7 +33,7 @@ export const telegramTools: Tool[] = [
         },
         category: {
           type: 'string',
-          description: 'Filter by category (e.g. "food", "streaming", "bills"). OMIT this when the user asks about general spending, biggest outgoings, or where their money is going — defaulting to a single category like "shopping" hides the largest items (rent, loans, professional services).',
+          description: 'Filter by category (e.g. "food", "streaming", "bills"). Optional.',
         },
         merchant: {
           type: 'string',
@@ -43,11 +42,6 @@ export const telegramTools: Tool[] = [
         limit: {
           type: 'number',
           description: 'Max number of transactions to return. Defaults to 25.',
-        },
-        sort_by: {
-          type: 'string',
-          enum: ['date_desc', 'amount_desc'],
-          description: "Sort order. 'date_desc' (default) = most recent first. 'amount_desc' = biggest debits first across ALL spending — use this for 'biggest outgoings', 'largest expenses', 'top spending', 'where did my money go' questions.",
         },
       },
       required: [],
@@ -621,13 +615,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'recategorise_transactions',
     description:
-      'Change the category of bank transactions matching a merchant name. ' +
-      'IMPORTANT: When the user specifies a category by name (e.g. "to rent", "as groceries", "as bills"), ' +
-      'pass that exact word in new_category — do not substitute a synonym. ' +
-      'Only infer a category when the user is vague (e.g. "something more appropriate"). ' +
-      'For example: "recategorise PCL transport to rent" → new_category: "rent" (NOT "housing" or "property_management"). ' +
-      '"categorise Tesco as groceries" → new_category: "groceries". ' +
-      'Returns how many transactions were updated.',
+      'Change the category of bank transactions matching a merchant name. For example, recategorise all "Costa" transactions from "other" to "food". Returns how many transactions were updated.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -637,12 +625,13 @@ export const telegramTools: Tool[] = [
         },
         new_category: {
           type: 'string',
-          enum: [...USER_SELECTABLE_IDS],
-          description:
-            'The category to assign. Use the exact word the user said when they named one — e.g. ' +
-            '"rent" for rent, "groceries" for shopping food, "eating_out" for restaurants, ' +
-            '"transport" for travel-to-work, "bills" for utility-style payments. ' +
-            'Do NOT substitute synonyms (rent is NOT housing or property_management).',
+          enum: [
+            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
+            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
+            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
+            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management', 'transfers',
+          ],
+          description: 'The category to assign to matching transactions.',
         },
       },
       required: ['merchant_name', 'new_category'],

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { auto_categorise_business_transaction } from '@/lib/money-hub-classification';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -139,8 +140,16 @@ export async function POST() {
   const sixMonthsAgo = new Date();
   sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
+  // Identify which bank connections are business accounts so we can apply
+  // the business categoriser to their transactions.
+  const { data: businessConns } = await admin.from('bank_connections')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('is_business', true);
+  const businessConnectionIds = new Set((businessConns || []).map((c: { id: string }) => c.id));
+
   const { data: transactions } = await admin.from('bank_transactions')
-    .select('id, transaction_id, amount, description, category, merchant_name, timestamp, user_category, income_type')
+    .select('id, transaction_id, amount, description, category, merchant_name, timestamp, user_category, income_type, connection_id')
     .eq('user_id', user.id)
     .gte('timestamp', sixMonthsAgo.toISOString())
     .order('timestamp', { ascending: false });
@@ -177,16 +186,31 @@ export async function POST() {
       finalCategory = txnOverrides.get(txn.transaction_id)!.toLowerCase();
     }
 
-    // Priority 4: Keyword rules
+    // Priority 4: Keyword rules (business-aware)
     if (!finalCategory) {
       const isXfer = isTransfer(desc, txn.category || '');
       if (isXfer) {
         finalCategory = 'transfers';
       } else {
-        const auto = categoriseTransaction(desc, txn.category || '');
-        // Only use keyword result if it's not 'other' or 'shopping' (too generic)
-        if (auto !== 'other' && auto !== 'shopping') {
-          finalCategory = auto.toLowerCase();
+        const isBusiness = txn.connection_id && businessConnectionIds.has(txn.connection_id);
+
+        // For business accounts, run the business categoriser first — it
+        // understands wages, VAT, corporation tax, legal fees, etc.
+        if (isBusiness) {
+          const bizCat = auto_categorise_business_transaction(
+            [txn.merchant_name, desc].filter(Boolean).join(' '),
+            parseFloat(txn.amount),
+          );
+          if (bizCat) finalCategory = bizCat;
+        }
+
+        // Fall through to generic consumer keyword rules if no business match
+        if (!finalCategory) {
+          const auto = categoriseTransaction(desc, txn.category || '');
+          // Only use keyword result if it's not 'other' or 'shopping' (too generic)
+          if (auto !== 'other' && auto !== 'shopping') {
+            finalCategory = auto.toLowerCase();
+          }
         }
       }
     }
@@ -205,11 +229,16 @@ export async function POST() {
         if (d.includes('from a/c') || d.includes('via mobile xfer') || d.includes('internal') ||
             d.includes('transfer') || d.startsWith('tfr') || d.startsWith('trf') || d.startsWith('fps')) {
           incomeType = 'transfer';
+        // Refunds / cashback — check before salary so "REFUND BACS" isn't classified salary
+        } else if (d.includes('refund') || d.includes('cashback') || d.includes('reversal') || d.includes('chargeback')) {
+          incomeType = 'refund';
         // Rental: use word-boundary checks to avoid false positives from 'parent', 'current', etc.
         } else if ((d.includes(' rent ') || d.startsWith('rent ') || d.includes('rental') || d.includes('letting')) &&
             !d.includes('current') && !d.includes('transfer')) {
           incomeType = 'rental';
-        } else if (d.includes('director') || d.includes('payroll') || d.includes('salary') || d.includes('wages')) {
+        // Salary — only when description explicitly says payroll; avoid guessing
+        } else if (d.includes('salary') || d.includes('wages') || d.includes('payroll') ||
+                   d.includes('net pay') || d.includes('pay ref') || d.includes('director pay')) {
           incomeType = 'salary';
         } else if (d.includes('airbnb') || d.includes('booking.com') || d.includes('vrbo')) {
           incomeType = 'rental';
@@ -219,9 +248,13 @@ export async function POST() {
           incomeType = 'investment';
         } else if (d.includes('invoice') || d.includes('freelance') || d.includes('consulting')) {
           incomeType = 'freelance';
-        // Large recurring credits without clear description are likely salary
-        } else if (amount > 1000 && !d.includes('transfer') && !d.includes('refund')) {
-          incomeType = 'salary';
+        // BACS / Faster Payments without a payroll keyword → generic income, not salary.
+        // Large one-off inflows (>£5000) are other_income (bonuses, proceeds, etc.).
+        // Previously everything >£1000 was incorrectly labelled salary.
+        } else if (amount > 5000) {
+          incomeType = 'other'; // large one-off; let user reclassify if it's salary
+        } else if (amount >= 10) {
+          incomeType = 'other'; // generic income — covers BACS one-offs, standing orders back, etc.
         }
       }
     }
@@ -250,9 +283,37 @@ export async function POST() {
       categorised++;
       incomeDetected++;
     } else {
-      // Queue for AI classification
-      needsAI.push({ id: txn.id, description: desc, amount, category: txn.category || '' });
+      // Queue for AI classification — but first check the wisdom table
+      needsAI.push({ id: txn.id, description: desc, amount, category: txn.category || '', merchant: txn.merchant_name || '' });
     }
+  }
+
+  // Phase 1.5: Apply merchant wisdom for queued transactions
+  // Batch-lookup the wisdom table to auto-apply high-confidence patterns.
+  if (needsAI.length > 0) {
+    const patterns = [...new Set(needsAI.map(t =>
+      (t.merchant || t.description).toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^a-z0-9 ]/g, '').substring(0, 60)
+    ))];
+    const { data: wisdomRows } = await admin
+      .from('merchant_category_wisdom')
+      .select('merchant_pattern, suggested_category, confidence, vote_count')
+      .in('merchant_pattern', patterns);
+    const wisdomMap = new Map((wisdomRows || []).map((w: any) => [w.merchant_pattern, w]));
+
+    const stillNeedsAI: typeof needsAI = [];
+    for (const txn of needsAI) {
+      const pattern = (txn.merchant || txn.description).toLowerCase().trim()
+        .replace(/\s+/g, ' ').replace(/[^a-z0-9 ]/g, '').substring(0, 60);
+      const w = wisdomMap.get(pattern);
+      if (w && w.confidence >= 0.7 && w.vote_count >= 3) {
+        await admin.from('bank_transactions').update({ user_category: w.suggested_category }).eq('id', txn.id);
+        categorised++;
+      } else {
+        stillNeedsAI.push(txn);
+      }
+    }
+    needsAI.length = 0;
+    needsAI.push(...stillNeedsAI);
   }
 
   // Phase 2: Use Claude to classify remaining unmatched transactions (batched)

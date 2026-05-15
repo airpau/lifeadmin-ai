@@ -286,34 +286,13 @@ export const TEMPLATES = {
       { id: 'outcome_waiting', title: 'Still waiting' },
     ] as const,
   },
-  /**
-   * Pro-only daily 8am brief.
-   *
-   * ⚠️ DEPRECATED BODY — DO NOT SEND ⚠️
-   *
-   * The Meta-approved body for this SID is the original launch placeholder:
-   *
-   *   "Morning {{1}}. Overnight we scanned {{2}} items and found {{3}}
-   *    opportunities. Top focus: {{4}}. Tap to open today's brief."
-   *
-   * It's useless (no real data, dead "tap to open" CTA that points nowhere)
-   * and one of Paul's first founder complaints was that it shipped on launch
-   * morning. Morning briefs are now sent as RICH FREE-TEXT via the deterministic
-   * builder in `src/lib/notifications/brief-builder.ts` → `buildMorningBrief()`,
-   * routed through `/api/cron/personal-schedules`. Free-text only delivers
-   * inside the 24h customer-service window, but Pro users on WhatsApp are
-   * active enough that this isn't a problem.
-   *
-   * Re-submit a new version to Meta before any code calls this SID again.
-   * Until then, keep this entry registered so resolveAlertType() doesn't
-   * silently route morning briefs here.
-   */
+  /** Pro-only daily 8am brief */
   paybacker_morning_summary: {
     // Resubmission required — original body ended on `{{4}}`.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['name', 'scanned_count', 'opportunities_count', 'top_focus'] as const,
-    description: 'Daily morning summary — DEPRECATED body, use buildMorningBrief() free-text instead',
+    description: 'Daily 8am morning summary (Pro only)',
     proOnly: true,
     body: 'Morning {{1}}. Overnight we scanned {{2}} items and found {{3}} opportunities. Top focus: {{4}}. Tap to open today\'s brief.',
   },

@@ -92,15 +92,17 @@ export async function GET(request: NextRequest) {
     // as null — those rows already use telegram_chat_id loosely.
     const chatId = session.channel === 'telegram' ? Number(session.destination) : null;
 
-    // Check for existing active detected_issues to avoid duplicates
-    const { data: existingIssues } = await supabase
-      .from('detected_issues')
-      .select('issue_type, source_id, created_at')
-      .eq('user_id', userId)
-      .in('status', ['active', 'actioned'])
-      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
+    // Check for existing active detected_issues to avoid duplicates.
+    // Uses get_active_detected_issues() RPC which filters out stale rows
+    // whose source transaction / subscription no longer exists (e.g. from
+    // a disconnected bank connection) — fixes phantom dedup blocks.
+    const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: existingIssues } = await supabase.rpc('get_active_detected_issues', {
+      p_user_id: userId,
+      p_since: since7d,
+    });
 
-    const recentTypes = new Set(existingIssues?.map((i) => `${i.issue_type}:${i.source_id}`) ?? []);
+    const recentTypes = new Set((existingIssues ?? []).map((i: { issue_type: string; source_id: string | null }) => `${i.issue_type}:${i.source_id}`));
 
     // --------------------------------------------------------
     // 1. Price increase alerts

@@ -348,34 +348,18 @@ export async function upsertYapilyTransactions(
     };
   }
 
-  // 4. Insert the survivors in batches of 500. On batch failure (typically
-  //    the legacy (user_id, transaction_id) UNIQUE constraint firing
-  //    against a soft-deleted row from a previous consent — Yapily
-  //    sometimes reissues the same transaction_id after a reconnect),
-  //    fall back to per-row inserts so a single bad row doesn't drop
-  //    today's other new transactions. Bug discovered 2026-05-15 when
-  //    Paul's syncs stopped landing new rows after 2026-05-13.
+  // 4. Insert the survivors in batches of 500. The partial UNIQUE
+  //    index is the final safety net — if two concurrent syncs both
+  //    decide to insert the same hash, one batch errors and we log;
+  //    the other already won.
   let inserted = 0;
   for (let i = 0; i < newRows.length; i += 500) {
     const batch = newRows.slice(i, i + 500).map((r) => r!.row);
     const { error } = await admin.from('bank_transactions').insert(batch);
-    if (!error) {
+    if (error) {
+      console.error('[yapily.connection-store] insert batch failed:', error.message);
+    } else {
       inserted += batch.length;
-      continue;
-    }
-    console.error(
-      `[yapily.connection-store] insert batch failed (${batch.length} rows) — falling back to per-row: ${error.message} (code=${(error as { code?: string }).code ?? '?'})`,
-    );
-    for (const row of batch) {
-      const { error: rowErr } = await admin.from('bank_transactions').insert(row);
-      if (rowErr) {
-        const code = (rowErr as { code?: string }).code ?? '?';
-        console.warn(
-          `[yapily.connection-store] row skipped tx=${row.transaction_id} date=${row.timestamp} amount=${row.amount} code=${code}: ${rowErr.message}`,
-        );
-      } else {
-        inserted++;
-      }
     }
   }
 

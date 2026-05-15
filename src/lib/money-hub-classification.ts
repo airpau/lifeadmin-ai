@@ -505,11 +505,11 @@ function detectFallbackIncomeType(description: string, bankCategory: string, amo
     return 'gift';
   }
 
-  if (amount > 1000 && CREDIT_BANK_CATEGORIES.has(bankCategoryUpper)) {
-    return 'salary';
-  }
-
-  if (amount > 0 && CREDIT_BANK_CATEGORIES.has(bankCategoryUpper)) {
+  // Bank categories CREDIT/INTEREST without a payroll keyword in the description
+  // should NOT be auto-labelled salary — that label requires an explicit signal.
+  // Large CREDIT bank-category credits > £5000 are 'other' (bonus, proceeds, etc.).
+  // Smaller ones are also 'other'; the user can reclassify via the Money Hub UI.
+  if (CREDIT_BANK_CATEGORIES.has(bankCategoryUpper)) {
     return 'other';
   }
 
@@ -580,4 +580,116 @@ export function detectFallbackSpendingCategory(description: string): string | nu
   if (/\b(charity|oxfam|red.*cross|cancer.*research|nspcc|rspca|unicef|wwf|amnesty|british heart)\b/.test(d)) return 'charity';
 
   return null;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Business account auto-categorisation
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Attempts to categorise a transaction from a BUSINESS bank account.
+ * Should be called BEFORE the generic `detectFallbackSpendingCategory` so that
+ * business-specific patterns (wages, legal fees, VAT, etc.) take priority.
+ *
+ * @param description  Raw transaction description / merchant name (joined)
+ * @param amount       Transaction amount (positive = credit, negative = debit)
+ * @returns            A business or consumer category string, or null if no match
+ */
+export function auto_categorise_business_transaction(
+  description: string,
+  amount: number,
+): string | null {
+  const d = ` ${description.toLowerCase()} `;
+  const isCredit = amount > 0;
+
+  // ── Credits (income to business) ─────────────────────────────────────────
+  if (isCredit) {
+    // Director salary / owner drawings drawn back in (rare but possible)
+    if (/\b(director.*salary|directors.*salary|director.*pay)\b/.test(d)) return 'director_salary';
+
+    // Dividends
+    if (/\b(dividend|div payment|div pmt)\b/.test(d)) return 'dividend';
+
+    // Client / invoice payments — BACS credits with company names or invoice refs
+    if (/\b(invoice|inv\s*\d|payment.*ref|client.*pay|payment.*from)\b/.test(d)) return 'client_payment';
+
+    // Airbnb / Booking.com / VRBO — could be rental income via business
+    if (/\b(airbnb|booking\.com|vrbo|holiday let)\b/.test(d)) return 'business_income';
+
+    // BACS / CHAPS / FPS credits without a personal pattern = treat as business income
+    if (/\b(bacs|chaps|fps|faster payment)\b/.test(d) && !/(salary|wage|payroll)/.test(d)) {
+      return 'business_income';
+    }
+
+    return null; // fall through to generic income detection
+  }
+
+  // ── Debits (spending from business) ──────────────────────────────────────
+
+  // Software/SaaS subscriptions (business context)
+  if (/\b(glofox|mindbody|stripe|xero|quickbooks|sage|clearbooks|freeagent|kashflow|brighthr|deputy|rotacloud|planday|personio|bamboohr|zendesk|intercom|hubspot|salesforce|pipedrive|monday\.com|asana|clickup|notion|figma|canva.*business|adobe.*business)\b/.test(d)) return 'software';
+
+  // Vending / food for staff
+  if (/\b(nutrivend|vending|vend|refreshments.*staff|staff.*refreshments)\b/.test(d)) return 'office_supplies';
+
+  // HMRC — determine type from description
+  if (/\b(hmrc|hm revenue)\b/.test(d)) {
+    if (/\b(vat|value added tax)\b/.test(d)) return 'vat_payment';
+    if (/\b(paye|nics?|national insurance)\b/.test(d)) return 'payroll';
+    if (/\b(corp.*tax|corporation tax|ct\d{3})\b/.test(d)) return 'corporation_tax';
+    if (/\b(self assess|sa\d{3}|income tax)\b/.test(d)) return 'tax';
+    return 'tax'; // generic HMRC
+  }
+
+  // Business rates (council / local authority billing)
+  if (/\b(business rates?|non-domestic rates?|nndr)\b/.test(d)) return 'business_rates';
+  if (/\b(council|borough|district|city.*of)\b/.test(d) && /\brates?\b/.test(d)) return 'business_rates';
+  // Broxbourne / specific councils in business account context = business rates
+  if (/\b(broxbourne|broxbourne.*council|broxbourne.*dc)\b/.test(d)) return 'business_rates';
+  // Large council payments in business account: > £500 = almost certainly business rates not council tax
+  if (/\b(council|borough|district)\b/.test(d) && amount < -500) return 'business_rates';
+
+  // Wages / payroll to individuals
+  // "Lisagroom New EF" / individual person names paid via BACS in a business account
+  // Heuristic: BACS payment to a person-name-shaped description, ≥ £500
+  if (
+    /\b(wages?|salary|payroll|salaries)\b/.test(d) ||
+    (/\bbacs\b/.test(d) && amount <= -500 && /^[\s\w]+$/.test(d.trim()) && !/\b(direct debit|dd |standing order|mortgage|loan|insurance)\b/.test(d))
+  ) {
+    return 'wages';
+  }
+
+  // Specific payroll processors
+  if (/\b(sage payroll|xero payroll|brightpay|paystream|payplus|peoplepay|staffpay|paylocity|paychex)\b/.test(d)) return 'payroll';
+
+  // Legal / solicitors
+  if (/\b(solicitor|solicitors|legal fees?|counsel|barrister|law firm|llp\b|attorneys)\b/.test(d)) return 'legal_fees';
+  if (/\b(mishcon|clifford chance|linklaters|slaughter|freshfields|herbert smith|allen.*overy|norton rose|eversheds|dentons|shoosmiths|irwin mitchell|freeths|gateley|weightmans|mills.*reeve)\b/.test(d)) return 'legal_fees';
+
+  // Accountancy / bookkeeping
+  if (/\b(accountant|accountancy|bookkeeper|bookkeeping|chartered account|pwc|deloitte|kpmg|ernst.*young|ey |grant thornton|bdo |crowe |mazars|moore|haysmacintyre|blick rothenberg)\b/.test(d)) return 'accountancy';
+
+  // Recruitment / staffing agencies
+  if (/\b(recruitment|recruiter|headhunt|staffing|manpower|hays|reed |adecco|randstad|michael.*page|robert.*half|indeed|linkedin.*recruit)\b/.test(d)) return 'recruitment';
+
+  // Marketing / advertising
+  if (/\b(marketing|advertising|google ads|facebook ads|meta ads|linkedin ads|mailchimp|hubspot|hootsuite|semrush|ahrefs|moz |klaviyo|activecampaign)\b/.test(d)) return 'marketing';
+
+  // Office supplies / stationery
+  if (/\b(ryman|staples|viking|office depot|banner|instantprint|moo\.com|vistaprint|4imprint|lyreco)\b/.test(d)) return 'office_supplies';
+  if (/\b(stationery|office supplies|postage|royal mail|parcelforce|dhl|fedex|ups |dpd )\b/.test(d)) return 'office_supplies';
+
+  // Equipment / hardware
+  if (/\b(equipment|machinery|plant hire|tool hire|sunbelt|speedy hire|hewden|aflac|dell |hp |lenovo|apple.*store|currys.*business|insight direct|misco|ebuyer)\b/.test(d)) return 'equipment';
+
+  // Business insurance
+  if (/\b(employers.*liability|public liability|professional indemnity|pi insurance|business.*insurance|commercial.*insurance|trade.*insurance|zurich.*business|axa.*business|aviva.*business|hiscox|simply business|policybee)\b/.test(d)) return 'business_insurance';
+
+  // Owner drawings / director loan repayments to self
+  if (/\b(owner drawings?|drawings?|director.*loan|dl repay|proprietor)\b/.test(d)) return 'owner_drawings';
+
+  // Inter-account transfers between business accounts
+  if (/\b(inter.?account|own account|sweep|treasury|cash management)\b/.test(d)) return 'inter_account_transfer';
+
+  return null; // no business-specific match; fall through to generic categoriser
 }

@@ -129,7 +129,7 @@ COMPLETE TOOL REFERENCE (always call the tool — never make up data or say "I c
 
 READ TOOLS — Core:
 - get_spending_summary — Spending by category for any month with month-on-month comparison
-- list_transactions — Individual bank transactions; filter by merchant, category, date. For "biggest outgoings" / "largest expenses" / "top spending" / "where did my money go" questions, call WITHOUT a category filter and with sort_by='amount_desc' — this scans every debit (rent, loans, professional services, etc.). NEVER default to category='shopping' for general spending questions; shopping is just one category and hides large items like rent, solicitor fees, loan payments.
+- list_transactions — Individual bank transactions; filter by merchant, category, date
 - get_subscriptions — All subscriptions and recurring payments; filter by status/category/provider
 - get_contracts — Active contracts (broadband, mobile, mortgage, etc.) with end dates
 - get_budget_status — Budget limits vs actual spend for the current month
@@ -1966,7 +1966,11 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .from('telegram_sessions')
         .select('user_id, last_message_at')
         .eq('telegram_chat_id', chatId)
-        .eq('is_active', true)
+        // NOTE: is_active filter intentionally removed — a session that was
+        // accidentally deactivated (e.g. by a stale migration or cron bug)
+        // should still respond. True expiry is handled below via last_message_at.
+        .order('created_at', { ascending: false })
+        .limit(1)
         .single(),
     ]);
 

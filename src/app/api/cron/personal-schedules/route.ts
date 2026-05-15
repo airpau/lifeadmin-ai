@@ -31,12 +31,6 @@ import {
   type NotificationEventType,
 } from '@/lib/notifications/events';
 import { getEffectiveTier } from '@/lib/plan-limits';
-import {
-  buildMorningBrief,
-  buildEveningRecap,
-  buildWeeklyDigest,
-  buildPaydaySummary,
-} from '@/lib/notifications/brief-builder';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -144,18 +138,10 @@ function buildDedupKey(scheduleId: string, now: Date, timezone: string): string 
 }
 
 /**
- * Generate the content for a scheduled notification.
- *
- * Recurring brief-style events (morning/evening/payday/weekly_digest)
- * use a DETERMINISTIC builder that pulls real Supabase data — balance,
- * money-in/out, upcoming payments, open disputes, price alerts. The
- * LLM path used to produce generic placeholder copy like "Top focus:
- * spending recap" and shipped it to users. Now those events skip the
- * LLM entirely.
- *
- * Custom prompts (user typed "send me only what's urgent" in their
- * schedule) still fall through to the agent loop, but only when set
- * — the default brief-style content is always data-grounded.
+ * Generate the content for a scheduled notification by asking the
+ * Pocket Agent's tool-calling Claude. Same brain as the inbound
+ * handler — this re-uses the agent so users get the same quality
+ * scheduled as ad-hoc.
  *
  * Returns plain text. The caller wraps it for the active channel.
  */
@@ -166,23 +152,6 @@ async function generateContent(
 ): Promise<string> {
   const meta = getEventMeta(event);
   if (!meta) return '';
-
-  // Deterministic brief builders for the cron-kind summary events.
-  // These never call the LLM, so the user always gets real numbers
-  // and we never burn Anthropic spend on a daily ping.
-  if (!customPrompt) {
-    const sb = getAdmin();
-    switch (event) {
-      case 'morning_summary':
-        return buildMorningBrief(sb, userId);
-      case 'evening_summary':
-        return buildEveningRecap(sb, userId);
-      case 'weekly_digest':
-        return buildWeeklyDigest(sb, userId);
-      case 'payday_summary':
-        return buildPaydaySummary(sb, userId);
-    }
-  }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 

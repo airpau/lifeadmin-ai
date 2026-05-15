@@ -24,7 +24,7 @@ import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { generateAnnualReportData, generateOnDemandReportData } from '@/lib/report-generator';
 import { predictMonthlyIncome } from '@/lib/income-prediction';
-import { isValidCategory, normaliseCategory, USER_SELECTABLE_IDS } from '@/lib/categories';
+import { resolveAndStoreMapping } from '@/lib/subcategory-engine';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -134,7 +134,6 @@ export async function executeToolCall(
         category: toolInput.category as string | undefined,
         merchant: toolInput.merchant as string | undefined,
         limit: toolInput.limit as number | undefined,
-        sort_by: toolInput.sort_by as 'date_desc' | 'amount_desc' | undefined,
       });
     case 'get_subscriptions':
       return getSubscriptions(supabase, userId, toolInput.filter as string | undefined, toolInput.category as string | undefined, toolInput.provider as string | undefined);
@@ -771,7 +770,7 @@ async function getSpendingSummary(
 async function listTransactions(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
-  params: { month?: string; category?: string; merchant?: string; limit?: number; sort_by?: 'date_desc' | 'amount_desc' },
+  params: { month?: string; category?: string; merchant?: string; limit?: number },
 ): Promise<ToolResult> {
   const now = new Date();
   let year = now.getFullYear();
@@ -824,17 +823,6 @@ async function listTransactions(
     );
   }
 
-  // "Biggest outgoings" path: sort all debits by absolute amount, largest first.
-  // When no explicit category was set, restrict to spending so income receipts
-  // don't drown out actual outgoings.
-  const sortBy = params.sort_by ?? 'date_desc';
-  if (sortBy === 'amount_desc') {
-    if (!targetCategory) {
-      filtered = filtered.filter(t => t.resolved.kind === 'spending' && t.effectiveCategory !== 'transfers');
-    }
-    filtered = [...filtered].sort((a, b) => Math.abs(Number(b.amount)) - Math.abs(Number(a.amount)));
-  }
-
   if (filtered.length === 0) {
     const filterDesc = `${targetCategory ? ` in ${CATEGORY_LABELS[targetCategory] || targetCategory}` : ''}${params.merchant ? ` matching "${params.merchant}"` : ''}`;
     if (noneConnected) {
@@ -851,10 +839,7 @@ async function listTransactions(
   const display = filtered.slice(0, maxResults);
   const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
-  const headerLabel = sortBy === 'amount_desc' && !targetCategory && !params.merchant
-    ? 'Biggest Outgoings'
-    : 'Transactions';
-  let text = `*${headerLabel} — ${monthLabel}${scopeHeader}*`;
+  let text = `*Transactions — ${monthLabel}${scopeHeader}*`;
   if (targetCategory) text += ` (${CATEGORY_LABELS[targetCategory] || targetCategory})`;
   if (params.merchant) text += ` matching "${params.merchant}"`;
   text += `\n\n`;
@@ -1703,25 +1688,22 @@ async function recategoriseTransactions(
   merchantName: string,
   newCategory: string,
 ): Promise<ToolResult> {
-  // Honour the user's exact word when it's a valid canonical category.
-  // If the model passed a legacy synonym (food → groceries, fitness → health,
-  // property_management → housing, etc.), normaliseCategory maps it through
-  // CATEGORY_ALIASES. Lowercase + trim first so "Rent" / " rent " both
-  // resolve to "rent" (which was added as a canonical ID on 2026-05-14).
-  // Anything truly unknown falls through to 'other' rather than triggering
-  // a CHECK constraint failure on the DB write.
-  const rawInput = (newCategory ?? '').toLowerCase().trim();
-  const resolvedCategory = isValidCategory(rawInput) ? rawInput : normaliseCategory(rawInput);
+  // Resolve the user's label → canonical parent (handles custom subcategories)
+  const resolution = await resolveAndStoreMapping(supabase, userId, newCategory);
+  const { parentCategory, subcategoryLabel } = resolution;
 
-  if (!isValidCategory(resolvedCategory)) {
-    return {
-      text: `Couldn't recognise the category "${newCategory}". Valid categories: ${USER_SELECTABLE_IDS.join(', ')}.`,
-    };
-  }
+  // Build update payload: user_category always gets the canonical parent so
+  // existing analytics/budget RPCs keep working. user_subcategory stores the
+  // custom label (null when user typed a canonical category directly).
+  const updatePayload: Record<string, string | null> = {
+    user_category: parentCategory,
+    parent_category: parentCategory,
+    user_subcategory: subcategoryLabel,
+  };
 
   const { data, error } = await supabase
     .from('bank_transactions')
-    .update({ user_category: resolvedCategory })
+    .update(updatePayload)
     .eq('user_id', userId)
     .or(`merchant_name.ilike.%${merchantName}%,description.ilike.%${merchantName}%`)
     .select('id, amount, description, merchant_name');
@@ -1738,12 +1720,11 @@ async function recategoriseTransactions(
   // Push to learning engine so it autonomously remembers for future syncs!
   try {
     const { learnFromCorrection } = await import('@/lib/learning-engine');
-    // We only need to learn once per merchant batch
     const sample = data[0];
     await learnFromCorrection({
       rawName: sample.description || sample.merchant_name || merchantName,
       displayName: merchantName,
-      category: resolvedCategory,
+      category: parentCategory,
       amount: sample.amount,
       userId: userId,
     });
@@ -1751,7 +1732,10 @@ async function recategoriseTransactions(
     console.error('[UserBot] Error pushing to learning engine:', err.message);
   }
 
-  return { text: `Recategorised ${count} transaction${count !== 1 ? 's' : ''} matching "${merchantName}" to "${resolvedCategory}". Future transactions from this merchant will also be categorised as "${resolvedCategory}".` };
+  const displayLabel = subcategoryLabel
+    ? `"${subcategoryLabel}" (mapped to ${parentCategory})`
+    : `"${parentCategory}"`;
+  return { text: `Recategorised ${count} transaction${count !== 1 ? 's' : ''} matching "${merchantName}" to ${displayLabel}. Future transactions from this merchant will also be categorised as "${parentCategory}".` };
 }
 
 async function setBudget(
@@ -4092,9 +4076,17 @@ async function recategoriseTransaction(
   }
   const txn = matches[0];
 
+  // Resolve the user's label → canonical parent (handles custom subcategories)
+  const resolution = await resolveAndStoreMapping(supabase, userId, newCategory);
+  const { parentCategory, subcategoryLabel } = resolution;
+
   const { error: updateError } = await supabase
     .from('bank_transactions')
-    .update({ user_category: newCategory })
+    .update({
+      user_category: parentCategory,
+      parent_category: parentCategory,
+      user_subcategory: subcategoryLabel,
+    })
     .eq('id', txn.id)
     .eq('user_id', userId);
 
@@ -4106,7 +4098,7 @@ async function recategoriseTransaction(
   await supabase.from('money_hub_category_overrides').insert({
     user_id: userId,
     merchant_pattern: 'txn_specific',
-    user_category: newCategory,
+    user_category: parentCategory,
     transaction_id: txn.id,
   });
 
@@ -4127,8 +4119,11 @@ async function recategoriseTransaction(
   const merchant = txn.merchant_name ?? 'Unknown';
   const amt = fmt(Math.abs(Number(txn.amount)));
   const prevCategory = txn.user_category || txn.category || 'unknown';
+  const displayLabel = subcategoryLabel
+    ? `"${subcategoryLabel}" (${parentCategory})`
+    : `"${parentCategory}"`;
   return {
-    text: `Recategorised *${merchant}* (${amt}) from "${prevCategory}" to "${newCategory}". The change is now reflected in your Money Hub dashboard.`,
+    text: `Recategorised *${merchant}* (${amt}) from "${prevCategory}" to ${displayLabel}. The change is now reflected in your Money Hub dashboard.`,
   };
 }
 

@@ -251,10 +251,10 @@ function toRole(name: string): string {
 export async function POST(request: NextRequest) {
   // [audit] forward callback_query.data starting with "audit:" to the audit dispatcher
   try {
-    const _maybe = await request.clone().json().catch(() => null);
+    const _maybe = await req.clone().json().catch(() => null);
     const _cq = _maybe?.callback_query;
     if (_cq?.data?.startsWith('audit:')) {
-      return fetch(new URL('/api/telegram/audit-actions', request.url), {
+      return fetch(new URL('/api/telegram/audit-actions', req.url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callback_query: _cq }),
@@ -271,7 +271,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  let chatIdForError: number | null = null;
   try {
     const body = await request.json();
     const message = body.message;
@@ -281,7 +280,6 @@ export async function POST(request: NextRequest) {
     }
 
     const chatId = message.chat.id;
-    chatIdForError = chatId;
     const text = message.text.trim();
     const firstName = message.from?.first_name || 'Paul';
     const supabase = getAdmin();
@@ -843,21 +841,7 @@ ${context}${agentContext}`;
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    const errMessage = err instanceof Error ? err.message : String(err);
-    const errStack = err instanceof Error && err.stack
-      ? err.stack.split('\n').slice(0, 4).join('\n')
-      : '';
-    console.error('[admin-bot] Error:', errMessage, errStack);
-
-    if (chatIdForError !== null) {
-      const body = `⚠️ Admin bot error\n\n\`\`\`\n${errMessage}${errStack ? `\n\n${errStack}` : ''}\n\`\`\``;
-      try {
-        await sendTelegram(chatIdForError, body);
-      } catch (sendErr) {
-        console.error('[admin-bot] Failed to notify chat of error:', sendErr);
-      }
-    }
-
+    console.error('[admin-bot] Error:', err instanceof Error ? err.message : err);
     return NextResponse.json({ ok: true });
   }
 }

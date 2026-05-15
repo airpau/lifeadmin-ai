@@ -92,13 +92,24 @@ export async function GET(request: NextRequest) {
     query = query.neq('source', 'predicted_recurring');
   }
 
-  const [{ data, error }, { data: connections }] = await Promise.all([
+  // Also fetch future-dated transactions from bank_transactions.
+  // Yapily sometimes returns transactions with a future timestamp (e.g. scheduled
+  // BACS payments, bill payments dated ahead). These won't be in upcoming_payments
+  // yet (the sync-upcoming cron runs daily) but should show immediately.
+  const [{ data, error }, { data: connections }, { data: futureTxns }] = await Promise.all([
     query,
     supabase
       .from('bank_connections')
       .select('provider, status')
       .eq('user_id', user.id)
       .neq('status', 'revoked'),
+    supabase
+      .from('bank_transactions')
+      .select('id, amount, description, merchant_name, timestamp, category, user_category')
+      .eq('user_id', user.id)
+      .gt('timestamp', new Date().toISOString())
+      .lte('timestamp', horizon.toISOString())
+      .order('timestamp', { ascending: true }),
   ]);
   if (error) {
     console.error('[upcoming] list failed:', error.message);
@@ -107,10 +118,37 @@ export async function GET(request: NextRequest) {
 
   const conns = connections || [];
   const hasBankConnected = conns.length > 0;
-  // Only Yapily connections populate upcoming_payments today.
-  const hasUpcomingCapableBank = conns.some((c) => c.provider === 'yapily' && c.status === 'active');
+  // Yapily connections populate upcoming_payments; future-dated bank_transactions also work.
+  const hasUpcomingCapableBank =
+    conns.some((c) => c.provider === 'yapily' && c.status === 'active') ||
+    !!(futureTxns && futureTxns.length > 0);
 
-  const rows = (data || []) as UpcomingPaymentRow[];
+  // Convert future-dated bank_transactions to UpcomingPaymentRow shape.
+  // Deduplicate against upcoming_payments rows using the transaction id.
+  const existingIds = new Set((data || []).map((r: any) => r.yapily_resource_id).filter(Boolean));
+  const futureRows: UpcomingPaymentRow[] = (futureTxns || [])
+    .filter((t: any) => !existingIds.has(t.id))
+    .map((t: any) => {
+      const amount = parseFloat(t.amount);
+      const date = t.timestamp.slice(0, 10);
+      return {
+        id: t.id,
+        account_id: '',
+        source: amount > 0 ? 'pending_credit' : 'pending_debit',
+        direction: amount > 0 ? 'incoming' : 'outgoing',
+        counterparty: t.merchant_name || t.description || null,
+        amount: Math.abs(amount),
+        currency: 'GBP',
+        expected_date: date,
+        confidence: 0.95, // future-dated = Yapily told us about it explicitly
+        yapily_resource_id: t.id,
+      } as UpcomingPaymentRow;
+    });
+
+  const rows: UpcomingPaymentRow[] = [
+    ...((data || []) as UpcomingPaymentRow[]),
+    ...futureRows,
+  ].sort((a, b) => a.expected_date.localeCompare(b.expected_date));
   const groupsMap = new Map<string, UpcomingDayGroup>();
 
   let totalIncoming = 0;

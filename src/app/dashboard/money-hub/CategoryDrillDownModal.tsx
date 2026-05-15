@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { X, Search, ChevronDown, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
+import { X, Search, ChevronDown, CheckCircle2, Loader2, ArrowRight, Plus } from 'lucide-react';
 import { fmtNum } from '@/lib/format';
 import { cleanMerchantName, isGarbageMerchantName, pickRawMerchantSource } from '@/lib/merchant-utils';
+import { USER_SELECTABLE_CATEGORIES } from '@/lib/categories';
+import { createClient } from '@/lib/supabase/client';
 
 interface CategoryDrillDownModalProps {
   isOpen: boolean;
@@ -13,14 +15,9 @@ interface CategoryDrillDownModalProps {
   onRecategorised: () => void;
 }
 
-const ALL_CATEGORIES = [
-  'bills', 'broadband', 'cash', 'charity', 'childcare', 'council_tax', 'credit',
-  'eating_out', 'education', 'energy', 'fees', 'fitness', 'food', 'fuel',
-  'gambling', 'groceries', 'healthcare', 'insurance', 'loans', 'mobile',
-  'mortgage', 'motoring', 'other', 'parking', 'pets', 'professional',
-  'property_management', 'shopping', 'software', 'streaming', 'transport',
-  'transfers', 'travel', 'utility', 'water',
-];
+// Derived from the canonical category taxonomy — always in sync with categories.ts.
+// USER_SELECTABLE_CATEGORIES excludes 'income' and 'transfers' (system-only).
+const ALL_CATEGORIES = USER_SELECTABLE_CATEGORIES.map(c => c.id);
 
 // Income types the user can pick from when drilling into income.
 // Must match the CHECK constraint on bank_transactions.income_type and REAL_INCOME_TYPES in money-hub-classification.
@@ -40,6 +37,11 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
   const [merchantRecatIdx, setMerchantRecatIdx] = useState<number | null>(null);
   const [recatLoading, setRecatLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Business account detection — loaded once on first open
+  const [hasBusinessAccount, setHasBusinessAccount] = useState(false);
+  // Custom category creation
+  const [showCustomInput, setShowCustomInput] = useState<string | null>(null); // holds the merchant pattern
+  const [customCategoryValue, setCustomCategoryValue] = useState('');
 
   useEffect(() => {
     if (isOpen && (category || incomeType || searchQuery)) {
@@ -49,6 +51,26 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
       setErrorMsg(null);
     }
   }, [isOpen, category, incomeType, searchQuery, selectedMonth]);
+
+  // Detect business accounts once on first open — drives whether the Business
+  // category group appears in the reassign dropdown.
+  useEffect(() => {
+    if (!isOpen) return;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data: bizConns } = await supabase
+          .from('bank_connections')
+          .select('id')
+          .eq('is_business', true)
+          .eq('status', 'active')
+          .limit(1);
+        setHasBusinessAccount(!!(bizConns && bizConns.length > 0));
+      } catch {
+        // Not critical — just won't show business categories
+      }
+    })();
+  }, [isOpen]);
 
   const loadData = async () => {
     setLoading(true);
@@ -174,22 +196,88 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
         </>
       );
     }
+    // Filter categories: always show consumer groups; show Business group only
+    // for users who have at least one business bank connection.
+    const visibleCategories = USER_SELECTABLE_CATEGORIES.filter(
+      c => c.group !== 'Business' || hasBusinessAccount,
+    );
+
+    // Group categories for display
+    const groups = visibleCategories.reduce((acc, cat) => {
+      if (!acc[cat.group]) acc[cat.group] = [];
+      acc[cat.group].push(cat);
+      return acc;
+    }, {} as Record<string, typeof USER_SELECTABLE_CATEGORIES>);
+
+    const isCustomMode = showCustomInput === pattern;
+
     return (
       <>
         <div className="p-2 border-b border-slate-200 bg-white">
           <p className="text-xs text-slate-500 font-medium">Reassign to...</p>
         </div>
-        <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
-          {ALL_CATEGORIES.map(c => (
-            <button
-              key={c}
-              onClick={() => handleRecategorise(pattern, c, 'category')}
-              disabled={recatLoading}
-              className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
-            >
-              {c.replace(/_/g, ' ')}
-            </button>
+        <div className="max-h-64 overflow-y-auto custom-scrollbar p-1">
+          {Object.entries(groups).map(([group, cats]) => (
+            <div key={group}>
+              <p className="px-3 pt-2 pb-1 text-[10px] text-slate-400 uppercase tracking-wider font-semibold">{group}</p>
+              {cats.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => handleRecategorise(pattern, c.id, 'category')}
+                  disabled={recatLoading}
+                  className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-purple-500/20 hover:text-purple-300 rounded disabled:opacity-50"
+                >
+                  {c.emoji} {c.label}
+                </button>
+              ))}
+            </div>
           ))}
+        </div>
+
+        {/* Custom category creation */}
+        <div className="border-t border-slate-200 p-1">
+          {isCustomMode ? (
+            <div className="flex gap-1 p-1">
+              <input
+                autoFocus
+                type="text"
+                value={customCategoryValue}
+                onChange={e => setCustomCategoryValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && customCategoryValue.trim()) {
+                    handleRecategorise(pattern, customCategoryValue.trim().toLowerCase().replace(/\s+/g, '_'), 'category');
+                    setShowCustomInput(null);
+                    setCustomCategoryValue('');
+                  } else if (e.key === 'Escape') {
+                    setShowCustomInput(null);
+                    setCustomCategoryValue('');
+                  }
+                }}
+                placeholder="e.g. dog food"
+                className="flex-1 text-sm px-2 py-1 rounded border border-slate-300 focus:outline-none focus:border-purple-400"
+              />
+              <button
+                onClick={() => {
+                  if (customCategoryValue.trim()) {
+                    handleRecategorise(pattern, customCategoryValue.trim().toLowerCase().replace(/\s+/g, '_'), 'category');
+                    setShowCustomInput(null);
+                    setCustomCategoryValue('');
+                  }
+                }}
+                disabled={!customCategoryValue.trim() || recatLoading}
+                className="px-2 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setShowCustomInput(pattern); setCustomCategoryValue(''); }}
+              className="w-full text-left px-3 py-2 text-sm text-purple-400 hover:bg-purple-500/10 hover:text-purple-300 rounded flex items-center gap-1"
+            >
+              <Plus className="h-3 w-3" /> Create custom category
+            </button>
+          )}
         </div>
       </>
     );

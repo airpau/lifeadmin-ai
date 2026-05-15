@@ -145,3 +145,4 @@ export async function runDailyAudit(admin: SupabaseClient): Promise<AuditResult>
 
   return { generated_at, db, compliance, findings, summary_markdown: lines.join('\n') };
 }
+

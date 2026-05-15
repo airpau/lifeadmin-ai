@@ -3,7 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 import { buildRenewalEmail } from '@/lib/email/renewal-reminders';
 import { canSendEmail } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
-import { renewalTemplateVars } from '@/lib/notifications/brief-builder';
 
 export const maxDuration = 60;
 
@@ -100,7 +99,7 @@ export async function GET(request: NextRequest) {
 
       const userName = user.first_name || user.full_name?.split(' ')[0] || 'there';
 
-      const renewalRows = subs.map((s) => ({
+      const renewals = subs.map(s => ({
         provider_name: s.provider_name,
         amount: parseFloat(String(s.amount)),
         category: s.category,
@@ -110,48 +109,41 @@ export async function GET(request: NextRequest) {
         provider_type: s.provider_type,
       }));
 
-      const { subject, html } = buildRenewalEmail(userName, renewalRows, days);
+      const { subject, html } = buildRenewalEmail(userName, renewals, days);
 
-      // Pick the biggest renewal for the WhatsApp template — the
-      // template has a single (service, days_left, monthly_cost) shape
-      // so we surface the headline one. The email + Telegram cover
-      // the full list. Aborts the WhatsApp send entirely when there's
-      // nothing meaningful (e.g. all £0).
-      const biggest = [...renewalRows].sort((a, b) => b.amount - a.amount)[0];
-      const monthly =
-        (biggest.billing_cycle ?? '').toLowerCase() === 'annual' ||
-        (biggest.billing_cycle ?? '').toLowerCase() === 'yearly'
-          ? biggest.amount / 12
-          : biggest.amount;
-      const waVars = renewalTemplateVars({
-        service: biggest.provider_name,
-        daysLeft: days,
-        monthlyCost: monthly,
-      });
+      // Build telegram text — one-line summary per renewal.
+      const tgLines = renewals.map(
+        r => `• ${r.provider_name}: £${r.amount.toFixed(2)}/${r.billing_cycle ?? 'month'} on ${new Date(r.next_billing_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`,
+      ).join('\n');
+      const telegramText = renewals.length === 1
+        ? `🔔 *Renewal coming up in ${days} days*\n\n${tgLines}\n\nOpen Paybacker → Subscriptions to review or cancel.`
+        : `🔔 *${renewals.length} renewals coming up in ${days} days*\n\n${tgLines}\n\nOpen Paybacker → Subscriptions to review.`;
 
-      const telegramText =
-        renewalRows.length === 1
-          ? `📅 *${biggest.provider_name}* renews in ${days} days — £${biggest.amount.toFixed(2)}/${biggest.billing_cycle ?? 'month'}.\n\nReply if you want me to draft a cancellation or switch letter.`
-          : `📅 *${renewalRows.length} renewals* coming up in ${days} days:\n\n${renewalRows
-              .map((r) => `• ${r.provider_name} — £${r.amount.toFixed(2)}/${r.billing_cycle ?? 'month'}`)
-              .join('\n')}\n\nReply 'cancel <name>' if you want to drop one.`;
+      // WhatsApp template only fires for SINGLE-renewal alerts (template
+      // has fixed slots for one service). Multi-renewal alerts fall back
+      // to email + telegram + push.
+      const single = renewals.length === 1 ? renewals[0] : null;
+      const whatsappPayload = single
+        ? {
+            templateName: 'paybacker_alert_renewal',
+            templateParameters: [
+              single.provider_name,
+              String(days),
+              `£${single.amount.toFixed(2)}`,
+            ],
+          }
+        : undefined;
 
-      const dispatch = await sendNotification(supabase, {
+      const dispatchResult = await sendNotification(supabase, {
         userId,
         event: 'renewal_reminder',
         email: { subject, html },
         telegram: { text: telegramText },
-        whatsapp: {
-          templateName: waVars.templateName,
-          templateParameters: waVars.parameters,
-        },
-        push: {
-          title: 'Renewal coming up',
-          body: `${biggest.provider_name} renews in ${days} days (£${biggest.amount.toFixed(2)})`,
-        },
+        whatsapp: whatsappPayload,
+        push: { title: `${renewals.length} renewal${renewals.length === 1 ? '' : 's'} coming up`, body: `£${renewals.reduce((s, r) => s + r.amount, 0).toFixed(2)} renewing in ${days} days` },
       });
 
-      const sent = dispatch.delivered.length > 0;
+      const sent = dispatchResult.delivered.length > 0;
 
       if (sent) {
         await supabase.from('tasks').insert({

@@ -65,7 +65,6 @@ WHATSAPP-SPECIFIC RULES:
 
 GENERAL RULES (mirror the dashboard agent):
 - ALWAYS call the relevant tool before answering — never make up numbers or say "I can't access that".
-- For "biggest outgoings" / "largest expenses" / "top spending" / "where did my money go" questions, call list_transactions WITHOUT a category filter and with sort_by='amount_desc'. NEVER default to category='shopping' for general spending questions — shopping is one category and hides the largest items (rent, loans, solicitors, professional services). Only filter to a specific category when the user explicitly asks about that category.
 - draft_dispute_letter is TERMINAL: call once when asked for a complaint letter. Do NOT call search_legal_rights first. Do NOT call anything after it.
 - generate_cancellation_email: call once when user wants to cancel a specific provider.
 - create_support_ticket: only when the user genuinely needs human support.

@@ -124,3 +124,4 @@ GRANT  EXECUTE ON FUNCTION public.audit_top_pending_corrections(integer)       T
 GRANT  EXECUTE ON FUNCTION public.audit_apply_correction(uuid)                 TO service_role;
 GRANT  EXECUTE ON FUNCTION public.audit_snooze_correction(uuid)                TO service_role;
 GRANT  EXECUTE ON FUNCTION public.audit_bulk_ack_no_content_corrections()      TO service_role;
+

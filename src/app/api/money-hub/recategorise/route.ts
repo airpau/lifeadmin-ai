@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { learnFromCorrection } from '@/lib/learning-engine';
+import { resolveAndStoreMapping } from '@/lib/subcategory-engine';
 
 export const runtime = 'nodejs';
 
@@ -39,11 +40,27 @@ export async function POST(request: NextRequest) {
       ? userSubcategory.trim().slice(0, 50)
       : null;
 
+    // Resolve the category label through the subcategory engine so custom
+    // labels (e.g. "Sainsbury's") get inferred to a canonical parent and
+    // the mapping is stored for future lookups.
+    const admin = getAdmin();
+    let resolvedCategory = newCategory;
+    let resolvedSubcategory = subcat;
+    let resolvedParent = newCategory;
+    if (newCategory) {
+      const resolution = await resolveAndStoreMapping(admin, user.id, newCategory);
+      resolvedParent = resolution.parentCategory;
+      resolvedCategory = resolution.parentCategory; // user_category always = canonical parent
+      // If the user typed a custom label, it becomes the subcategory
+      if (!resolution.isCanonical && resolution.subcategoryLabel) {
+        resolvedSubcategory = resolvedSubcategory ?? resolution.subcategoryLabel;
+      }
+    }
+
     if (!newCategory && !newIncomeType) {
       return NextResponse.json({ error: 'newCategory or newIncomeType required' }, { status: 400 });
     }
 
-    const admin = getAdmin();
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
@@ -133,7 +150,7 @@ export async function POST(request: NextRequest) {
       const { error: upsertErr } = await admin.from('money_hub_category_overrides').upsert({
         user_id: user.id,
         merchant_pattern: overridePattern,
-        user_category: newCategory,
+        user_category: resolvedCategory,
       }, { onConflict: 'user_id,merchant_pattern' });
 
       if (upsertErr) {
@@ -142,7 +159,7 @@ export async function POST(request: NextRequest) {
           await admin.from('money_hub_category_overrides').insert({
             user_id: user.id,
             merchant_pattern: overridePattern,
-            user_category: newCategory,
+            user_category: resolvedCategory,
           });
         } catch { /* silent */ }
       }
@@ -169,14 +186,14 @@ export async function POST(request: NextRequest) {
           const positiveIds = matching.filter(t => Number(t.amount) > 0).map(t => t.id);
           const negativeIds = matching.filter(t => Number(t.amount) <= 0).map(t => t.id);
 
-          const isIncomeRecat = newCategory === 'income';
+          const isIncomeRecat = resolvedCategory === 'income';
           const positivePatch: Record<string, unknown> = isIncomeRecat
-            ? { user_category: newCategory, income_type: null }
-            : { user_category: newCategory, income_type: 'credit_loan' };
-          const negativePatch: Record<string, unknown> = { user_category: newCategory };
-          if (subcat !== null) {
-            positivePatch.user_subcategory = subcat;
-            negativePatch.user_subcategory = subcat;
+            ? { user_category: resolvedCategory, parent_category: resolvedParent, income_type: null }
+            : { user_category: resolvedCategory, parent_category: resolvedParent, income_type: 'credit_loan' };
+          const negativePatch: Record<string, unknown> = { user_category: resolvedCategory, parent_category: resolvedParent };
+          if (resolvedSubcategory !== null) {
+            positivePatch.user_subcategory = resolvedSubcategory;
+            negativePatch.user_subcategory = resolvedSubcategory;
           }
 
           for (let i = 0; i < positiveIds.length; i += 50) {
@@ -196,12 +213,19 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 3. Teach the learning engine
-      await learnFromCorrection({
-        rawName: merchantPattern,
-        category: newCategory,
-        userId: user.id,
-      }).catch((e) => console.error('Learn error (non-fatal):', e.message));
+      // 3. Teach the learning engine + update merchant wisdom
+      await Promise.all([
+        learnFromCorrection({
+          rawName: merchantPattern,
+          category: resolvedCategory,
+          userId: user.id,
+        }).catch((e) => console.error('Learn error (non-fatal):', e.message)),
+        admin.rpc('upsert_merchant_wisdom', {
+          p_pattern: merchantPattern.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^a-z0-9 ]/g, '').substring(0, 60),
+          p_category: resolvedCategory,
+          p_source: 'user',
+        }).catch((e: Error) => console.error('Wisdom upsert error (non-fatal):', e.message)),
+      ]);
 
       // 4. Reverse-sync to subscriptions: if the user recategorised a
       // merchant in Money Hub, the matching subscription row was
@@ -226,8 +250,8 @@ export async function POST(request: NextRequest) {
         success: true,
         updated,
         merchant: merchantPattern,
-        category: newCategory,
-        message: `Recategorised ${updated} transaction${updated !== 1 ? 's' : ''} to "${newCategory}"`,
+        category: resolvedCategory,
+        message: `Recategorised ${updated} transaction${updated !== 1 ? 's' : ''} to "${resolvedCategory}"`,
       });
     }
 
@@ -239,8 +263,11 @@ export async function POST(request: NextRequest) {
         .eq('id', transactionId)
         .single();
 
-      const txnPatch: Record<string, any> = { user_category: newCategory };
-      if (subcat !== null) txnPatch.user_subcategory = subcat;
+      const txnPatch: Record<string, any> = {
+        user_category: resolvedCategory,
+        parent_category: resolvedParent,
+      };
+      if (resolvedSubcategory !== null) txnPatch.user_subcategory = resolvedSubcategory;
       // For positive-amount transactions:
       // - re-tagged as a non-income category → stamp 'credit_loan' so Money Hub
       //   excludes it from monthly income
@@ -248,7 +275,7 @@ export async function POST(request: NextRequest) {
       //   can re-detect it (was previously left untouched, which occasionally
       //   left a credit_loan flag in place that still suppressed income)
       if (txnData && Number(txnData.amount) > 0) {
-        txnPatch.income_type = newCategory === 'income' ? null : 'credit_loan';
+        txnPatch.income_type = resolvedCategory === 'income' ? null : 'credit_loan';
       }
 
       await admin.from('bank_transactions')
@@ -260,7 +287,7 @@ export async function POST(request: NextRequest) {
         await admin.from('money_hub_category_overrides').insert({
           user_id: user.id,
           transaction_id: transactionId,
-          user_category: newCategory,
+          user_category: resolvedCategory,
         });
       } catch { /* silent */ }
       
