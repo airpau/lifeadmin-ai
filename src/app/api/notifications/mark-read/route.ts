@@ -12,6 +12,24 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { logAlertInteraction, responseTimeFrom, type AlertType } from '@/lib/alert-interactions';
+
+const TYPE_TO_ALERT_TYPE: Record<string, AlertType> = {
+  price_increase: 'price_increase',
+  renewal_reminder: 'renewal',
+  contract_expiry: 'contract_expiry',
+  budget_alert: 'budget',
+  dispute_reply: 'dispute_reply',
+  dispute_reminder: 'dispute',
+  dispute_reply_action: 'dispute_reply',
+  overcharge_detected: 'overcharge',
+  unused_subscription: 'unused_subscription',
+  new_opportunity: 'opportunity',
+  income_received: 'income_received',
+  money_received: 'income_received',
+  money_recovered: 'income_received',
+  reconnect_required: 'reconnect_required',
+};
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -36,7 +54,7 @@ export async function POST(request: NextRequest) {
   // any linked dispute counters atomically.
   let query = supabase
     .from('user_notifications')
-    .select('id, dispute_id, type, read_at')
+    .select('id, dispute_id, type, read_at, created_at')
     .eq('user_id', user.id)
     .is('read_at', null);
 
@@ -67,6 +85,22 @@ export async function POST(request: NextRequest) {
   if (updErr) {
     console.error('[notifications.markRead.update]', updErr);
     return NextResponse.json({ error: 'Failed to mark notifications as read' }, { status: 500 });
+  }
+
+  // Drop one alert_interactions row per cleared notification so the
+  // relevance engine learns which alert types this user actually opens.
+  for (const n of toMark ?? []) {
+    const mapped = TYPE_TO_ALERT_TYPE[n.type ?? ''] ?? 'notification';
+    void logAlertInteraction({
+      userId: user.id,
+      alertType: mapped,
+      alertKey: n.dispute_id ?? n.id,
+      action: 'viewed',
+      responseTimeSeconds: responseTimeFrom(n.created_at),
+      surface: 'web',
+      metadata: { notification_type: n.type },
+      client: supabase,
+    });
   }
 
   // For each dispute_reply notification we just cleared, decrement the

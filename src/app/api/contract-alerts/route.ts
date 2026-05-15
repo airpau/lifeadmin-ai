@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { logAlertInteraction, responseTimeFrom } from '@/lib/alert-interactions';
 
 /**
  * GET /api/contract-alerts — fetch in-app contract renewal alerts for the current user
@@ -61,6 +62,23 @@ export async function PATCH(request: NextRequest) {
     console.error('Error updating contract alert:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // status: 'dismissed' / 'clicked' / 'actioned'. 'clicked' is a soft view —
+  // treat as a viewed signal so the relevance engine doesn't conflate it
+  // with full action-take.
+  const interactionAction =
+    status === 'dismissed' ? 'dismissed'
+    : status === 'actioned' ? 'acted'
+    : 'viewed';
+  void logAlertInteraction({
+    userId: user.id,
+    alertType: 'renewal',
+    alertKey: id,
+    action: interactionAction,
+    responseTimeSeconds: responseTimeFrom(data?.created_at),
+    surface: 'web',
+    metadata: data?.provider_name ? { provider: data.provider_name } : null,
+  });
 
   return NextResponse.json(data);
 }

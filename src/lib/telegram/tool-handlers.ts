@@ -25,6 +25,11 @@ import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/cla
 import { generateAnnualReportData, generateOnDemandReportData } from '@/lib/report-generator';
 import { predictMonthlyIncome } from '@/lib/income-prediction';
 import { resolveAndStoreMapping } from '@/lib/subcategory-engine';
+import { logAlertInteraction } from '@/lib/alert-interactions';
+import {
+  bumpUserIntelligence,
+  voteMerchantCategoryWisdom,
+} from '@/lib/user-intelligence';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -263,6 +268,19 @@ export async function executeToolCall(
         priority: (toolInput.priority as string | undefined) ?? 'medium',
       });
     case 'update_dispute_status':
+      void logAlertInteraction({
+        userId,
+        alertType: 'dispute',
+        alertKey: toolInput.provider as string,
+        action: 'acted',
+        surface: channel === 'whatsapp' ? 'whatsapp' : channel === 'chatbot' ? 'web' : 'telegram',
+        metadata: {
+          provider: toolInput.provider,
+          new_status: toolInput.new_status,
+          money_recovered: toolInput.money_recovered ?? null,
+        },
+        client: supabase,
+      });
       return updateDisputeStatus(
         supabase,
         userId,
@@ -329,11 +347,36 @@ export async function executeToolCall(
         next_billing_date: toolInput.next_billing_date as string | undefined,
       });
     case 'dismiss_action_item':
+      void logAlertInteraction({
+        userId,
+        alertType: 'action_item',
+        alertKey: toolInput.provider_name as string,
+        action: 'dismissed',
+        surface: channel === 'whatsapp' ? 'whatsapp' : channel === 'chatbot' ? 'web' : 'telegram',
+        metadata: {
+          provider: toolInput.provider_name,
+          item_type: toolInput.item_type ?? 'any',
+        },
+        client: supabase,
+      });
       return dismissActionItem(supabase, userId, {
         provider_name: toolInput.provider_name as string,
         item_type: (toolInput.item_type as string | undefined) ?? 'any',
       });
     case 'mark_bill_paid':
+      void logAlertInteraction({
+        userId,
+        alertType: 'budget',
+        alertKey: toolInput.provider_name as string,
+        action: 'acted',
+        surface: channel === 'whatsapp' ? 'whatsapp' : channel === 'chatbot' ? 'web' : 'telegram',
+        metadata: {
+          provider: toolInput.provider_name,
+          amount: toolInput.amount ?? null,
+          reason: 'marked_paid',
+        },
+        client: supabase,
+      });
       return markBillPaid(supabase, userId, {
         provider_name: toolInput.provider_name as string,
         amount: toolInput.amount as number | undefined,
@@ -388,6 +431,15 @@ export async function executeToolCall(
       });
     // ===== Parity batch (2026-04-29) =====
     case 'dismiss_price_alert':
+      void logAlertInteraction({
+        userId,
+        alertType: 'price_increase',
+        alertKey: toolInput.provider as string,
+        action: 'dismissed',
+        surface: channel === 'whatsapp' ? 'whatsapp' : channel === 'chatbot' ? 'web' : 'telegram',
+        metadata: { provider: toolInput.provider },
+        client: supabase,
+      });
       return dismissPriceAlert(supabase, userId, toolInput.provider as string);
     case 'update_profile':
       return updateProfile(supabase, userId, {
@@ -461,9 +513,38 @@ export async function executeToolCall(
         desired_outcome: toolInput.desired_outcome as string,
       });
     // ===== Phase 3a — edge actions =====
-    case 'complete_task': return completeTask(supabase, userId, toolInput.task_id as string);
-    case 'snooze_task': return snoozeTask(supabase, userId, toolInput.task_id as string, toolInput.days as number);
-    case 'snooze_dispute': return snoozeDispute(supabase, userId, toolInput.provider as string, toolInput.days as number);
+    case 'complete_task':
+      void logAlertInteraction({
+        userId,
+        alertType: 'task',
+        alertKey: toolInput.task_id as string,
+        action: 'acted',
+        surface: channel === 'whatsapp' ? 'whatsapp' : channel === 'chatbot' ? 'web' : 'telegram',
+        client: supabase,
+      });
+      return completeTask(supabase, userId, toolInput.task_id as string);
+    case 'snooze_task':
+      void logAlertInteraction({
+        userId,
+        alertType: 'task',
+        alertKey: toolInput.task_id as string,
+        action: 'snoozed',
+        surface: channel === 'whatsapp' ? 'whatsapp' : channel === 'chatbot' ? 'web' : 'telegram',
+        metadata: { days: toolInput.days ?? null },
+        client: supabase,
+      });
+      return snoozeTask(supabase, userId, toolInput.task_id as string, toolInput.days as number);
+    case 'snooze_dispute':
+      void logAlertInteraction({
+        userId,
+        alertType: 'dispute',
+        alertKey: toolInput.provider as string,
+        action: 'snoozed',
+        surface: channel === 'whatsapp' ? 'whatsapp' : channel === 'chatbot' ? 'web' : 'telegram',
+        metadata: { provider: toolInput.provider, days: toolInput.days ?? null },
+        client: supabase,
+      });
+      return snoozeDispute(supabase, userId, toolInput.provider as string, toolInput.days as number);
     case 'escalate_dispute': return escalateDispute(supabase, userId, channel, toolInput.provider as string);
     case 'reopen_dispute': return reopenDispute(supabase, userId, toolInput.provider as string, toolInput.reason as string);
     case 'move_correspondence_to_dispute': return moveCorrespondence(supabase, userId, toolInput.correspondence_id as string, toolInput.target_dispute_provider as string);
@@ -1720,6 +1801,7 @@ async function recategoriseTransactions(
   // Push to learning engine so it autonomously remembers for future syncs!
   try {
     const { learnFromCorrection } = await import('@/lib/learning-engine');
+    // We only need to learn once per merchant batch
     const sample = data[0];
     await learnFromCorrection({
       rawName: sample.description || sample.merchant_name || merchantName,
@@ -1731,6 +1813,12 @@ async function recategoriseTransactions(
   } catch (err: any) {
     console.error('[UserBot] Error pushing to learning engine:', err.message);
   }
+
+  // Self-learning: bump intelligence profile + vote for cross-user
+  // category wisdom against the canonical parent category. Fire-and-
+  // forget — never block the bot reply.
+  void bumpUserIntelligence(supabase, userId, parentCategory);
+  void voteMerchantCategoryWisdom(supabase, merchantName, parentCategory);
 
   const displayLabel = subcategoryLabel
     ? `"${subcategoryLabel}" (mapped to ${parentCategory})`
@@ -4114,6 +4202,13 @@ async function recategoriseTransaction(
     });
   } catch (err: any) {
     console.error('[UserBot] Error pushing to learning engine:', err.message);
+  }
+
+  // Self-learning fan-out: bump intelligence + vote merchant wisdom.
+  void bumpUserIntelligence(supabase, userId, newCategory);
+  const wisdomKey = (txn.merchant_name || txn.description || '').toLowerCase().trim();
+  if (wisdomKey) {
+    void voteMerchantCategoryWisdom(supabase, wisdomKey, newCategory);
   }
 
   const merchant = txn.merchant_name ?? 'Unknown';

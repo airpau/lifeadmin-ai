@@ -3,6 +3,10 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { auto_categorise_business_transaction } from '@/lib/money-hub-classification';
+import {
+  refineIncomeTypeWithBusinessContext,
+  looksLikeBusinessBankName,
+} from '@/lib/income-classifier-business';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -140,19 +144,46 @@ export async function POST() {
   const sixMonthsAgo = new Date();
   sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-  // Identify which bank connections are business accounts so we can apply
-  // the business categoriser to their transactions.
-  const { data: businessConns } = await admin.from('bank_connections')
-    .select('id')
-    .eq('user_id', user.id)
-    .eq('is_business', true);
-  const businessConnectionIds = new Set((businessConns || []).map((c: { id: string }) => c.id));
+  // Identify which bank connections are business accounts. We combine
+  // BOTH signals: the canonical `is_business=true` flag (set by the
+  // backfill in 20260515100000_business_categories.sql or by the user
+  // toggle) AND the bank-name heuristic so newer connections from
+  // HSBC Business / Tide / Mettle / Starling Business get the smarter
+  // classifier even before the column is set.
+  const { data: connRows } = await admin.from('bank_connections')
+    .select('id, bank_name, is_business')
+    .eq('user_id', user.id);
+  const businessConnectionIds = new Set<string>();
+  for (const c of connRows ?? []) {
+    const flag = (c as { is_business?: boolean }).is_business === true;
+    if (flag || looksLikeBusinessBankName(c.bank_name)) {
+      businessConnectionIds.add(c.id);
+    }
+  }
 
   const { data: transactions } = await admin.from('bank_transactions')
     .select('id, transaction_id, amount, description, category, merchant_name, timestamp, user_category, income_type, connection_id')
     .eq('user_id', user.id)
     .gte('timestamp', sixMonthsAgo.toISOString())
     .order('timestamp', { ascending: false });
+
+  // Step 3b: For the recurring-same-merchant heuristic we need a lookup
+  // of past credits per merchant. Build once, in memory.
+  const recentCreditsByMerchant = new Map<
+    string,
+    Array<{ amount: number; timestampMs: number }>
+  >();
+  for (const t of transactions ?? []) {
+    const amt = parseFloat(String(t.amount)) || 0;
+    if (amt <= 0) continue;
+    const merchant = (t.merchant_name ?? '').toLowerCase().trim();
+    if (!merchant) continue;
+    const ts = t.timestamp ? Date.parse(t.timestamp) : 0;
+    if (!ts) continue;
+    const bucket = recentCreditsByMerchant.get(merchant) ?? [];
+    bucket.push({ amount: amt, timestampMs: ts });
+    recentCreditsByMerchant.set(merchant, bucket);
+  }
 
   if (!transactions || transactions.length === 0) {
     return NextResponse.json({ synced: true, categorised: 0, message: 'No transactions to categorise' });
@@ -220,6 +251,29 @@ export async function POST() {
     if (amount > 0) {
       incomeType = detectIncomeType(desc);
       if (incomeType) incomeType = incomeType.toLowerCase();
+
+      // Business-account refinement. If the credit landed on a connection
+      // tagged as business (HSBC Business, Tide, Starling Business etc.),
+      // run the richer classifier so HMRC credits don't get bucketed as
+      // 'salary' and customer payments are tagged as 'client_payment'.
+      const isBusinessAccount = businessConnectionIds.has(
+        (txn as { connection_id?: string }).connection_id ?? '',
+      );
+      if (isBusinessAccount) {
+        const merchantKey = (txn.merchant_name ?? '').toLowerCase().trim();
+        const recent = (recentCreditsByMerchant.get(merchantKey) ?? []).filter(
+          (r) => r.timestampMs !== Date.parse(txn.timestamp ?? ''),
+        );
+        const refined = refineIncomeTypeWithBusinessContext(incomeType, {
+          amount,
+          description: desc,
+          merchantName: txn.merchant_name,
+          bankCategory: txn.category,
+          accountIsBusiness: true,
+          recentSameMerchant: recent.slice(0, 6),
+        });
+        if (refined) incomeType = refined;
+      }
       // Credit/loan disbursements are not income — treat like transfers
       if (incomeType === 'credit_loan') {
         if (!finalCategory) finalCategory = 'transfers';
@@ -261,7 +315,19 @@ export async function POST() {
 
     // For positive-amount transactions with a real income_type, ensure user_category is 'income'
     // so the income RPCs (which require user_category='income') count them correctly.
-    const realIncomeTypes = new Set(['salary', 'rental', 'rental_airbnb', 'rental_direct', 'freelance', 'benefits', 'investment', 'refund', 'loan_repayment', 'gift', 'other']);
+    // Business types (client_payment / invoice_payment / business_income /
+    // tax_refund / tax_refund_vat / interest / owner_draw / personal_transfer)
+    // are added here so a business-account credit flagged by the refiner
+    // still gets the 'income' user_category and shows up in income totals.
+    const realIncomeTypes = new Set([
+      'salary', 'rental', 'rental_airbnb', 'rental_direct', 'freelance',
+      'benefits', 'investment', 'refund', 'loan_repayment', 'gift', 'other',
+      // business-account refinements (see refineIncomeTypeWithBusinessContext)
+      'client_payment', 'invoice_payment', 'business_income',
+      'tax_refund', 'tax_refund_vat', 'interest',
+      // 'owner_draw' / 'personal_transfer' are NOT income — they're
+      // structural movements of the owner's own money.
+    ]);
     if (amount > 0 && incomeType && realIncomeTypes.has(incomeType) && finalCategory !== 'transfers') {
       finalCategory = 'income';
     }

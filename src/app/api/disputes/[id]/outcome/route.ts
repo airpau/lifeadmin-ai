@@ -16,6 +16,7 @@ import {
   inferIndustry,
   normaliseMerchant,
 } from '@/lib/dispute-outcome/normalise';
+import { logAlertInteraction, responseTimeFrom } from '@/lib/alert-interactions';
 
 const VALID_OUTCOMES = ['won', 'partial', 'lost', 'withdrawn', 'timeout', 'still_open'] as const;
 const VALID_SOURCES = ['user', 'ai_extracted', 'admin', 'auto_timeout'] as const;
@@ -136,6 +137,21 @@ export async function POST(
   if (evErr) {
     console.warn('[disputes.outcome] event-log insert failed (non-fatal):', evErr.message);
   }
+
+  void logAlertInteraction({
+    userId: user.id,
+    alertType: 'dispute',
+    alertKey: id,
+    action: 'acted',
+    responseTimeSeconds: responseTimeFrom(dispute.created_at),
+    surface: 'web',
+    metadata: {
+      outcome,
+      source,
+      recovered_amount_gbp: recovered,
+      provider: dispute.provider_name,
+    },
+  });
 
   return NextResponse.json({ ok: true, outcome, recovered_amount_gbp: recovered });
 }

@@ -14,7 +14,13 @@ const LOAN_INCOME_KEYS = new Set(['credit_loan', 'loan_repayment', 'loan_credit'
 // actually gone up. Loan receipts now surface as a "Loan Credit" row in
 // the breakdown and count toward monthly income. See the label in
 // OverviewPanel.tsx and the matching row in the pie/stats.
-const EXCLUDED_INCOME_KEYS = new Set(['transfer']);
+// Structural movements of the user's OWN money (not income):
+// - 'transfer'         — internal hop between own accounts (consumer)
+// - 'owner_draw'       — director / sole-trader moving money between
+//                        their personal and business accounts (business)
+// - 'personal_transfer' — same as owner_draw on a non-incorporated setup.
+// All three are excluded from monthly income totals + breakdown rows.
+const EXCLUDED_INCOME_KEYS = new Set(['transfer', 'owner_draw', 'personal_transfer']);
 
 export function normalizeIncomeTypeKey(value: string | null | undefined): string {
   const key = (value || '').toLowerCase().trim();

@@ -3,6 +3,11 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { learnFromCorrection } from '@/lib/learning-engine';
 import { resolveAndStoreMapping } from '@/lib/subcategory-engine';
+import {
+  bumpUserIntelligence,
+  voteMerchantCategoryWisdom,
+  propagateMerchantWisdom,
+} from '@/lib/user-intelligence';
 
 export const runtime = 'nodejs';
 
@@ -124,6 +129,11 @@ export async function POST(request: NextRequest) {
           userId: user.id,
         }).catch(() => {});
 
+        // Bump intelligence on income-type changes too — these signal
+        // a business/personal mix (e.g. flipping a credit to
+        // 'client_payment' is a strong business signal).
+        void bumpUserIntelligence(admin, user.id, newIncomeType);
+
         return NextResponse.json({ success: true, updated, merchant: merchantPattern, incomeType: newIncomeType });
       }
       return NextResponse.json({ error: 'transactionId or merchantPattern required' }, { status: 400 });
@@ -230,6 +240,21 @@ export async function POST(request: NextRequest) {
         })(),
       ]);
 
+      // 3a. Self-learning: bump user_intelligence_profile so the AI
+      // learns this user's account_mode + correction velocity, and vote
+      // the merchant/category pair into merchant_category_wisdom so
+      // other users can benefit anonymously. Both fire-and-forget.
+      void bumpUserIntelligence(admin, user.id, newCategory);
+      void voteMerchantCategoryWisdom(admin, overridePattern, newCategory);
+      // Once the wisdom vote tips past the trust threshold (≥3 distinct
+      // user votes for the same merchant/category pair), propagate the
+      // category to OTHER users who haven't manually set it. Capped at
+      // 200 rows per call to keep the response fast.
+      void propagateMerchantWisdom(admin, overridePattern, newCategory, user.id, {
+        minVotes: 3,
+        maxRows: 200,
+      });
+
       // 4. Reverse-sync to subscriptions: if the user recategorised a
       // merchant in Money Hub, the matching subscription row was
       // stuck on its old category — the subscriptions PATCH path
@@ -302,6 +327,16 @@ export async function POST(request: NextRequest) {
           amount: txnData.amount,
           userId: user.id,
         }).catch((e) => console.error('Learn error:', e.message));
+
+        // Self-learning: bump intelligence + vote for cross-user wisdom.
+        // Merchant pattern from the transaction's merchant_name (falling
+        // back to description) so we vote on a real merchant string.
+        const wisdomPattern = (txnData.merchant_name || txnData.description || '')
+          .toLowerCase().trim();
+        void bumpUserIntelligence(admin, user.id, newCategory);
+        if (wisdomPattern) {
+          void voteMerchantCategoryWisdom(admin, wisdomPattern, newCategory);
+        }
       }
 
       return NextResponse.json({ success: true, updated: 1, transactionId, category: newCategory });

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { logAlertInteraction } from '@/lib/alert-interactions';
 
 export async function POST() {
   try {
@@ -16,6 +17,14 @@ export async function POST() {
       .eq('id', user.id);
 
     if (error) throw error;
+
+    void logAlertInteraction({
+      userId: user.id,
+      alertType: 'bank_prompt',
+      alertKey: 'connect_bank_prompt',
+      action: 'dismissed',
+      surface: 'web',
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
