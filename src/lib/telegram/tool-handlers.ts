@@ -133,6 +133,7 @@ export async function executeToolCall(
         category: toolInput.category as string | undefined,
         merchant: toolInput.merchant as string | undefined,
         limit: toolInput.limit as number | undefined,
+        sort_by: toolInput.sort_by as 'date_desc' | 'amount_desc' | undefined,
       });
     case 'get_subscriptions':
       return getSubscriptions(supabase, userId, toolInput.filter as string | undefined, toolInput.category as string | undefined, toolInput.provider as string | undefined);
@@ -769,7 +770,7 @@ async function getSpendingSummary(
 async function listTransactions(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
-  params: { month?: string; category?: string; merchant?: string; limit?: number },
+  params: { month?: string; category?: string; merchant?: string; limit?: number; sort_by?: 'date_desc' | 'amount_desc' },
 ): Promise<ToolResult> {
   const now = new Date();
   let year = now.getFullYear();
@@ -822,6 +823,17 @@ async function listTransactions(
     );
   }
 
+  // "Biggest outgoings" path: sort all debits by absolute amount, largest first.
+  // When no explicit category was set, restrict to spending so income receipts
+  // don't drown out actual outgoings.
+  const sortBy = params.sort_by ?? 'date_desc';
+  if (sortBy === 'amount_desc') {
+    if (!targetCategory) {
+      filtered = filtered.filter(t => t.resolved.kind === 'spending' && t.effectiveCategory !== 'transfers');
+    }
+    filtered = [...filtered].sort((a, b) => Math.abs(Number(b.amount)) - Math.abs(Number(a.amount)));
+  }
+
   if (filtered.length === 0) {
     const filterDesc = `${targetCategory ? ` in ${CATEGORY_LABELS[targetCategory] || targetCategory}` : ''}${params.merchant ? ` matching "${params.merchant}"` : ''}`;
     if (noneConnected) {
@@ -838,7 +850,10 @@ async function listTransactions(
   const display = filtered.slice(0, maxResults);
   const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
-  let text = `*Transactions — ${monthLabel}${scopeHeader}*`;
+  const headerLabel = sortBy === 'amount_desc' && !targetCategory && !params.merchant
+    ? 'Biggest Outgoings'
+    : 'Transactions';
+  let text = `*${headerLabel} — ${monthLabel}${scopeHeader}*`;
   if (targetCategory) text += ` (${CATEGORY_LABELS[targetCategory] || targetCategory})`;
   if (params.merchant) text += ` matching "${params.merchant}"`;
   text += `\n\n`;

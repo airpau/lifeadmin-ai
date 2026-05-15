@@ -23,7 +23,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'list_transactions',
     description:
-      "List individual bank transactions with merchant name, amount, category, and date. Use this when the user asks to see specific transactions, direct debits, payments, or wants to review what they've been charged. Can filter by category, merchant, or date range.",
+      "List individual bank transactions with merchant name, amount, category, and date. Use this when the user asks to see specific transactions, direct debits, payments, or wants to review what they've been charged. Can filter by category, merchant, or date range. For 'biggest outgoings', 'largest expenses', 'top spending', or 'where did my money go' questions, call this with sort_by='amount_desc' and NO category filter so you scan ALL debits (rent, loans, professional services, etc.) — not just one category like shopping.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -33,7 +33,7 @@ export const telegramTools: Tool[] = [
         },
         category: {
           type: 'string',
-          description: 'Filter by category (e.g. "food", "streaming", "bills"). Optional.',
+          description: 'Filter by category (e.g. "food", "streaming", "bills"). OMIT this when the user asks about general spending, biggest outgoings, or where their money is going — defaulting to a single category like "shopping" hides the largest items (rent, loans, professional services).',
         },
         merchant: {
           type: 'string',
@@ -42,6 +42,11 @@ export const telegramTools: Tool[] = [
         limit: {
           type: 'number',
           description: 'Max number of transactions to return. Defaults to 25.',
+        },
+        sort_by: {
+          type: 'string',
+          enum: ['date_desc', 'amount_desc'],
+          description: "Sort order. 'date_desc' (default) = most recent first. 'amount_desc' = biggest debits first across ALL spending — use this for 'biggest outgoings', 'largest expenses', 'top spending', 'where did my money go' questions.",
         },
       },
       required: [],
