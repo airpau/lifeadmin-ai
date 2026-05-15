@@ -8,7 +8,7 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const CANCEL_MODEL = 'claude-haiku-4-5-20251001';
+const CANCEL_MODEL = 'claude-3-5-haiku-20241022';
 
 // Category-specific legal context
 const CATEGORY_LEGAL_CONTEXT: Record<string, string> = {

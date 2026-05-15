@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -197,5 +198,113 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, sent, errors: errors.length });
+  // ----------------------------------------------------------------
+  // WhatsApp pass — same budget-threshold detection, sent as the
+  // Meta-approved `paybacker_budget_alert` template. Pocket Agent mutex
+  // guarantees these users are NOT in the Telegram loop above.
+  // ----------------------------------------------------------------
+  let waSent = 0;
+  const { data: waSessions } = await supabase
+    .from('whatsapp_sessions')
+    .select('user_id, whatsapp_phone')
+    .eq('is_active', true)
+    .is('opted_out_at', null);
+
+  if (waSessions && waSessions.length > 0) {
+    const waUserIds = waSessions.map((s) => s.user_id);
+    const { data: waProfiles } = await supabase
+      .from('profiles')
+      .select(
+        'id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at',
+      )
+      .in('id', waUserIds);
+    const waProIds = new Set(
+      (waProfiles ?? []).filter((p) => isProPocketAgentEligible(p)).map((p) => p.id),
+    );
+
+    // Month-end date string for the template parameter (template ends on
+    // end_date so the user knows the budget window).
+    const endOfMonth = new Date(year, month, 0);
+    const endDateStr = endOfMonth.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+    });
+
+    for (const session of waSessions) {
+      if (!waProIds.has(session.user_id)) continue;
+
+      try {
+        const { data: budgets } = await supabase
+          .from('money_hub_budgets')
+          .select('category, monthly_limit')
+          .eq('user_id', session.user_id);
+        if (!budgets || budgets.length === 0) continue;
+
+        const { data: spendingRows } = await supabase.rpc('get_monthly_spending', {
+          p_user_id: session.user_id,
+          p_year: year,
+          p_month: month,
+        });
+        type SpendingRow = { category: string; category_total: string };
+        const spentByCategory: Record<string, number> = {};
+        for (const row of (spendingRows as SpendingRow[]) ?? []) {
+          spentByCategory[row.category] = parseFloat(row.category_total) || 0;
+        }
+
+        const { data: existingAlerts } = await supabase
+          .from('budget_alert_log')
+          .select('category, threshold')
+          .eq('user_id', session.user_id)
+          .eq('month', monthStr);
+        const alreadySent = new Set(
+          (existingAlerts ?? []).map((a) => `${a.category}_${a.threshold}`),
+        );
+
+        for (const budget of budgets) {
+          const limit = Number(budget.monthly_limit);
+          const spent = spentByCategory[budget.category] ?? 0;
+          const pct = limit > 0 ? (spent / limit) * 100 : 0;
+
+          let threshold: 80 | 100 | null = null;
+          if (pct >= 100 && !alreadySent.has(`${budget.category}_100`)) threshold = 100;
+          else if (pct >= 80 && pct < 100 && !alreadySent.has(`${budget.category}_80`)) threshold = 80;
+          if (!threshold) continue;
+
+          const result = await sendNotification(supabase, {
+            userId: session.user_id,
+            event: 'budget_alert',
+            whatsapp: {
+              templateName: 'paybacker_budget_alert',
+              templateParameters: [
+                budget.category,
+                `${Math.round(pct)}`,
+                `£${Math.max(0, limit - spent).toFixed(2)}`,
+                endDateStr,
+              ],
+            },
+          });
+
+          if (result.delivered.includes('whatsapp')) {
+            waSent++;
+            await supabase
+              .from('budget_alert_log')
+              .insert({
+                user_id: session.user_id,
+                category: budget.category,
+                threshold,
+                month: monthStr,
+              })
+              .select()
+              .single();
+          }
+        }
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        console.error(`[telegram-budget-alerts][wa] ${session.user_id}: ${m}`);
+        errors.push(`wa:${session.user_id}: ${m}`);
+      }
+    }
+  }
+
+  return NextResponse.json({ ok: true, sent, waSent, errors: errors.length });
 }

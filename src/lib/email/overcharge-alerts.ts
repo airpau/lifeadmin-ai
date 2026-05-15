@@ -56,7 +56,7 @@ export async function sendOverchargeAlert(
     : `Bill check: ${assessments.length} subscription${assessments.length > 1 ? 's' : ''} reviewed`;
 
   const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: #FFFFFF; color: #E5E7EB; padding: 32px 20px;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: #FFFFFF; color: #374151; padding: 32px 20px;">
       <div style="text-align: center; margin-bottom: 24px;">
         <h1 style="color: #0B1220; font-size: 22px; margin: 0 0 8px;">Overcharge Report</h1>
         <p style="color: #6B7280; font-size: 14px; margin: 0;">Hi ${name}, we found potential savings on your bills.</p>

@@ -330,13 +330,13 @@ const TOOLS = [
   {
     name: "get_finance_snapshot",
     description:
-      "Returns a structured snapshot of Paybacker's financial state from Supabase: user counts by tier (free/plus/pro), active paying users, estimated MRR + ARR, signups (last 7d/30d), active onboarding trials, trial conversions / expiries (7d/30d), recent plan downgrade events, subscriptions expiring soon, and upcoming payments. Read-only. Use this on every finance-analyst session before reasoning about revenue health.",
+      "Returns a structured snapshot of Paybacker's financial state from Supabase: user counts by tier (free/essential/pro — 'plus' is the legacy alias for 'essential'), active paying users, estimated MRR + ARR, signups (last 7d/30d), active onboarding trials, trial conversions / expiries (7d/30d), recent plan downgrade events, subscriptions expiring soon, and upcoming payments. Read-only. Use this on every finance-analyst session before reasoning about revenue health.",
     inputSchema: {
       type: "object" as const,
       properties: {
         tier_prices_gbp: {
           type: "object",
-          description: "Optional override for tier monthly prices in GBP. Defaults to the canonical {free:0, plus:4.99, pro:9.99} from src/lib/plan-limits.ts. Use only if the live pricing config has changed and you want the agent to compute MRR with new prices.",
+          description: "Optional override for tier monthly prices in GBP. Defaults to the canonical {free:0, essential:4.99, pro:9.99} from src/lib/plan-limits.ts. The legacy 'plus' slug is mapped to the same £4.99 price for backwards compatibility with rows written before the 2026-04-22 rename. Use only if the live pricing config has changed and you want the agent to compute MRR with new prices.",
         },
       },
     },
@@ -711,8 +711,13 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
     case "get_finance_snapshot": {
       const { url, key } = getSupabaseCredentials();
       const tierPricesArg = args.tier_prices_gbp as Record<string, number> | undefined;
+      // Canonical tiers (per CLAUDE.md, src/lib/plan-limits.ts): free / essential / pro.
+      // 'plus' is the legacy slug for what's now 'essential' (renamed 2026-04-22).
+      // Keeping it in the default map at the same £4.99 price so any rows still
+      // tagged 'plus' continue to contribute correctly to MRR.
       const tierPrices: Record<string, number> = tierPricesArg ?? {
         free: 0,
+        essential: 4.99,
         plus: 4.99,
         pro: 9.99,
       };

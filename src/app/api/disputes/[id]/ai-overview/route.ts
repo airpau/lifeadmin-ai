@@ -62,11 +62,14 @@ export async function GET(
     .maybeSingle();
   if (!dispute) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { data: correspondence } = await admin
+  const { data: correspondence, error: corrErr } = await admin
     .from('correspondence')
-    .select('id, entry_type, direction, content, sender_name, occurred_at, entry_date, title')
+    .select('id, entry_type, content, sender_name, entry_date, title, ai_category, ai_respond_needed, ai_urgency')
     .eq('dispute_id', id)
-    .order('occurred_at', { ascending: true, nullsFirst: false });
+    .order('entry_date', { ascending: true, nullsFirst: false });
+  if (corrErr) {
+    return NextResponse.json({ error: `Failed to load thread: ${corrErr.message}` }, { status: 500 });
+  }
   const corrs = correspondence ?? [];
 
   // Cache hit — same number of messages and we already have a summary.
@@ -90,7 +93,7 @@ export async function GET(
   // Build a compact thread digest for the prompt — cap each entry so
   // we stay within Haiku\'s context budget on long disputes.
   const lines = corrs.map((c) => {
-    const date = (c.occurred_at || c.entry_date || '').slice(0, 10);
+    const date = (c.entry_date || '').slice(0, 10);
     const who = c.entry_type === 'ai_letter' ? 'You sent (AI letter)'
       : c.entry_type === 'user_note' || c.entry_type === 'user_reply' ? `You wrote`
       : c.entry_type === 'company_email' ? `${c.sender_name ?? 'Company'} replied`
@@ -98,8 +101,15 @@ export async function GET(
       : c.entry_type === 'phone_call' ? 'Phone call'
       : c.entry_type;
     const body = (c.content || '').slice(0, 600);
-    return `[${date}] ${who}${c.title ? ` — ${c.title}` : ''}\n${body}`;
+    const tag = c.ai_category ? ` [${c.ai_category}${c.ai_urgency ? `/${c.ai_urgency}` : ''}]` : '';
+    return `[${date}] ${who}${c.title ? ` — ${c.title}` : ''}${tag}\n${body}`;
   }).join('\n\n---\n\n');
+
+  // Count what actually came back from the supplier so we can detect
+  // stale "No reply yet" output even if the AI ignores the thread.
+  const supplierReplyCount = corrs.filter((c) => c.entry_type === 'company_email' || c.entry_type === 'company_letter' || c.entry_type === 'company_response').length;
+  const lastSupplierEntry = [...corrs].reverse().find((c) => c.entry_type === 'company_email' || c.entry_type === 'company_letter' || c.entry_type === 'company_response');
+  const lastSupplierDate = lastSupplierEntry?.entry_date?.slice(0, 10) ?? null;
 
   const prompt = `You\'re writing a status update for a UK consumer dispute, addressed to the customer (the person reading this is the customer, not the company).
 
@@ -109,12 +119,16 @@ What the dispute is about: ${dispute.issue_summary || 'not stated'}
 Desired outcome: ${dispute.desired_outcome || 'not stated'}
 Status: ${dispute.status}
 
+Thread stats: ${corrs.length} total entries, ${supplierReplyCount} from ${dispute.provider_name}${lastSupplierDate ? ` (latest on ${lastSupplierDate})` : ''}.
+
 Correspondence so far (oldest → newest):
 ${lines || '(no correspondence yet — only the user\'s opening note)'}
 
+The "summary" must describe WHERE THE DISPUTE STANDS RIGHT NOW — what's the current position, what has the supplier said most recently, what is outstanding. DO NOT just paraphrase the original issue summary above; assume the customer already knows why they raised the dispute. If the supplier has replied, lead with what they said and where that leaves things. If the customer has just sent a letter and is waiting, say that. If the dispute has stalled (multiple replies but no resolution, or no reply for 14+ days), say so explicitly.
+
 Return JSON only with these keys:
-- "summary": 2-3 sentence neutral overview of what this dispute is about and the current state. Plain English.
-- "latest_update": one sentence describing the MOST RECENT activity (e.g. "The company replied on 21 April offering a £50 partial refund", "Your AI letter was sent on 18 April but no reply yet"). If no correspondence beyond the opening note: "No reply yet from ${dispute.provider_name}."
+- "summary": 2-3 sentence description of the CURRENT STATE of the dispute — what has happened most recently, what position both sides are in, what's outstanding. Plain English. Do NOT just restate the original complaint.
+- "latest_update": one sentence describing the MOST RECENT meaningful activity. Examples: "${dispute.provider_name} replied on 28 Apr asking for tenants' contact details before booking the engineer.", "Your AI letter was sent on 18 Apr but no reply yet." Use ONLY "No reply yet from ${dispute.provider_name}." when supplierReplyCount above is 0.
 - "next_action": one short sentence telling the user what to do RIGHT NOW. Start with a verb. Examples: "Reply to their partial-refund offer.", "Wait 14 days then escalate to the ombudsman.", "Send the first complaint letter."
 - "suggested_steps": array of 2-3 concrete bullet-point next steps in plain English. Each ≤ 18 words.
 
@@ -123,7 +137,7 @@ Output JSON only.`;
   let parsed: any;
   try {
     const res = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 600,
       messages: [{ role: 'user', content: prompt }],
     });

@@ -71,7 +71,7 @@ interface UserSubscription {
   billing_cycle: string;
 }
 
-interface DealAlert {
+export interface DealAlert {
   category: string;
   currentProvider: string;
   currentAmount: number;
@@ -198,7 +198,7 @@ export function buildDealAlertEmail(
 
     <!-- Intro -->
     <div style="background: #FFFFFF; padding: 28px 32px;">
-      <div style="color: #E5E7EB; font-size: 15px; line-height: 1.7;">
+      <div style="color: #374151; font-size: 15px; line-height: 1.7;">
         Hi ${userName},<br><br>
         We have analysed your subscriptions and bills and found <strong style="color: #059669;">${topAlerts.length} opportunities</strong> where you could be paying less.
       </div>

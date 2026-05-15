@@ -1,5 +1,22 @@
+/**
+ * Weekly money digest — migrated to canonical PaybackerEmailLayout (2026-05-01).
+ *
+ * Earlier hand-rolled inline styles used near-white text (#E5E7EB) on a white
+ * wrap, which rendered as unreadable low-contrast in Gmail iOS dark mode. The
+ * canonical layout fixes contrast at the source and shares chrome (logo,
+ * footer, button styling) with every other Paybacker email.
+ */
+
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
 import { fmtGBP } from '@/lib/spending';
+import {
+  renderPaybackerEmail,
+  paragraph,
+  card,
+  callout,
+} from './PaybackerEmailLayout';
+
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
 
 const MONEY_TIPS = [
   'Check your bank statements monthly. The average UK household has 2-3 subscriptions they have forgotten about.',
@@ -24,6 +41,124 @@ interface DigestData {
   transactionCount: number;
 }
 
+const COLOR = {
+  ink: '#0B1220',
+  inkSoft: '#374151',
+  inkMuted: '#6B7280',
+  border: '#E5E7EB',
+  surfaceAlt: '#F9FAFB',
+  brand: '#059669',
+  danger: '#EF4444',
+};
+
+function headlineStat(data: DigestData, weekChange: number, changeLabel: string): string {
+  const changeColor = weekChange > 10 ? COLOR.danger : weekChange < -5 ? COLOR.brand : COLOR.inkMuted;
+  const compareLine =
+    data.lastWeekSpend > 0
+      ? `<p style="color:${changeColor};font-size:14px;margin:8px 0 0;">${changeLabel} vs last week (${fmtGBP(data.lastWeekSpend)})</p>`
+      : '';
+  return `
+    <div style="background:${COLOR.surfaceAlt};border:1px solid ${COLOR.border};border-radius:12px;padding:24px;text-align:center;margin:0 0 24px;">
+      <p style="color:${COLOR.inkMuted};font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">This week's spending</p>
+      <p style="color:${COLOR.ink};font-size:36px;font-weight:700;margin:0;">${fmtGBP(data.weekSpend)}</p>
+      ${compareLine}
+      <p style="color:${COLOR.inkMuted};font-size:12px;margin:8px 0 0;">${data.transactionCount} transactions</p>
+    </div>
+  `;
+}
+
+function categoriesTable(rows: DigestData['topCategories']): string {
+  if (rows.length === 0) return '';
+  const body = rows
+    .slice(0, 5)
+    .map(
+      (cat) => `
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid ${COLOR.border};color:${COLOR.inkSoft};font-size:14px;">${escapeHtml(cat.category)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid ${COLOR.border};color:${COLOR.ink};font-weight:600;font-size:14px;text-align:right;">${fmtGBP(cat.total, { fractionDigits: 2 })}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid ${COLOR.border};color:${COLOR.inkMuted};font-size:13px;text-align:right;">${cat.percentage.toFixed(0)}%</td>
+        </tr>
+      `,
+    )
+    .join('');
+  return `
+    <h2 style="color:${COLOR.ink};font-size:16px;margin:0 0 12px;">Where your money went</h2>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+      <thead>
+        <tr>
+          <th style="padding:8px 12px;text-align:left;color:${COLOR.inkMuted};font-size:12px;border-bottom:2px solid ${COLOR.border};">Category</th>
+          <th style="padding:8px 12px;text-align:right;color:${COLOR.inkMuted};font-size:12px;border-bottom:2px solid ${COLOR.border};">Amount</th>
+          <th style="padding:8px 12px;text-align:right;color:${COLOR.inkMuted};font-size:12px;border-bottom:2px solid ${COLOR.border};">Share</th>
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+    </table>
+  `;
+}
+
+function renewalsTable(rows: DigestData['upcomingRenewals']): string {
+  if (rows.length === 0) return '';
+  const body = rows
+    .slice(0, 5)
+    .map((r) => {
+      const dueColor = r.daysUntil <= 7 ? COLOR.danger : COLOR.inkMuted;
+      return `
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid ${COLOR.border};color:${COLOR.inkSoft};font-size:13px;">${escapeHtml(r.provider)}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid ${COLOR.border};color:${COLOR.ink};font-size:13px;text-align:right;">${fmtGBP(r.amount, { fractionDigits: 2 })}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid ${COLOR.border};color:${dueColor};font-size:13px;text-align:right;">${r.daysUntil} day${r.daysUntil !== 1 ? 's' : ''}</td>
+        </tr>
+      `;
+    })
+    .join('');
+  return `
+    <h2 style="color:${COLOR.ink};font-size:16px;margin:0 0 12px;">Renewals coming up</h2>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+      <thead>
+        <tr>
+          <th style="padding:8px 12px;text-align:left;color:${COLOR.inkMuted};font-size:12px;border-bottom:2px solid ${COLOR.border};">Provider</th>
+          <th style="padding:8px 12px;text-align:right;color:${COLOR.inkMuted};font-size:12px;border-bottom:2px solid ${COLOR.border};">Amount</th>
+          <th style="padding:8px 12px;text-align:right;color:${COLOR.inkMuted};font-size:12px;border-bottom:2px solid ${COLOR.border};">Due</th>
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+    </table>
+  `;
+}
+
+function budgetSection(rows: DigestData['budgetAlerts']): string {
+  if (rows.length === 0) return '';
+  const items = rows
+    .map((b) => {
+      const barColor = b.percentage >= 100 ? COLOR.danger : COLOR.brand;
+      const barWidth = Math.min(100, b.percentage);
+      return `
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="color:${COLOR.inkSoft};font-size:13px;">${escapeHtml(b.category)}</span>
+            <span style="color:${COLOR.inkMuted};font-size:13px;">${fmtGBP(b.spent)} / ${fmtGBP(b.limit)}</span>
+          </div>
+          <div style="background:${COLOR.border};border-radius:4px;height:6px;overflow:hidden;">
+            <div style="background:${barColor};height:6px;width:${barWidth}%;border-radius:4px;"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+  return card(
+    `<h2 style="color:${COLOR.ink};font-size:16px;margin:0 0 12px;">Budget tracker</h2>${items}`,
+  );
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function buildWeeklyDigestEmail(
   userName: string,
   data: DigestData,
@@ -33,142 +168,29 @@ export function buildWeeklyDigestEmail(
     ? Math.round(((data.weekSpend - data.lastWeekSpend) / data.lastWeekSpend) * 100)
     : 0;
   const changeLabel = weekChange > 0 ? `+${weekChange}%` : `${weekChange}%`;
-  const changeColor = weekChange > 10 ? '#ef4444' : weekChange < -5 ? '#059669' : '#6B7280';
-
   const tip = MONEY_TIPS[Math.floor(Math.random() * MONEY_TIPS.length)];
 
-  // Category rows
-  const categoryRows = data.topCategories.slice(0, 5).map(cat => `
-    <tr>
-      <td style="padding: 10px 12px; border-bottom: 1px solid #F9FAFB; color: #E5E7EB; font-size: 14px;">${cat.category}</td>
-      <td style="padding: 10px 12px; border-bottom: 1px solid #F9FAFB; color: white; font-weight: 600; font-size: 14px; text-align: right;">${fmtGBP(cat.total, { fractionDigits: 2 })}</td>
-      <td style="padding: 10px 12px; border-bottom: 1px solid #F9FAFB; color: #6B7280; font-size: 13px; text-align: right;">${cat.percentage.toFixed(0)}%</td>
-    </tr>
-  `).join('');
-
-  // Renewal rows
-  const renewalRows = data.upcomingRenewals.slice(0, 5).map(r => `
-    <tr>
-      <td style="padding: 8px 12px; border-bottom: 1px solid #F9FAFB; color: #E5E7EB; font-size: 13px;">${r.provider}</td>
-      <td style="padding: 8px 12px; border-bottom: 1px solid #F9FAFB; color: white; font-size: 13px; text-align: right;">${fmtGBP(r.amount, { fractionDigits: 2 })}</td>
-      <td style="padding: 8px 12px; border-bottom: 1px solid #F9FAFB; color: ${r.daysUntil <= 7 ? '#ef4444' : '#6B7280'}; font-size: 13px; text-align: right;">${r.daysUntil} day${r.daysUntil !== 1 ? 's' : ''}</td>
-    </tr>
-  `).join('');
-
-  // Budget alerts
-  const budgetSection = data.budgetAlerts.length > 0 ? `
-    <div style="background: #F9FAFB; border-radius: 12px; padding: 20px; margin: 20px 0;">
-      <h2 style="color: white; font-size: 16px; margin: 0 0 12px;">Budget Tracker</h2>
-      ${data.budgetAlerts.map(b => {
-        const barColor = b.percentage >= 100 ? '#ef4444' : b.percentage >= 80 ? '#059669' : '#059669';
-        const barWidth = Math.min(100, b.percentage);
-        return `
-          <div style="margin-bottom: 12px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-              <span style="color: #E5E7EB; font-size: 13px;">${b.category}</span>
-              <span style="color: #6B7280; font-size: 13px;">${fmtGBP(b.spent)} / ${fmtGBP(b.limit)}</span>
-            </div>
-            <div style="background: #FFFFFF; border-radius: 4px; height: 6px; overflow: hidden;">
-              <div style="background: ${barColor}; height: 6px; width: ${barWidth}%; border-radius: 4px;"></div>
-            </div>
-          </div>
-        `;
-      }).join('')}
-    </div>
-  ` : '';
+  const body = [
+    paragraph(`Hi ${escapeHtml(userName)}, here is your financial snapshot for the past week.`),
+    headlineStat(data, weekChange, changeLabel),
+    categoriesTable(data.topCategories),
+    tier !== 'free' ? budgetSection(data.budgetAlerts) : '',
+    renewalsTable(data.upcomingRenewals),
+    callout('Money tip', tip),
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   const subject = data.weekSpend > 0
-    ? `Your week: ${fmtGBP(data.weekSpend)} spent ${weekChange !== 0 ? `(${changeLabel} vs last week)` : ''}`
+    ? `Your week: ${fmtGBP(data.weekSpend)} spent ${weekChange !== 0 ? `(${changeLabel} vs last week)` : ''}`.trim()
     : 'Your weekly money digest';
 
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #FFFFFF; color: #E5E7EB; padding: 0; border-radius: 16px; overflow: hidden;">
-
-      <!-- Header -->
-      <div style="background: #F9FAFB; padding: 24px 32px; text-align: center; border-bottom: 1px solid #F9FAFB;">
-        <span style="font-size: 22px; font-weight: bold; color: white;">Pay<span style="color: #059669;">backer</span></span>
-        <p style="color: #6B7280; font-size: 12px; margin: 4px 0 0; text-transform: uppercase; letter-spacing: 1px;">Weekly Money Digest</p>
-      </div>
-
-      <div style="padding: 32px;">
-
-        <!-- Greeting -->
-        <p style="color: #6B7280; font-size: 15px; margin: 0 0 24px;">Hi ${userName}, here is your financial snapshot for the past week.</p>
-
-        <!-- Headline stat -->
-        <div style="background: linear-gradient(135deg, #F9FAFB 0%, #F9FAFB 100%); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px; border: 1px solid #F9FAFB;">
-          <p style="color: #6B7280; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px;">This week's spending</p>
-          <p style="color: white; font-size: 36px; font-weight: bold; margin: 0;">${fmtGBP(data.weekSpend)}</p>
-          ${data.lastWeekSpend > 0 ? `
-            <p style="color: ${changeColor}; font-size: 14px; margin: 8px 0 0;">
-              ${changeLabel} vs last week (${fmtGBP(data.lastWeekSpend)})
-            </p>
-          ` : ''}
-          <p style="color: #6B7280; font-size: 12px; margin: 8px 0 0;">${data.transactionCount} transactions</p>
-        </div>
-
-        <!-- Top categories -->
-        ${data.topCategories.length > 0 ? `
-          <h2 style="color: white; font-size: 16px; margin: 0 0 12px;">Where your money went</h2>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
-            <thead>
-              <tr>
-                <th style="padding: 8px 12px; text-align: left; color: #6B7280; font-size: 12px; border-bottom: 2px solid #F9FAFB;">Category</th>
-                <th style="padding: 8px 12px; text-align: right; color: #6B7280; font-size: 12px; border-bottom: 2px solid #F9FAFB;">Amount</th>
-                <th style="padding: 8px 12px; text-align: right; color: #6B7280; font-size: 12px; border-bottom: 2px solid #F9FAFB;">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${categoryRows}
-            </tbody>
-          </table>
-        ` : ''}
-
-        <!-- Budget alerts (Essential+ only) -->
-        ${tier !== 'free' ? budgetSection : ''}
-
-        <!-- Upcoming renewals -->
-        ${data.upcomingRenewals.length > 0 ? `
-          <h2 style="color: white; font-size: 16px; margin: 0 0 12px;">Renewals coming up</h2>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
-            <thead>
-              <tr>
-                <th style="padding: 8px 12px; text-align: left; color: #6B7280; font-size: 12px; border-bottom: 2px solid #F9FAFB;">Provider</th>
-                <th style="padding: 8px 12px; text-align: right; color: #6B7280; font-size: 12px; border-bottom: 2px solid #F9FAFB;">Amount</th>
-                <th style="padding: 8px 12px; text-align: right; color: #6B7280; font-size: 12px; border-bottom: 2px solid #F9FAFB;">Due</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${renewalRows}
-            </tbody>
-          </table>
-        ` : ''}
-
-        <!-- CTA -->
-        <div style="text-align: center; margin: 28px 0;">
-          <a href="https://paybacker.co.uk/dashboard/money-hub" style="display: inline-block; background: #059669; color: #0B1220; font-weight: bold; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-size: 15px;">
-            View Full Breakdown
-          </a>
-        </div>
-
-        <!-- Money tip -->
-        <div style="background: #F9FAFB; border-left: 3px solid #059669; border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 24px;">
-          <p style="color: #059669; font-size: 12px; font-weight: bold; margin: 0 0 6px;">MONEY TIP</p>
-          <p style="color: #6B7280; font-size: 13px; line-height: 1.5; margin: 0;">${tip}</p>
-        </div>
-
-        <!-- Footer -->
-        <div style="border-top: 1px solid #F9FAFB; padding-top: 20px; text-align: center;">
-          <p style="color: #6B7280; font-size: 11px; margin: 0;">
-            Paybacker LTD | ICO Registered | paybacker.co.uk
-          </p>
-          <p style="color: #4B5563; font-size: 11px; margin: 8px 0 0;">
-            <a href="https://paybacker.co.uk/dashboard/profile" style="color: #4B5563; text-decoration: underline;">Manage preferences</a>
-          </p>
-        </div>
-      </div>
-    </div>
-  `;
+  const html = renderPaybackerEmail({
+    preheader: `Your weekly money snapshot — ${fmtGBP(data.weekSpend)} spent, ${data.transactionCount} transactions`,
+    heading: 'Your weekly money digest',
+    body,
+    cta: { label: 'View full breakdown', href: `${SITE}/dashboard/money-hub` },
+  });
 
   return { subject, html };
 }

@@ -288,7 +288,7 @@
 
 .m-v2-root .hero h1 {
   font-size: var(--fs-display);
-  line-height: 0.94;
+  line-height: 1.02;
   letter-spacing: var(--track-tight);
   font-weight: 700;
   margin: 18px 0 24px;
@@ -553,7 +553,7 @@
 .m-v2-root .stat-card .label { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); font-weight: 600; }
 
 .m-v2-root .stat-card .num {
-  font-size: 64px; line-height: 1; font-weight: 700; letter-spacing: -0.03em;
+  font-size: 64px; line-height: 1.1; font-weight: 700; letter-spacing: -0.03em;
   margin: 16px 0 6px;
   position: relative; display: inline-block;
   font-variant-numeric: tabular-nums;
@@ -845,52 +845,6 @@
 
 .m-v2-root .compare-link a:hover { text-decoration: underline; }
 
-/* Testimonials */
-
-.m-v2-root .testimonials-section { padding: 120px 0; overflow: hidden; }
-
-.m-v2-root .testimonials-head { text-align: center; margin-bottom: 56px; }
-
-.m-v2-root .testimonials-head h2 { font-size: var(--fs-h2); letter-spacing: var(--track-tight); font-weight: 700; margin: 12px 0; }
-
-.m-v2-root .t-track {
-  display: flex; gap: 22px; width: max-content;
-  animation: tscroll 60s linear infinite;
-}
-
-.m-v2-root .testimonials-section:hover .t-track { animation-play-state: paused; }
-
-@keyframes tscroll {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-
-.m-v2-root .t-card {
-  width: 380px; flex-shrink: 0;
-  background: #fff;
-  border: 1px solid var(--divider);
-  border-radius: var(--r-card);
-  padding: 26px;
-  display: flex; flex-direction: column; gap: 14px;
-}
-
-.m-v2-root .t-card .who { display: flex; align-items: center; gap: 12px; }
-
-.m-v2-root .t-card .avatar {
-  width: 40px; height: 40px; border-radius: 50%;
-  display: grid; place-items: center;
-  font-weight: 700; color: #fff;
-  font-size: 15px;
-}
-
-.m-v2-root .t-card .name { font-weight: 600; font-size: 14px; }
-
-.m-v2-root .t-card .meta { font-size: 12px; color: var(--text-tertiary); }
-
-.m-v2-root .t-card .quote { font-size: 15px; color: var(--text-primary); line-height: 1.45; text-wrap: pretty; }
-
-.m-v2-root .t-card .saved { color: var(--accent-orange-deep); font-weight: 600; font-size: 13px; }
-
 /* Final CTA */
 
 .m-v2-root .final-cta { padding: 140px 0; position: relative; overflow: hidden; }
@@ -978,8 +932,8 @@
 /* Reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
-  .m-v2-root .reveal, .m-v2-root .reveal.in { opacity: 1; transform: none; transition: none; }
-  .m-v2-root .float, .m-v2-root .pulse, .m-v2-root .t-track, .m-v2-root .nav-progress { animation: none !important; transition: none !important; }
+  .m-v2-root .reveal, .m-v2-root .reveal.in { opacity: 1; transform: none; transition: none; animation: none !important; }
+  .m-v2-root .float, .m-v2-root .pulse, .m-v2-root .nav-progress { animation: none !important; transition: none !important; }
 }
 
 /* Responsive */
@@ -993,13 +947,22 @@
   .m-v2-root .nav-links { display: none; }
 }
 
+/* iPad portrait — give the hero h1 more leading so dots on lowercase
+   i/j don't collide with the line above. The 1.02 desktop value still
+   produced tight kerning at iPad sizes where the title wraps across
+   5-6 lines. */
+@media (max-width: 820px) {
+  .m-v2-root .hero h1 { line-height: 1.1; }
+  .m-v2-root .hero-grid { gap: 24px; }
+}
+
 @media (max-width: 480px) {
   .m-v2-root .wrap { padding: 0 20px; }
   .m-v2-root .hero-visual { height: 440px; }
   .m-v2-root .dash-card { width: 300px; height: 420px; right: 0; top: 10px; }
   .m-v2-root .mini-card { width: 200px; height: 280px; left: 0; top: 120px; }
   .m-v2-root .agent-bubble { width: 240px; right: 0; bottom: 0; }
-  .m-v2-root .stats-section, .m-v2-root .pillars-section, .m-v2-root .deals-section, .m-v2-root .pricing-section, .m-v2-root .testimonials-section { padding: 80px 0; }
+  .m-v2-root .stats-section, .m-v2-root .pillars-section, .m-v2-root .deals-section, .m-v2-root .pricing-section { padding: 80px 0; }
   .m-v2-root .how-section, .m-v2-root .final-cta { padding: 100px 0; }
 }
 
@@ -1519,7 +1482,7 @@
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .12em;
-  color: rgba(255,255,255,.55);
+  color: rgba(255,255,255,.78);
   border-bottom: 1px solid rgba(255,255,255,.12);
 }
 .m-v2-root .compare-table--dark thead th.feature {
@@ -1560,14 +1523,14 @@
 .m-v2-root .compare-table--dark td.us .chk { color: var(--accent-mint, #34D399); }
 .m-v2-root .compare-table--dark .x {
   display: inline-block;
-  color: rgba(255,255,255,.32);
+  color: rgba(255,255,255,.62);
   font-size: 16px;
 }
 
 .m-v2-root .compare-footnote.compare-footnote--ink {
   text-align: center;
   font-size: 13px;
-  color: rgba(255,255,255,.5);
+  color: rgba(255,255,255,.72);
   margin: 32px auto 0;
   max-width: 640px;
   line-height: 1.55;
@@ -2406,4 +2369,130 @@
   .m-v2-root .real-win__amount { font-size: 40px; }
   .m-v2-root .real-win__roi-multiple { font-size: 44px; }
   .m-v2-root .real-win__equivalents ul { grid-template-columns: 1fr; }
+}
+
+/* Tier chips on the Pocket Agent feature bullets */
+.tier-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  margin: 0 2px;
+}
+.tier-chip--free {
+  background: rgba(94, 234, 212, 0.18);
+  color: #5eead4;
+  border: 1px solid rgba(94, 234, 212, 0.4);
+}
+.tier-chip--pro {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+/* Freshness chip — strapline link inside the AI Disputes section
+   that anchors the credibility claim and deep-links to the
+   Compliance pipeline trust strip. */
+.m-v2-root .freshness-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 4px 0 18px;
+  line-height: 1.5;
+}
+.m-v2-root .freshness-chip__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-mint);
+  flex-shrink: 0;
+}
+.m-v2-root .freshness-chip__link {
+  color: var(--accent-mint-deep);
+  font-weight: 700;
+  text-decoration: none;
+}
+.m-v2-root .freshness-chip__link:hover { text-decoration: underline; }
+
+/* Compliance pipeline trust strip — sits between AI Disputes and
+   Money Hub sections to anchor the "exact UK law" claim with the
+   live legislation pipeline that backs it. */
+.m-v2-root .compliance-pipeline {
+  padding: 56px 0 56px;
+  background: var(--surface-base);
+  scroll-margin-top: 80px;
+}
+.m-v2-root .compliance-pipeline__title {
+  margin: 12px 0 10px;
+  font-size: 32px;
+  letter-spacing: -0.02em;
+}
+.m-v2-root .compliance-pipeline__lead {
+  font-size: 16px;
+  color: var(--text-secondary);
+  max-width: 720px;
+  margin: 0 auto 28px;
+  line-height: 1.6;
+}
+.m-v2-root .compliance-pipeline__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  max-width: 880px;
+  margin: 0 auto 24px;
+}
+.m-v2-root .compliance-source {
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  padding: 20px 22px;
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+.m-v2-root .compliance-source__name {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+.m-v2-root .compliance-source__sub {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-mint-deep);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.m-v2-root .compliance-source__detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.m-v2-root .compliance-pipeline__callout {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 14px 18px;
+  background: rgba(167, 243, 208, 0.18);
+  border: 1px solid var(--accent-mint);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  text-align: center;
+}
+.m-v2-root .compliance-pipeline__callout strong {
+  color: var(--text-primary);
+}
+@media (max-width: 760px) {
+  .m-v2-root .compliance-pipeline__grid { grid-template-columns: 1fr; gap: 12px; }
+  .m-v2-root .compliance-pipeline__title { font-size: 26px; }
 }

@@ -9,7 +9,7 @@
  * the rows permanently and there's nothing to restore.
  *
  * Also un-revokes the connection (status revoked → active) so syncing
- * resumes if the underlying TrueLayer/Yapily consent is still valid.
+ * resumes if the underlying Yapily consent is still valid.
  * If the consent has expired the next sync will mark it expired again.
  */
 

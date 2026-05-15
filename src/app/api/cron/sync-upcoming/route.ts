@@ -303,13 +303,16 @@ export async function GET(request: NextRequest) {
     .lt('expected_date', yesterday);
   summary.staleRowsPruned = count || 0;
 
-  // ── Alert the user for newly-inserted confirmed incoming rows
-  //    arriving within the next 2 days. Upserts on an existing row
-  //    bump updated_at but not created_at, so we use created_at to
-  //    distinguish genuinely new detections from repeats.           //
-  //    Fires a user_notifications row + a best-effort Telegram
-  //    proactive alert for Pro users with a linked session.
-  const tomorrow = new Date(today.getTime() + 2 * 86_400_000).toISOString().slice(0, 10);
+  // ── Alert the user for newly-inserted confirmed rows arriving in the
+  //    near future. We pull a 14-day window so we can apply user-
+  //    specific thresholds: every row qualifies if it's within 2 days
+  //    OR over the user's "large bill" threshold and within their
+  //    configured days-ahead window (default £100 / 7 days, set on
+  //    profiles.upcoming_bill_threshold / upcoming_bill_days_ahead).
+  //    Upserts on an existing row bump updated_at but not created_at,
+  //    so we use created_at to distinguish genuinely new detections
+  //    from repeats.
+  const twoWeeks = new Date(today.getTime() + 14 * 86_400_000).toISOString().slice(0, 10);
   const alertCutoff = today.toISOString();
 
   const { data: freshRows } = await supabase
@@ -317,9 +320,26 @@ export async function GET(request: NextRequest) {
     .select('id, user_id, source, direction, counterparty, amount, currency, expected_date, confidence, account_id, yapily_provider_id')
     .gte('created_at', runStartedAt)
     .gte('expected_date', alertCutoff.slice(0, 10))
-    .lte('expected_date', tomorrow)
+    .lte('expected_date', twoWeeks)
     .in('source', ['pending_credit', 'scheduled_payment', 'direct_debit', 'standing_order'])
     .order('expected_date', { ascending: true });
+
+  // Pull user-level thresholds for any user with a fresh row. Default
+  // £100 / 7 days when NULL.
+  const profileThresholds = new Map<string, { threshold: number; daysAhead: number }>();
+  const uniqueUserIds = Array.from(new Set((freshRows || []).map((r) => r.user_id)));
+  if (uniqueUserIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, upcoming_bill_threshold, upcoming_bill_days_ahead')
+      .in('id', uniqueUserIds);
+    for (const p of profiles || []) {
+      profileThresholds.set(p.id, {
+        threshold: Number((p as any).upcoming_bill_threshold ?? 100),
+        daysAhead: Number((p as any).upcoming_bill_days_ahead ?? 7),
+      });
+    }
+  }
 
   summary.alertsDispatched = 0;
   summary.telegramAlertsDispatched = 0;
@@ -327,25 +347,48 @@ export async function GET(request: NextRequest) {
   for (const row of (freshRows || [])) {
     const direction = row.direction as 'incoming' | 'outgoing';
     const isIncoming = direction === 'incoming';
-    const amountStr = `£${Number(row.amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const amount = Number(row.amount);
+    const amountStr = `£${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const who = row.counterparty || 'a counterparty';
     const whenIso = row.expected_date as string;
-    const isTomorrow = new Date(whenIso + 'T00:00:00Z').getTime() === today.getTime() + 86_400_000;
-    const when = isTomorrow ? 'tomorrow' : `on ${new Date(whenIso + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}`;
+    const dueDate = new Date(whenIso + 'T00:00:00Z');
+    const daysOut = Math.round((dueDate.getTime() - today.getTime()) / 86_400_000);
+    const isTomorrow = daysOut === 1;
+    const when = isTomorrow
+      ? 'tomorrow'
+      : `on ${dueDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}`;
+
+    // Eligibility:
+    //   - Any incoming row in the next 2 days → fire (Emma-style "money arriving" alert).
+    //   - Any outgoing row in the next 2 days → fire (existing behaviour).
+    //   - Outgoing AND amount >= user.threshold AND daysOut <= user.daysAhead
+    //     → fire as "large_upcoming_bill" so the user gets a heads-up
+    //     before bigger debits.
+    const thresholds = profileThresholds.get(row.user_id) || { threshold: 100, daysAhead: 7 };
+    const isImminent = daysOut <= 2;
+    const isLargeBill =
+      !isIncoming && amount >= thresholds.threshold && daysOut <= thresholds.daysAhead;
+    if (!isImminent && !isLargeBill) continue;
+    const eventType: 'upcoming_payment' | 'large_upcoming_bill' =
+      isLargeBill && !isImminent ? 'large_upcoming_bill' : 'upcoming_payment';
 
     const title = isIncoming
       ? `${amountStr} arriving ${when} from ${who}`
+      : isLargeBill && !isImminent
+      ? `Heads-up: ${amountStr} bill due ${when} · ${who}`
       : `${amountStr} leaving ${when} · ${who}`;
 
     const body = isIncoming
       ? `Your bank has flagged an incoming payment of ${amountStr} arriving ${when}. We'll update the total on Money Hub.`
+      : isLargeBill && !isImminent
+      ? `A large scheduled payment of ${amountStr} to ${who} is due ${when} (${daysOut} days away). Make sure the account has enough to cover it.`
       : `A scheduled outgoing payment of ${amountStr} to ${who} is due ${when}. Make sure your account has enough to cover it.`;
 
     // In-app notification (free for all tiers).
     try {
       await supabase.from('user_notifications').insert({
         user_id: row.user_id,
-        type: 'upcoming_payment',
+        type: eventType,
         title,
         body,
         link_url: '/dashboard/money-hub/upcoming',
@@ -356,6 +399,7 @@ export async function GET(request: NextRequest) {
           currency: row.currency,
           expected_date: row.expected_date,
           account_id: row.account_id,
+          days_out: daysOut,
         },
       });
       summary.alertsDispatched++;

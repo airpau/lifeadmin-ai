@@ -655,7 +655,7 @@ export default function DealsPage() {
   const dealsCount = Object.values(DEALS).reduce((n, arr) => n + (arr?.length || 0), 0) + verifiedDeals.length;
 
   return (
-    <div className="max-w-7xl">
+    <div className="max-w-7xl mx-auto w-full">
       {/* Hero */}
       <div className="mb-8">
         <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Find Better Deals</h1>

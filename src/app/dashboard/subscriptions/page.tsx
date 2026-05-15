@@ -20,6 +20,26 @@ import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, getCategoryLabel, ge
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 
+// Rotating copy for the Inbox Scan loading card. British tone, mix of
+// concrete progress and light humour. Tokens: {N}, {X} are replaced at render.
+const SCAN_COPY: string[] = [
+  "Reading your inbox… don't worry, we won't tell anyone about the Wordle subscription",
+  "Scanning {N} emails from your inbox…",
+  "Asking Claude to spot a subscription",
+  "Cross-checking with your bank feed",
+  "Searching for '£' the way HMRC searches for missing taxes",
+  "Found {X} so far — keep going",
+  "Filtering out that one Just Eat receipt from 2024",
+  "Ignoring the 47 Boots Advantage Card emails",
+  "Calculating how much of your salary is on streaming",
+  "Looking for free trials that became paid plans (you signed up in February, didn't you?)",
+  "Counting price increases — this might sting",
+  "Unearthing the fitness app you used twice in January",
+  "Checking renewal dates so you don't get auto-billed",
+  "Sniffing out forgotten direct debits",
+  "One more sweep — finalising results",
+];
+
 interface ContractAlert {
   id: string;
   subscription_id: string;
@@ -62,6 +82,7 @@ interface Subscription {
   current_tariff?: string | null;
   alerts_enabled?: boolean;
   alert_before_days?: number;
+  archived_at?: string | null;
   contract_end_source?: string | null;
   logo_url?: string | null;
   needs_review?: boolean;
@@ -121,6 +142,11 @@ export default function SubscriptionsPage() {
   const router = useRouter();
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  // Archive view toggle. Bot's archive_subscription tool sets
+  // archived_at; rows stay in the table but are hidden from the
+  // default view. Toggle is only rendered when there's at least
+  // one archived row, otherwise it's just clutter.
+  const [archivedFilter, setArchivedFilter] = useState<'active' | 'archived'>('active');
   const [userTier, setUserTier] = useState('free');
   const [tierLoaded, setTierLoaded] = useState(false);
   const [unrecognisedSub, setUnrecognisedSub] = useState<Subscription | null>(null);
@@ -152,6 +178,10 @@ export default function SubscriptionsPage() {
     council_tax_monthly: number; council_tax_count: number;
   } | null>(null);
   const [detectedSubs, setDetectedSubs] = useState<any[]>([]);
+  const [scanSummary, setScanSummary] = useState<Array<{ provider_email: string; provider_type: string; count: number; emailsScanned?: number; error?: string }>>([]);
+  const [scanCopyIdx, setScanCopyIdx] = useState(0);
+  const [providerCancelInfo, setProviderCancelInfo] = useState<Record<string, { method?: string; email?: string; phone?: string; url?: string; tips?: string; last_verified_at?: string } | null>>({});
+  const [openCancelPill, setOpenCancelPill] = useState<string | null>(null);
   const [editSub, setEditSub] = useState<Subscription | null>(null);
   const [editForm, setEditForm] = useState({
     provider_name: '',
@@ -246,6 +276,19 @@ export default function SubscriptionsPage() {
       if (subsRes.ok) {
         const data = await subsRes.json();
         setSubscriptions(data);
+        // Seed providerCancelInfo from inline cancellation_info attached
+        // by /api/subscriptions. Prevents an N+1 follow-up fetch per
+        // provider — the lazy-load useEffect below now only fires for
+        // providers whose info is genuinely missing server-side.
+        const seeded: Record<string, any> = {};
+        for (const sub of data) {
+          if (sub?.provider_name && sub.cancellation_info) {
+            seeded[sub.provider_name] = sub.cancellation_info;
+          }
+        }
+        if (Object.keys(seeded).length > 0) {
+          setProviderCancelInfo((prev) => ({ ...prev, ...seeded }));
+        }
       }
       if (totalsRes) {
         setRpcTotals(totalsRes);
@@ -378,6 +421,38 @@ export default function SubscriptionsPage() {
     }
   }, [searchParams]);
 
+  // Lazy-load provider_cancellation_info rows for all displayed subscriptions.
+  // Batched on the client so the list page renders fast and only fetches each
+  // provider once per session.
+  useEffect(() => {
+    const providers = Array.from(new Set(subscriptions.map((s) => s.provider_name).filter(Boolean)));
+    const toFetch = providers.filter((p) => !(p in providerCancelInfo));
+    if (toFetch.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const updates: Record<string, any> = {};
+      for (const p of toFetch.slice(0, 50)) {
+        try {
+          const res = await fetch(`/api/subscriptions/cancellation-info?provider=${encodeURIComponent(p)}`);
+          if (!res.ok) { updates[p] = null; continue; }
+          const d = await res.json();
+          updates[p] = d.info || null;
+        } catch {
+          updates[p] = null;
+        }
+      }
+      if (!cancelled) setProviderCancelInfo((prev) => ({ ...prev, ...updates }));
+    })();
+    return () => { cancelled = true; };
+  }, [subscriptions, providerCancelInfo]);
+
+  // Rotate the inbox-scan loading copy every 2.5s while scanning.
+  useEffect(() => {
+    if (!detectingFromInbox) return;
+    const id = setInterval(() => setScanCopyIdx((i) => i + 1), 2500);
+    return () => clearInterval(id);
+  }, [detectingFromInbox]);
+
   // Filter out loans, mortgages, credit cards from subscriptions view
   // These are shown in Money Hub / Spending Insights instead
   const DEBT_KEYWORDS = ['mortgage', 'loan', 'finance', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa'];
@@ -395,7 +470,13 @@ export default function SubscriptionsPage() {
   // collapse to one, but two separate council-tax DDs at different amounts stay
   // as distinct entries).
   const baseSubscriptions = (() => {
-    const filtered = subscriptions.filter(s => !isFinancePayment(s.provider_name));
+    // Apply archived filter first — rows the bot sent to
+    // archive_subscription have archived_at set; default view
+    // hides them.
+    const archiveFiltered = subscriptions.filter((s) =>
+      archivedFilter === 'archived' ? !!s.archived_at : !s.archived_at,
+    );
+    const filtered = archiveFiltered.filter(s => !isFinancePayment(s.provider_name));
     const seen = new Map<string, boolean>();
     return filtered.filter(s => {
       const normName = cleanMerchantName(s.provider_name).toLowerCase();
@@ -406,6 +487,7 @@ export default function SubscriptionsPage() {
       return true;
     });
   })();
+  const archivedSubsCount = subscriptions.filter((s) => !!s.archived_at).length;
   const hiddenFinanceCount = subscriptions.filter(s => s.status === 'active' && isFinancePayment(s.provider_name)).length;
 
   const displaySubscriptions = (() => {
@@ -566,16 +648,28 @@ export default function SubscriptionsPage() {
   const handleDetectFromInbox = async () => {
     setDetectingFromInbox(true);
     setDetectedSubs([]);
+    setScanSummary([]);
+    setScanCopyIdx(0);
     try {
-      const res = await fetch('/api/gmail/detect-subscriptions', { method: 'POST' });
+      // Use the unified multi-inbox scan endpoint — covers every connected
+      // inbox (Gmail, Outlook) in one go.
+      const res = await fetch('/api/subscriptions/scan-all', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        // Filter out already-tracked ones
+        if (Array.isArray(data.summary)) setScanSummary(data.summary);
         const tracked = subscriptions.map((s) => s.provider_name.toLowerCase());
-        const novel = (data.subscriptions || []).filter(
-          (s: any) => !tracked.includes(s.provider_name.toLowerCase())
-        );
+        const subsOnly = (data.opportunities || []).filter((o: any) => o.type === 'subscription' || o.type === 'forgotten_subscription');
+        const novel = subsOnly
+          .filter((s: any) => s.provider && !tracked.includes(String(s.provider).toLowerCase()))
+          .map((s: any) => ({
+            provider_name: s.provider,
+            category: s.category || 'other',
+            amount: Number(s.paymentAmount || s.amount || 0),
+            billing_cycle: s.paymentFrequency || 'monthly',
+          }));
         setDetectedSubs(novel);
+        // Refresh persisted subscriptions (the scan endpoints write into the table)
+        await fetchSubscriptions();
       }
     } catch (e) {
       console.error(e);
@@ -716,7 +810,7 @@ export default function SubscriptionsPage() {
         : parseFloat(String(sub.amount)) || 0;
 
     try {
-      await fetch(`/api/subscriptions/${sub.id}`, {
+      const res = await fetch(`/api/subscriptions/${sub.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -725,7 +819,31 @@ export default function SubscriptionsPage() {
           money_saved: parseFloat(monthlyAmt.toFixed(2)),
         }),
       });
-      await fetchSubscriptions();
+
+      // PATCH returns updated totals via the cancel_subscription / get_subscription_total
+      // RPC — apply them directly and update the row in place so headline figures
+      // move without a separate refetch.
+      if (res.ok) {
+        const payload = await res.json().catch(() => null);
+        const cancelledAt = new Date().toISOString();
+        setSubscriptions((prev) => prev.map((s) =>
+          s.id === sub.id ? { ...s, status: 'cancelled', cancel_requested_at: cancelledAt } : s
+        ));
+        const totals = payload?.subscription_totals;
+        if (totals && typeof totals.monthly_total === 'number') {
+          setRpcTotals({
+            monthly_total: totals.monthly_total,
+            subscriptions_monthly: totals.subscriptions_monthly ?? 0,
+            subscriptions_count: totals.subscriptions_count ?? 0,
+            mortgages_monthly: totals.mortgages_monthly ?? 0,
+            mortgages_count: totals.mortgages_count ?? 0,
+            loans_monthly: totals.loans_monthly ?? 0,
+            loans_count: totals.loans_count ?? 0,
+            council_tax_monthly: totals.council_tax_monthly ?? 0,
+            council_tax_count: totals.council_tax_count ?? 0,
+          });
+        }
+      }
 
       // Show share modal if the saving is substantial
       if (shouldShowShareModal('cancellation', annualSaving) && !hasSharedThisSession()) {
@@ -882,15 +1000,32 @@ export default function SubscriptionsPage() {
 
   const handleDeleteSubscription = async (id: string) => {
     try {
-      await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
       // Optimistic update for instant UI feedback
       setSubscriptions((prev) => prev.filter((s) => s.id !== id));
       if (selectedSub?.id === id) {
         setSelectedSub(null);
         setCancellationEmail(null);
       }
-      // Refetch to ensure totals and all derived state are consistent
-      await fetchSubscriptions();
+      // The DELETE endpoint runs the dismiss_subscription RPC and returns the
+      // updated totals — apply them directly so the headline figures move
+      // immediately, no second fetch needed.
+      if (res.ok) {
+        const payload = await res.json().catch(() => null);
+        if (payload && typeof payload.monthly_total === 'number') {
+          setRpcTotals({
+            monthly_total: payload.monthly_total,
+            subscriptions_monthly: payload.subscriptions_monthly ?? 0,
+            subscriptions_count: payload.subscriptions_count ?? 0,
+            mortgages_monthly: payload.mortgages_monthly ?? 0,
+            mortgages_count: payload.mortgages_count ?? 0,
+            loans_monthly: payload.loans_monthly ?? 0,
+            loans_count: payload.loans_count ?? 0,
+            council_tax_monthly: payload.council_tax_monthly ?? 0,
+            council_tax_count: payload.council_tax_count ?? 0,
+          });
+        }
+      }
     } catch (error) {
       console.error('Error deleting subscription:', error);
     }
@@ -1002,7 +1137,9 @@ export default function SubscriptionsPage() {
   };
 
   const handleBulkMarkCancelled = async () => {
-    for (const id of Array.from(selectedForBulk)) {
+    const ids = Array.from(selectedForBulk);
+    let lastTotals: any = null;
+    for (const id of ids) {
       const sub = subscriptions.find(s => s.id === id);
       if (!sub) continue;
       const monthlyAmt = sub.billing_cycle === 'yearly'
@@ -1010,7 +1147,7 @@ export default function SubscriptionsPage() {
         : sub.billing_cycle === 'quarterly'
           ? parseFloat(String(sub.amount)) / 3
           : parseFloat(String(sub.amount)) || 0;
-      await fetch(`/api/subscriptions/${id}`, {
+      const res = await fetch(`/api/subscriptions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1019,9 +1156,31 @@ export default function SubscriptionsPage() {
           money_saved: parseFloat(monthlyAmt.toFixed(2)),
         }),
       });
+      if (res.ok) {
+        const payload = await res.json().catch(() => null);
+        if (payload?.subscription_totals) lastTotals = payload.subscription_totals;
+      }
     }
     setSelectedForBulk(new Set());
-    await fetchSubscriptions();
+    // Optimistically mark every cancelled row in place and apply the final totals
+    // returned by the last PATCH — saves a full subscriptions refetch.
+    const cancelledAt = new Date().toISOString();
+    setSubscriptions((prev) => prev.map((s) =>
+      ids.includes(s.id) ? { ...s, status: 'cancelled', cancel_requested_at: cancelledAt } : s
+    ));
+    if (lastTotals && typeof lastTotals.monthly_total === 'number') {
+      setRpcTotals({
+        monthly_total: lastTotals.monthly_total,
+        subscriptions_monthly: lastTotals.subscriptions_monthly ?? 0,
+        subscriptions_count: lastTotals.subscriptions_count ?? 0,
+        mortgages_monthly: lastTotals.mortgages_monthly ?? 0,
+        mortgages_count: lastTotals.mortgages_count ?? 0,
+        loans_monthly: lastTotals.loans_monthly ?? 0,
+        loans_count: lastTotals.loans_count ?? 0,
+        council_tax_monthly: lastTotals.council_tax_monthly ?? 0,
+        council_tax_count: lastTotals.council_tax_count ?? 0,
+      });
+    }
   };
 
   const [inlineRecatSub, setInlineRecatSub] = useState<string | null>(null);
@@ -1203,7 +1362,7 @@ export default function SubscriptionsPage() {
   }
 
   return (
-    <div className="max-w-7xl">
+    <div className="max-w-7xl mx-auto w-full">
       {/* Share Win Modal */}
       <ShareWinModal
         open={shareModal.open}
@@ -1794,6 +1953,43 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
+      {/* Inbox scan — rotating loading card */}
+      {detectingFromInbox && (
+        <div className="bg-mint-400/5 border border-mint-400/30 rounded-2xl p-6 mb-8">
+          <div className="flex items-start gap-4">
+            <Loader2 className="h-5 w-5 text-mint-400 animate-spin shrink-0 mt-1" />
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-medium mb-2">
+                {(() => {
+                  const totalEmails = scanSummary.reduce((s, r) => s + (r.emailsScanned || 0), 0);
+                  const found = detectedSubs.length;
+                  const idx = scanCopyIdx % SCAN_COPY.length;
+                  return SCAN_COPY[idx]
+                    .replace('{N}', totalEmails > 0 ? String(totalEmails) : 'your')
+                    .replace('{X}', String(found));
+                })()}
+              </p>
+              {scanSummary.length > 0 && (
+                <ul className="text-xs text-slate-400 space-y-1 mt-2">
+                  {scanSummary.map((r) => (
+                    <li key={r.provider_email} className="flex items-center gap-2">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-mint-400/60" />
+                      <span className="truncate">
+                        <strong className="text-slate-300">{r.provider_email}</strong>
+                        {r.error
+                          ? <span className="text-amber-400"> — {r.error}</span>
+                          : <> — {r.count} {r.count === 1 ? 'opportunity' : 'opportunities'}{r.emailsScanned ? ` (${r.emailsScanned} emails scanned)` : ''}</>
+                        }
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Detected subscriptions from inbox */}
       {detectedSubs.length > 0 && (
         <div className="bg-emerald-500/5 border border-emerald-500/30 rounded-2xl p-6 mb-8">
@@ -1904,6 +2100,34 @@ export default function SubscriptionsPage() {
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.monthly_total)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
             <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {countActiveSubscriptions(subscriptions) + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
           </div>
+        </div>
+      )}
+
+      {/* Active / Archived toggle — only shown when there's
+          something to flip to. Bot's archive_subscription tool sets
+          archived_at; default view hides those rows. */}
+      {archivedSubsCount > 0 && (
+        <div className="flex items-center gap-2 mb-3">
+          <button
+            onClick={() => setArchivedFilter('active')}
+            className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+              archivedFilter === 'active'
+                ? 'bg-emerald-500 text-slate-900'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Active ({subscriptions.length - archivedSubsCount})
+          </button>
+          <button
+            onClick={() => setArchivedFilter('archived')}
+            className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+              archivedFilter === 'archived'
+                ? 'bg-emerald-500 text-slate-900'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Archived ({archivedSubsCount})
+          </button>
         </div>
       )}
 
@@ -2209,6 +2433,42 @@ export default function SubscriptionsPage() {
                       )}
                       {sub.auto_renews === false && (
                         <span className="text-xs bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded">No auto-renew</span>
+                      )}
+                      {/* "How to cancel" pill — backed by provider_cancellation_info */}
+                      {providerCancelInfo[sub.provider_name] && (
+                        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => setOpenCancelPill(openCancelPill === sub.id ? null : sub.id)}
+                            className="text-xs bg-mint-400/10 text-mint-400 hover:bg-mint-400/20 border border-mint-400/30 px-2 py-0.5 rounded-full transition-colors"
+                          >
+                            How to cancel
+                          </button>
+                          {openCancelPill === sub.id && (() => {
+                            const info = providerCancelInfo[sub.provider_name]!;
+                            return (
+                              <div className="absolute top-full left-0 mt-1 w-72 bg-navy-800 border border-navy-700 rounded-lg shadow-xl z-30 p-4 text-xs space-y-2">
+                                {info.method && <p className="text-slate-300">{info.method}</p>}
+                                <div className="flex flex-col gap-1">
+                                  {info.email && (
+                                    <a href={`mailto:${info.email}`} className="text-mint-400 hover:underline truncate">{info.email}</a>
+                                  )}
+                                  {info.phone && (
+                                    <a href={`tel:${info.phone.replace(/\s+/g, '')}`} className="text-mint-400 hover:underline">{info.phone}</a>
+                                  )}
+                                  {info.url && (
+                                    <a href={info.url} target="_blank" rel="noopener noreferrer" className="text-mint-400 hover:underline truncate">{info.url}</a>
+                                  )}
+                                </div>
+                                {info.tips && <p className="text-slate-400">{info.tips}</p>}
+                                {info.last_verified_at && (
+                                  <p className="text-slate-500 text-[10px] pt-1 border-t border-navy-700">
+                                    Last verified {new Date(info.last_verified_at).toLocaleDateString('en-GB')}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
                       )}
                     </div>
                     {sub.source === 'bank' && (

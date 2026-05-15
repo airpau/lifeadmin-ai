@@ -42,7 +42,7 @@ const anthropic = new Anthropic({
 
 // GUARDRAIL: Block any response containing sensitive internal information
 const BLOCKED_TERMS = [
-  'next.js', 'nextjs', 'supabase', 'truelayer', 'claude', 'anthropic',
+  'next.js', 'nextjs', 'supabase', 'yapily', 'claude', 'anthropic',
   'stripe', 'vercel', 'railway', 'posthog', 'perplexity', 'fal.ai',
   'resend', 'awin', 'typescript', 'tailwind', 'react', 'node.js',
   'postgresql', 'gemini', 'imagen', 'elevenlabs', 'openai', 'gpt',
@@ -355,7 +355,7 @@ export async function GET(request: NextRequest) {
       let aiResponse: string | null = null;
       try {
         const completion = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-3-5-haiku-20241022',
           max_tokens: 800,
           system: SYSTEM_PROMPT,
           messages: [{

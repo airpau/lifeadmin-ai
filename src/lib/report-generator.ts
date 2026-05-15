@@ -212,6 +212,52 @@ export interface AnnualReportData {
   totalPoints: number;
   profileCompletenessNum: number;
   moneyRecoveryScore: number;
+
+  // v3 additions (2026-05-02): "How you've used Paybacker" tool
+  // breakdown so the report walks every part of the system, not just
+  // money-flow. Founder ask: show users which tools they're getting
+  // value from + nudge them toward the ones they haven't tried.
+  toolUsage: {
+    pocketAgent: {
+      telegramConnected: boolean;
+      whatsappConnected: boolean;
+      telegramLinkedAt: string | null;
+      whatsappLinkedAt: string | null;
+      lastTelegramAt: string | null;
+      lastWhatsappAt: string | null;
+    };
+    disputesAI: {
+      totalRaised: number;
+      won: number;
+      partial: number;
+      lost: number;
+      stillOpen: number;
+      moneyRecoveredGbp: number;
+    };
+    complianceCentre: {
+      citationsUsedInYourLetters: number;
+      topCitedRefs: Array<{ name: string; count: number }>;
+    };
+    moneyHub: {
+      connectedBanks: number;
+      connectedEmails: number;
+      transactionsAnalysed: number;
+      monthsOfData: number;
+    };
+    incomeAlerts: {
+      received: number;
+      totalLandedGbp: number;
+    };
+    subscriptions: {
+      tracked: number;
+      cancelled: number;
+      monthlyCostGbp: number;
+      annualSavedFromCancellationsGbp: number;
+    };
+    deals: {
+      explored: number;
+    };
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -664,6 +710,10 @@ export async function generateAnnualReportData(
     emailConnsRes,
     allPriceAlertsRes,
     pendingTasksRes,
+    telegramSessionRes,
+    whatsappSessionRes,
+    legalRefUsagesRes,
+    incomeAlertsRes,
   ] = await Promise.all([
     admin.from('profiles')
       .select('full_name, first_name, last_name, phone, address, postcode, email, created_at, subscription_tier, total_money_recovered')
@@ -745,6 +795,40 @@ export async function generateAnnualReportData(
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('status', 'pending_review'),
+
+    // v3 additions: Pocket Agent + Compliance Centre + income alert
+    // counts. All scoped to the rolling 12-month window so the report
+    // matches the rest of the data window.
+    admin.from('telegram_sessions')
+      .select('linked_at, last_message_at, is_active')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle(),
+
+    admin.from('whatsapp_sessions')
+      .select('linked_at, last_message_at, is_active, opted_out_at')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .is('opted_out_at', null)
+      .maybeSingle(),
+
+    // legal_ref_usages joined via legal_references for the friendly
+    // name. Filter to the user's own letters within window.
+    admin.from('legal_ref_usages')
+      .select('ref_id, used_at, legal_references(law_name, section)')
+      .eq('user_id', userId)
+      .gte('used_at', yearStart)
+      .lte('used_at', yearEnd),
+
+    // Income alerts fired in window (drives the Money Hub + alerts
+    // section). Cross-references the new income_received cron from
+    // PR #446.
+    admin.from('notification_log')
+      .select('reference_key, sent_at')
+      .eq('user_id', userId)
+      .eq('notification_type', 'income_received')
+      .gte('sent_at', yearStart)
+      .lte('sent_at', yearEnd),
   ]);
 
   const profile = profileRes.data;
@@ -761,6 +845,36 @@ export async function generateAnnualReportData(
   const bankConns = bankConnsRes.data || [];
   const emailConns = emailConnsRes.data || [];
   const allPriceAlerts = allPriceAlertsRes.data || [];
+
+  // v3 ── Tool-usage roll-up
+  const tg = (telegramSessionRes as { data: { linked_at: string | null; last_message_at: string | null; is_active: boolean } | null }).data ?? null;
+  const wa = (whatsappSessionRes as { data: { linked_at: string | null; last_message_at: string | null; is_active: boolean } | null }).data ?? null;
+  const incomeAlertRows = (incomeAlertsRes as { data: Array<{ reference_key: string; sent_at: string }> | null }).data ?? [];
+
+  // legal_ref_usages → top citations by frequency.
+  type RefUsageRow = {
+    ref_id: string;
+    used_at: string;
+    legal_references:
+      | { law_name: string | null; section: string | null }
+      | { law_name: string | null; section: string | null }[]
+      | null;
+  };
+  const refRows = (legalRefUsagesRes as { data: RefUsageRow[] | null }).data ?? [];
+  const refCounts = new Map<string, number>();
+  for (const r of refRows) {
+    // Supabase joined object can come back as a single object or an
+    // array depending on FK cardinality — handle both safely.
+    const ref = Array.isArray(r.legal_references) ? r.legal_references[0] : r.legal_references;
+    const name = ref?.law_name
+      ? (ref.section ? `${ref.law_name} (${ref.section})` : ref.law_name)
+      : 'Unknown reference';
+    refCounts.set(name, (refCounts.get(name) ?? 0) + 1);
+  }
+  const topCitedRefs = Array.from(refCounts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
 
   // --- Spending calculations with meaningful categories ---
   const validDebits = transactions
@@ -1153,6 +1267,72 @@ export async function generateAnnualReportData(
     totalPoints: points?.balance || 0,
     profileCompletenessNum: profileCompleteness,
     moneyRecoveryScore: parseFloat((totalMoneyRecovered + annualSavingsFromCancellations).toFixed(2)),
+
+    // v3 — Tool usage roll-up so the report walks every part of the
+    // system the user has access to (founder ask 2026-05-02).
+    toolUsage: {
+      pocketAgent: {
+        telegramConnected: !!tg,
+        whatsappConnected: !!wa,
+        telegramLinkedAt: tg?.linked_at ?? null,
+        whatsappLinkedAt: wa?.linked_at ?? null,
+        lastTelegramAt: tg?.last_message_at ?? null,
+        lastWhatsappAt: wa?.last_message_at ?? null,
+      },
+      disputesAI: {
+        totalRaised: disputes.length,
+        won: disputes.filter((d) => (d as { status?: string }).status === 'resolved_won').length,
+        partial: disputes.filter((d) => (d as { status?: string }).status === 'resolved_partial').length,
+        lost: disputes.filter((d) => (d as { status?: string }).status === 'resolved_lost').length,
+        stillOpen: disputes.filter((d) => {
+          const status = (d as { status?: string }).status;
+          return !!status && !status.startsWith('resolved') && status !== 'closed' && status !== 'withdrawn' && status !== 'timeout';
+        }).length,
+        moneyRecoveredGbp: parseFloat(
+          disputes
+            .reduce((s, d) => s + (Number((d as { money_recovered?: number }).money_recovered) || 0), 0)
+            .toFixed(2),
+        ),
+      },
+      complianceCentre: {
+        citationsUsedInYourLetters: refRows.length,
+        topCitedRefs,
+      },
+      moneyHub: {
+        // Match the active-only filter used for `connectedBanks` above
+        // (line ~1073) — bank_connections is queried unfiltered, so a
+        // disconnected/expired link would otherwise overstate usage.
+        connectedBanks: bankConns.filter((b) => b.status === 'active').length,
+        connectedEmails: emailConns.length,
+        transactionsAnalysed: transactions.length,
+        monthsOfData: dataMonths,
+      },
+      incomeAlerts: {
+        received: incomeAlertRows.length,
+        // notification_log doesn't carry the amount, so we cross-
+        // reference the txn id (encoded in reference_key) against the
+        // transactions we already loaded for the window.
+        totalLandedGbp: (() => {
+          const txMap = new Map(transactions.map((t) => [(t as { id?: string }).id, Number((t as { amount?: number | string }).amount)]));
+          let total = 0;
+          for (const r of incomeAlertRows) {
+            const txId = r.reference_key.replace(/^income_received_/, '');
+            const amt = txMap.get(txId);
+            if (typeof amt === 'number' && amt > 0) total += amt;
+          }
+          return parseFloat(total.toFixed(2));
+        })(),
+      },
+      subscriptions: {
+        tracked: activeSubs.length + cancelledSubs.length,
+        cancelled: cancelledSubs.length,
+        monthlyCostGbp: parseFloat(monthlySubscriptionCost.toFixed(2)),
+        annualSavedFromCancellationsGbp: parseFloat(annualSavingsFromCancellations.toFixed(2)),
+      },
+      deals: {
+        explored: dealClicks.length,
+      },
+    },
   };
 }
 

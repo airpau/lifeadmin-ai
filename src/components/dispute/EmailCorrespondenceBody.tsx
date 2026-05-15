@@ -15,9 +15,15 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
+// Lines that signal the start of a footer/disclaimer block — anything
+// from this line onwards is dropped from the rendered preview. Bare
+// runs of dashes / underscores are NOT in this list any more: ZenDesk
+// (and many helpdesks) use them as section dividers IMMEDIATELY
+// BEFORE the actual support reply, so cutting on them drops the body
+// the user actually wants to read. Paul hit this on the Nuki dispute
+// 2026-04-29 — Hadil's response was in our DB intact, but the
+// rendered preview stopped at the auto-prefix.
 const SIGNATURE_CUT_PATTERNS = [
-  /^-{2,}\s*$/,
-  /^_{2,}\s*$/,
   /^unsubscribe\b/i,
   /^this email was sent to\b/i,
   /^this message was sent to\b/i,
@@ -31,6 +37,16 @@ const SIGNATURE_CUT_PATTERNS = [
   /^sent from my (?:iphone|ipad|android)\b/i,
   /^©/,
   /^copyright\s+©?\s*\d{4}/i,
+];
+
+// ZenDesk-style "##- Please type your reply above this line -##"
+// noise — strip the marker line and the immediately following
+// "Your request (NNN) has been updated" status line so the preview
+// opens on the actual reply.
+const ZENDESK_NOISE_PATTERNS = [
+  /^##-\s*please type your reply above this line\s*-##\s*$/i,
+  /^your request \(\d+\) has been updated\b/i,
+  /^to add additional comments, reply to this email\b/i,
 ];
 
 function cleanEmailBody(raw: string): string {
@@ -50,6 +66,13 @@ function cleanEmailBody(raw: string): string {
     const line = rawLine.replace(/\t+/g, ' ').replace(/ {2,}/g, ' ').trim();
     // Tracking-pixel remnants the HTML strip leaves behind.
     if (/^\s*\[?\s*(image|logo|banner|tracking|pixel)\s*\]?\s*$/i.test(line)) continue;
+    // ZenDesk auto-prefix noise — drop those specific lines but keep
+    // walking; the actual reply lives below them.
+    if (ZENDESK_NOISE_PATTERNS.some((re) => re.test(line))) continue;
+    // Pure horizontal-rule lines (rows of dashes / underscores).
+    // Helpdesks use these as section dividers — strip the divider but
+    // KEEP walking so we don't cut the reply that follows.
+    if (/^[-_=*]{2,}$/.test(line)) continue;
     // Footer / signature start — stop there; anything below is noise.
     if (SIGNATURE_CUT_PATTERNS.some((re) => re.test(line))) { cutReached = true; break; }
     cleaned.push(line);

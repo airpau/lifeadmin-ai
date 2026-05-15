@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AI_LETTER_DISCLAIMER } from '@/lib/legal-disclaimer';
 import { checkCitations, type CitationCheckResult } from './citation-guarantee';
+import { stripLetterFormatting } from './letter-formatting';
+export { stripLetterFormatting, stripMarkdownEmphasis, stripSenderAddressBlock, reorderHeaderToTop } from './letter-formatting';
 
 // Lazy singleton — defer construction to first call so Next.js build-time
 // page-data collection doesn't throw when ANTHROPIC_API_KEY is absent in
@@ -37,6 +39,7 @@ const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advo
 - Statute-barred debts: Limitation Act 1980, s.5 — debts become unenforceable after 6 years (5 in Scotland)
 - Debt harassment: Protection from Harassment Act 1997 — creditors must not harass, threaten, or use deceptive practices
 - Disputed debts: creditor must prove the debt exists and is owed by providing a signed credit agreement (Consumer Credit Act 1974, s.78)
+- Assigned / Sold debts: FCA CONC 7.14.1 — A firm must suspend the active pursuit of recovery of a debt from a customer for a reasonable period where the customer disputes the debt on valid grounds. Passing or selling a disputed debt to a collection agency is a regulatory breach.
 - Default notices: Consumer Credit Act 1974, s.87-88 — creditor must serve valid default notice before taking enforcement action
 - Unfair contract terms: Consumer Rights Act 2015, Part 2 — terms must be fair and transparent
 
@@ -52,12 +55,14 @@ IMPORTANT: Only cite legislation that is DIRECTLY relevant to the specific indus
 - Debt harassment: report to Trading Standards, complain to FCA, consider police report under Protection from Harassment Act
 
 ## Writing rules:
-- CRITICAL: Include ALL specific details the user has provided. Names, dates, amounts, addresses, account numbers, reference numbers, email content they pasted. The letter must be specific to THEIR situation, not generic.
+- CRITICAL: Include ALL specific details the user has provided. Names, dates, amounts, account numbers, reference numbers, email content they pasted. The letter must be specific to THEIR situation, not generic.
+- PLAIN TEXT ONLY. Do NOT use any markdown formatting in the letter body. No asterisks (*, **) for bold or emphasis, no underscores (_, __) for italics, no backticks, no markdown headings (#). The letter must be plain prose the user can copy-paste directly into an email or print on letterhead.
+- PRIVACY: Do NOT include the customer's postal/home address anywhere in the letter. The customer wants privacy. Identify the customer to the merchant only by their account/reference number (and name in the sign-off). Omit the sender-address block at the top entirely.
 - Write as a natural, flowing letter that reads as if written by an intelligent human — NOT a template or legal document
 - DO NOT use section headings, bold headers, or CAPS LOCK headings like "WHY THIS IS INADEQUATE" or "MY LEGAL RIGHTS". These make the letter feel robotic and AI-generated. Instead, use natural paragraph transitions
 - DO NOT use bullet points or numbered lists in the letter body. Write in continuous prose with clear paragraphs
 - The letter should feel like a well-written personal email or formal letter, not a legal brief
-- Formal UK letter format: sender details (top-right), then date, then addressee, then subject line, THEN the salutation, THEN body. The subject line uses "Re:" prefix (NOT "Subject:") and is placed BEFORE "Dear …" — never after. Keep subject lines under 12 words. Do NOT include the subject line as a separate paragraph after "Dear Sir or Madam," — that breaks UK letter convention.
+- Formal UK letter format: date at the top, then addressee (the merchant), then the account/reference number, then a "Re:" subject line, THEN the salutation, THEN body. The subject line uses "Re:" prefix (NOT "Subject:") and is placed BEFORE "Dear …" — never after. Keep subject lines under 12 words. Do NOT include the subject line as a separate paragraph after "Dear Sir or Madam," — that breaks UK letter convention. Do NOT print the customer's postal address at the top.
 - State facts chronologically in natural paragraphs
 - Weave legal references naturally into sentences (e.g. "Under the Consumer Rights Act 2015, I am entitled to..." NOT a separate "LEGAL BASIS" section)
 - State the specific remedy required and set a 14-day deadline
@@ -133,7 +138,7 @@ For statute-barred debt: cite Limitation Act 1980 s.5 AND CCA 1974 s.77/78.
 A single-citation letter on a multi-ground scenario is incorrect output. Use every applicable citation from the verified-refs list — do not pick "the strongest" and drop the others.
 
 ## NON-LEGAL-ADVICE DISCLAIMER
-Paybacker assists consumers in drafting their own correspondence; we are not solicitors and the letter is not legal advice. Do NOT add a disclaimer paragraph inside the letter (the UI shows it separately). But your tone must remain that of a layperson asserting their own rights, not of a lawyer giving formal advice.`;
+Paybacker assists consumers in drafting their own correspondence; we are not solicitors and the letter is not legal advice. Do NOT add a disclaimer paragraph inside the letter (the UI shows it separately). But your tone must remain that of a layperson asserting their own rights, not of a legal professional giving formal advice.`;
 
 /**
  * Letter voice direction.
@@ -181,6 +186,17 @@ export interface ComplaintInput {
    * as the addressee).
    */
   customerName?: string;
+  /**
+   * Optional historical-data steer from the dispute intelligence
+   * flywheel. Callers can hydrate this from
+   * `getTopLegalRefsForMerchant(...)` in `src/lib/dispute-outcome/stats.ts`
+   * — the engine surfaces it to the LLM as "customers with disputes
+   * against this merchant won at these rates per legal basis" so the
+   * model can prefer those bases where they fit the case facts.
+   *
+   * Additive — every existing call site continues to work without it.
+   */
+  historicalSteer?: Array<{ legalRef: string; winRate: number; sample: number }>;
 }
 
 export interface CitationGuaranteeOutcome {
@@ -233,7 +249,7 @@ export async function generateComplaintLetter(
     broadband_complaint: 'Broadband or mobile complaint. Cite Ofcom General Conditions, the right to exit penalty-free for undisclosed mid-contract price rises, and the Communications Act 2003.',
     flight_compensation: 'Flight delay/cancellation compensation claim under UK261 (retained EU261). Cite specific compensation amounts: £220 (short-haul), £350 (medium-haul), £520 (long-haul). Mention the 6-year claim window and CAA escalation.',
     parking_appeal: 'Private parking charge appeal. Cite the Protection of Freedoms Act 2012 (Schedule 4), BPA Code of Practice, and POPLA appeal rights. Challenge signage adequacy and proportionality of the charge.',
-    debt_dispute: 'Debt dispute response. Cite the Consumer Credit Act 1974 s77-79 (right to request CCA agreement), Limitation Act 1980 (6-year statute barred rule), and FCA debt collection guidelines. Request proof of the debt.',
+    debt_dispute: 'Debt dispute response. Cite the Consumer Credit Act 1974 s77-79 (right to request CCA agreement), Limitation Act 1980 (6-year statute barred rule), and FCA debt collection guidelines (CONC 7.14.1 if debt was disputed before being passed to collection). Request proof of the debt and demand the account be returned to the original creditor if disputed.',
     refund_request: 'Formal refund request. Cite the Consumer Rights Act 2015 (30-day right to reject, 6-month repair or replace period), and Section 75 Consumer Credit Act for credit card purchases over £100.',
     hmrc_tax_rebate: 'HMRC tax rebate claim. This is a formal letter to HMRC, not a company complaint. Cite the relevant tax legislation and include NI number/UTR reference.',
     council_tax_band: 'Council tax band challenge. Address to the Valuation Office Agency (VOA). Cite the Local Government Finance Act 1992 and provide comparable property evidence.',
@@ -271,6 +287,7 @@ ${input.threadContext || ''}
 
 ${input.threadContext ? 'IMPORTANT: This is a follow-up letter in an ongoing dispute. Reference the previous correspondence dates and key points. Open with "Further to my letter dated..." or "Following our correspondence regarding..." as appropriate. Build on the previous arguments and escalate the tone appropriately.' : ''}
 
+${input.historicalSteer && input.historicalSteer.length > 0 ? `\nHISTORICAL DATA (Paybacker dispute outcome dataset):\nCustomers with disputes against ${input.companyName} won at these rates per legal basis (only bases with sample >=5 shown):\n${input.historicalSteer.map((s) => `- ${s.legalRef}: ${(s.winRate * 100).toFixed(0)}% win rate (n=${s.sample})`).join('\n')}\nPrefer these bases where they fit the case facts. Choose based on the case, but use the data as a tie-breaker.\n` : ''}
 ${input.verifiedLegalRefs ? `\nRELEVANT UK CONSUMER LAW (verified against official sources):
 ${input.verifiedLegalRefs}
 
@@ -371,7 +388,7 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
     if (!jsonMatch) throw new Error('Could not parse JSON from Claude response');
     const parsed = parseLenientJson(jsonMatch[0]);
     return {
-      letter: parsed.letter,
+      letter: stripLetterFormatting(parsed.letter),
       legalReferences: parsed.legalReferences || [],
       estimatedSuccess: parsed.estimatedSuccess || 70,
       nextSteps: parsed.nextSteps || [],

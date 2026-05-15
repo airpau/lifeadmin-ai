@@ -13,10 +13,11 @@
  *   - Pure-ish: takes (supabase, userId, now) → string. Cheap to unit
  *     test by mocking the Supabase client.
  *
- * Output is plain markdown-flavoured text suitable for Telegram and
- * WhatsApp free-text (within the 24h customer-service window). Sections
- * are omitted entirely when there's no data — the digest never says
- * "0 opportunities" or "no spending recorded" if the section is empty.
+ * Output uses WhatsApp markdown (*bold*) which is also legible on
+ * Telegram and renders fine inside the email HTML wrapper. Sections
+ * print fallback copy ("No open disputes 🎉") rather than vanishing
+ * silently when empty — Paul's feedback on 15 May 2026 was that an
+ * empty digest looks broken even when it's accurate.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isRealSpend, effectiveCategory } from '@/lib/spending';
@@ -27,8 +28,21 @@ interface BriefContext {
   now: Date;
 }
 
+// Disputes are considered "open" unless they're in one of these
+// terminal states. The morning brief used to show resolved_won rows
+// as "open" because the dispute table never had a single status
+// canonical for closed work — every closure path lands in one of these.
+const TERMINAL_DISPUTE_STATUSES = [
+  'resolved_won',
+  'resolved_partial',
+  'resolved_lost',
+  'closed',
+  'withdrawn',
+];
+
 function gbp(amount: number): string {
-  return `£${Math.abs(amount).toFixed(2)}`;
+  const sign = amount < 0 ? '-' : '';
+  return `${sign}£${Math.abs(amount).toFixed(2)}`;
 }
 
 function ddmm(dateStr: string): string {
@@ -65,17 +79,22 @@ async function fetchFirstName(
 
 /**
  * Morning brief — runs at the user's scheduled time (default 07:30
- * Europe/London). Includes:
+ * Europe/London).
  *
+ * Sections (always shown, even when empty, so the digest never looks
+ * broken):
  *   - Greeting with first name
- *   - Combined current account balance (across active bank_connections)
- *   - Money in / money out over last 7 days
- *   - Upcoming payments next 7 days (subscriptions + recurring patterns)
- *   - Open disputes with latest status
- *   - Active price-increase alerts (subscription hikes detected)
+ *   - This month so far (income, spend, balance trend)
+ *   - Upcoming payments next 7 days
+ *   - Open disputes (non-terminal status)
+ *   - Alerts (active price increases + renewals due ≤ 7 days)
  *
- * Sections render only if they have content. The whole brief stays
- * under 1024 chars so it survives WhatsApp's free-text limit.
+ * Note: the bank-sync cron runs at 04:00 Europe/London (vercel.json
+ * `yapily-bank-sync`). Yesterday's transactions are usually written
+ * by the time the brief fires at 07:30, but bank settlement lag means
+ * they sometimes land mid-morning. We deliberately quote "last 7
+ * days" and "month so far" rather than "yesterday" to insulate the
+ * brief from that lag.
  */
 export async function buildMorningBrief(
   supabase: SupabaseClient,
@@ -83,7 +102,196 @@ export async function buildMorningBrief(
 ): Promise<string> {
   const now = new Date();
   const firstName = await fetchFirstName(supabase, userId);
-  return buildBrief(supabase, { userId, firstName, now }, 'morning');
+
+  // Month-to-date window: from the 1st of the current month at 00:00
+  // through `now`. Uses UTC midnight on the 1st to align with the
+  // timestamp column (stored as ISO UTC by the Yapily sync).
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const monthStartIso = monthStart.toISOString();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgoIso = sevenDaysAgo.toISOString();
+  const todayStr = now.toISOString().split('T')[0];
+  const in7DaysStr = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0];
+
+  const [
+    monthTxRes,
+    weekTxRes,
+    upcomingSubsRes,
+    openDisputesRes,
+    priceAlertsRes,
+    renewalsDueRes,
+  ] = await Promise.all([
+    supabase
+      .from('bank_transactions')
+      .select('amount, user_category, category, description, merchant_name, timestamp')
+      .eq('user_id', userId)
+      .gte('timestamp', monthStartIso)
+      .lte('timestamp', now.toISOString()),
+    supabase
+      .from('bank_transactions')
+      .select('amount, user_category, category, description, merchant_name, timestamp')
+      .eq('user_id', userId)
+      .gte('timestamp', sevenDaysAgoIso)
+      .lte('timestamp', now.toISOString()),
+    supabase
+      .from('subscriptions')
+      .select('provider_name, amount, billing_cycle, next_billing_date')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .is('dismissed_at', null)
+      .gte('next_billing_date', todayStr)
+      .lte('next_billing_date', in7DaysStr)
+      .order('next_billing_date', { ascending: true })
+      .limit(8),
+    supabase
+      .from('disputes')
+      .select('provider_name, issue_type, status, updated_at, money_recovered')
+      .eq('user_id', userId)
+      .not('status', 'in', `(${TERMINAL_DISPUTE_STATUSES.join(',')})`)
+      .order('updated_at', { ascending: false })
+      .limit(5),
+    supabase
+      .from('price_increase_alerts')
+      .select('merchant_name, old_amount, new_amount, increase_pct')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(3),
+    supabase
+      .from('subscriptions')
+      .select('provider_name, amount, next_billing_date')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .is('dismissed_at', null)
+      .gte('next_billing_date', todayStr)
+      .lte('next_billing_date', in7DaysStr)
+      .order('next_billing_date', { ascending: true })
+      .limit(3),
+  ]);
+
+  // ---------- month-to-date income / spend ----------
+  const monthTxns = (monthTxRes.data ?? []) as Array<{
+    amount: number | string;
+    user_category: string | null;
+    category: string | null;
+    description: string | null;
+    merchant_name: string | null;
+    timestamp: string;
+  }>;
+  let monthIn = 0;
+  let monthOut = 0;
+  for (const tx of monthTxns) {
+    const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : tx.amount;
+    if (!Number.isFinite(amt)) continue;
+    if (amt > 0) {
+      monthIn += amt;
+    } else if (isRealSpend(tx)) {
+      monthOut += Math.abs(amt);
+    }
+  }
+  const monthTrend = monthIn - monthOut;
+
+  // ---------- last-7-days spend (for context line) ----------
+  const weekTxns = (weekTxRes.data ?? []) as typeof monthTxns;
+  let weekOut = 0;
+  for (const tx of weekTxns) {
+    const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : tx.amount;
+    if (!Number.isFinite(amt) || amt >= 0) continue;
+    if (isRealSpend(tx)) weekOut += Math.abs(amt);
+  }
+
+  // ---------- assemble ----------
+  const sections: string[] = [];
+  sections.push(`Good morning ${firstName} 👋 Here's your daily money briefing:`);
+
+  // This month so far — always shown. Even when empty (new user)
+  // the £0.00 line is honest and not broken-looking.
+  const monthLines = [
+    `💰 *This month so far*`,
+    `Income: ${gbp(monthIn)}`,
+    `Spent: ${gbp(monthOut)}`,
+    `Balance trend: ${gbp(monthTrend)}`,
+  ];
+  if (weekOut > 0) {
+    monthLines.push(`Last 7 days spend: ${gbp(weekOut)}`);
+  }
+  sections.push(monthLines.join('\n'));
+
+  // Upcoming payments
+  const upcoming = (upcomingSubsRes.data ?? []) as Array<{
+    provider_name: string;
+    amount: number | string;
+    billing_cycle: string | null;
+    next_billing_date: string;
+  }>;
+  if (upcoming.length === 0) {
+    sections.push(`📅 *Upcoming payments (next 7 days)*\nNone detected`);
+  } else {
+    const lines = upcoming.slice(0, 5).map((s) => {
+      const amt = typeof s.amount === 'string' ? parseFloat(s.amount) : s.amount;
+      return `• ${s.provider_name} — ${gbp(Number(amt))} on ${ddmm(s.next_billing_date)}`;
+    });
+    const tail = upcoming.length > 5 ? `\n…and ${upcoming.length - 5} more` : '';
+    sections.push(`📅 *Upcoming payments (next 7 days)*\n${lines.join('\n')}${tail}`);
+  }
+
+  // Open disputes
+  const openDisputes = (openDisputesRes.data ?? []) as Array<{
+    provider_name: string;
+    issue_type: string;
+    status: string;
+  }>;
+  if (openDisputes.length === 0) {
+    sections.push(`⚖️ *Open disputes*\nNo open disputes 🎉`);
+  } else {
+    const lines = openDisputes.slice(0, 3).map((d) => {
+      const status = d.status.replace(/_/g, ' ');
+      return `• ${d.provider_name} — ${status}`;
+    });
+    const tail =
+      openDisputes.length > 3 ? `\n…and ${openDisputes.length - 3} more` : '';
+    sections.push(
+      `⚖️ *Open disputes (${openDisputes.length})*\n${lines.join('\n')}${tail}`,
+    );
+  }
+
+  // Alerts — price increases + renewals due in ≤ 7 days. Combined
+  // because both are "things you might want to do today". Section is
+  // omitted only when both are empty (no false comfort).
+  const priceAlerts = (priceAlertsRes.data ?? []) as Array<{
+    merchant_name: string;
+    old_amount: number | string;
+    new_amount: number | string;
+    increase_pct: number | string;
+  }>;
+  const renewalsDue = (renewalsDueRes.data ?? []) as Array<{
+    provider_name: string;
+    amount: number | string;
+    next_billing_date: string;
+  }>;
+  const alertLines: string[] = [];
+  for (const a of priceAlerts) {
+    const oldAmt = Number(a.old_amount);
+    const newAmt = Number(a.new_amount);
+    const pct = Math.round(Number(a.increase_pct));
+    alertLines.push(
+      `💸 ${a.merchant_name} up ${gbp(oldAmt)} → ${gbp(newAmt)} (+${pct}%)`,
+    );
+  }
+  for (const r of renewalsDue) {
+    const amt = Number(r.amount);
+    const when = ddmm(r.next_billing_date);
+    alertLines.push(`🔁 ${r.provider_name} renews ${when} (${gbp(amt)})`);
+  }
+  if (alertLines.length > 0) {
+    sections.push(`🔔 *Alerts*\n${alertLines.slice(0, 4).join('\n')}`);
+  }
+
+  sections.push('Reply with anything to ask about your finances.');
+
+  return sections.join('\n\n');
 }
 
 export async function buildEveningRecap(
@@ -113,7 +321,7 @@ export async function buildPaydaySummary(
   return buildBrief(supabase, { userId, firstName, now }, 'payday');
 }
 
-type BriefKind = 'morning' | 'evening' | 'weekly' | 'payday';
+type BriefKind = 'evening' | 'weekly' | 'payday';
 
 async function buildBrief(
   supabase: SupabaseClient,
@@ -122,9 +330,7 @@ async function buildBrief(
 ): Promise<string> {
   const { userId, firstName, now } = ctx;
 
-  // Window selection — morning + evening look at last 7d, weekly looks
-  // back 7d but frames as "this week", payday focuses on the next 30d.
-  const lookbackDays = kind === 'weekly' ? 7 : kind === 'payday' ? 30 : 7;
+  const lookbackDays = kind === 'payday' ? 30 : 7;
   const windowStart = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
   const todayStr = now.toISOString().split('T')[0];
   const in7DaysStr = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -165,7 +371,7 @@ async function buildBrief(
       .from('disputes')
       .select('provider_name, issue_type, status, updated_at, money_recovered')
       .eq('user_id', userId)
-      .not('status', 'in', '(resolved_won,resolved_partial,resolved_lost,closed)')
+      .not('status', 'in', `(${TERMINAL_DISPUTE_STATUSES.join(',')})`)
       .order('updated_at', { ascending: false })
       .limit(5),
     supabase
@@ -179,24 +385,19 @@ async function buildBrief(
 
   const sections: string[] = [];
 
-  // ---------- header ----------
   const greeting =
-    kind === 'morning'
-      ? `${greetingFor(now)} ${firstName} 👋`
-      : kind === 'evening'
-        ? `Evening ${firstName} — here's today's recap.`
-        : kind === 'weekly'
-          ? `Hey ${firstName} — your weekly money recap is in.`
-          : `Hey ${firstName} — payday checkpoint.`;
+    kind === 'evening'
+      ? `Evening ${firstName} — here's today's recap.`
+      : kind === 'weekly'
+        ? `Hey ${firstName} — your weekly money recap is in.`
+        : `Hey ${firstName} — payday checkpoint.`;
 
   const subline =
-    kind === 'morning'
-      ? "Here's your financial snapshot for today:"
-      : kind === 'evening'
-        ? 'Today vs. your usual.'
-        : kind === 'weekly'
-          ? 'Last 7 days at a glance.'
-          : 'Income matched to what you have lined up.';
+    kind === 'evening'
+      ? 'Today vs. your usual.'
+      : kind === 'weekly'
+        ? 'Last 7 days at a glance.'
+        : 'Income matched to what you have lined up.';
 
   sections.push(`*${greeting}*\n${subline}`);
 
@@ -291,8 +492,8 @@ async function buildBrief(
     sections.push(`📅 *Upcoming payments (next ${range}):*\n${lines.join('\n')}`);
   }
 
-  // ---------- contract expiries (morning + weekly only) ----------
-  if (kind === 'morning' || kind === 'weekly') {
+  // ---------- contract expiries (weekly only) ----------
+  if (kind === 'weekly') {
     const expiring = upcomingRaw
       .filter((s) => {
         const d = s.contract_end_date;
@@ -350,8 +551,7 @@ async function buildBrief(
     sections.push(`🔍 *Price increases spotted:*\n${lines.join('\n')}`);
   }
 
-  // ---------- footer CTA ----------
-  if (kind === 'morning' || kind === 'evening') {
+  if (kind === 'evening') {
     sections.push('Reply here to ask me anything about your finances.');
   } else if (kind === 'weekly') {
     sections.push("Reply 'deals' to see switching offers in your top categories.");

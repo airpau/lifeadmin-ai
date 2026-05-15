@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const maxDuration = 60;
 
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
     .in('status', ['active', 'expiring_soon'])
     .not('consent_expires_at', 'is', null)
     .lt('consent_expires_at', now)
-    .select('id');
+    .select('id, user_id, bank_name');
 
   if (expiredError) {
     console.error('Consent renewal: error marking expired:', expiredError);
@@ -63,13 +64,67 @@ export async function GET(request: NextRequest) {
 
   const expiredCount = expired?.length || 0;
 
+  // ── Step 3: Fire reconnect alerts to Pocket Agent users whose
+  //          consent JUST expired. Telegram + WhatsApp via the unified
+  //          dispatcher; email is handled by the existing nudge cron
+  //          so we don't double-spam. Each user is notified at most
+  //          ONCE per connection per expiry (dedup via notification_log).
+  let reconnectAlerts = 0;
+  for (const conn of expired ?? []) {
+    try {
+      // Dedup: if we already fired a reconnect alert for this connection
+      // since it was last marked expired, skip.
+      const { data: alreadyAlerted } = await supabase
+        .from('notification_log')
+        .select('id')
+        .eq('user_id', conn.user_id)
+        .eq('notification_type', 'bank_reconnect_required')
+        .eq('reference_key', conn.id)
+        .maybeSingle();
+      if (alreadyAlerted) continue;
+
+      const providerName = conn.bank_name || 'your bank';
+      const reconnectUrl = 'https://paybacker.co.uk/dashboard/money-hub';
+
+      await sendNotification(supabase, {
+        userId: conn.user_id,
+        event: 'reconnect_required',
+        telegram: {
+          text:
+            `⚠️ *Bank reconnection needed*\n\n` +
+            `Your connection to *${providerName}* has expired. ` +
+            `Open ${reconnectUrl} → Add bank to reconnect (90-second flow).\n\n` +
+            `_We won't be able to sync new transactions until you reconnect._`,
+        },
+        whatsapp: {
+          templateName: 'paybacker_reconnect_required',
+          templateParameters: [providerName, reconnectUrl],
+        },
+        push: {
+          title: 'Bank reconnection needed',
+          body: `${providerName} consent expired — reconnect to resume sync`,
+        },
+      });
+
+      await supabase.from('notification_log').insert({
+        user_id: conn.user_id,
+        notification_type: 'bank_reconnect_required',
+        reference_key: conn.id,
+      });
+      reconnectAlerts++;
+    } catch (err) {
+      console.error(`[consent-renewal] alert failed for ${conn.id}:`, err);
+    }
+  }
+
   console.log(
-    `Consent renewal: expiring_soon=${expiringSoonCount} expired=${expiredCount}`
+    `Consent renewal: expiring_soon=${expiringSoonCount} expired=${expiredCount} reconnect_alerts=${reconnectAlerts}`
   );
 
   return NextResponse.json({
     ok: true,
     expiring_soon: expiringSoonCount,
     expired: expiredCount,
+    reconnect_alerts: reconnectAlerts,
   });
 }

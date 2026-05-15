@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
+import { CITATION_ELIGIBLE_STATUSES } from '@/lib/legal-refs-statuses';
 
 export const maxDuration = 300;
 
@@ -166,7 +167,7 @@ export async function GET(request: NextRequest) {
   const { data: allRefs } = await supabase
     .from('legal_references')
     .select('id, law_name, section, summary, source_url, source_type, category, content_hash')
-    .in('verification_status', ['current', 'updated']);
+    .in('verification_status', CITATION_ELIGIBLE_STATUSES as unknown as string[]);
 
   const refs: LegalRef[] = allRefs || [];
 
@@ -363,7 +364,7 @@ async function processStatuteChange(
         : 'No matching stored references found.';
 
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 1024,
       messages: [
         {
@@ -539,7 +540,7 @@ async function processRegulatorPage(
       .join('\n\n');
 
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 1024,
       messages: [
         {
@@ -675,7 +676,7 @@ async function scanNewLegislation(
     const existingLawNames = existingRefs.map(r => r.law_name).join(', ');
 
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 512,
       messages: [
         {

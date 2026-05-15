@@ -99,7 +99,7 @@ export default function IcoNoticePage() {
           <h2 style={hStyle}>What we collect</h2>
           <ul style={ulStyle}>
             <li><strong>Account data</strong> — your email, name, and password hash.</li>
-            <li><strong>Bank data</strong> — read-only transaction history retrieved via Yapily / TrueLayer when you connect a bank, used solely to identify subscriptions and recurring charges.</li>
+            <li><strong>Bank data</strong> — read-only transaction history retrieved via Yapily (FCA-authorised Open Banking provider) when you connect a bank, used solely to identify subscriptions and recurring charges.</li>
             <li><strong>Email metadata</strong> — when you connect Gmail or Outlook, we read message subjects, sender, and date to identify dispute correspondence and overcharges. We do not exfiltrate full email bodies beyond the matched subset.</li>
             <li><strong>Dispute content</strong> — the disputes, complaint letters and supporting facts you generate or paste.</li>
             <li><strong>Usage analytics</strong> — anonymised behaviour via PostHog.</li>
@@ -148,7 +148,7 @@ export default function IcoNoticePage() {
           <ul style={ulStyle}>
             <li><strong>Supabase</strong> — managed Postgres + Auth (EU-West).</li>
             <li><strong>Anthropic</strong> — Claude API for AI letter drafting (US, with UK-GDPR-compliant data agreement).</li>
-            <li><strong>Yapily / TrueLayer</strong> — FCA-regulated Open Banking provider.</li>
+            <li><strong>Yapily</strong> — FCA-regulated Open Banking provider.</li>
             <li><strong>Stripe</strong> — payments processor (PCI-DSS certified).</li>
             <li><strong>Resend</strong> — transactional email.</li>
             <li><strong>PostHog</strong> — product analytics.</li>

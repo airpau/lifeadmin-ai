@@ -5,7 +5,7 @@ export type PlanTier = 'free' | 'essential' | 'pro';
 export interface PlanLimits {
   complaintsPerMonth: number | null; // null = unlimited
   scanRunsPerMonth: number | null;
-  // null = unlimited. Enforced at the connect endpoints (truelayer/yapily/google/microsoft).
+  // null = unlimited. Enforced at the connect endpoints (yapily/google/microsoft).
   maxBanks: number | null;
   maxEmails: number | null;
   // Custom Account Spaces. Default "Everything" Space is always free; this
@@ -245,6 +245,51 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
 export async function canUseWhatsApp(userId: string): Promise<boolean> {
   const tier = await getEffectiveTier(userId);
   return PLAN_LIMITS[tier].whatsappPocketAgent === true;
+}
+
+/**
+ * Free-tier monthly scan gate.
+ *
+ * Free users may run an inbox scan at most once per 30 days (across all of
+ * their connected inboxes). Returns `{ allowed: true }` for paid tiers.
+ * On free-tier rate-limit, callers should return HTTP 429 with the
+ * `nextAvailableISO` so the UI can display a countdown.
+ */
+export interface FreeScanGateResult {
+  allowed: boolean;
+  tier: PlanTier;
+  lastScanISO?: string | null;
+  nextAvailableISO?: string | null;
+}
+
+export async function checkFreeScanGate(userId: string): Promise<FreeScanGateResult> {
+  const tier = await getEffectiveTier(userId);
+  if (tier !== 'free') {
+    return { allowed: true, tier };
+  }
+  const admin = getAdmin();
+  const { data } = await admin
+    .from('email_connections')
+    .select('last_scanned_at')
+    .eq('user_id', userId)
+    .order('last_scanned_at', { ascending: false })
+    .limit(1);
+  const lastISO = data?.[0]?.last_scanned_at ?? null;
+  if (!lastISO) {
+    return { allowed: true, tier, lastScanISO: null };
+  }
+  const lastMs = new Date(lastISO).getTime();
+  const ageMs = Date.now() - lastMs;
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+  if (ageMs >= THIRTY_DAYS_MS) {
+    return { allowed: true, tier, lastScanISO: lastISO };
+  }
+  return {
+    allowed: false,
+    tier,
+    lastScanISO: lastISO,
+    nextAvailableISO: new Date(lastMs + THIRTY_DAYS_MS).toISOString(),
+  };
 }
 
 /**

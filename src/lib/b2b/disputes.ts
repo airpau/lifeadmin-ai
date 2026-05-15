@@ -18,6 +18,22 @@
 
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
 import { createClient } from '@supabase/supabase-js';
+import {
+  checkRefFreshness,
+  refreshSingleRef,
+  findFreshSubstitute,
+  freshnessOf,
+  freshnessTier,
+  tierWarning,
+  findTieredSubstitute,
+  findChainSubstitute,
+  extractCitations,
+  validateCitations,
+  planSubstitutions,
+  sanitiseLetter,
+} from '@/lib/legal-refs-guardrail';
+import { CITATION_ELIGIBLE_STATUSES } from '@/lib/legal-refs-statuses';
+import { loadFreshLegalRefs } from '@/lib/legal-data/freshness-gate';
 
 function getAdmin() {
   return createClient(
@@ -158,6 +174,92 @@ export interface DisputeResponse {
    *   }
    */
   preflight: PreflightResult | null;
+  /**
+   * PR β post-flight guardrail. Additive optional field; never breaks
+   * the public contract. Populated when the LLM cited a UK statute that
+   * did not appear in the fresh-pool pre-flight (i.e. an artefact of
+   * training-data hallucination that bypassed the input filter). Each
+   * warning describes one rogue citation that was either replaced or
+   * stripped before this response shipped. Consumers who care about
+   * compliance traceability surface these to their CX agents; consumers
+   * who don't can ignore the field entirely.
+   */
+  _compliance_warnings?: string[];
+  /**
+   * Historical success rate for this merchant from the Paybacker
+   * dispute outcome dataset. Populated only when sample size >= 5.
+   * Additive optional field — never breaks the public contract.
+   *
+   * Source: `dispute_intelligence_stats` (scope_kind='merchant'),
+   * computed nightly from real dispute outcomes tagged by users +
+   * AI-extracted-confirmed.
+   */
+  historical_success_rate?: {
+    merchant: string;
+    cases_evaluated: number;
+    win_rate: number;
+    avg_recovered_gbp: number | null;
+    source: 'paybacker_dispute_dataset_v1';
+  } | null;
+  /**
+   * Optional Dispute Agent recommendation — only populated when the
+   * caller has registered the dispute with Paybacker's autonomous
+   * agent (per-active-case pricing tier). Backward-compatible
+   * additive field; never required, never breaking.
+   *
+   * Tells the integrator what the agent thinks the next step is for
+   * this dispute, the rationale, and (when available) the historical
+   * signal grounding the recommendation.
+   */
+  /**
+   * Phase 4 — per-cited-ref freshness provenance from the freshness
+   * gate (`src/lib/legal-data/freshness-gate.ts`). One entry per legal
+   * reference fed into this response. Lets the integrator surface to
+   * their CX agent or compliance log when a citation was fresh,
+   * stale-with-caveat, or backed by a non-canonical source. ADDITIVE
+   * optional field — never breaks the public contract.
+   */
+  legal_basis_freshness?: Array<{
+    ref_id: string;
+    last_verified_at: string | null;
+    /**
+     * Phase 5 (2026-05-01): the `'cma-case'` literal is RENAMED to
+     * `'gov-uk-content'` to align with the canonical-source router
+     * taxonomy (`src/lib/legal-data/source-router.ts`). gov.uk pages
+     * under `/cma-cases/` AND `/government/publications/` both map to
+     * the `'gov-uk-content'` family, so a CMA-case-only literal was
+     * misleading. This is technically a breaking change in the union;
+     * the field is 5 days old at rename time so no external integrator
+     * is expected to be discriminating on `'cma-case'` yet. If you
+     * need to be defensive: `source.startsWith('gov-uk') ||
+     * source === 'legislation.gov.uk'`.
+     */
+    source:
+      | 'legislation.gov.uk'
+      | 'perplexity'
+      | 'find-case-law'
+      | 'gov-uk-content'
+      | 'other';
+    is_stale: boolean;
+  }>;
+  agent_recommendation?: {
+    recommended_action:
+      | 'send_initial_letter'
+      | 'send_followup'
+      | 'escalate_ombudsman'
+      | 'accept_partial'
+      | 'send_letter_before_action'
+      | 'small_claims'
+      | 'mark_won'
+      | 'mark_partial'
+      | 'mark_lost'
+      | 'manual_review'
+      | 'wait';
+    rationale: string;
+    next_review_in_days: number;
+    data_grounded: boolean;
+    historical_signal?: { merchant_win_rate: number; sample_size: number };
+  } | null;
 }
 
 export interface PreflightResult {
@@ -191,8 +293,27 @@ export interface PreflightResult {
 }
 
 export interface DisputeError {
-  code: 'VALIDATION' | 'NO_STATUTE_MATCH' | 'ENGINE_ERROR';
+  code: 'VALIDATION' | 'NO_STATUTE_MATCH' | 'ENGINE_ERROR' | 'STALE_CITATION';
   message: string;
+  /**
+   * Populated when `code === 'STALE_CITATION'`. Lists the legal_references
+   * row IDs the engine wanted to cite that failed the freshness guardrail
+   * AND for which no fresh substitute exists in the same category. The
+   * route maps this error to HTTP 503 with `retry_after`.
+   */
+  ref_ids?: string[];
+  /**
+   * Recommended retry interval in seconds. The cron re-verifies daily;
+   * a one-minute retry hint matches the spec.
+   */
+  retry_after?: number;
+  /**
+   * Categories whose entire freshness cascade (tier 1-4 + chain
+   * fallback) produced no usable ref. Surfaced to the route handler so
+   * the 503 alarm can pinpoint which legal sectors need urgent
+   * re-verification.
+   */
+  unsalvageable_categories?: string[];
 }
 
 export function validateRequest(body: unknown): DisputeRequest | DisputeError {
@@ -389,8 +510,8 @@ async function fetchVerifiedRefs(scenario: string): Promise<any[]> {
   // /coverage page and the consumer engine's ground truth.
   const { data } = await supabase
     .from('legal_references')
-    .select('law_name, section, summary, full_text, source_url, category')
-    .in('verification_status', ['current', 'updated'])
+    .select('id, law_name, section, summary, full_text, source_url, category, is_stale, last_freshness_check_at, last_verified')
+    .in('verification_status', CITATION_ELIGIBLE_STATUSES as unknown as string[])
     .limit(500);
   if (!data || data.length === 0) return [];
 
@@ -416,6 +537,30 @@ async function fetchVerifiedRefs(scenario: string): Promise<any[]> {
 function inferStatute(legalReferences: string[]): string {
   if (legalReferences.length === 0) return 'No primary UK statute identified for this scenario.';
   return legalReferences[0];
+}
+
+/**
+ * Cheap, non-LLM merchant extraction from a free-text scenario. We
+ * only use this to seed the historical_success_rate lookup — the LLM
+ * still drives every other field. False negatives just mean we skip
+ * the optional field; false positives just miss the dataset.
+ */
+function extractMerchantFromScenario(scenario: string): string | null {
+  const KNOWN = [
+    'Octopus Energy', 'British Gas', 'EDF', 'EON', 'E.ON', 'OVO', 'Bulb', 'Scottish Power', 'SSE',
+    'BT', 'Virgin Media', 'Sky', 'TalkTalk', 'Plusnet', 'NOW Broadband',
+    'O2', 'EE', 'Three', 'Vodafone', 'Giffgaff', 'Tesco Mobile',
+    'HSBC', 'Barclays', 'NatWest', 'Lloyds', 'Halifax', 'Santander', 'Monzo', 'Starling',
+    'Ryanair', 'easyJet', 'British Airways', 'Jet2', 'TUI',
+    'Amazon', 'Argos', 'Currys', 'John Lewis', 'ASOS',
+    'Aviva', 'Admiral', 'Direct Line', 'Churchill', 'Hastings',
+    'Thames Water', 'Severn Trent', 'Anglian Water',
+  ];
+  const lower = scenario.toLowerCase();
+  for (const m of KNOWN) {
+    if (lower.includes(m.toLowerCase())) return m;
+  }
+  return null;
 }
 
 function deriveEscalationPath(scenario: string): DisputeResponse['escalation_path'] {
@@ -467,7 +612,103 @@ function deriveEscalationPath(scenario: string): DisputeResponse['escalation_pat
  * maps to an HTTP status code.
  */
 export async function resolveDispute(req: DisputeRequest): Promise<DisputeResponse | DisputeError> {
-  const verifiedRefs = await fetchVerifiedRefs(req.scenario);
+  const supabase = getAdmin();
+  let verifiedRefs = await fetchVerifiedRefs(req.scenario);
+
+  // Accumulate compliance warnings from pre-flight (tier 2-4 usage,
+  // category-chain fallback) AND post-flight (rogue citation rewrites).
+  // Single buffer so the final response carries everything that fired
+  // during this call.
+  const complianceWarnings: string[] = [];
+
+  // PR β — pre-send freshness guardrail (B2B path).
+  //
+  // Compliance is the entire selling point of /v1/disputes vs a
+  // generic LLM. We refuse to ground a response in stale UK law:
+  //   1. Check freshness of every ref FED INTO the prompt.
+  //   2. For each stale ref, attempt a synchronous Perplexity refresh
+  //      (5 s hard cap so the route stays inside its latency budget).
+  //   3. If still stale, find a fresh substitute in the same category
+  //      and swap it in.
+  //   4. If neither salvage path works for a ref AND no fresh
+  //      substitute exists in its category, the response shape would
+  //      have to ship without that authority. We return 503 instead.
+  //
+  // 503 only fires when there is NO fresh substitute available in the
+  // same category — refreshable refs and substitute-able refs go
+  // through silently. The DisputeResponse shape stays unchanged on
+  // success.
+  const idsBeingFed = verifiedRefs.map((r: any) => r.id).filter(Boolean);
+  if (idsBeingFed.length > 0) {
+    const freshness = await checkRefFreshness(supabase, idsBeingFed);
+    if (!freshness.ok && freshness.stale.length > 0) {
+      const usedIds = new Set<string>(idsBeingFed);
+      const unsalvageable: string[] = [];
+      const unsalvageableCategories = new Set<string>();
+      for (const { id: staleId } of freshness.stale) {
+        // Step 1 — synchronous Perplexity refresh. If it returns a tier-1
+        // ref we use it silently; if it returns a tier 2-4 ref we keep it
+        // but emit a warning; if it doesn't qualify under any tier we fall
+        // through to the substitute logic.
+        const refreshed = await refreshSingleRef(supabase, staleId);
+        if (refreshed) {
+          const t = freshnessTier(refreshed);
+          if (t) {
+            const idx = verifiedRefs.findIndex((r: any) => r.id === staleId);
+            if (idx >= 0) verifiedRefs[idx] = { ...verifiedRefs[idx], ...refreshed };
+            const w = tierWarning(refreshed, t);
+            if (w) complianceWarnings.push(w);
+            continue;
+          }
+        }
+        // Step 2 — same-category tiered substitute. Walks tier 1 → 4.
+        const original = verifiedRefs.find((r: any) => r.id === staleId);
+        const category = original?.category;
+        if (category) {
+          const sub = await findTieredSubstitute(supabase, category, [...usedIds]);
+          if (sub) {
+            const idx = verifiedRefs.findIndex((r: any) => r.id === staleId);
+            if (idx >= 0) verifiedRefs[idx] = { ...sub.ref } as any;
+            usedIds.add(sub.ref.id);
+            const w = tierWarning(sub.ref, sub.tier);
+            if (w) complianceWarnings.push(w);
+            continue;
+          }
+          // Step 3 — category fallback chain. Borrow from a legally-
+          // adjacent neighbour (energy → utilities → general etc.). Even
+          // a tier-4 hit here is preferable to a 503 because the chain
+          // entries are pan-sector statutes (CRA 2015, CCA 1974) that
+          // legitimately apply across categories.
+          const chained = await findChainSubstitute(supabase, category, [...usedIds]);
+          if (chained) {
+            const idx = verifiedRefs.findIndex((r: any) => r.id === staleId);
+            if (idx >= 0) verifiedRefs[idx] = { ...chained.ref } as any;
+            usedIds.add(chained.ref.id);
+            complianceWarnings.push(
+              `No fresh ref for '${category}' — substituted with '${chained.fallbackCategory}' (${chained.ref.law_name})`,
+            );
+            const w = tierWarning(chained.ref, chained.tier);
+            if (w) complianceWarnings.push(w);
+            continue;
+          }
+          unsalvageableCategories.add(category);
+        }
+        unsalvageable.push(staleId);
+      }
+      if (unsalvageable.length > 0) {
+        // 503 only fires when the entire cascade — refresh, tier 1-4
+        // substitute, AND category fallback chain — produced nothing for
+        // at least one ref. Should be vanishingly rare in normal operation.
+        return {
+          code: 'STALE_CITATION',
+          message: 'Citation freshness check failed',
+          ref_ids: unsalvageable,
+          retry_after: 60,
+          unsalvageable_categories: [...unsalvageableCategories],
+        };
+      }
+    }
+  }
 
   // Serialize the matched references into the prose-style block the
   // complaint engine's prompt builder expects. Passing the raw array
@@ -562,39 +803,214 @@ export async function resolveDispute(req: DisputeRequest): Promise<DisputeRespon
   agentTalkingPoints.push(...nextStepsArr.slice(0, 4));
   if (timeSensitivity === 'high') agentTalkingPoints.push('Statutory deadline applies — flag urgency.');
 
-  return {
-    statute: inferStatute(legalRefs),
+  // PR β POST-FLIGHT validation. The pre-flight pass only controls
+  // what we feed INTO the prompt. The model can still dredge a stale
+  // or fabricated UK statute out of training data and stamp it into
+  // `legal_references`, `statute`, or any free-text field. We do two
+  // passes:
+  //
+  //   1. Structured `statute` field — exact substring match against
+  //      the fresh pool's law_name. If no match, swap in the closest
+  //      same-category match. If no category match, return 503 with
+  //      retry_after — we never ship a structured citation we can't
+  //      verify against fresh refs.
+  //
+  //   2. Free-text fields (customer_facing_response, agent_talking_points,
+  //      draft_letter_excerpt, entitlement.summary/rationale) — regex
+  //      pass + strip/substitute. Rogues recorded in `_compliance_warnings`
+  //      so the API consumer can surface them to their CX agent.
+  //
+  // 503 only fires for the structured statute case. Free-text rogues
+  // never break the contract — they're silently sanitised + logged.
+  const postFlightT0 = Date.now();
+  const freshPool = verifiedRefs.map((r: any) => ({
+    law_name: r.law_name as string,
+    category: (r.category as string | null) ?? null,
+  }));
+  // complianceWarnings hoisted at top of function — pre-flight tier/chain
+  // warnings already accumulated, post-flight rogue-citation warnings
+  // appended below.
+
+  // 2a. Structured statute field (the LLM-derived primary statute).
+  let structuredStatute = inferStatute(legalRefs);
+  const structuredCheck = validateCitations([structuredStatute], freshPool);
+  if (structuredCheck.rogue.length > 0 && freshPool.length > 0) {
+    // Try same-category swap. matchCategory was computed above; if we
+    // have it, prefer fresh refs in that category. Else fall back to
+    // the highest-token-overlap fresh ref.
+    const sameCat = matchCategory
+      ? freshPool.filter((r) => r.category === matchCategory)
+      : [];
+    const candidate = sameCat[0] ?? freshPool[0];
+    if (candidate?.law_name) {
+      complianceWarnings.push(
+        `Replaced unverified primary statute '${structuredStatute}' with '${candidate.law_name}'`,
+      );
+      structuredStatute = candidate.law_name;
+    } else {
+      // No category match and no fresh fallback at all — this is the
+      // hard 503 case. The DisputeResponse contract says we never
+      // return a fabricated cited_statute.
+      return {
+        code: 'STALE_CITATION',
+        message: 'LLM cited an unverified statute and no fresh substitute is available.',
+        ref_ids: [],
+        retry_after: 60,
+      };
+    }
+  }
+
+  // 2b. Free-text fields. Regex pass + sanitise. Log warnings, never
+  //     fail the response.
+  const sanitiseField = (text: string): string => {
+    if (!text) return text;
+    const cited = extractCitations(text);
+    const { rogue } = validateCitations(cited, freshPool);
+    if (rogue.length === 0) return text;
+    const subs = planSubstitutions(rogue, freshPool);
+    const { sanitised, warnings } = sanitiseLetter(text, rogue, subs);
+    complianceWarnings.push(...warnings);
+    return sanitised;
+  };
+
+  const sanitisedCustomerFacing = sanitiseField(customerFacingResponse);
+  const sanitisedAgentTalkingPoints = agentTalkingPoints.map(sanitiseField);
+  const sanitisedDraftLetter = sanitiseField(letter.slice(0, 1200));
+  const sanitisedEntitlementSummary = sanitiseField(
+    nextStepsArr.length > 0 ? nextStepsArr.join(' ') : 'See draft letter for the entitlement narrative.',
+  );
+  const sanitisedRationale = sanitiseField(rationale);
+  // legal_references array sanitised structurally — drop rogue entries
+  // entirely so the array only contains pool-verified citations.
+  const sanitisedLegalRefs = legalRefs.filter((c) => {
+    const v = validateCitations([c], freshPool);
+    if (v.rogue.length > 0) {
+      complianceWarnings.push(`Removed unverified citation from legal_references: '${c}'`);
+      return false;
+    }
+    return true;
+  });
+
+  const postFlightElapsed = Date.now() - postFlightT0;
+  if (postFlightElapsed > 100) {
+    console.warn(
+      `[guardrail] B2B post-flight took ${postFlightElapsed}ms (>100ms budget) — non-blocking`,
+    );
+  }
+  if (complianceWarnings.length > 0) {
+    console.warn(`[guardrail] B2B post-flight surfaced ${complianceWarnings.length} compliance warning(s)`);
+  }
+
+  const response: DisputeResponse = {
+    statute: structuredStatute,
     dispute_type: disputeType,
     regulator,
     entitlement: {
-      summary: nextStepsArr.length > 0
-        ? nextStepsArr.join(' ')
-        : 'See draft letter for the entitlement narrative.',
-      rationale,
+      summary: sanitisedEntitlementSummary,
+      rationale: sanitisedRationale,
       additional_rights: additionalRights,
       estimated_success: successLabel,
     },
-    customer_facing_response: customerFacingResponse,
-    agent_talking_points: agentTalkingPoints,
+    customer_facing_response: sanitisedCustomerFacing,
+    agent_talking_points: sanitisedAgentTalkingPoints,
     claim_value_estimate: claimValue,
     time_sensitivity: timeSensitivity,
-    draft_letter_excerpt: letter.slice(0, 1200),
+    draft_letter_excerpt: sanitisedDraftLetter,
     escalation_path: Array.isArray(result?.escalationPath) && result.escalationPath.length > 0
       ? result.escalationPath.map((step: string, i: number) => ({ step: i + 1, to: step }))
       : deriveEscalationPath(req.scenario),
-    legal_references: legalRefs,
+    legal_references: sanitisedLegalRefs,
     confidence: typeof result?.confidence === 'number' ? result.confidence : 0.8,
     case_reference: req.case_reference ?? null,
     customer_id: req.customer_id ?? null,
     preflight: req.proposed_reply
       ? computePreflight(
           req.proposed_reply,
-          inferStatute(legalRefs),
-          legalRefs,
-          rationale,
+          structuredStatute,
+          sanitisedLegalRefs,
+          sanitisedRationale,
         )
       : null,
   };
+  if (complianceWarnings.length > 0) {
+    response._compliance_warnings = complianceWarnings;
+  }
+
+  // Phase 4 — freshness gate provenance. Called AFTER the freshness
+  // cascade so the audit rows reflect the refs we actually shipped,
+  // not the originals. Best-effort: never fail the response.
+  try {
+    const finalRefIds = (verifiedRefs as Array<{ id?: string }>).map((r) => r?.id).filter((x): x is string => typeof x === 'string');
+    if (finalRefIds.length > 0) {
+      const gate = await loadFreshLegalRefs(finalRefIds, {
+        caller: 'b2b',
+        // We've already done deep cascade upstream — allow stale here
+        // so the gate just records audit rows + provenance without
+        // re-doing the work.
+        allowStale: true,
+      });
+      if (gate.provenance.length > 0) {
+        response.legal_basis_freshness = gate.provenance;
+      }
+    }
+  } catch (err) {
+    console.warn('[freshness-gate] B2B provenance hydrate failed (non-fatal):', (err as Error).message);
+  }
+
+  // Historical success rate from the dispute outcome dataset. Best-effort:
+  // any failure here must NEVER fail the response.
+  try {
+    const merchantHint =
+      (req.context && typeof (req.context as Record<string, unknown>).merchant === 'string'
+        ? ((req.context as Record<string, unknown>).merchant as string)
+        : null) ?? extractMerchantFromScenario(req.scenario);
+    if (merchantHint) {
+      const { normaliseMerchant } = await import('@/lib/dispute-outcome/normalise');
+      const { getMerchantStat } = await import('@/lib/dispute-outcome/stats');
+      const norm = normaliseMerchant(merchantHint);
+      if (norm) {
+        const stat = await getMerchantStat(norm);
+        if (stat && stat.total_count >= 5 && stat.win_rate != null) {
+          response.historical_success_rate = {
+            merchant: merchantHint,
+            cases_evaluated: stat.total_count,
+            win_rate: stat.win_rate,
+            avg_recovered_gbp: stat.avg_recovered_gbp,
+            source: 'paybacker_dispute_dataset_v1',
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[b2b.disputes] historical_success_rate hydrate failed (non-fatal):', (err as Error).message);
+  }
+
+  // PR γ — fire-and-forget reverse-lookup audit. One row per cited ref
+  // so the admin "Where used" drawer + the daily re-verify cron can
+  // prioritise refs that high-traffic B2B customers depend on. Never
+  // blocks the response.
+  try {
+    const cited = sanitisedLegalRefs.map((s: string) => s.toLowerCase());
+    const matched = (verifiedRefs as any[])
+      .filter((r) => r?.id && cited.some((c) => c.includes((r.law_name || '').toLowerCase()) || (r.law_name || '').toLowerCase().includes(c.split(',')[0].trim())))
+      .map((r) => ({
+        ref_id: r.id,
+        product: 'b2b-dispute',
+        artefact_kind: 'dispute_response',
+        cited_text: sanitisedLegalRefs.find((c: string) => c.toLowerCase().includes((r.law_name || '').toLowerCase())) || r.law_name,
+      }));
+    if (matched.length > 0) {
+      void supabase.from('legal_ref_usages').insert(matched);
+    }
+    // Note: legal_basis_freshness is populated upstream by the Phase 4
+    // freshness gate (see `loadFreshLegalRefs`). The manual hydration
+    // path that previously lived here was removed when the gate landed
+    // — single source of truth, no double-write.
+  } catch (e) {
+    console.warn('[legal_ref_usages] B2B insert failed (non-fatal):', e);
+  }
+
+  return response;
 }
 
 function classifyDisputeType(scenario: string, refCategory?: string): DisputeType {

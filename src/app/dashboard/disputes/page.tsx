@@ -23,930 +23,15 @@ import EditDisputeDetailsModal from '@/components/dispute/EditDisputeDetailsModa
 import EmailCorrespondenceBody from '@/components/dispute/EmailCorrespondenceBody';
 import LatestSupplierReplyCard from '@/components/dispute/LatestSupplierReplyCard';
 import WatchdogCard from '@/components/dispute/WatchdogCard';
-
-// ============================================================
-// Types
-// ============================================================
-interface Dispute {
-  id: string;
-  provider_name: string;
-  provider_type: string | null;
-  account_number: string | null;
-  issue_type: string;
-  issue_summary: string;
-  desired_outcome: string | null;
-  disputed_amount: number | null;
-  status: string;
-  money_recovered: number;
-  created_at: string;
-  updated_at: string;
-  letter_count: number;
-  message_count: number;
-  last_activity: string;
-  latest_snippet?: string | null;
-  unread_reply_count?: number;
-  last_reply_received_at?: string | null;
-  user_has_gmail?: boolean;
-  user_has_outlook?: boolean;
-  correspondence?: Correspondence[];
-  contract_extractions?: ContractExtraction[];
-}
-
-interface ContractExtraction {
-  id: string;
-  file_url: string | null;
-  file_name: string | null;
-  provider_name: string | null;
-  contract_type: string | null;
-  contract_start_date: string | null;
-  contract_end_date: string | null;
-  monthly_cost: number | null;
-  annual_cost: number | null;
-  minimum_term: string | null;
-  notice_period: string | null;
-  cancellation_fee: string | null;
-  early_exit_fee: string | null;
-  price_increase_clause: string | null;
-  auto_renewal: string | null;
-  cooling_off_period: string | null;
-  unfair_clauses: string[];
-  raw_summary: string | null;
-  created_at: string;
-}
-
-interface RightsPill {
-  label: string;
-  url: string;
-  strength: string;
-}
-
-interface Correspondence {
-  id: string;
-  entry_type: string;
-  title: string | null;
-  content: string;
-  summary: string | null;
-  attachments: any[];
-  task_id: string | null;
-  entry_date: string;
-  created_at: string;
-  legal_references?: string[];
-  rights_pills?: RightsPill[];
-  estimated_success?: number;
-  next_steps?: string[];
-  escalation_path?: string;
-  detected_from_email?: boolean;
-  sender_address?: string | null;
-  sender_name?: string | null;
-  email_thread_id?: string | null;
-  supplier_message_id?: string | null;
-  supplier_web_link?: string | null;
-  ai_category?: string | null;
-  ai_respond_needed?: boolean | null;
-  ai_urgency?: string | null;
-  ai_rationale?: string | null;
-}
-
-// ============================================================
-// Helpers
-// ============================================================
-const ISSUE_TYPE_LABELS: Record<string, string> = {
-  complaint: 'Company Complaint',
-  energy_dispute: 'Energy Bill Dispute',
-  broadband_complaint: 'Broadband / Mobile',
-  flight_compensation: 'Flight Compensation',
-  parking_appeal: 'Parking Appeal',
-  debt_dispute: 'Debt Dispute',
-  refund_request: 'Refund Request',
-  hmrc_tax_rebate: 'HMRC Tax Rebate',
-  council_tax_band: 'Council Tax',
-  dvla_vehicle: 'DVLA',
-  nhs_complaint: 'NHS Complaint',
-  gym_membership: 'Gym Membership',
-  insurance_dispute: 'Insurance Dispute',
-};
-
-// Maps ?category= aliases (e.g. from OnboardingFlow chips) to issue_type keys
-const CATEGORY_ALIAS: Record<string, string> = {
-  energy_bill: 'energy_dispute',
-  energy: 'energy_dispute',
-  broadband: 'broadband_complaint',
-  mobile: 'broadband_complaint',
-  flight: 'flight_compensation',
-  flights: 'flight_compensation',
-  flight_delay: 'flight_compensation',
-  parking: 'parking_appeal',
-  debt: 'debt_dispute',
-  refund: 'refund_request',
-  hmrc: 'hmrc_tax_rebate',
-  council_tax: 'council_tax_band',
-  dvla: 'dvla_vehicle',
-  nhs: 'nhs_complaint',
-  subscription: 'complaint',
-};
-
-
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  open: { label: 'Open', className: 'bg-amber-100 text-amber-600 border border-amber-200' },
-  in_progress: { label: 'In Progress', className: 'bg-blue-500/10 text-blue-400 border border-blue-500/20' },
-  awaiting_response: { label: 'Waiting for reply', className: 'bg-purple-500/10 text-purple-400 border border-purple-500/20' },
-  escalated: { label: 'Escalated', className: 'bg-orange-500/10 text-orange-400 border border-orange-500/20' },
-  ombudsman: { label: 'Ombudsman', className: 'bg-red-500/10 text-red-400 border border-red-500/20' },
-  resolved_won: { label: 'Won', className: 'bg-green-500/10 text-green-500 border border-green-500/20' },
-  won: { label: 'Won', className: 'bg-green-500/10 text-green-500 border border-green-500/20' },
-  resolved_partial: { label: 'Partially Won', className: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' },
-  partial: { label: 'Partially Won', className: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' },
-  resolved_lost: { label: 'Not resolved', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
-  lost: { label: 'Not resolved', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
-  withdrawn: { label: 'Withdrawn', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
-  closed: { label: 'Closed', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
-};
-
-// Active statuses that can be changed via the status dropdown
-const ACTIVE_STATUSES = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
-
-// Check if a dispute is terminal (closed for any reason — won, partial, lost, or user-closed)
-function isResolved(status: string): boolean {
-  return ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'].includes(status);
-}
-
-// Check if a dispute was actually won (for money-recovered badges)
-function isWon(status: string): boolean {
-  return ['resolved_won', 'resolved_partial'].includes(status);
-}
-
-// Dispute summary type
-interface DisputeSummary {
-  total_open: number;
-  total_resolved: number;
-  total_disputed_amount: number;
-  total_recovered: number;
-}
-
-const ENTRY_TYPE_CONFIG: Record<string, { label: string; icon: typeof FileText; className: string }> = {
-  ai_letter: { label: 'Your letter', icon: FileText, className: 'border-emerald-500/30 bg-emerald-500/5' },
-  company_email: { label: 'Their email', icon: Mail, className: 'border-orange-400/30 bg-orange-400/5' },
-  company_letter: { label: 'Their letter', icon: FileText, className: 'border-orange-400/30 bg-orange-400/5' },
-  phone_call: { label: 'Phone call', icon: Phone, className: 'border-blue-400/30 bg-blue-400/5' },
-  user_note: { label: 'Your note', icon: StickyNote, className: 'border-slate-400/30 bg-slate-400/5' },
-  company_response: { label: 'Their response', icon: MessageSquare, className: 'border-orange-400/30 bg-orange-400/5' },
-};
-
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-function timeAgo(d: string) {
-  const diff = Date.now() - new Date(d).getTime();
-  const days = Math.floor(diff / 86400000);
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return `${days} days ago`;
-  if (days < 30) {
-    const w = Math.floor(days / 7);
-    return `${w} week${w !== 1 ? 's' : ''} ago`;
-  }
-  return formatDate(d);
-}
-
-// ============================================================
-// Letter Modal (reused from before)
-// ============================================================
-function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeId, providerName, onSentMarked, threadReply }: {
-  content: string;
-  title: string;
-  legalRefs: string[];
-  rightsPills?: RightsPill[];
-  onClose: () => void;
-  disputeId?: string;
-  providerName?: string;
-  onSentMarked?: () => void;
-  /** Reply-in-thread context: webLink opens the supplier's email
-   * thread directly; senderAddress is shown to the user as a hint.
-   * Provider tells us which mail app to label. Undefined = no
-   * Watchdog thread linked yet, button is hidden. */
-  threadReply?: { webLink: string; senderAddress?: string | null; provider: 'google' | 'outlook' | 'imap' | null };
-}) {
-  const [copied, setCopied] = useState(false);
-  const [providerEmail, setProviderEmail] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const [sentNote, setSentNote] = useState<string | null>(null);
-
-  // Working copy of the letter — lets the user manually edit OR refine
-  // via Claude before they Copy / Download / mark Sent. The original
-  // `content` prop stays untouched (so re-opening the modal hands back
-  // the AI's first draft), but every downstream button reads from
-  // `workingContent` instead.
-  const [workingContent, setWorkingContent] = useState(content);
-  const [editing, setEditing] = useState(false);
-  const [refining, setRefining] = useState(false);
-  const [refineOpen, setRefineOpen] = useState(false);
-  const [refineInstruction, setRefineInstruction] = useState('');
-  const [refineError, setRefineError] = useState<string | null>(null);
-
-  // If the modal is reused for a different letter (rare — modal is
-  // typically remounted per letter), reset the working copy so we
-  // don't ship a stale edit forward.
-  useEffect(() => { setWorkingContent(content); }, [content]);
-
-  // Look up the provider's contact email so the user can copy it and
-  // paste into their email client themselves. We no longer offer an
-  // "Open in Email" button — see notes below the action row.
-  useEffect(() => {
-    if (!providerName) return;
-    let cancelled = false;
-    fetch(`/api/subscriptions/cancel-info?provider=${encodeURIComponent(providerName)}`)
-      .then((r) => r.json())
-      .then((d) => { if (!cancelled) setProviderEmail(d?.info?.email ?? null); })
-      .catch(() => { /* non-fatal */ });
-    return () => { cancelled = true; };
-  }, [providerName]);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(workingContent);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Copy the letter to the clipboard, then open the linked email
-  // thread in a new tab. The user lands directly on the supplier's
-  // most recent email — they click Reply in Gmail/Outlook and paste.
-  // True auto-population would need the gmail.compose OAuth scope
-  // (currently we only request gmail.readonly), so this is the
-  // best-we-can-do without a re-consent prompt for every existing
-  // user.
-  const [copyOpenStatus, setCopyOpenStatus] = useState<null | 'copying' | 'done'>(null);
-  const handleCopyAndOpenThread = async () => {
-    if (!threadReply?.webLink) return;
-    try {
-      setCopyOpenStatus('copying');
-      await navigator.clipboard.writeText(workingContent);
-      setCopyOpenStatus('done');
-      window.open(threadReply.webLink, '_blank', 'noopener,noreferrer');
-      setTimeout(() => setCopyOpenStatus(null), 3000);
-    } catch {
-      // Clipboard API can fail in older Safari / private mode.
-      // Open the thread anyway and tell the user to copy manually.
-      setCopyOpenStatus(null);
-      window.open(threadReply.webLink, '_blank', 'noopener,noreferrer');
-      alert('Could not auto-copy the letter. Use the "Copy Letter" button first, then click Reply in your inbox.');
-    }
-  };
-
-  const handleRefine = async () => {
-    const instruction = refineInstruction.trim();
-    if (instruction.length < 3) {
-      setRefineError('Tell us what to change — e.g. "make it more polite" or "add the £85 figure".');
-      return;
-    }
-    setRefining(true);
-    setRefineError(null);
-    try {
-      const res = await fetch('/api/disputes/refine-letter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ letter: workingContent, instruction, disputeId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setRefineError(data?.error || 'Refine failed — try again.');
-        return;
-      }
-      if (typeof data?.letter === 'string' && data.letter.trim().length > 50) {
-        setWorkingContent(data.letter.trim());
-        setRefineOpen(false);
-        setRefineInstruction('');
-      } else {
-        setRefineError('Model returned an empty letter — try a different instruction.');
-      }
-    } catch (e) {
-      setRefineError(e instanceof Error ? e.message : 'Network error');
-    } finally {
-      setRefining(false);
-    }
-  };
-
-  const handleResetToOriginal = () => {
-    if (!confirm('Discard your edits and go back to the original letter?')) return;
-    setWorkingContent(content);
-  };
-
-  const handleMarkSent = async () => {
-    if (!disputeId) return;
-    setSending(true);
-    try {
-      // Pass the working content (which may differ from the original AI
-      // draft if the user edited or refined). The endpoint stores
-      // exactly what was sent so the next letter / follow-up can
-      // reference what the supplier actually received.
-      const res = await fetch(`/api/disputes/${disputeId}/letter-sent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          providerEmail,
-          letter: workingContent,
-          edited: workingContent !== content,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setSentNote(
-          data?.watchdog_link_created
-            ? "Marked as sent. We'll watch your inbox for the reply and ping you on Telegram + dashboard when it lands."
-            : 'Marked as sent. Check this dispute for the reply.',
-        );
-        onSentMarked?.();
-      } else {
-        setSentNote('Could not mark as sent. Try again in a moment.');
-      }
-    } catch {
-      setSentNote('Could not mark as sent. Try again in a moment.');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handlePDF = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    printWindow.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
-      <style>body{font-family:'Times New Roman',serif;max-width:800px;margin:40px auto;padding:0 40px;line-height:1.8;color:#000}
-      pre{white-space:pre-wrap;font-family:'Times New Roman',serif;font-size:13px;line-height:1.8}
-      .refs{margin-top:24px;padding-top:16px;border-top:1px solid #ccc;font-size:11px;color:#555}
-      .disclaimer{margin-top:24px;padding-top:16px;border-top:1px solid #ccc;font-size:10px;color:#555;text-align:center;line-height:1.6}
-      @media print{body{margin:20mm 25mm}}</style></head><body>
-      <pre>${workingContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
-      ${legalRefs.length > 0 ? `<div class="refs"><strong>Legal references:</strong> ${legalRefs.join(' · ')}</div>` : ''}
-      <div class="disclaimer">${AI_LETTER_DISCLAIMER_HTML}</div>
-      <script>window.onload=()=>{window.print()}<\/script></body></html>`);
-    printWindow.document.close();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative card w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200/50 flex-shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{title}</h2>
-            {(() => {
-              const count = rightsPills?.length ?? 0;
-              if (count >= 3) return (
-                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
-                  Strong legal backing
-                </span>
-              );
-              if (count >= 1) return (
-                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-600 border border-amber-200">
-                  Some legal backing
-                </span>
-              );
-              return (
-                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
-                  Review carefully
-                </span>
-              );
-            })()}
-          </div>
-          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="bg-white rounded-xl p-6 border border-slate-200/50 mb-4">
-            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-              <span className="text-xs text-slate-500">
-                {workingContent !== content
-                  ? <>Edited — <button onClick={handleResetToOriginal} className="underline hover:text-slate-700">reset to original</button></>
-                  : 'AI-drafted letter'}
-              </span>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={() => setRefineOpen(v => !v)}
-                  disabled={editing || refining}
-                  className="text-xs px-2.5 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 inline-flex items-center gap-1 disabled:opacity-50"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {refining ? 'Refining…' : 'Refine with AI'}
-                </button>
-                <button
-                  onClick={() => setEditing(v => !v)}
-                  disabled={refining}
-                  className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 inline-flex items-center gap-1 disabled:opacity-50"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  {editing ? 'Done editing' : 'Edit manually'}
-                </button>
-              </div>
-            </div>
-
-            {refineOpen && (
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
-                <label className="block text-xs font-semibold text-purple-900 mb-2">
-                  What would you like changed?
-                </label>
-                <textarea
-                  className="w-full px-3 py-2 rounded-lg border border-purple-300 bg-white text-sm focus:outline-none focus:border-purple-500 mb-2"
-                  rows={2}
-                  placeholder='e.g. "Make it more polite", "Add the £85 figure", "Shorten to 3 paragraphs"'
-                  value={refineInstruction}
-                  onChange={(e) => setRefineInstruction(e.target.value)}
-                  maxLength={500}
-                  disabled={refining}
-                />
-                {refineError && (
-                  <p className="text-xs text-rose-700 mb-2">{refineError}</p>
-                )}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleRefine}
-                    disabled={refining || refineInstruction.trim().length < 3}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold disabled:opacity-50 inline-flex items-center gap-1"
-                  >
-                    {refining ? <><Loader2 className="h-3 w-3 animate-spin" /> Working…</> : <>Apply</>}
-                  </button>
-                  <button
-                    onClick={() => { setRefineOpen(false); setRefineInstruction(''); setRefineError(null); }}
-                    disabled={refining}
-                    className="text-xs px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
-                  >
-                    Cancel
-                  </button>
-                  <span className="text-[10px] text-purple-700 ml-auto">
-                    Counts as one letter against your monthly cap.
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {editing ? (
-              <textarea
-                value={workingContent}
-                onChange={(e) => setWorkingContent(e.target.value)}
-                className="w-full text-sm text-slate-700 font-mono leading-relaxed bg-slate-50 border border-slate-300 rounded-lg p-4 focus:outline-none focus:border-emerald-500 min-h-[400px]"
-              />
-            ) : (
-              <pre
-                className="text-sm text-slate-700 whitespace-pre-wrap font-mono leading-relaxed"
-                onCopy={(e) => {
-                  // Override browser's default rich-text copy (which carries white colour styling).
-                  // Force plain text so the letter pastes correctly into Gmail, Outlook, etc.
-                  const sel = window.getSelection();
-                  if (!sel) return;
-                  e.preventDefault();
-                  e.clipboardData?.setData('text/plain', sel.toString());
-                }}
-              >{workingContent}</pre>
-            )}
-          </div>
-          {(rightsPills && rightsPills.length > 0 || legalRefs.length > 0) && (
-            <div className="bg-white/50 rounded-lg p-4 border border-slate-200/50 mb-3">
-              <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Your rights used in this letter</h3>
-              <div className="flex flex-wrap gap-1.5">
-                {rightsPills && rightsPills.length > 0
-                  ? rightsPills.map((pill, i) => (
-                      <a
-                        key={i}
-                        href={pill.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] bg-emerald-500/10 text-emerald-600 px-2.5 py-1 rounded-full border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors inline-flex items-center gap-1"
-                        title={pill.strength === 'strong' ? 'Strong legal protection' : pill.strength === 'moderate' ? 'Moderate legal protection' : 'Legal reference'}
-                      >
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full ${
-                          pill.strength === 'strong' ? 'bg-green-500' :
-                          pill.strength === 'moderate' ? 'bg-orange-500' :
-                          'bg-gray-400'
-                        }`} />
-                        {pill.label}
-                      </a>
-                    ))
-                  : legalRefs.map((ref, i) => (
-                      <span key={i} className="text-[11px] bg-emerald-500/10 text-emerald-600 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                        {ref}
-                      </span>
-                    ))
-                }
-              </div>
-            </div>
-          )}
-          <p className="text-[10px] text-slate-600 text-center mt-3 leading-relaxed">{AI_LETTER_DISCLAIMER_HTML}</p>
-        </div>
-        <div className="flex flex-col gap-3 p-6 border-t border-slate-200/50 flex-shrink-0">
-          {sentNote && (
-            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 flex items-center gap-2 text-sm text-emerald-700">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              {sentNote}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-3">
-            {threadReply?.webLink && (
-              <button
-                onClick={handleCopyAndOpenThread}
-                disabled={copyOpenStatus === 'copying'}
-                className="flex-1 min-w-[160px] flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg transition-all font-medium disabled:opacity-60"
-                title={threadReply.senderAddress ? `Reply to ${threadReply.senderAddress} in ${threadReply.provider === 'outlook' ? 'Outlook' : 'Gmail'}` : undefined}
-              >
-                {copyOpenStatus === 'done'
-                  ? <><CheckCircle className="h-4 w-4" /> Letter copied · opening…</>
-                  : <><ExternalLink className="h-4 w-4" /> Reply in {threadReply.provider === 'outlook' ? 'Outlook' : 'Gmail'}</>
-                }
-              </button>
-            )}
-            <button onClick={handleCopy} className="flex-1 min-w-[120px] flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
-              {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-              {copied ? 'Copied!' : 'Copy Letter'}
-            </button>
-            <button onClick={handlePDF} className="flex-1 min-w-[120px] flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
-              <Download className="h-4 w-4" /> Download PDF
-            </button>
-          </div>
-          {threadReply?.webLink && (
-            <p className="text-[11px] text-slate-500 text-center -mt-1">
-              We&apos;ll copy the letter and open the supplier&apos;s thread — click Reply and paste with Cmd/Ctrl-V.
-            </p>
-          )}
-          {/* "Open in Email" was removed because mailto: routes through
-              the OS default mail handler — which on macOS is Mail.app even
-              when the user lives in Gmail. The web-compose alternative
-              (Gmail / Outlook deep-links) opens a fresh draft outside the
-              dispute thread, which makes the Watchdog reply-tracking less
-              useful. Proper thread-aware drafting needs the gmail.compose
-              OAuth scope, which we don't request yet. Until we do, Copy
-              Letter + Download PDF cover the workflow without the
-              wrong-app footgun. */}
-          {providerEmail && (
-            <p className="text-[11px] text-slate-500 text-center -mt-1">
-              Tip: copy the letter, then paste into a new email to <span className="font-mono">{providerEmail}</span>.
-            </p>
-          )}
-          {disputeId && !sentNote && (
-            <button
-              onClick={handleMarkSent}
-              disabled={sending}
-              className="w-full flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 border border-emerald-500/30 py-3 rounded-lg transition-all font-medium disabled:opacity-60"
-            >
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              I&apos;ve sent it — track the reply
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// Add Correspondence Modal
-// ============================================================
-function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
-  disputeId: string;
-  onClose: () => void;
-  onAdded: () => void | Promise<void>;
-}) {
-  const [entryType, setEntryType] = useState('company_email');
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
-  const [saving, setSaving] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-
-  const typeOptions = [
-    { value: 'company_email', label: 'Email from the company', icon: Mail },
-    { value: 'company_letter', label: 'Letter from the company', icon: FileText },
-    { value: 'company_response', label: 'Other response from company', icon: MessageSquare },
-    { value: 'phone_call', label: 'Phone call summary', icon: Phone },
-    { value: 'user_note', label: 'Your own note', icon: StickyNote },
-  ];
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!content.trim()) return;
-    setSaving(true);
-    try {
-      // Upload file first if attached
-      let attachments: any[] = [];
-      if (attachedFile) {
-        setUploading(true);
-        const fd = new FormData();
-        fd.append('file', attachedFile);
-        const uploadRes = await fetch(`/api/disputes/${disputeId}/upload`, { method: 'POST', body: fd });
-        if (uploadRes.ok) {
-          const fileData = await uploadRes.json();
-          attachments = [{ url: fileData.url, filename: fileData.filename, type: fileData.type, size: fileData.size }];
-        }
-        setUploading(false);
-      }
-
-      // entry_date stamping: if the user kept the date as TODAY, use
-      // the current full timestamp (so it sorts to the bottom of the
-      // thread alongside other today-entries instead of stamping to
-      // 00:00 UTC and landing mid-thread). If they changed the date
-      // to a past day, keep it as start-of-that-day in UTC.
-      const todayIso = new Date().toISOString().split('T')[0];
-      const entryDateIso = entryDate === todayIso
-        ? new Date().toISOString()
-        : new Date(entryDate).toISOString();
-
-      const res = await fetch(`/api/disputes/${disputeId}/correspondence`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entry_type: entryType,
-          title: title || null,
-          content,
-          attachments,
-          entry_date: entryDateIso,
-        }),
-      });
-      if (!res.ok) {
-        // Surface the server's actual error message so silent failures
-        // become loud (Paul hit a "save looked OK but UI didn't refresh"
-        // bug on 2026-04-28 — the row was inserted but the cached GET
-        // hid it; better to log and alert clearly than 'Failed to save').
-        const errBody = await res.json().catch(() => ({} as { error?: string }));
-        throw new Error(errBody.error || `Failed to save (HTTP ${res.status})`);
-      }
-      // Await the parent's refresh BEFORE closing the modal — otherwise
-      // the modal closes, the fetch is still in flight, and the user
-      // sees the previous state for a beat.
-      await onAdded();
-      onClose();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to save. Please try again.';
-      alert(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white border border-slate-200/50 rounded-t-2xl sm:rounded-2xl w-full max-w-lg shadow-2xl" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
-        <form onSubmit={handleSubmit} className="flex flex-col" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
-        <div className="flex items-center justify-between p-5 border-b border-slate-200/50 flex-shrink-0">
-          <h2 className="text-lg font-bold text-slate-900">Add to your dispute</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
-        </div>
-        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0"
-          style={{ WebkitOverflowScrolling: 'touch' as any }}>
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-2">What are you adding?</label>
-            <div className="grid grid-cols-1 gap-2">
-              {typeOptions.map((opt) => {
-                const Icon = opt.icon;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setEntryType(opt.value)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-left transition-all ${
-                      entryType === opt.value
-                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-slate-900'
-                        : 'bg-white border border-slate-200/50 text-slate-600 hover:border-slate-200'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 flex-shrink-0" />
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-2">
-              Title <span className="text-slate-500 font-normal">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-              placeholder={entryType === 'phone_call' ? 'e.g. Spoke to customer service' : 'e.g. Their response to my complaint'}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-2">
-              {entryType === 'phone_call' ? 'What happened on the call?' : 'Paste or type the content'} *
-            </label>
-            <textarea
-              required
-              rows={6}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-              placeholder={
-                entryType === 'phone_call'
-                  ? 'Summarise the phone call - who you spoke to, what they said, any reference numbers...'
-                  : entryType === 'user_note'
-                  ? 'Add any notes for yourself about this dispute...'
-                  : 'Paste the email or letter content here...'
-              }
-            />
-          </div>
-
-          {/* File attachment */}
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-2">
-              Attach a file <span className="text-slate-500 font-normal">(optional - screenshot, scan, or photo)</span>
-            </label>
-            {attachedFile ? (
-              <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <Paperclip className="h-4 w-4 text-emerald-600" />
-                  <span className="text-emerald-600 text-xs font-medium truncate max-w-[200px]">{attachedFile.name}</span>
-                </div>
-                <button type="button" onClick={() => setAttachedFile(null)} className="text-slate-500 hover:text-slate-900 text-xs">Remove</button>
-              </div>
-            ) : (
-              <label className="flex items-center gap-3 w-full px-4 py-3 bg-white border border-dashed border-slate-200/50 rounded-lg text-slate-500 hover:border-emerald-500/50 hover:text-slate-700 cursor-pointer transition-all text-sm">
-                <Paperclip className="h-4 w-4 text-emerald-600" />
-                <span>Upload a screenshot, scan or photo</span>
-                <input
-                  type="file"
-                  accept="image/*,.pdf,.heic,.heif"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
-                      setAttachedFile(file);
-                    }
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-2">When did this happen?</label>
-            <input
-              type="date"
-              value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-            />
-          </div>
-
-        </div>
-        <div className="p-5 pt-3 border-t border-slate-200/50 flex-shrink-0" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 1.25rem))' }}>
-          <button
-            type="submit"
-            disabled={saving || uploading || !content.trim()}
-            className="w-full cta font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
-          >
-            {uploading ? 'Uploading file...' : saving ? 'Saving...' : 'Add to dispute'}
-          </button>
-        </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// Resolve Dispute Modal
-// ============================================================
-function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }: {
-  disputeId: string;
-  disputedAmount: number | null;
-  onClose: () => void;
-  onResolved: () => void;
-}) {
-  const [outcome, setOutcome] = useState<string>('won');
-  const [moneyRecovered, setMoneyRecovered] = useState('');
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const showMoneyField = outcome === 'won' || outcome === 'partial';
-
-  const outcomeOptions = [
-    { value: 'won', label: 'Won', desc: 'Full resolution in your favour', icon: '🏆', className: 'border-green-500/30 bg-green-500/5 text-green-400' },
-    { value: 'partial', label: 'Partially Won', desc: 'Some money or partial resolution', icon: '🤝', className: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400' },
-    { value: 'lost', label: 'Lost', desc: 'Company rejected your complaint', icon: '😔', className: 'border-slate-500/30 bg-slate-50 text-slate-600' },
-    { value: 'withdrawn', label: 'Withdrawn', desc: 'You decided not to pursue this', icon: '🚫', className: 'border-slate-500/30 bg-slate-50 text-slate-600' },
-  ];
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/disputes/${disputeId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          outcome,
-          money_recovered: showMoneyField && moneyRecovered ? moneyRecovered : '0',
-          outcome_notes: notes || null,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to resolve');
-      capture('dispute_resolved', { outcome, money_recovered: moneyRecovered });
-      onResolved();
-      onClose();
-    } catch {
-      alert('Failed to resolve dispute. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative card w-full max-w-lg shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Resolve Dispute</h2>
-            <p className="text-slate-500 text-sm mt-0.5">Record the outcome of your dispute</p>
-          </div>
-          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Outcome selector */}
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-2">What was the outcome?</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {outcomeOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setOutcome(opt.value)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-left transition-all border ${
-                    outcome === opt.value
-                      ? opt.className
-                      : 'bg-white border-slate-200/50 text-slate-600 hover:border-slate-200'
-                  }`}
-                >
-                  <span className="text-lg">{opt.icon}</span>
-                  <div>
-                    <p className={`font-medium ${outcome === opt.value ? '' : 'text-slate-600'}`}>{opt.label}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{opt.desc}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Money recovered — only for won/partial */}
-          {showMoneyField && (
-            <div>
-              <label className="block text-sm font-medium text-slate-600 mb-2">
-                How much did you recover?
-              </label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-600 font-semibold">£</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={moneyRecovered}
-                  onChange={(e) => setMoneyRecovered(e.target.value)}
-                  className="w-full pl-8 pr-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-amber-300 focus:ring-1 focus:ring-amber-400"
-                  placeholder={disputedAmount ? disputedAmount.toFixed(2) : '0.00'}
-                />
-              </div>
-              {disputedAmount && disputedAmount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setMoneyRecovered(disputedAmount.toFixed(2))}
-                  className="text-xs text-amber-600/70 hover:text-amber-600 mt-1 transition-colors"
-                >
-                  Use full disputed amount (£{disputedAmount.toFixed(2)})
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-2">
-              Notes <span className="text-slate-500 font-normal">(optional)</span>
-            </label>
-            <textarea
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-              placeholder="Any notes about the resolution..."
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full bg-amber-500 hover:bg-orange-600 text-slate-900 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Resolve Dispute'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
+import { DisputeAgentBanner } from '@/components/disputes/DisputeAgentBanner';
+import LetterModal from '@/components/disputes/LetterModal';
+import AddCorrespondenceModal from '@/components/disputes/AddCorrespondenceModal';
+import ResolveDisputeModal from '@/components/disputes/ResolveDisputeModal';
+import type { Dispute, Correspondence, RightsPill, DisputeSummary, ThreadReplyContext } from '@/types/disputes';
+import {
+  ISSUE_TYPE_LABELS, CATEGORY_ALIAS, STATUS_CONFIG, ACTIVE_STATUSES,
+  isResolved, isWon, ENTRY_TYPE_CONFIG, formatDate, timeAgo, letterAlreadyLogged,
+} from '@/lib/dispute-helpers';
 
 // ============================================================
 // Dispute Progress Tracker
@@ -1376,6 +461,9 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
   return (
     <div className="max-w-4xl">
+      <div className="mb-4">
+        <DisputeAgentBanner disputeId={disputeId} />
+      </div>
       {letterModal && (
         <LetterModal
           content={letterModal.content}
@@ -1387,6 +475,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           onSentMarked={fetchDispute}
           onClose={() => setLetterModal(null)}
           threadReply={threadReplyContext}
+          alreadySent={letterAlreadyLogged(dispute, letterModal.content)}
         />
       )}
 
@@ -1486,164 +575,6 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         </div>
       </div>
 
-      {/* Legacy detail card retained for the status-change dropdown + resolve
-          action. The h1/subtitle inside are now hidden — the page-title-row
-          above replaces them visually. */}
-      <div className="card mb-6">
-        <div className="flex items-start justify-between mb-3">
-          <div style={{display:'none'}}>
-            <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
-              {dispute.provider_name}
-            </h1>
-            <p className="text-slate-600 text-sm mt-1">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {dispute.disputed_amount && dispute.disputed_amount > 0 && (
-              <span className="text-amber-600 font-bold text-lg">£{dispute.disputed_amount.toFixed(2)}</span>
-            )}
-            <div className="relative">
-              <button
-                onClick={() => !isResolved(dispute.status) && setStatusDropdown(!statusDropdown)}
-                className={`text-xs px-3 py-1.5 rounded-full font-medium ${isResolved(dispute.status) ? '' : 'cursor-pointer hover:opacity-80'} ${statusConf.className}`}
-              >
-                {statusUpdating ? (
-                  <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
-                ) : null}
-                {statusConf.label}
-              </button>
-              {statusDropdown && !isResolved(dispute.status) && (
-                <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200/50 rounded-lg shadow-xl z-10 min-w-[200px]">
-                  <div className="px-3 py-2 border-b border-slate-200/50">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Update Status</p>
-                  </div>
-                  {ACTIVE_STATUSES.map((key) => {
-                    const conf = STATUS_CONFIG[key];
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => updateStatus(key)}
-                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-all flex items-center gap-2 ${
-                          dispute.status === key ? 'text-amber-600' : 'text-slate-600'
-                        }`}
-                      >
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          key === 'open' ? 'bg-amber-500' :
-                          key === 'in_progress' ? 'bg-blue-400' :
-                          key === 'awaiting_response' ? 'bg-purple-400' :
-                          key === 'escalated' ? 'bg-orange-400' :
-                          'bg-red-400'
-                        }`} />
-                        {conf.label}
-                        {dispute.status === key && <CheckCircle className="h-3 w-3 ml-auto" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <p className="text-slate-600 text-sm">{dispute.issue_summary}</p>
-        {dispute.desired_outcome && (
-          <p className="text-slate-500 text-xs mt-2">Outcome wanted: {dispute.desired_outcome}</p>
-        )}
-        <div className="flex items-center justify-between mt-3">
-          <p className="text-slate-600 text-xs">Started {formatDate(dispute.created_at)}</p>
-          {!isResolved(dispute.status) && (
-            <button
-              onClick={() => setShowResolveModal(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-100 text-amber-600 hover:bg-amber-300/20 rounded-lg transition-all border border-amber-300/20 font-medium"
-            >
-              <Trophy className="h-3.5 w-3.5" />
-              Resolve Dispute
-            </button>
-          )}
-          {isResolved(dispute.status) && dispute.money_recovered > 0 && (
-            <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20 font-medium">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Recovered £{dispute.money_recovered.toFixed(2)}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* AI overview — summary + latest update + next action.
-          Renders above the progress tracker so the user knows where
-          they stand before touching anything else. */}
-      <DisputeOverviewCard disputeId={dispute.id} />
-
-      {/* Latest reply from the supplier — pinned at the top so it's
-          never hidden behind "Show full history" when the user's
-          most-recent letter sorts above it by created_at tiebreak.
-          Renders nothing when there are no supplier replies yet. */}
-      <LatestSupplierReplyCard
-        correspondence={dispute.correspondence ?? []}
-        providerName={dispute.provider_name}
-        userHasGmail={(dispute as any).user_has_gmail}
-        userHasOutlook={(dispute as any).user_has_outlook}
-        onDraftReply={generateFollowUp}
-      />
-
-      {/* Progress Tracker */}
-      <DisputeProgressTracker dispute={dispute} providerInfo={providerInfo} />
-
-      {/* Watchdog — email reply sync */}
-      <WatchdogCard
-        disputeId={dispute.id}
-        providerName={dispute.provider_name}
-        onChanged={fetchDispute}
-      />
-
-      {/* Provider Info Card */}
-      {providerInfo && (
-        <div className="card mb-6">
-          <h3 className="text-sm font-semibold text-slate-900 mb-3">About {providerInfo.display_name}</h3>
-          <div className="grid sm:grid-cols-2 gap-3 text-xs">
-            {providerInfo.cancellation_method && (
-              <div className="bg-white rounded-lg px-3 py-2">
-                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to cancel</p>
-                <p className="text-slate-600 capitalize">{providerInfo.cancellation_method}</p>
-                {providerInfo.cancellation_phone && <p className="text-emerald-600">{providerInfo.cancellation_phone}</p>}
-                {providerInfo.cancellation_url && (
-                  <a href={providerInfo.cancellation_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Cancel online</a>
-                )}
-              </div>
-            )}
-            {providerInfo.complaints_url && (
-              <div className="bg-white rounded-lg px-3 py-2">
-                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to complain</p>
-                {providerInfo.complaints_email && <p className="text-slate-600">{providerInfo.complaints_email}</p>}
-                {providerInfo.complaints_phone && <p className="text-slate-600">{providerInfo.complaints_phone}</p>}
-                <a href={providerInfo.complaints_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Complaints page</a>
-              </div>
-            )}
-            {providerInfo.complaints_response_days && (
-              <div className="bg-white rounded-lg px-3 py-2">
-                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Response deadline</p>
-                <p className="text-slate-600">{providerInfo.complaints_response_days} days to respond</p>
-              </div>
-            )}
-            {providerInfo.ombudsman_name && (
-              <div className="bg-white rounded-lg px-3 py-2">
-                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Escalate to</p>
-                <a href={providerInfo.ombudsman_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">{providerInfo.ombudsman_name}</a>
-              </div>
-            )}
-            {providerInfo.early_exit_fee_info && (
-              <div className="bg-white rounded-lg px-3 py-2 sm:col-span-2">
-                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Exit fees</p>
-                <p className="text-slate-600">{providerInfo.early_exit_fee_info}</p>
-              </div>
-            )}
-          </div>
-          {providerInfo.terms_url && (
-            <a href={providerInfo.terms_url} target="_blank" rel="noopener noreferrer" className="text-xs text-slate-500 hover:text-emerald-600 mt-3 inline-block">
-              View {providerInfo.display_name} T&Cs
-            </a>
-          )}
-        </div>
-      )}
-
       {/* Thread */}
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
@@ -1727,6 +658,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               const Icon = config.icon;
               const isAiLetter = entry.entry_type === 'ai_letter';
               const isFromCompany = ['company_email', 'company_letter', 'company_response'].includes(entry.entry_type);
+              const isJustAdded = Date.now() - new Date(entry.created_at).getTime() < 5 * 60 * 1000;
 
               return (
                 <div
@@ -1734,7 +666,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                   key={entry.id}
                   className={`border rounded-2xl p-5 transition-all ${config.className} ${
                     isAiLetter ? 'cursor-pointer hover:border-emerald-500/50' : ''
-                  }`}
+                  } ${isJustAdded ? 'border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.15)] ring-2 ring-emerald-500/20' : ''}`}
                   onClick={() => {
                     if (isAiLetter) {
                       setLetterModal({
@@ -1780,6 +712,11 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                         <Clock className="h-3 w-3" />
                         {formatDate(entry.entry_date)}
                       </span>
+                      {isJustAdded && (
+                        <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide ml-2 animate-pulse">
+                          Just added
+                        </span>
+                      )}
                       {entry.detected_from_email && (
                         <button
                           onClick={(e) => {
@@ -1826,7 +763,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
                   {isAiLetter ? (
                     <>
-                      <pre className="text-sm text-slate-600 whitespace-pre-wrap font-mono leading-relaxed line-clamp-6">
+                      <pre className={`text-sm text-slate-600 whitespace-pre-wrap font-mono leading-relaxed ${index === 0 ? 'line-clamp-none' : 'line-clamp-6'}`}>
                         {entry.content}
                       </pre>
                       {/* Confidence indicator */}
@@ -2014,6 +951,165 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           </>
         )}
       </div>
+
+
+      {/* Legacy detail card retained for the status-change dropdown + resolve
+          action. The h1/subtitle inside are now hidden — the page-title-row
+          above replaces them visually. */}
+      <div className="card mb-6">
+        <div className="flex items-start justify-between mb-3">
+          <div style={{display:'none'}}>
+            <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
+              {dispute.provider_name}
+            </h1>
+            <p className="text-slate-600 text-sm mt-1">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {dispute.disputed_amount && dispute.disputed_amount > 0 && (
+              <span className="text-amber-600 font-bold text-lg">£{dispute.disputed_amount.toFixed(2)}</span>
+            )}
+            <div className="relative">
+              <button
+                onClick={() => !isResolved(dispute.status) && setStatusDropdown(!statusDropdown)}
+                className={`text-xs px-3 py-1.5 rounded-full font-medium ${isResolved(dispute.status) ? '' : 'cursor-pointer hover:opacity-80'} ${statusConf.className}`}
+              >
+                {statusUpdating ? (
+                  <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+                ) : null}
+                {statusConf.label}
+              </button>
+              {statusDropdown && !isResolved(dispute.status) && (
+                <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200/50 rounded-lg shadow-xl z-10 min-w-[200px]">
+                  <div className="px-3 py-2 border-b border-slate-200/50">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Update Status</p>
+                  </div>
+                  {ACTIVE_STATUSES.map((key) => {
+                    const conf = STATUS_CONFIG[key];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => updateStatus(key)}
+                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-all flex items-center gap-2 ${
+                          dispute.status === key ? 'text-amber-600' : 'text-slate-600'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          key === 'open' ? 'bg-amber-500' :
+                          key === 'in_progress' ? 'bg-blue-400' :
+                          key === 'awaiting_response' ? 'bg-purple-400' :
+                          key === 'escalated' ? 'bg-orange-400' :
+                          'bg-red-400'
+                        }`} />
+                        {conf.label}
+                        {dispute.status === key && <CheckCircle className="h-3 w-3 ml-auto" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <p className="text-slate-600 text-sm">{dispute.issue_summary}</p>
+        {dispute.desired_outcome && (
+          <p className="text-slate-500 text-xs mt-2">Outcome wanted: {dispute.desired_outcome}</p>
+        )}
+        <div className="flex items-center justify-between mt-3">
+          <p className="text-slate-600 text-xs">Started {formatDate(dispute.created_at)}</p>
+          {!isResolved(dispute.status) && (
+            <button
+              onClick={() => setShowResolveModal(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-100 text-amber-600 hover:bg-amber-300/20 rounded-lg transition-all border border-amber-300/20 font-medium"
+            >
+              <Trophy className="h-3.5 w-3.5" />
+              Resolve Dispute
+            </button>
+          )}
+          {isResolved(dispute.status) && dispute.money_recovered > 0 && (
+            <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20 font-medium">
+              <TrendingUp className="h-3.5 w-3.5" />
+              Recovered £{dispute.money_recovered.toFixed(2)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* AI overview — summary + latest update + next action.
+          Renders above the progress tracker so the user knows where
+          they stand before touching anything else. */}
+      <DisputeOverviewCard disputeId={dispute.id} />
+
+      {/* Latest reply from the supplier — pinned at the top so it's
+          never hidden behind "Show full history" when the user's
+          most-recent letter sorts above it by created_at tiebreak.
+          Renders nothing when there are no supplier replies yet. */}
+      <LatestSupplierReplyCard
+        correspondence={dispute.correspondence ?? []}
+        providerName={dispute.provider_name}
+        userHasGmail={(dispute as any).user_has_gmail}
+        userHasOutlook={(dispute as any).user_has_outlook}
+        onDraftReply={generateFollowUp}
+      />
+
+      {/* Progress Tracker */}
+      <DisputeProgressTracker dispute={dispute} providerInfo={providerInfo} />
+
+      {/* Watchdog — email reply sync */}
+      <WatchdogCard
+        disputeId={dispute.id}
+        providerName={dispute.provider_name}
+        onChanged={fetchDispute}
+      />
+
+      {/* Provider Info Card */}
+      {providerInfo && (
+        <div className="card mb-6">
+          <h3 className="text-sm font-semibold text-slate-900 mb-3">About {providerInfo.display_name}</h3>
+          <div className="grid sm:grid-cols-2 gap-3 text-xs">
+            {providerInfo.cancellation_method && (
+              <div className="bg-white rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to cancel</p>
+                <p className="text-slate-600 capitalize">{providerInfo.cancellation_method}</p>
+                {providerInfo.cancellation_phone && <p className="text-emerald-600">{providerInfo.cancellation_phone}</p>}
+                {providerInfo.cancellation_url && (
+                  <a href={providerInfo.cancellation_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Cancel online</a>
+                )}
+              </div>
+            )}
+            {providerInfo.complaints_url && (
+              <div className="bg-white rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to complain</p>
+                {providerInfo.complaints_email && <p className="text-slate-600">{providerInfo.complaints_email}</p>}
+                {providerInfo.complaints_phone && <p className="text-slate-600">{providerInfo.complaints_phone}</p>}
+                <a href={providerInfo.complaints_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Complaints page</a>
+              </div>
+            )}
+            {providerInfo.complaints_response_days && (
+              <div className="bg-white rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Response deadline</p>
+                <p className="text-slate-600">{providerInfo.complaints_response_days} days to respond</p>
+              </div>
+            )}
+            {providerInfo.ombudsman_name && (
+              <div className="bg-white rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Escalate to</p>
+                <a href={providerInfo.ombudsman_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">{providerInfo.ombudsman_name}</a>
+              </div>
+            )}
+            {providerInfo.early_exit_fee_info && (
+              <div className="bg-white rounded-lg px-3 py-2 sm:col-span-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Exit fees</p>
+                <p className="text-slate-600">{providerInfo.early_exit_fee_info}</p>
+              </div>
+            )}
+          </div>
+          {providerInfo.terms_url && (
+            <a href={providerInfo.terms_url} target="_blank" rel="noopener noreferrer" className="text-xs text-slate-500 hover:text-emerald-600 mt-3 inline-block">
+              View {providerInfo.display_name} T&Cs
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Contract Upload Section */}
       <div className="card mb-6">
@@ -2235,7 +1331,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
     { icon: '📚', text: 'Reading up on UK consumer law...' },
     { icon: '⚖️', text: 'Finding the exact legislation that protects you...' },
     { icon: '🔍', text: 'Analysing your situation for maximum impact...' },
-    { icon: '✍️', text: 'Writing a letter that would make a lawyer jealous...' },
+    { icon: '✍️', text: 'Writing a letter that will make them take you seriously...' },
     { icon: '💪', text: 'Making your complaint impossible to ignore...' },
     { icon: '🎯', text: 'Citing the sections they hope you never read...' },
     { icon: '📝', text: 'Politely but firmly demanding what you are owed...' },
@@ -2692,7 +1788,7 @@ function GuidedTour({ onComplete }: { onComplete: () => void }) {
       const el = document.getElementById(TOUR_STEPS[step].target);
       if (el) {
         setRect(el.getBoundingClientRect());
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.scrollIntoView({ behavior: 'instant', block: 'center' });
       } else {
         // Target doesn't exist — skip to next available step
         setSkippedSteps(prev => new Set(prev).add(step));
@@ -2787,6 +1883,12 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
   const [loading, setLoading] = useState(true);
   const [showTour, setShowTour] = useState(false);
   const [summary, setSummary] = useState<DisputeSummary | null>(null);
+  // Filter: 'active' (everything not archived) or 'archived' (the
+  // bot-archived rows). Archived rows still exist in the table —
+  // the bot's archive_dispute tool sets archived_at — they're
+  // just hidden from the default view to keep the list focused
+  // on what the user is actively working on.
+  const [archivedFilter, setArchivedFilter] = useState<'active' | 'archived'>('active');
 
   useEffect(() => {
     fetch('/api/disputes')
@@ -2928,6 +2030,37 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
         </div>
       </div>
 
+      {/* Active / Archived filter — only render when we have any
+          archived disputes to show, else the toggle is noise. */}
+      {(() => {
+        const archivedCount = disputes.filter((d) => !!d.archived_at).length;
+        if (archivedCount === 0) return null;
+        return (
+          <div className="flex items-center gap-2 mb-4">
+            <button
+              onClick={() => setArchivedFilter('active')}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                archivedFilter === 'active'
+                  ? 'bg-emerald-500 text-slate-900'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Active ({disputes.length - archivedCount})
+            </button>
+            <button
+              onClick={() => setArchivedFilter('archived')}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                archivedFilter === 'archived'
+                  ? 'bg-emerald-500 text-slate-900'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Archived ({archivedCount})
+            </button>
+          </div>
+        );
+      })()}
+
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
@@ -2951,7 +2084,11 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
         </div>
       ) : (
         <div id="tour-list" className="space-y-3">
-          {disputes.map((d, idx) => {
+          {disputes
+            .filter((d) =>
+              archivedFilter === 'archived' ? !!d.archived_at : !d.archived_at,
+            )
+            .map((d, idx) => {
             const statusConf = STATUS_CONFIG[d.status] || { label: d.status, className: 'bg-slate-100 text-slate-600' };
             return (
               <button

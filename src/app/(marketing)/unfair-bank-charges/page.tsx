@@ -14,7 +14,7 @@ const data: LandingPageData = {
   legislationParagraphs: [
     "Under guidelines set by the Financial Conduct Authority (FCA) and standard practices upheld by the Financial Ombudsman Service (FOS), UK banks are required to treat customers fairly. If an overdraft fee or returned item fee is disproportionate entirely to the administrative cost the bank incurs, it can often be challenged as an unfair term.",
     'Many people are hit with "cascading fees"—where one missed payment causes a chain reaction of overdraft and late fees, putting you in financial hardship. Banks have a specific regulatory duty to assist customers in financial difficulty, not penalise them further. If the charges pushed you into hardship, you have a strong case for a full refund.',
-    'You don\'t need a lawyer to get your fees back. By citing the appropriate FCA handbook rules and asserting financial hardship or disproportionate penalties, our AI drafts a formal dispute letter addressed directly to your bank\'s complaints department. If they fail to resolve it within 8 weeks, you have the auto-escalated right to take it to the Financial Ombudsman.',
+    'You don\'t need expensive legal help to get your fees back. By citing the appropriate FCA handbook rules and asserting financial hardship or disproportionate penalties, our AI drafts a formal dispute letter addressed directly to your bank\'s complaints department. If they fail to resolve it within 8 weeks, you have the auto-escalated right to take it to the Financial Ombudsman.',
   ],
   rightsTitle: 'When you can challenge bank fees',
   rights: [

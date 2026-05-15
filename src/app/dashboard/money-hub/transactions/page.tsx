@@ -20,13 +20,19 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   Search,
-  Filter,
   Loader2,
   Check,
   ChevronDown,
   X,
   Zap,
+  Plus,
 } from 'lucide-react';
+import {
+  CATEGORIES_BY_GROUP,
+  CATEGORY_LABELS,
+  CATEGORY_EMOJI,
+  type Category,
+} from '@/lib/categories';
 
 interface LedgerTx {
   id: string;
@@ -36,6 +42,7 @@ interface LedgerTx {
   timestamp: string;
   account_id: string | null;
   user_category: string | null;
+  user_subcategory?: string | null;
   kind: 'spending' | 'income' | 'transfer' | 'unknown';
   spendingCategory: string | null;
   incomeType: string | null;
@@ -48,25 +55,18 @@ interface LedgerResponse {
   accounts: Array<{ id: string; bank_name: string; account_name: string | null }>;
 }
 
-const SPENDING_CATEGORIES: Array<{ key: string; label: string }> = [
-  { key: 'groceries', label: 'Groceries' },
-  { key: 'eating_out', label: 'Eating out' },
-  { key: 'travel', label: 'Travel & fuel' },
-  { key: 'mortgage', label: 'Mortgage' },
-  { key: 'loans', label: 'Loans' },
-  { key: 'energy', label: 'Energy' },
-  { key: 'water', label: 'Water' },
-  { key: 'broadband', label: 'Broadband' },
-  { key: 'mobile', label: 'Mobile' },
-  { key: 'insurance', label: 'Insurance' },
-  { key: 'council_tax', label: 'Council tax' },
-  { key: 'streaming', label: 'Streaming' },
-  { key: 'fitness', label: 'Fitness' },
-  { key: 'software', label: 'Software' },
-  { key: 'shopping', label: 'Shopping' },
-  { key: 'bills', label: 'Bills (other)' },
-  { key: 'other', label: 'Other' },
-];
+interface UserSubcategory {
+  id: string;
+  parent_category: Category;
+  name: string;
+  emoji: string | null;
+}
+
+/** Flat list for the filter pill bar — keeps the chips compact. */
+const FILTER_PILL_CATEGORIES = [
+  'rent', 'mortgage', 'groceries', 'eating_out', 'transport', 'energy',
+  'broadband', 'mobile',
+] as const;
 
 const fmtAmount = (n: number) => {
   const abs = Math.abs(n);
@@ -103,6 +103,20 @@ export default function TransactionsLedgerPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [recatBusy, setRecatBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Tier-2 user-defined subcategories (loaded once, refreshed after edits)
+  const [userSubcats, setUserSubcats] = useState<UserSubcategory[]>([]);
+  const refreshSubcats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/money-hub/user-categories', { cache: 'no-store' });
+      if (!res.ok) return;
+      const json = await res.json();
+      setUserSubcats(json.subcategories ?? []);
+    } catch {
+      /* silent */
+    }
+  }, []);
+  useEffect(() => { refreshSubcats(); }, [refreshSubcats]);
 
   // Debounce search
   useEffect(() => {
@@ -178,6 +192,7 @@ export default function TransactionsLedgerPage() {
     merchantPattern?: string;
     newCategory: string;
     applyToAll?: boolean;
+    userSubcategory?: string | null;
   }) {
     setRecatBusy(true);
     try {
@@ -200,6 +215,19 @@ export default function TransactionsLedgerPage() {
     } finally {
       setRecatBusy(false);
     }
+  }
+
+  async function createUserSubcategory(parent: string, name: string, emoji?: string) {
+    const res = await fetch('/api/money-hub/user-categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parent, name, emoji }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? 'Failed to create subcategory');
+    }
+    await refreshSubcats();
   }
 
   async function bulkRecategorise(newCategory: string) {
@@ -277,21 +305,21 @@ export default function TransactionsLedgerPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {SPENDING_CATEGORIES.slice(0, 8).map((c) => {
-            const on = categoryFilter.includes(c.key);
+          {FILTER_PILL_CATEGORIES.map((key) => {
+            const on = categoryFilter.includes(key);
             return (
               <button
-                key={c.key}
+                key={key}
                 onClick={() =>
                   setCategoryFilter((prev) =>
-                    on ? prev.filter((k) => k !== c.key) : [...prev, c.key],
+                    on ? prev.filter((k) => k !== key) : [...prev, key],
                   )
                 }
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                   on ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
                 }`}
               >
-                {c.label}
+                {CATEGORY_LABELS[key]}
               </button>
             );
           })}
@@ -341,15 +369,23 @@ export default function TransactionsLedgerPage() {
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
             {bulkOpen && (
-              <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-lg z-40 max-h-72 overflow-y-auto">
-                {SPENDING_CATEGORIES.map((c) => (
-                  <button
-                    key={c.key}
-                    onClick={() => bulkRecategorise(c.key)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
-                  >
-                    {c.label}
-                  </button>
+              <div className="absolute right-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-40 max-h-80 overflow-y-auto">
+                {Object.entries(CATEGORIES_BY_GROUP).map(([group, cats]) => (
+                  <div key={group}>
+                    <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">
+                      {group}
+                    </div>
+                    {cats.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => bulkRecategorise(c.id)}
+                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <span aria-hidden>{c.emoji}</span>
+                        <span>{c.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 ))}
               </div>
             )}
@@ -392,14 +428,17 @@ export default function TransactionsLedgerPage() {
                       tx={t}
                       selected={selected.has(t.id)}
                       onToggle={() => toggleSelect(t.id)}
-                      onRecategorise={(cat, applyToAll) =>
+                      subcategories={userSubcats}
+                      onCreateSubcategory={createUserSubcategory}
+                      onRecategorise={(cat, applyToAll, sub) =>
                         applyToAll
                           ? recategorise({
                               merchantPattern: t.merchant_name ?? t.description,
                               newCategory: cat,
+                              userSubcategory: sub ?? null,
                               applyToAll: true,
                             })
-                          : recategorise({ transactionId: t.id, newCategory: cat })
+                          : recategorise({ transactionId: t.id, newCategory: cat, userSubcategory: sub ?? null })
                       }
                       isEditing={editingId === t.id}
                       onStartEdit={() => setEditingId(t.id)}
@@ -429,21 +468,23 @@ export default function TransactionsLedgerPage() {
 
 function categoryLabel(key: string | null): string {
   if (!key) return 'Uncategorised';
-  const found = SPENDING_CATEGORIES.find((c) => c.key === key);
-  return found?.label ?? key.replace(/_/g, ' ');
+  const label = (CATEGORY_LABELS as Record<string, string | undefined>)[key];
+  return label ?? key.replace(/_/g, ' ');
 }
 
 function Row({
-  tx, selected, onToggle, onRecategorise, isEditing, onStartEdit, onCancelEdit, busy,
+  tx, selected, onToggle, onRecategorise, isEditing, onStartEdit, onCancelEdit, busy, subcategories, onCreateSubcategory,
 }: {
   tx: LedgerTx;
   selected: boolean;
   onToggle: () => void;
-  onRecategorise: (cat: string, applyToAll: boolean) => void;
+  onRecategorise: (cat: string, applyToAll: boolean, sub?: string | null) => void;
   isEditing: boolean;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   busy: boolean;
+  subcategories: UserSubcategory[];
+  onCreateSubcategory: (parent: string, name: string, emoji?: string) => Promise<void>;
 }) {
   const display = tx.merchant_name?.trim() || tx.description?.trim() || 'Unknown';
   const isIncome = tx.kind === 'income';
@@ -470,7 +511,12 @@ function Row({
             ) : isTransfer ? (
               <span className="text-blue-500 font-medium">Transfer</span>
             ) : (
-              <span>{categoryLabel(tx.spendingCategory)}</span>
+              <span>
+                {categoryLabel(tx.spendingCategory)}
+                {tx.user_subcategory ? (
+                  <span className="text-slate-400"> · {tx.user_subcategory}</span>
+                ) : null}
+              </span>
             )}
           </div>
         </div>
@@ -483,8 +529,11 @@ function Row({
         <RecategoriseDropdown
           merchant={tx.merchant_name ?? tx.description}
           currentCategory={tx.spendingCategory}
+          currentSubcategory={tx.user_subcategory ?? null}
           busy={busy}
-          onPick={(cat, applyToAll) => onRecategorise(cat, applyToAll)}
+          subcategories={subcategories}
+          onCreateSubcategory={onCreateSubcategory}
+          onPick={(cat, applyToAll, sub) => onRecategorise(cat, applyToAll, sub)}
           onClose={onCancelEdit}
         />
       )}
@@ -493,48 +542,178 @@ function Row({
 }
 
 function RecategoriseDropdown({
-  merchant, currentCategory, busy, onPick, onClose,
+  merchant, currentCategory, currentSubcategory, busy, subcategories, onCreateSubcategory, onPick, onClose,
 }: {
   merchant: string;
   currentCategory: string | null;
+  currentSubcategory: string | null;
   busy: boolean;
-  onPick: (category: string, applyToAll: boolean) => void;
+  subcategories: UserSubcategory[];
+  onCreateSubcategory: (parent: string, name: string, emoji?: string) => Promise<void>;
+  onPick: (category: string, applyToAll: boolean, sub: string | null) => void;
   onClose: () => void;
 }) {
   const [applyToAll, setApplyToAll] = useState(false);
+  // Once the user picks a parent, expand to show its subcategories and the
+  // "Create new" affordance. Null means "no parent picked yet".
+  const [stagedParent, setStagedParent] = useState<string | null>(null);
+  const [newSubName, setNewSubName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
+
+  const subcatsForParent = useMemo(
+    () => subcategories.filter((s) => s.parent_category === stagedParent),
+    [subcategories, stagedParent],
+  );
+
+  async function handleCreate() {
+    if (!stagedParent || !newSubName.trim()) return;
+    setCreating(true);
+    setCreateErr(null);
+    try {
+      await onCreateSubcategory(stagedParent, newSubName.trim());
+      // After creating, immediately apply it to the transaction.
+      onPick(stagedParent, applyToAll, newSubName.trim());
+      setNewSubName('');
+    } catch (e) {
+      setCreateErr(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setCreating(false);
+    }
+  }
 
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute right-2 sm:right-6 z-50 w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-3" onClick={(e) => e.stopPropagation()}>
-        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-          Recategorise
-        </div>
-        <label className="flex items-center gap-2 mb-3 cursor-pointer text-xs text-slate-700 select-none">
-          <input
-            type="checkbox"
-            checked={applyToAll}
-            onChange={(e) => setApplyToAll(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-          />
-          <span>Always categorise <strong className="font-semibold">{merchant.slice(0, 30)}</strong> this way</span>
-        </label>
-        <div className="max-h-60 overflow-y-auto -mx-3 px-1">
-          {SPENDING_CATEGORIES.map((c) => (
+      <div className="absolute right-2 sm:right-6 z-50 w-80 bg-white border border-slate-200 rounded-xl shadow-xl p-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {stagedParent
+              ? `${CATEGORY_LABELS[stagedParent as Category] ?? stagedParent} — pick label`
+              : 'Recategorise'}
+          </div>
+          {stagedParent && (
             <button
-              key={c.key}
-              disabled={busy || c.key === currentCategory}
-              onClick={() => onPick(c.key, applyToAll)}
-              className={`w-full text-left px-2 py-1.5 text-sm rounded-lg flex items-center justify-between transition-colors ${
-                c.key === currentCategory
-                  ? 'bg-emerald-50 text-emerald-700 cursor-default'
-                  : 'hover:bg-slate-50 text-slate-700'
-              }`}
+              onClick={() => { setStagedParent(null); setNewSubName(''); setCreateErr(null); }}
+              className="text-xs text-slate-400 hover:text-slate-600"
             >
-              <span>{c.label}</span>
-              {c.key === currentCategory && <Check className="h-3.5 w-3.5" />}
+              ← back
             </button>
+          )}
+        </div>
+
+        {!stagedParent && (
+          <label className="flex items-center gap-2 mb-3 cursor-pointer text-xs text-slate-700 select-none">
+            <input
+              type="checkbox"
+              checked={applyToAll}
+              onChange={(e) => setApplyToAll(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+            />
+            <span>Always categorise <strong className="font-semibold">{merchant.slice(0, 28)}</strong> this way</span>
+          </label>
+        )}
+
+        <div className="max-h-72 overflow-y-auto -mx-3 px-1">
+          {!stagedParent && Object.entries(CATEGORIES_BY_GROUP).map(([group, cats]) => (
+            <div key={group}>
+              <div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">
+                {group}
+              </div>
+              {cats.map((c) => {
+                const isCurrent = c.id === currentCategory && !currentSubcategory;
+                const subCount = subcategories.filter((s) => s.parent_category === c.id).length;
+                return (
+                  <div key={c.id} className="flex items-stretch">
+                    <button
+                      disabled={busy}
+                      onClick={() => onPick(c.id, applyToAll, null)}
+                      className={`flex-1 text-left px-2 py-1.5 text-sm rounded-lg flex items-center gap-2 transition-colors ${
+                        isCurrent
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <span aria-hidden>{c.emoji}</span>
+                      <span className="flex-1">{c.label}</span>
+                      {isCurrent && <Check className="h-3.5 w-3.5" />}
+                    </button>
+                    {(subCount > 0 || !isCurrent) && (
+                      <button
+                        title="Pick a custom label under this category"
+                        onClick={() => setStagedParent(c.id)}
+                        className="px-2 text-slate-400 hover:text-slate-700"
+                      >
+                        <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           ))}
+
+          {stagedParent && (
+            <>
+              <button
+                disabled={busy}
+                onClick={() => onPick(stagedParent, applyToAll, null)}
+                className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-slate-50 text-slate-700 flex items-center gap-2"
+              >
+                <span aria-hidden>{CATEGORY_EMOJI[stagedParent as Category]}</span>
+                <span className="flex-1">{CATEGORY_LABELS[stagedParent as Category]} (no subcategory)</span>
+                {!currentSubcategory && stagedParent === currentCategory && <Check className="h-3.5 w-3.5" />}
+              </button>
+
+              {subcatsForParent.length > 0 && (
+                <div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">
+                  Your subcategories
+                </div>
+              )}
+              {subcatsForParent.map((s) => {
+                const isCurrent = stagedParent === currentCategory && currentSubcategory?.toLowerCase() === s.name.toLowerCase();
+                return (
+                  <button
+                    key={s.id}
+                    disabled={busy}
+                    onClick={() => onPick(stagedParent, applyToAll, s.name)}
+                    className={`w-full text-left px-2 py-1.5 text-sm rounded-lg flex items-center gap-2 transition-colors ${
+                      isCurrent ? 'bg-emerald-50 text-emerald-700' : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <span aria-hidden>{s.emoji ?? '·'}</span>
+                    <span className="flex-1">{s.name}</span>
+                    {isCurrent && <Check className="h-3.5 w-3.5" />}
+                  </button>
+                );
+              })}
+
+              <div className="border-t border-slate-100 mt-2 pt-2 px-2">
+                <div className="flex items-center gap-2">
+                  <Plus className="h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Create a custom label…"
+                    value={newSubName}
+                    onChange={(e) => setNewSubName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+                    maxLength={50}
+                    className="flex-1 text-sm border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    disabled={creating || !newSubName.trim()}
+                    onClick={handleCreate}
+                    className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 disabled:opacity-50"
+                  >
+                    {creating ? '…' : 'Add'}
+                  </button>
+                </div>
+                {createErr && (
+                  <div className="mt-1 text-xs text-red-600">{createErr}</div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </>

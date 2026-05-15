@@ -19,14 +19,14 @@ import HomepageContent from './preview/homepage/page';
  */
 
 export const metadata: Metadata = {
-  title: 'Paybacker — Find hidden overcharges. Fight unfair bills. Get your money back.',
+  title: 'Paybacker — Your AI consumer champion for unfair UK bills. Keep 100%.',
   description:
-    'AI that scans your bank and inbox for overcharges, drafts UK-law-cited dispute letters in 30 seconds, and tracks every case until you get refunded. Founder has personally recovered £2,000+. Free to try.',
+    'Solicitors charge £250/hour. Claims firms take 30%. Paybacker drafts UK-law-cited complaint letters in 30 seconds, runs every dispute end-to-end through provider escalation and Ombudsman, and you keep 100% of every refund. £4.99/month. Free tier available.',
   alternates: { canonical: 'https://paybacker.co.uk' },
   openGraph: {
-    title: 'Paybacker — Fight unfair bills. Recover your money.',
+    title: 'Paybacker — Your AI consumer champion for unfair UK bills. Keep 100%.',
     description:
-      'AI dispute letters citing exact UK consumer law in 30 seconds. Bank + inbox scanner finds hidden overcharges. Free to try, no credit card.',
+      'AI complaint letters citing the exact UK statute, escalated end-to-end through Ombudsman if needed. Solicitors charge £250/hr. Claims firms take 30%. We charge £4.99/mo and you keep every penny.',
     url: 'https://paybacker.co.uk',
     siteName: 'Paybacker',
     type: 'website',
@@ -34,9 +34,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary',
-    title: 'Paybacker — Fight unfair bills. Recover your money.',
+    title: 'Paybacker — Your AI consumer champion for unfair UK bills.',
     description:
-      'AI dispute letters citing exact UK consumer law in 30 seconds. Free to try.',
+      'AI complaint letters citing the exact UK statute. Solicitors: £250/hr. Claims firms: 30%. Paybacker: £4.99/mo, you keep 100%.',
     images: ['/logo.png'],
   },
 };

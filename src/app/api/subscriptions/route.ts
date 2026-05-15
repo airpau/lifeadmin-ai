@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { deriveRecurringGroup } from '@/lib/subscription-key';
+import { providerKey, researchCancellationForProvider } from '@/lib/cancellation-provider';
 
 export async function GET() {
   try {
@@ -68,7 +70,41 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json(deduped);
+    // Batch-attach provider_cancellation_info so the client doesn't
+    // have to issue an N+1 lookup per provider. One query for all
+    // unique providers in this user's list; rows that don't have a
+    // matching info row get cancellation_info: null and the legacy
+    // research path will populate it asynchronously.
+    const providerKeys = Array.from(
+      new Set(
+        deduped
+          .map((sub: any) => providerKey(sub.provider_name || ''))
+          .filter((k: string) => !!k),
+      ),
+    );
+
+    let infoByKey: Record<string, any> = {};
+    if (providerKeys.length > 0) {
+      const { data: infoRows } = await supabase
+        .from('provider_cancellation_info')
+        .select('provider, display_name, city, method, email, phone, url, tips, notice_period_days, last_verified_at, confidence, data_source')
+        .in('provider', providerKeys);
+      for (const row of infoRows || []) {
+        infoByKey[row.provider] = row;
+      }
+    }
+
+    const enriched = deduped.map((sub: any) => {
+      const key = providerKey(sub.provider_name || '');
+      const info = key ? infoByKey[key] || null : null;
+      return {
+        ...sub,
+        cancellation_info: info,
+        has_cancellation_info: !!(info && (info.url || info.email || info.phone)),
+      };
+    });
+
+    return NextResponse.json(enriched);
   } catch (error: any) {
     console.error('Error fetching subscriptions:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -91,6 +127,53 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields: provider_name, amount, billing_cycle' },
         { status: 400 }
       );
+    }
+
+    // Canonical key so the row plays nicely with get_subscription_total and
+    // the partial unique index on (user_id, recurring_group). See
+    // 20260422020000.
+    const recurringGroup = deriveRecurringGroup(body.provider_name);
+
+    // If an active row for this provider already exists, merge into it
+    // instead of inserting a duplicate. This is the user-friendly flip-side
+    // of the partial unique index — without it the INSERT would 23505 and
+    // the caller would see a 500.
+    if (recurringGroup) {
+      const { data: existing } = await supabase
+        .from('subscriptions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('recurring_group', recurringGroup)
+        .is('dismissed_at', null)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        const patch: Record<string, unknown> = {
+          updated_at: new Date().toISOString(),
+          amount: parseFloat(body.amount),
+          billing_cycle: body.billing_cycle,
+        };
+        if (body.category)            patch.category = body.category;
+        if (body.next_billing_date)   patch.next_billing_date = body.next_billing_date;
+        if (body.contract_end_date)   patch.contract_end_date = body.contract_end_date;
+        if (body.contract_start_date) patch.contract_start_date = body.contract_start_date;
+        if (body.provider_type)       patch.provider_type = body.provider_type;
+        if (body.current_tariff)      patch.current_tariff = body.current_tariff;
+        if (body.notes)               patch.notes = body.notes;
+
+        const { data: updated, error: updErr } = await supabase
+          .from('subscriptions')
+          .update(patch)
+          .eq('id', existing.id)
+          .eq('user_id', user.id)
+          .select()
+          .single();
+
+        if (updErr) throw updErr;
+        return NextResponse.json(updated, { status: 200 });
+      }
     }
 
     const { data, error } = await supabase
@@ -120,11 +203,19 @@ export async function POST(request: NextRequest) {
         alert_before_days: body.alert_before_days || 30,
         contract_end_source: body.contract_end_source || (body.contract_end_date ? 'manual' : null),
         source: body.source || 'manual',
+        recurring_group: recurringGroup,
       })
       .select()
       .single();
 
     if (error) throw error;
+
+    // Fire-and-forget: research cancellation contact for this provider in the
+    // background. Branch-aware (see researchCancellationForProvider for the
+    // UK-locality logic). Errors are swallowed so they don't break the create.
+    void researchCancellationForProvider(body.provider_name).catch((err) => {
+      console.error('[subscriptions] cancellation research failed:', err?.message || err);
+    });
 
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {

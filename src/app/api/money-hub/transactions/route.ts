@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
 
     const sourceTotals: Record<string, { total: number; count: number }> = {};
     for (const t of filtered) {
-      // Skip junk merchant_name values ("ad", "tr", etc. — TrueLayer fragments)
+      // Skip junk merchant_name values ("ad", "tr", etc. — Yapily fragments)
       // and fall back to a cleaned description so aggregations don't collapse
       // unrelated payments under a 2-letter heading.
       const rawMerchant = isGarbageMerchantName(t.merchant_name) ? null : t.merchant_name;

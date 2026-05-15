@@ -4,7 +4,7 @@ export const maxDuration = 120;
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { scanOutlookForOpportunities, refreshMicrosoftToken } from '@/lib/outlook';
-import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { checkUsageLimit, incrementUsage, checkFreeScanGate } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
 import { getUserPlan } from '@/lib/get-user-plan';
 
@@ -22,11 +22,20 @@ export async function POST(request: NextRequest) {
   const isAdmin = user.email === 'aireypaul@googlemail.com';
 
   if (!isAdmin) {
+    // Free-tier monthly gate (mirror of gmail/scan): one scan per 30 days.
     if (plan.tier === 'free') {
-      return NextResponse.json(
-        { error: 'Inbox scanning is available on Essential and Pro plans. Upgrade to automatically find hidden subscriptions and savings.', upgradeRequired: true },
-        { status: 403 }
-      );
+      const gate = await checkFreeScanGate(user.id);
+      if (!gate.allowed) {
+        return NextResponse.json(
+          {
+            error: `Free tier scans monthly. Next scan available ${gate.nextAvailableISO}. Upgrade for unlimited scans.`,
+            upgrade_url: '/pricing',
+            nextAvailableISO: gate.nextAvailableISO,
+            lastScanISO: gate.lastScanISO,
+          },
+          { status: 429 }
+        );
+      }
     }
 
     if (!usageCheck.allowed) {
@@ -160,6 +169,43 @@ export async function POST(request: NextRequest) {
               metadata: o
             }))
           ).then(({ error: e }) => { if (e) console.error('[outlook-scan] money_hub_alerts insert error:', e.message); });
+        }
+
+        // The dashboard's "Email scanner" card reads from
+        // `email_scan_findings` (status in [new, reviewing]). Gmail
+        // writes there; Outlook previously did not, so Outlook scans
+        // produced findings the user never saw. Mirror Gmail's insert
+        // here — filtered to the CHECK-constraint type allowlist.
+        const FINDING_TYPES = new Set([
+          'subscription', 'bill', 'contract', 'dispute_response',
+          'cancellation_confirmation', 'price_increase', 'refund_opportunity',
+          'flight_delay', 'debt_dispute', 'tax_rebate', 'renewal',
+          'forgotten_subscription', 'upcoming_payment', 'deal_expiry',
+          'bank_gap',
+        ]);
+        const findings = newOpportunities.filter((o: any) => FINDING_TYPES.has(o.type));
+        if (findings.length > 0) {
+          await admin.from('email_scan_findings').insert(
+            findings.map((o: any) => ({
+              user_id: user.id,
+              finding_type: o.type,
+              provider: o.provider || 'Unknown',
+              email_id: o.emailId || null,
+              title: o.title,
+              description: o.description || null,
+              amount: o.amount || o.paymentAmount || null,
+              due_date: o.nextPaymentDate || null,
+              contract_end_date: o.contractEndDate || null,
+              previous_amount: o.previousAmount || null,
+              price_change_date: o.priceChangeDate || null,
+              payment_frequency: o.paymentFrequency || null,
+              confidence: o.confidence || 70,
+              urgency: o.urgency || 'routine',
+              status: 'new',
+              source: 'outlook',
+              metadata: o,
+            }))
+          ).then(({ error: e }) => { if (e) console.error('[outlook-scan] email_scan_findings insert:', e.message); });
         }
       }
 

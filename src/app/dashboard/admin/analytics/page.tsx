@@ -15,9 +15,9 @@
  */
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import AdminPage from '@/components/admin/AdminPage';
 import {
-  ArrowLeft, Loader2, RefreshCw, Users, TrendingDown, TrendingUp,
+  Loader2, RefreshCw, Users, TrendingDown, TrendingUp,
   Receipt, Wallet, Calendar, Scale, Layers, AlertTriangle,
   Plug, Sparkles, HeartPulse, Bot,
 } from 'lucide-react';
@@ -29,6 +29,7 @@ interface Analytics {
   privacy_note: string;
   this_month: string;
   last_month: string;
+  days_into_month?: number;
   user_counts: {
     total: number;
     by_tier: TierCounts;
@@ -142,7 +143,7 @@ export default function AdminAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = async (opts: { manual?: boolean } = {}) => {
     setLoading(true);
     setError(null);
     try {
@@ -150,6 +151,24 @@ export default function AdminAnalyticsPage() {
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const json = (await res.json()) as Analytics;
       setData(json);
+      // Telemetry: track founder Refresh clicks so we can see whether the
+      // page is being checked + whether the data ever populates. Best-effort,
+      // never blocks the load. Server-side row written via /api/admin/log.
+      if (opts.manual) {
+        void fetch('/api/admin/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: 'admin-analytics',
+            event: 'refresh_clicked',
+            metadata: {
+              days_into_month: json.days_into_month ?? null,
+              spend_this_month: json.platform_money_flow.spend_this_month,
+              transactions_this_month: json.platform_money_flow.total_transactions_this_month,
+            },
+          }),
+        }).catch(() => {});
+      }
     } catch (e: any) {
       setError(e?.message || 'Failed to load');
     } finally {
@@ -171,14 +190,11 @@ export default function AdminAnalyticsPage() {
 
   if (error) {
     return (
-      <div className="p-8 max-w-2xl mx-auto">
-        <Link href="/dashboard/admin" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 mb-4">
-          <ArrowLeft className="h-4 w-4" /> Back to admin
-        </Link>
+      <AdminPage title="Platform Analytics">
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
           {error}
         </div>
-      </div>
+      </AdminPage>
     );
   }
 
@@ -187,27 +203,33 @@ export default function AdminAnalyticsPage() {
   const tiers = data.user_counts.by_tier;
   const topCatTotal = data.top_spending_categories.reduce((s, c) => s + c.total, 0);
 
+  // Empty-state heuristics. Day 1-3 of the month with zero transactions is a
+  // "month just started" state, not a broken-data state — render — instead of
+  // £0 and suppress the alarming -100% MoM. From day 4 onward we keep the
+  // existing rendering because true zeros at that point may signal a sync
+  // problem worth investigating.
+  const daysIntoMonth = data.days_into_month;
+  const dayOne = typeof daysIntoMonth === 'number' && daysIntoMonth <= 3;
+  const moneyFlow = data.platform_money_flow;
+  const noTxnsThisMonth = moneyFlow.total_transactions_this_month === 0;
+  const monthJustStarted = dayOne && noTxnsThisMonth;
+  const dash = '—';
+  const startedSubtext = 'Month just started · transactions sync hourly';
+
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div>
-          <Link href="/dashboard/admin" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 mb-2">
-            <ArrowLeft className="h-4 w-4" /> Back to admin
-          </Link>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Platform Analytics</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Generated {new Date(data.generated_at).toLocaleString('en-GB')} · {data.privacy_note}
-          </p>
-        </div>
+    <AdminPage
+      title="Platform Analytics"
+      description={`Generated ${new Date(data.generated_at).toLocaleString('en-GB')} · ${data.privacy_note}${dayOne ? ` · Day ${daysIntoMonth} of month — figures partial.` : ''}`}
+      actions={
         <button
-          onClick={load}
+          onClick={() => load({ manual: true })}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm text-slate-700 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-sm text-slate-700 disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </button>
-      </div>
+      }
+    >
 
       {/* ─ USERS ─────────────────────────────────────────────────────── */}
       <Section icon={Users} title="Users" subtitle="Who's on the platform">
@@ -223,26 +245,63 @@ export default function AdminAnalyticsPage() {
       {/* ─ MONEY FLOW ───────────────────────────────────────────────── */}
       <Section icon={Wallet} title="Platform money flow" subtitle={`This month (${data.this_month}) vs last`}>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label="Spend this month" value={gbp(data.platform_money_flow.spend_this_month)} />
-          <Stat label="Spend last month" value={gbp(data.platform_money_flow.spend_last_month)} />
           <Stat
-            label="MoM change"
-            value={pct(data.platform_money_flow.spend_mom_pct)}
-            tone={data.platform_money_flow.spend_mom_pct > 0 ? 'red' : 'mint'}
-            icon={data.platform_money_flow.spend_mom_pct > 0 ? TrendingUp : TrendingDown}
+            label="Spend this month"
+            value={monthJustStarted ? dash : gbp(moneyFlow.spend_this_month)}
+            subtext={monthJustStarted ? startedSubtext : undefined}
           />
-          <Stat label="Income this month" value={gbp(data.platform_money_flow.income_this_month)} tone="mint" />
-          <Stat label="Avg spend / active user" value={gbp(data.platform_money_flow.avg_spend_per_active_user)} />
-          <Stat label="Avg income / active user" value={gbp(data.platform_money_flow.avg_income_per_active_user)} />
-          <Stat label="Transactions this month" value={data.platform_money_flow.total_transactions_this_month.toLocaleString('en-GB')} />
-          <Stat label="Users with spending" value={data.platform_money_flow.users_with_spending_this_month} />
+          <Stat
+            label="Spend last month"
+            value={gbp(moneyFlow.spend_last_month)}
+            subtext={`Across ${data.user_counts.total} users tracked`}
+          />
+          {monthJustStarted ? (
+            <Stat
+              label="MoM change"
+              value="Pending"
+              subtext="Month just started"
+            />
+          ) : (
+            <Stat
+              label="MoM change"
+              value={pct(moneyFlow.spend_mom_pct)}
+              tone={moneyFlow.spend_mom_pct > 0 ? 'red' : 'mint'}
+              icon={moneyFlow.spend_mom_pct > 0 ? TrendingUp : TrendingDown}
+            />
+          )}
+          <Stat
+            label="Income this month"
+            value={monthJustStarted && moneyFlow.income_this_month === 0 ? dash : gbp(moneyFlow.income_this_month)}
+            tone={monthJustStarted && moneyFlow.income_this_month === 0 ? 'default' : 'mint'}
+            subtext={monthJustStarted && moneyFlow.income_this_month === 0 ? startedSubtext : undefined}
+          />
+          <Stat
+            label="Avg spend / active user"
+            value={monthJustStarted && moneyFlow.avg_spend_per_active_user === 0 ? dash : gbp(moneyFlow.avg_spend_per_active_user)}
+            subtext={monthJustStarted && moneyFlow.avg_spend_per_active_user === 0 ? startedSubtext : undefined}
+          />
+          <Stat
+            label="Avg income / active user"
+            value={monthJustStarted && moneyFlow.avg_income_per_active_user === 0 ? dash : gbp(moneyFlow.avg_income_per_active_user)}
+            subtext={monthJustStarted && moneyFlow.avg_income_per_active_user === 0 ? startedSubtext : undefined}
+          />
+          <Stat
+            label="Transactions this month"
+            value={monthJustStarted ? dash : moneyFlow.total_transactions_this_month.toLocaleString('en-GB')}
+            subtext={monthJustStarted ? startedSubtext : undefined}
+          />
+          <Stat
+            label="Users with spending"
+            value={monthJustStarted && moneyFlow.users_with_spending_this_month === 0 ? dash : moneyFlow.users_with_spending_this_month}
+            subtext={monthJustStarted && moneyFlow.users_with_spending_this_month === 0 ? startedSubtext : undefined}
+          />
         </div>
       </Section>
 
       {/* ─ TOP CATEGORIES ───────────────────────────────────────────── */}
       <Section icon={Layers} title="Top spending categories" subtitle="Where the platform is spending this month">
         {data.top_spending_categories.length === 0 ? (
-          <Empty />
+          <Empty daysIntoMonth={daysIntoMonth} />
         ) : (
           <DataTable
             columns={['Category', 'Total', '% of total', 'Users', 'Avg / user']}
@@ -261,7 +320,7 @@ export default function AdminAnalyticsPage() {
       {/* ─ TOP MERCHANTS ────────────────────────────────────────────── */}
       <Section icon={Receipt} title="Top merchants" subtitle="Merchants with the highest platform-wide spend this month">
         {data.top_merchants.length === 0 ? (
-          <Empty />
+          <Empty daysIntoMonth={daysIntoMonth} />
         ) : (
           <DataTable
             columns={['Merchant', 'Total', 'Users', 'Avg / user']}
@@ -278,7 +337,7 @@ export default function AdminAnalyticsPage() {
       {/* ─ INCOME MIX ───────────────────────────────────────────────── */}
       <Section icon={TrendingUp} title="Income mix" subtitle="What kinds of money are landing in accounts this month">
         {data.income_mix.length === 0 ? (
-          <Empty />
+          <Empty daysIntoMonth={daysIntoMonth} />
         ) : (
           <DataTable
             columns={['Type', 'Total', 'Users', 'Avg / user']}
@@ -407,7 +466,7 @@ export default function AdminAnalyticsPage() {
           />
         )}
       </Section>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -445,11 +504,13 @@ function Stat({
   value,
   tone = 'default',
   icon: Icon,
+  subtext,
 }: {
   label: string;
   value: string | number;
   tone?: 'default' | 'mint' | 'amber' | 'red';
   icon?: React.ComponentType<{ className?: string }>;
+  subtext?: string;
 }) {
   const toneCls =
     tone === 'mint' ? 'border-emerald-200 bg-emerald-50' :
@@ -463,6 +524,7 @@ function Stat({
         {label}
       </p>
       <p className="text-xl font-bold text-slate-900 break-words">{value}</p>
+      {subtext && <p className="text-xs text-slate-500 mt-1.5 leading-snug">{subtext}</p>}
     </div>
   );
 }
@@ -512,7 +574,18 @@ function DataTable({
   );
 }
 
-function Empty() {
+function Empty({ daysIntoMonth }: { daysIntoMonth?: number }) {
+  // Day 1-3 of the month: it's almost certainly a "month just started" empty
+  // state, not a privacy suppression. Calling it "no data" or pointing at
+  // privacy suppression there is misleading. From day 4 onward, the
+  // privacy/MIN_SEGMENT_SIZE explanation is the real signal.
+  if (typeof daysIntoMonth === 'number' && daysIntoMonth <= 3) {
+    return (
+      <p className="text-sm text-slate-500 italic">
+        Building — month-to-date data fills as transactions sync.
+      </p>
+    );
+  }
   return (
     <p className="text-sm text-slate-500 italic">
       No data yet (segments with &lt;2 users are suppressed for privacy).

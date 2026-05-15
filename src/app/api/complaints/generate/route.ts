@@ -1,11 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { trackLetterGenerated } from '@/lib/meta-conversions';
 import { awardPoints } from '@/lib/loyalty';
 import { getProviderTerms } from '@/lib/provider-match';
+import { checkIpRateLimit, getClientIp } from '@/lib/rate-limit';
+import {
+  checkRefFreshness,
+  refreshSingleRef,
+  findFreshSubstitute,
+  freshnessOf,
+  freshnessTier,
+  tierWarning,
+  findTieredSubstitute,
+  findChainSubstitute,
+  postFlightSanitise,
+} from '@/lib/legal-refs-guardrail';
+import { CITATION_PERMISSIVE_STATUSES } from '@/lib/legal-refs-statuses';
+import { loadFreshLegalRefs } from '@/lib/legal-data/freshness-gate';
+import { sendNotification } from '@/lib/notifications/dispatch';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
 // 120s — the engine's worst-case path is two Claude calls (citation
@@ -23,6 +39,24 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // IP-based rate limiting — 5 requests per minute per IP
+    const ip = getClientIp(request);
+    const ipLimit = await checkIpRateLimit(ip, '/api/complaints/generate', 5);
+    if (!ipLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please try again in a moment.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil(ipLimit.retryAfterMs / 1000)),
+            'X-RateLimit-Limit': '5',
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': String(Math.ceil(ipLimit.resetAt.getTime() / 1000)),
+          },
+        }
+      );
     }
 
     // Check plan limits
@@ -283,7 +317,7 @@ export async function POST(request: NextRequest) {
       .from('legal_references')
       .select('id, category, law_name, section, summary, source_url, escalation_body, strength, applies_to, verification_status')
       .in('category', categories)
-      .in('verification_status', ['current', 'updated', 'needs_review']);
+      .in('verification_status', CITATION_PERMISSIVE_STATUSES as unknown as string[]);
 
     // Filter out 'general' refs that have a sector-specific applies_to array which doesn't
     // overlap with the current dispute's categories. This prevents gym/fitness legal refs
@@ -321,6 +355,105 @@ export async function POST(request: NextRequest) {
           },
         });
       }
+    }
+
+    // PR β — pre-send freshness guardrail. Check the refs we INTEND to
+    // feed into the prompt; for any stale/broken row, attempt a
+    // synchronous Perplexity refresh (5s cap), then if still stale find
+    // a fresh substitute in the same category. If no substitute exists
+    // we strip the row and add a footer note in the letter. Never
+    // blocks the user — degrade gracefully.
+    let guardrailFooterNote: string | null = null;
+    // Tier 2-4 + chain fallback warnings collected here — appended to
+    // the letter footer at the end so the user sees the same "verified
+    // X days ago" caveat the B2B response surfaces in _compliance_warnings.
+    // B2C never blocks: even a tier-4 ref or chain fallback is preferable
+    // to stripping the citation entirely.
+    const guardrailTierWarnings: string[] = [];
+    if (relevantRefs.length > 0) {
+      const freshness = await checkRefFreshness(supabase, refIds);
+      if (!freshness.ok && freshness.stale.length > 0) {
+        const usedIds = new Set<string>((refIds as unknown[]).filter((x: unknown): x is string => typeof x === 'string'));
+        for (const { id: staleId, reason } of freshness.stale) {
+          // Attempt synchronous refresh first. Tier-aware: tier 1 → use
+          // silently; tier 2-4 → use + warning; null → fall through.
+          const refreshed = await refreshSingleRef(supabase, staleId);
+          if (refreshed) {
+            const t = freshnessTier(refreshed);
+            if (t) {
+              const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
+              if (idx >= 0) {
+                relevantRefs[idx] = { ...relevantRefs[idx], ...refreshed };
+              }
+              const w = tierWarning(refreshed, t);
+              if (w) guardrailTierWarnings.push(w);
+              continue;
+            }
+          }
+          // Same-category tiered substitute (tier 1 → 4).
+          const original = relevantRefs.find((r: any) => r.id === staleId);
+          const category = original?.category;
+          if (category) {
+            const sub = await findTieredSubstitute(supabase, category, [...usedIds]);
+            if (sub) {
+              const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
+              if (idx >= 0) {
+                relevantRefs[idx] = { ...sub.ref, applies_to: original?.applies_to || [] } as any;
+                usedIds.add(sub.ref.id);
+              }
+              const w = tierWarning(sub.ref, sub.tier);
+              if (w) guardrailTierWarnings.push(w);
+              continue;
+            }
+            // Category fallback chain (energy → utilities → general etc.).
+            const chained = await findChainSubstitute(supabase, category, [...usedIds]);
+            if (chained) {
+              const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
+              if (idx >= 0) {
+                relevantRefs[idx] = { ...chained.ref, applies_to: original?.applies_to || [] } as any;
+                usedIds.add(chained.ref.id);
+              }
+              guardrailTierWarnings.push(
+                `No fresh ref for '${category}' — substituted with '${chained.fallbackCategory}' (${chained.ref.law_name})`,
+              );
+              const w = tierWarning(chained.ref, chained.tier);
+              if (w) guardrailTierWarnings.push(w);
+              continue;
+            }
+          }
+          // No substitute even via the chain — strip the row and flag a footer note.
+          const idx = relevantRefs.findIndex((r: any) => r.id === staleId);
+          if (idx >= 0) relevantRefs.splice(idx, 1);
+          guardrailFooterNote = "We couldn't verify the current statute reference for this point. Please confirm before sending.";
+          void supabase.from('business_log').insert({
+            category: 'legal_intelligence',
+            action: 'guardrail_stripped_stale_ref',
+            details: { user_id: user.id, ref_id: staleId, reason, company: body.companyName },
+          });
+        }
+      }
+    }
+    // Promote tier 2-4 warnings into the footer note. Multiple warnings
+    // are joined; if the strip-fallback note also fired we keep both.
+    if (guardrailTierWarnings.length > 0) {
+      const tierFooter = guardrailTierWarnings.join(' · ');
+      guardrailFooterNote = guardrailFooterNote
+        ? `${guardrailFooterNote} ${tierFooter}`
+        : tierFooter;
+    }
+
+    // Phase 4 — single freshness gate. Every cited ref id passes
+    // through `loadFreshLegalRefs` so the audit log captures B2C
+    // citations alongside B2B. The cascade above has already done
+    // refresh/substitute work — we run the gate with allowStale=true
+    // so it only records provenance, never re-does work.
+    try {
+      const finalRefIds = relevantRefs.map((r) => r.id).filter((x): x is string => typeof x === 'string');
+      if (finalRefIds.length > 0) {
+        await loadFreshLegalRefs(finalRefIds, { caller: 'b2c', allowStale: true });
+      }
+    } catch (err) {
+      console.warn('[freshness-gate] B2C audit failed (non-fatal):', (err as Error).message);
     }
 
     let verifiedLegalRefs = '';
@@ -441,6 +574,52 @@ export async function POST(request: NextRequest) {
         .replace(/\[ACCOUNT NUMBER\]/gi, body.accountNumber || '[Account number not provided]');
     }
 
+    // PR β — POST-FLIGHT validation. The pre-flight pass only controls
+    // what we feed INTO the prompt. The model can still dredge a stale
+    // or fabricated UK statute out of training data and stamp it into
+    // the letter. Run a regex pass over the output, cross-check every
+    // detected citation against the fresh pool we fed in, and either
+    // substitute (closest fresh law_name) or strip rogues.
+    let postFlightWarnings: string[] = [];
+    if (result.letter && relevantRefs.length > 0) {
+      const t0 = Date.now();
+      const pf = postFlightSanitise(
+        result.letter,
+        relevantRefs.map((r: any) => ({ law_name: r.law_name, category: r.category }))
+      );
+      const elapsed = Date.now() - t0;
+      if (elapsed > 100) {
+        console.warn(`[guardrail] post-flight took ${elapsed}ms (>100ms budget) — non-blocking`);
+      }
+      if (pf.rogue.length > 0) {
+        result.letter = pf.sanitised;
+        postFlightWarnings = pf.warnings;
+        console.warn(`[guardrail] post-flight stripped/substituted ${pf.rogue.length} rogue citation(s): ${pf.rogue.join(', ')}`);
+        void supabase.from('business_log').insert({
+          category: 'legal_intelligence',
+          action: 'guardrail_postflight_sanitised',
+          details: {
+            user_id: user.id,
+            company: body.companyName,
+            rogue: pf.rogue,
+            warnings: pf.warnings,
+          },
+        });
+        if (!guardrailFooterNote) {
+          guardrailFooterNote = 'Some statutory references were removed during compliance review — please verify before sending.';
+        }
+      }
+    }
+
+    // PR β — guardrail footer note. If at least one stale ref had no
+    // fresh substitute and was stripped from the prompt, OR a rogue
+    // post-flight citation was removed, surface a single-line note in
+    // the letter footer so the user knows to double-check before
+    // sending.
+    if (guardrailFooterNote && result.letter) {
+      result.letter = `${result.letter}\n\n---\nNote: ${guardrailFooterNote}`;
+    }
+
     // Build rights pills — start from relevantRefs (already filtered by category/sector) so that
     // gym, fitness, or other mislabelled 'general' refs never appear in unrelated dispute letters,
     // then further narrow to what the AI actually cited.
@@ -518,6 +697,40 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // PR γ — reverse-lookup audit. Fire-and-forget one row per cited
+    // ref into legal_ref_usages so the admin "Where used" drawer and
+    // the daily re-verify cron can prioritise high-traffic refs. Never
+    // blocks the user — wrapped in `void` and best-effort.
+    //
+    // RLS on legal_ref_usages is service-role-only (no anon INSERT
+    // policy), so the request-scoped `supabase` client (anon + user
+    // session) would be silently rejected. Use a fresh service-role
+    // client just for this insert.
+    try {
+      if (relevantRefs.length > 0 && result.legalReferences && result.legalReferences.length > 0) {
+        const citedLower = result.legalReferences.map((r: string) => r.toLowerCase());
+        const usageRows = relevantRefs
+          .filter((r: any) => citedLower.some((c: string) => c.includes(r.law_name.toLowerCase()) || r.law_name.toLowerCase().includes(c.split(',')[0].trim())))
+          .map((r: any) => ({
+            ref_id: r.id,
+            product: 'b2c-complaint',
+            artefact_id: task?.id ?? null,
+            artefact_kind: 'complaint_letter',
+            user_id: user.id,
+            cited_text: result.legalReferences.find((c: string) => c.toLowerCase().includes(r.law_name.toLowerCase())) || r.law_name,
+          }));
+        if (usageRows.length > 0) {
+          const adminSb = createAdminClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          );
+          void adminSb.from('legal_ref_usages').insert(usageRows);
+        }
+      }
+    } catch (e) {
+      console.warn('[legal_ref_usages] insert failed (non-fatal):', e);
+    }
+
     // If part of a dispute, add to correspondence thread
     if (body.disputeId && task) {
       await supabase.from('correspondence').insert({
@@ -551,6 +764,39 @@ export async function POST(request: NextRequest) {
       email: user.email || undefined,
       provider: body.companyName,
     }).catch(() => {});
+
+    // Fire complaint_letter_ready alert across Pocket Agent channels so
+    // users on WhatsApp / Telegram see the letter is ready without
+    // needing to refresh the dashboard. Non-blocking — failures are
+    // logged but don't break the response.
+    if (task) {
+      const sbAdmin = createAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      );
+      const letterUrl = body.disputeId
+        ? `https://paybacker.co.uk/dashboard/complaints#dispute-${body.disputeId}`
+        : `https://paybacker.co.uk/dashboard/complaints#task-${task.id}`;
+      sendNotification(sbAdmin, {
+        userId: user.id,
+        event: 'complaint_letter_ready',
+        telegram: {
+          text:
+            `✉️ *Your complaint letter to ${body.companyName} is ready*\n\n` +
+            `Download or send: ${letterUrl}`,
+        },
+        whatsapp: {
+          templateName: 'paybacker_complaint_letter_ready',
+          templateParameters: [body.companyName, letterUrl],
+        },
+        push: {
+          title: 'Complaint letter ready',
+          body: `Letter to ${body.companyName} is ready to send`,
+        },
+      }).catch((e) =>
+        console.error('[complaints/generate] complaint_letter_ready alert failed:', e),
+      );
+    }
 
     return NextResponse.json({ ...result, taskId: task?.id, rightsPills, pendingLegalUpdates });
   } catch (error: any) {

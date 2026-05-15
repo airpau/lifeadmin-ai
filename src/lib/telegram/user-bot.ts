@@ -15,6 +15,8 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { telegramTools } from './tools';
 import { executeToolCall, type PendingAction } from './tool-handlers';
+import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
+import { handleConfirmationReply, isAwaitingConfirmation } from '@/lib/support/confirmation-reply';
 
 // ============================================================
 // Supabase admin client
@@ -59,11 +61,18 @@ async function sendChunked(
   options?: Parameters<Context['reply']>[1],
 ) {
   const chunks = splitMessage(text);
+  const total = chunks.length;
   for (let i = 0; i < chunks.length; i++) {
+    // Number chunks when there are 2+ so the user can read them in
+    // order even if delivery jitters on rapid sends.
+    const body = total > 1 ? `(${i + 1}/${total})\n\n${chunks[i]}` : chunks[i];
     if (i === chunks.length - 1 && options) {
-      await ctx.reply(chunks[i], options);
+      await ctx.reply(body, options);
     } else {
-      await ctx.reply(chunks[i]);
+      await ctx.reply(body);
+    }
+    if (i < chunks.length - 1) {
+      await new Promise((r) => setTimeout(r, 250));
     }
   }
 }
@@ -112,6 +121,10 @@ const SESSION_EXPIRY_DAYS = 90;
 
 const SYSTEM_PROMPT = `You are Paybacker's Pocket Agent — a fully connected financial assistant for UK consumers. You have access to EVERYTHING the user can see on the Paybacker website. This includes Money Hub, Subscriptions, Contracts, Disputes, Scanner, Rewards, Profile, Tasks, and all financial data. Never say you can't access something — if there's a tool for it, use it.
 
+CITATION RULE — NON-NEGOTIABLE: When the user references their own email or letter ("my email", "my last letter", "my 16th letter", "what I demanded", "what I requested", "what I wrote", "what I quoted", "the amount I asked for", "confirm the figure I cited", or anything that asks for the content/amount/date/wording of correspondence on a dispute), you MUST call quote_email_from_thread BEFORE answering. The same rule applies if they ask what the company actually said in their reply ("their last email", "what they wrote", "what date did they give"). Do not calculate, infer, or summarise from offer figures, dispute metadata, prior assistant turns, or earlier conversation context. Read the actual body via the tool and quote verbatim. If the body doesn't contain the answer, say "I couldn't find that figure in the linked thread" rather than inferring. This rule overrides any urge to answer faster from context — correctness wins.
+
+DRAFTING RULE — NON-NEGOTIABLE: When the user asks you to draft, redraft, respond to, reply to, follow up on, escalate, or write back about ANY dispute or company correspondence, you MUST call the draft_dispute_letter tool. NEVER write the reply yourself in chat prose. The tool grounds every reply in UK statute and regulator citations from the legal_references compliance index — that is the core dispute resolution product. Plain-prose replies without citations are a product failure. If the user asks "is there any legal citation needed?" or "can you redraft with legal references?", that is a signal you should have called the tool the first time — call it now. Do not produce a reply outside the tool.
+
 COMPLETE TOOL REFERENCE (always call the tool — never make up data or say "I can't"):
 
 READ TOOLS — Core:
@@ -123,7 +136,8 @@ READ TOOLS — Core:
 - get_upcoming_renewals — Subscriptions and contracts renewing within 30 days
 - get_price_alerts — Active price increase alerts on recurring payments
 - get_disputes — Dispute/complaint cases and their status
-- get_dispute_detail — Full detail and correspondence for a specific dispute
+- get_dispute_detail — Full detail and correspondence for a specific dispute (high-level overview; for the actual body of any letter/email use quote_email_from_thread instead)
+- quote_email_from_thread — Read the FULL body text of the user's letters and the company's replies on a dispute. ALWAYS call this when the user asks about content, amounts, dates, deadlines, demands, or specific words from their own email/letter or the company's reply. Never infer from summaries or offer figures — quote the body verbatim.
 - get_financial_overview — Complete financial overview: income, spending, net position, open disputes
 - get_savings_goals — Savings goals with progress, target amount, and target date
 - get_savings_challenges — Active gamified savings challenges (No-Spend Week, etc.)
@@ -154,6 +168,7 @@ READ TOOLS — Proactive Intelligence:
 - get_unused_subscriptions — Find subscriptions with no recent transactions (potential zombie payments) — use when asked "what am I not using?", "any unused subscriptions?", "zombie payments"
 - get_dispute_status — Active disputes with age and FCA deadline countdown — use when asked "how are my disputes going?", "any complaints to follow up?", "dispute deadlines"
 - get_savings_total — Total verified savings since joining Paybacker with milestone tracker — use when asked "how much have I saved?", "my total savings", "what have I saved with Paybacker"
+- get_total_recovered — Total money recovered specifically via disputes (SUM(recovered_amount_gbp) for won + partial) — use when asked "how much have I recovered from disputes?", "what's my running total?", "how much did Paybacker get back for me?"
 
 WRITE TOOLS:
 - set_budget — Create or update a monthly budget limit for a spending category
@@ -168,7 +183,8 @@ WRITE TOOLS:
 - create_savings_goal — Create a new savings goal in Money Hub
 - update_savings_goal — Update progress on a savings goal
 - create_task — Create a financial task or reminder
-- update_dispute_status — Update a dispute: mark won/lost, add notes, record money recovered
+- update_dispute_status — Update a SINGLE dispute (one provider). Marks won/partial/lost, records money_recovered. Accepts use_disputed_amount=true for "full amount" replies.
+- record_dispute_outcomes — Update MULTIPLE disputes in one call. Use whenever the user resolves more than one dispute in a single message (especially when replying to a list you just showed them).
 - update_alert_preferences — Change notification preferences (on/off, quiet hours)
 - dismiss_action_item — Dismiss an item from the Financial Action Centre by provider name (searches tasks, email findings, and alerts)
 - mark_bill_paid — Manually mark an expected bill as paid for the current month (for payments made outside connected bank accounts)
@@ -192,6 +208,8 @@ RULES:
 - When a user asks to change subscription frequency (e.g. "change to yearly"), call update_subscription.
 - mark_bill_paid stores a manual override — it shows as ✅ in expected bills for the current month only.
 - For dispute follow-ups: always mention the FCA 8-week deadline — it's the most powerful lever for UK consumers.
+- DISPUTE OUTCOME — before asking "have you heard back?", "did you win?", or "what happened with X?", you MUST first call get_disputes (no status filter) to see the dispute's current state. If the dispute status is already resolved_won, resolved_lost, resolved_partial, closed, withdrawn, or dismissed, DO NOT ask the user to confirm an outcome — acknowledge that you already have it recorded, e.g. "I've got your E.ON Next dispute marked as won — just checking you hadn't heard anything new since." Only ask "have you heard back?" if the dispute is still in open / awaiting_response / escalated.
+- If the user reports an outcome that matches what's already on file (e.g. they say "I won the British Gas one" and it's already resolved_won), confirm you already have it rather than re-recording. Don't pretend to be surprised.
 - REPLYING TO A SUPPLIER — If the user asks you to draft / send / reply / respond / chase / follow up with a named supplier (e.g. "draft a reply to OneStream", "tell OneStream I'm available any day except Friday", "please write back"), you MUST call get_disputes FIRST with status="open" to find the matching dispute. Match provider_name with a relaxed fuzzy compare (case-insensitive, ignore spaces/punctuation) — "OneStream" must match "Onestream", "BG" must match "British Gas", etc. If a dispute is found, call get_dispute_detail to pull the latest supplier correspondence, then call draft_dispute_letter. Never tell the user "I don't have an open dispute with X" without calling get_disputes first.
 - If the user mentions context that sounds like a reply to a Watchdog Telegram alert ("tell them", "reply to them", "they said"), treat it as a dispute reply — look up the most recent open dispute and use its latest supplier correspondence as the context.
 - WHEN CALLING draft_dispute_letter FOR A REPLY, you MUST:
@@ -199,6 +217,62 @@ RULES:
   (b) Put what the user actually said to tell the supplier into the 'user_reply_brief' param — WORD FOR WORD from the user, lightly cleaned up. e.g. if the user typed "tell them I'm available any day except Friday", user_reply_brief = "I'm available any day except Friday, AM or PM." Do not embellish, do not invent extra points, do not add things the user didn't say. The brief is the entire content of the reply — the letter will render it as a short, polite business letter, nothing more.
   (c) Leave 'reply_tone' as 'auto' unless the user explicitly asks to be firmer / softer / more formal ("be firm", "push back hard", "keep it polite") — then set 'firm' / 'friendly' accordingly.
   (d) Never re-narrate the whole complaint history in the reply. When user_reply_brief is set, the letter is a like-for-like professional rendering of the user's words — no added deadlines, no law citations, no escalation threats unless the user asked for them. The system is a quick drafting tool, not a rewriter.
+
+OFFER ASSESSMENT — when the supplier has put a settlement amount on the table and the user is reacting to it ("should I accept £X?", "is that fair?", "what would I get at adjudication?", "reject and escalate", "they offered £X — what next?"), DO NOT jump straight to drafting. Run this 4-step assessment first:
+
+1. quote_email_from_thread — read the supplier's actual message verbatim. Extract the exact offer figure and any "final" / "maximum" framing. Never paraphrase from offer fields.
+2. search_legal_rights with the dispute's category — pull the statutory framework + benchmark rates.
+3. Estimate a fair-settlement range from the dispute facts:
+   • Telecoms outages (broadband / mobile): Ofcom Automatic Compensation Scheme rates as a benchmark — £9.76/day total loss of service after 2 working days, £30/missed engineer appointment, £6.10/day late activation. Apply this benchmark even when the provider opts out — CISAS adjudicators routinely reference the same rates.
+   • Energy: Ofgem GSOP daily rates for failed switches / missed appointments / supply interruptions. Energy Ombudsman award binds the supplier.
+   • Flights: UK261 fixed scales — short-haul £220, mid-haul £350, long-haul £520 for ≥3hr delay / cancellation.
+   • Goods / services: Consumer Rights Act 2015 ss.49 + 54–56 — statutory price reduction proportionate to the shortfall in performance, separate from any voluntary scheme.
+4. Output a structured recommendation:
+   HEADLINE: ACCEPT (offer ≥ ~80% of fair range), NEGOTIATE (50–80%), or ESCALATE (< 50%).
+   "Their £X vs likely fair £Y–£Z" with the basis stated in one line.
+   Top 1–2 citations from search_legal_rights.
+   Suggested next step (accept and close, hold out for £Y, or refer to the named ombudsman / CISAS / FOS after deadlock or 8 weeks).
+   One-line risk note: "If you escalate and adjudicator awards less than this offer, you can't reclaim it; if you accept now, you waive the higher claim."
+
+Always include the FCA 8-week clock remaining when escalation is on the table. THEN ask whether to accept, negotiate, or escalate, and only on that answer call update_dispute_status / draft_dispute_letter.
+
+LINKING AN EMAIL TO A DISPUTE — when the user says "link an email", "connect a thread", "find the email about X", "attach the response from Y", or "link nuki's email to my dispute":
+1. Call find_email_thread_for_dispute with provider=<the dispute name> and optionally query=<any extra keyword they gave, e.g. "alice", "refund", "ticket 785661">.
+2. The tool returns up to 5 candidates with subject + sender + date + a metadata blob in square brackets containing connection_id, thread_id, and provider_type.
+3. Show the candidates EXACTLY as the tool returned them (preserve numbering) and ask the user to pick.
+4. When the user picks, call link_email_thread_to_dispute with the chosen candidate's connection_id + thread_id + provider_type from the bracketed metadata, plus subject + sender_address from the candidate.
+5. Confirm what got imported. If imported=0, tell them the watchdog cron will sync within 30 min.
+NEVER auto-link the top result without user confirmation. NEVER guess a thread_id.
+
+FINALISING A LETTER — after you draft a letter via draft_dispute_letter the user is in one of three states. The draft is already tracked as a pending letter in the system; if they don't reply within 1 hour the cron will nudge them. Your job is to interpret their next reply correctly:
+
+(A) SAVE — user says "SAVE", "save it", "I've sent it", "use this one", "go with the firm version", "finalise this draft", or otherwise confirms approval:
+   → Call record_letter_sent(provider, letter_text). Read letter_text VERBATIM from the most recent pendingAction.letter_text in conversation history — don't paraphrase. The tool inserts an ai_letter row, bumps status to awaiting_response, AND marks the pending row as saved so the cron stops nagging.
+
+(B) DISCARD — user says "DISCARD", "drop it", "forget it", "don't send", "cancel that draft", "I won't send this":
+   → Call discard_letter_draft(provider, reason?). Marks the pending row discarded so the cron stops nagging.
+
+(C) CHANGES — user wants tweaks ("make it firmer", "add the £85 figure", "shorter", "more polite"):
+   → Call draft_dispute_letter again with the adjusted reply_tone or user_reply_brief. The handler automatically discards the prior pending draft and creates a fresh pending row.
+
+ALWAYS take action — don't ask "would you like me to save this?" if the user already said SAVE. Don't infer DISCARD from a request for changes; treat (C) as a redraft.
+
+DISPUTE OUTCOMES — RECORDING WINS/LOSSES (critical):
+- Map the user's natural-language outcome to the right status BEFORE asking anything:
+  · "won", "we won", "settled", "they paid", "got my refund", "resolved in our favour", "they agreed" → resolved_won
+  · "lost", "they rejected it", "no refund", "refused", "final response — no" → resolved_lost
+  · "partial", "they offered half", "settled for £X", "goodwill of £X" → resolved_partial
+- Map money amounts BEFORE asking:
+  · An explicit number ("£69", "£500") → money_recovered = that number
+  · "full amount" / "full dispute amount" / "the full thing" / "all of it" / "everything we asked for" → use_disputed_amount = true (the tool reads disputes.disputed_amount from the DB)
+- ONE dispute → call update_dispute_status. MULTIPLE disputes in one user message → call record_dispute_outcomes with an array.
+- NUMBERED LIST REPLIES — when you just listed disputes ("1. Nuki  2. ACI") and the user replies with positional references ("1. £69", "2. full amount", "Both won — 1. … 2. …"), you MUST:
+  (a) Find your previous assistant message in the conversation that contained the numbered list.
+  (b) Map each position the user mentioned back to the provider name from that list. 1 → first item's provider, 2 → second item's provider, etc.
+  (c) Call record_dispute_outcomes with one entry per dispute, populating provider (or dispute_id if get_disputes gave you one), new_status, money_recovered (or use_disputed_amount), and notes.
+  (d) Do NOT ask "which dispute did you mean?" — you already showed the list, the numbering is unambiguous.
+- DO NOT ask redundant follow-up questions. If you have provider + status + (amount OR use_disputed_amount), record it and confirm. Only ask if it's genuinely ambiguous (e.g. user said "won" with no amount and disputes.disputed_amount is null too).
+- CONFIRMATION: after the tool returns, summarise plainly — provider, outcome, amount per dispute, and the running cumulative total the tool reports back. Lead with the celebratory marker (✅) and end with the total recovered line. Do NOT propose next steps in the same message — give the user a moment with the win.
 
 FINANCIAL INTELLIGENCE — CRITICAL:
 - get_expected_bills cross-references bank transaction data to determine paid/unpaid status. Trust its ✅/❌/⏳ indicators. ❌ means a bill was due but no matching payment was found in the bank — flag this clearly to the user.
@@ -1030,7 +1104,7 @@ Under 200 words. Start with "Dear ${providerName} Customer Services," and close 
 Return JSON: { "subject": "...", "body": "..." }`;
 
       const response = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 600,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -1073,7 +1147,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
           task_id: task.id,
           user_id: issue.user_id,
           agent_type: 'cancellation_writer',
-          model_name: 'claude-haiku-4-5-20251001',
+          model_name: 'claude-3-5-haiku-20241022',
           status: 'completed',
           input_data: { providerName, amount, category, source: 'telegram' },
           output_data: { subject, body },
@@ -1286,6 +1360,10 @@ Return JSON: { "subject": "...", "body": "..." }`;
 
       const supplierExcerpt = String(supplierMsg.content || '').slice(0, 4000);
       const category = (supplierMsg.ai_category as string | null) || 'unknown';
+      // category is referenced only by the legacy tone block below — kept
+      // for log parity but not consulted now that the unified engine
+      // grounds on legal_references rather than the classifier label.
+      void category;
 
       // Tone-specific directives. 'auto' lets the classifier's category
       // (info_request / holding_reply / settlement_offer / rejection /
@@ -1335,53 +1413,42 @@ Return JSON: { "subject": "...", "body": "..." }`;
         }
       })();
 
-      const prompt = [
-        "Write a UK consumer's REPLY to a supplier's latest message on an ongoing dispute.",
-        '',
-        `Customer name: ${fullName}`,
-        `Customer address: ${addrLine}`,
-        `Today's date: ${today}`,
-        `Supplier: ${providerName}`,
-        `Dispute summary: ${dispute?.issue_summary || '(see thread)'}`,
-        `Desired outcome: ${dispute?.desired_outcome || '(see thread)'}`,
-        '',
-        `Supplier's latest message (the one we are replying to), received ${new Date(supplierMsg.entry_date).toLocaleDateString('en-GB')}:`,
-        '"""',
-        supplierExcerpt,
-        '"""',
-        '',
-        `Paybacker's read of the supplier's message: ${supplierMsg.ai_rationale || 'n/a'}`,
-        `Short hint on what the reply should cover: ${supplierMsg.ai_suggested_reply_context || 'n/a'}`,
-        `Supplier message category (from our classifier): ${category}`,
-        '',
-        'What the user previously wrote to this supplier (background context only — do NOT quote or paraphrase):',
-        '"""',
-        lastOutboundBody,
-        '"""',
-        '',
-        toneBlock,
-        '',
-        'Hard rules (apply regardless of tone):',
-        '- UK English. Reads as intelligent human writing, not AI.',
-        '- Start with `Dear ' + providerName + ' Customer Services,` and end with `Yours sincerely,\\n' + fullName + '`.',
-        "- Directly address what the supplier asked / said. Don't invent facts the user hasn't supplied.",
-        '- If the supplier asked for info the user hasn\'t provided, use square-bracket placeholders ([account number], [meter reading], etc.).',
-        "- Keep any reference / ticket number from the supplier's email in a short `Reference:` line after the salutation.",
-        '- No section headings. No bullet points. No CAPS.',
-        '- Plain letter body only — no subject line, no envelope headers.',
-      ].join('\n');
+      // ARCHITECTURAL RULE — every dispute reply MUST be grounded in
+      // verified UK statute citations from the legal_references table.
+      // Plain-prose replies without citations are a product failure
+      // (the dispute resolution product depends on this). The
+      // unified engine in src/lib/agents/dispute-reply-engine.ts owns
+      // category detection → ref retrieval → citation guarantee →
+      // letter generation. Do not bypass it.
+      const toneForEngine: 'friendly' | 'balanced' | 'firm' | 'auto' =
+        tone === 'friendly' || tone === 'balanced' || tone === 'firm' ? tone : 'auto';
 
-      const draft = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1400,
-        messages: [{ role: 'user', content: prompt }],
+      const unified = await generateDisputeReply(supabase, {
+        providerName: providerName,
+        customerName: fullName,
+        customerAddress: addrLine,
+        issueSummary: dispute?.issue_summary || supplierMsg.title || 'See thread context',
+        desiredOutcome: dispute?.desired_outcome || 'Resolve the dispute fairly under UK consumer law',
+        issueType: dispute?.issue_type ?? null,
+        providerType: dispute?.provider_type ?? null,
+        supplierLatestMessage: supplierExcerpt,
+        lastOutboundLetter: lastOutboundBody,
+        userTweakBrief: null,
+        tone: toneForEngine,
+        userId: supplierMsg.user_id,
+        surface: 'telegram',
       });
 
-      const draftText = draft.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('')
-        .trim();
+      const draftText = unified.letter.trim();
+
+      // The legacy in-line Anthropic prompt builder that lived here was
+      // removed when the unified engine landed. It bypassed the
+      // legal-grounding pipeline (no legal_references lookup, no
+      // citation guarantee, no freshness check) and produced
+      // freehand prose. If you find yourself wanting to add
+      // letter-generation logic here, add it to
+      // src/lib/agents/dispute-reply-engine.ts instead.
+      void toneBlock;
 
       const { data: savedDraft } = await supabase
         .from('correspondence')
@@ -1970,13 +2037,34 @@ Return JSON: { "subject": "...", "body": "..." }`;
       // First look for a non-terminal open ticket.
       const { data: liveTicket } = await supabase
         .from('support_tickets')
-        .select('id, ticket_number, status, metadata, resolved_at')
+        .select('id, ticket_number, status, metadata, resolved_at, subject, source')
         .eq('user_id', session.user_id)
         .eq('source', 'telegram')
         .not('status', 'in', '("resolved","closed","dismissed")')
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
+
+      // ── Confirmation reply handler ──
+      // If the ticket is awaiting_user_confirmation (Builder shipped a fix and
+      // is asking the user to verify), classify the message and route it.
+      if (liveTicket && isAwaitingConfirmation((liveTicket as { status: string }).status)) {
+        const result = await handleConfirmationReply(
+          supabase,
+          liveTicket as { id: string; ticket_number: string | null; status: string; subject: string; source: string; metadata: Record<string, unknown> | null },
+          userMessage,
+        );
+        if (result.handled && result.reply_to_user) {
+          await supabase.from('ticket_messages').insert({
+            ticket_id: (liveTicket as { id: string }).id,
+            sender_type: 'system',
+            sender_name: 'Riley',
+            message: result.reply_to_user,
+          });
+          await ctx.reply(result.reply_to_user, { parse_mode: 'Markdown' as const });
+          return;
+        }
+      }
 
       // If no live ticket, fall back to a recently-resolved one (within 7 days).
       // A user replying within a week is probably saying "this is still broken" —
@@ -2118,12 +2206,22 @@ Return JSON: { "subject": "...", "body": "..." }`;
           .text('Approve and save ✓', `approve_${pending?.id}`)
           .text('Cancel ✗', `cancel_${pending?.id}`);
 
-        const chunks = splitMessage(text);
-        for (let i = 0; i < chunks.length; i++) {
-          if (i === chunks.length - 1) {
-            await ctx.reply(chunks[i], { reply_markup: keyboard });
-          } else {
-            await ctx.reply(chunks[i]);
+        // Send the header first (no keyboard), then the letter body
+        // with the Approve/Cancel keyboard attached. Previously the
+        // header + letter were concatenated into `text` and split into
+        // chunks, which (on WhatsApp callers) led to a duplicated send.
+        // The handler now returns text = header only, pendingAction
+        // .letter_text = body — both surfaces send them as two messages.
+        await ctx.reply(text);
+        const letterBody = (pendingAction as { letter_text?: string }).letter_text;
+        if (letterBody) {
+          const letterChunks = splitMessage(letterBody);
+          for (let i = 0; i < letterChunks.length; i++) {
+            if (i === letterChunks.length - 1) {
+              await ctx.reply(letterChunks[i], { reply_markup: keyboard });
+            } else {
+              await ctx.reply(letterChunks[i]);
+            }
           }
         }
       } else {

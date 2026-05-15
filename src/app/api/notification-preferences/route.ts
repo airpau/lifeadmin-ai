@@ -39,14 +39,14 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const [prefsRes, profileRes, tgRes, waRes] = await Promise.all([
+  const [prefsRes, profileRes, tgRes, waRes, alertPrefsRes] = await Promise.all([
     supabase
       .from('notification_preferences')
       .select('event_type, email, telegram, whatsapp, push')
       .eq('user_id', user.id),
     supabase
       .from('profiles')
-      .select('quiet_hours_start, quiet_hours_end, notification_timezone')
+      .select('quiet_hours_start, quiet_hours_end, notification_timezone, newsletter_unsubscribed_at, digest_frequency')
       .eq('id', user.id)
       .maybeSingle(),
     supabase
@@ -60,6 +60,14 @@ export async function GET() {
       .select('is_active, whatsapp_phone')
       .eq('user_id', user.id)
       .eq('is_active', true)
+      .maybeSingle(),
+    // alerts_paused_until lives on telegram_alert_preferences. Bot's
+    // pause_alerts_until tool writes it; this page surfaces a banner
+    // + "Resume now" button when it's in the future.
+    supabase
+      .from('telegram_alert_preferences')
+      .select('alerts_paused_until')
+      .eq('user_id', user.id)
       .maybeSingle(),
   ]);
 
@@ -101,10 +109,68 @@ export async function GET() {
     pocketAgentChannel,
     whatsappPhone: waRes.data?.whatsapp_phone ?? null,
     events,
-    quiet_hours_start: profileRes.data?.quiet_hours_start ?? null,
-    quiet_hours_end: profileRes.data?.quiet_hours_end ?? null,
+    // Postgres `time` columns serialise as "HH:MM:SS" but the
+    // `<input type="time">` UI control and the client-side preset
+    // comparison both want "HH:MM". Strip the seconds so the saved
+    // value re-loads cleanly into the picker on next visit (and the
+    // active preset highlights as expected). Without this trim, the
+    // user's quiet-hours selection appeared not to stick.
+    quiet_hours_start: trimTimeOfDay(profileRes.data?.quiet_hours_start),
+    quiet_hours_end: trimTimeOfDay(profileRes.data?.quiet_hours_end),
     timezone: profileRes.data?.notification_timezone ?? 'Europe/London',
+    alerts_paused_until: alertPrefsRes.data?.alerts_paused_until ?? null,
+    // Newsletter (Thu 11:00 UTC) is opt-OUT by default — the
+    // newsletter_audience view sends to every confirmed user unless
+    // they've set newsletter_unsubscribed_at. So the toggle reads
+    // "subscribed" unless explicitly opted out. The signup-time
+    // marketing_opt_in flag is no longer load-bearing for the
+    // newsletter audience (kept on user_metadata for the consent
+    // audit trail and for any future opt-IN-only marketing).
+    newsletter_opted_in: !profileRes.data?.newsletter_unsubscribed_at,
+    digest_frequency: profileRes.data?.digest_frequency ?? 'daily',
   });
+}
+
+function trimTimeOfDay(value: string | null | undefined): string | null {
+  if (!value) return null;
+  // Accept "HH:MM" or "HH:MM:SS" — collapse to "HH:MM".
+  const m = /^(\d{2}:\d{2})(?::\d{2})?$/.exec(value);
+  return m ? m[1] : null;
+}
+
+/**
+ * PATCH — partial updates. Currently used by the Pocket Agent
+ * settings page's "Resume now" button (clears alerts_paused_until)
+ * and by any future granular settings the bot writes.
+ */
+export async function PATCH(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const body = (await request.json()) as { alerts_paused_until?: string | null };
+
+  if (body.alerts_paused_until !== undefined) {
+    const { error } = await supabase
+      .from('telegram_alert_preferences')
+      .upsert(
+        {
+          user_id: user.id,
+          alerts_paused_until: body.alerts_paused_until,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ ok: true });
 }
 
 interface PutBody {
@@ -117,6 +183,8 @@ interface PutBody {
   }>;
   quiet_hours_start?: string | null;
   quiet_hours_end?: string | null;
+  newsletter_opted_in?: boolean;
+  digest_frequency?: 'daily' | 'weekly' | 'off';
 }
 
 export async function PUT(request: Request) {
@@ -156,16 +224,86 @@ export async function PUT(request: Request) {
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
+
+      // Sync marketing_opt_in_at based on whether any marketing events have whatsapp enabled
+      const hasMarketing = body.events.some(e => {
+        const meta = EVENT_CATALOG.find(m => m.event === e.event);
+        return meta?.group === 'marketing' && e.whatsapp;
+      });
+
+      if (hasMarketing) {
+        await supabase.from('whatsapp_sessions').update({ marketing_opt_in_at: new Date().toISOString() }).eq('user_id', user.id);
+      } else {
+        // If they explicitly disabled all marketing events for whatsapp, clear the opt in
+        const { data: existingPrefs } = await supabase.from('notification_preferences').select('event_type, whatsapp').eq('user_id', user.id);
+        const activeMarketing = (existingPrefs ?? []).some(row => {
+          const meta = EVENT_CATALOG.find(m => m.event === row.event_type);
+          return meta?.group === 'marketing' && row.whatsapp;
+        });
+        if (!activeMarketing) {
+          await supabase.from('whatsapp_sessions').update({ marketing_opt_in_at: null }).eq('user_id', user.id);
+        }
+      }
+    }
+  }
+
+  if (body.newsletter_opted_in !== undefined) {
+    // Two-write update: keep auth user_metadata.marketing_opt_in
+    // (source-of-truth for the signup-time consent record) and the
+    // profiles.newsletter_unsubscribed_at column (source-of-truth for
+    // post-signup opt-outs, also queried by /api/unsubscribe) in sync.
+    const optedIn = !!body.newsletter_opted_in;
+    const { error: metaErr } = await supabase.auth.updateUser({
+      data: { marketing_opt_in: optedIn },
+    });
+    if (metaErr) {
+      return NextResponse.json({ error: metaErr.message }, { status: 500 });
+    }
+    const { error: profileErr } = await supabase
+      .from('profiles')
+      .update({ newsletter_unsubscribed_at: optedIn ? null : new Date().toISOString() })
+      .eq('id', user.id);
+    if (profileErr) {
+      return NextResponse.json({ error: profileErr.message }, { status: 500 });
+    }
+  }
+
+  if (body.digest_frequency !== undefined) {
+    const validFrequencies = ['daily', 'weekly', 'off'];
+    const freq = String(body.digest_frequency);
+    if (validFrequencies.includes(freq)) {
+      const { error: freqErr } = await supabase
+        .from('profiles')
+        .update({ digest_frequency: freq })
+        .eq('id', user.id);
+      if (freqErr) {
+        return NextResponse.json({ error: freqErr.message }, { status: 500 });
+      }
     }
   }
 
   if (body.quiet_hours_start !== undefined || body.quiet_hours_end !== undefined) {
+    // Defensive normalisation: accept "HH:MM" / "HH:MM:SS" / null /
+    // empty string. Coerce empty string to null so Postgres clears the
+    // time column rather than rejecting it. Reject anything else so a
+    // bad value never silently overwrites the user's saved window.
+    const normalise = (v: unknown): string | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || v === '') return null;
+      if (typeof v !== 'string') return undefined;
+      const m = /^(\d{2}:\d{2})(?::\d{2})?$/.exec(v);
+      return m ? m[1] : undefined;
+    };
+    const start = normalise(body.quiet_hours_start);
+    const end = normalise(body.quiet_hours_end);
     const update: Record<string, unknown> = {};
-    if (body.quiet_hours_start !== undefined) update.quiet_hours_start = body.quiet_hours_start;
-    if (body.quiet_hours_end !== undefined) update.quiet_hours_end = body.quiet_hours_end;
-    const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (start !== undefined) update.quiet_hours_start = start;
+    if (end !== undefined) update.quiet_hours_end = end;
+    if (Object.keys(update).length > 0) {
+      const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
     }
   }
 

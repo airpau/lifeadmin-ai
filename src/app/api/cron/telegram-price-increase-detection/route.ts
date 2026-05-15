@@ -16,6 +16,7 @@ import { createClient } from '@supabase/supabase-js';
 import { sendProactiveAlert } from '@/lib/telegram/user-bot';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { buildPriceAlertSuppressor } from '@/lib/price-alerts/suppression';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -152,6 +153,13 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      // Honour dismissed/actioned price_increase_alerts rows. The monthly
+      // notification_log dedup only stops repeats inside the same month —
+      // without this check, a user who dismisses an alert on Apr 30th would
+      // still get the identical Telegram alert on May 1st when the
+      // reference_key flips to the new month.
+      const isSuppressed = await buildPriceAlertSuppressor(supabase, userId);
+
       // Get active subscriptions
       const { data: subscriptions } = await supabase
         .from('subscriptions')
@@ -248,14 +256,22 @@ export async function GET(request: NextRequest) {
       if (increases.length === 0) continue;
 
       // Deduplicate by normalised name — multiple subscription rows for the same
-      // provider (e.g. "Onestream Broadband 1/2/3") must only produce one alert
+      // provider (e.g. "Onestream Broadband 1/2/3") must only produce one alert.
+      // Then drop anything the user has already dismissed/actioned for the same
+      // merchant+amounts fingerprint within the 30-day window.
       const seenNames = new Set<string>();
-      const dedupedIncreases = increases.filter((inc) => {
-        const key = inc.name.toLowerCase();
-        if (seenNames.has(key)) return false;
-        seenNames.add(key);
-        return true;
-      });
+      const dedupedIncreases = increases
+        .filter((inc) => {
+          const key = inc.name.toLowerCase();
+          if (seenNames.has(key)) return false;
+          seenNames.add(key);
+          return true;
+        })
+        .filter((inc) => !isSuppressed({
+          merchantNormalized: inc.name,
+          oldAmount: inc.prevAmount,
+          newAmount: inc.newAmount,
+        }));
 
       // Route each increase: > £20/mo → immediate send with inline buttons
       //                       ≤ £20/mo → queue for evening digest

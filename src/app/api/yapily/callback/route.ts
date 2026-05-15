@@ -103,7 +103,16 @@ export async function GET(request: NextRequest) {
   //   data.consentToken      — the credential we attach to data calls.
   //   data.status            — AUTHORIZED once the user has completed
   //                             the bank-side flow.
-  if (consentRequestId && !consentToken) {
+  // Yapily's Hosted Pages redirect can include BOTH a `consent` token
+  // AND consentRequestId in the query string. The query-param token is
+  // not always a valid consentToken for /accounts calls (sometimes it's
+  // a one-time-token); regardless, we still need to fetch the consent
+  // details because the underlying `consentId` (used by extend + delete
+  // via /consents/{id}) is ONLY available via getHostedConsentRequest.
+  // So whenever consentRequestId is present, fetch unconditionally and
+  // overwrite both consentToken and yapilyConsentId with authoritative
+  // values from Yapily.
+  if (consentRequestId) {
     try {
       const hosted = await getHostedConsentRequest(consentRequestId);
       const hostedStatus = (hosted.status || '').toUpperCase();
@@ -165,6 +174,17 @@ export async function GET(request: NextRequest) {
   }
 
   const accountSnapshots = snapshotAccounts(accounts);
+
+  // POT-only edge case: a Monzo consent that returned only POT accounts
+  // would otherwise persist a "connected" bank with empty account_ids
+  // and trigger a no-op initial sync, leaving the user with a ghost
+  // connection that can never produce transactions.
+  if (accountSnapshots.length === 0) {
+    return NextResponse.redirect(
+      new URL('/dashboard/money-hub?error=no_usable_accounts', request.url),
+    );
+  }
+
   const bankName = accounts[0]?.institution?.name || institutionId;
 
   // ── 90-day UK consent expiry ──
@@ -241,6 +261,17 @@ export async function GET(request: NextRequest) {
       accountSnapshots,
     }),
   }).catch((err) => console.error('[yapily.callback] initial-sync trigger failed:', err));
+
+  // ── Also kick the upcoming-payments sync once. The cron at 06:00 UTC
+  // pulls scheduled payments + standing orders + direct debits, but on a
+  // fresh connect the user expects "Upcoming pending payments" to
+  // populate immediately rather than waiting for tomorrow. The endpoint
+  // is single-use per consent for each deterministic source, so calling
+  // it here is safe — the cron will short-circuit when it next runs.
+  fetch(`${appUrl}/api/cron/sync-upcoming`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+  }).catch((err) => console.error('[yapily.callback] sync-upcoming trigger failed:', err));
 
   return NextResponse.redirect(
     new URL(`${returnTo}?connected=true${upsertResult.reused ? '&merged=1' : ''}`, request.url),

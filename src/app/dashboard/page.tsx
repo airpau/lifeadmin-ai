@@ -1,7 +1,7 @@
 'use client';
 
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import UpgradePrompt from '@/components/UpgradePrompt';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
@@ -22,6 +22,7 @@ import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 import { calculateTotalSavings, parseComparisonDeals, isPriceAlertValid, priceAlertAnnualImpact } from '@/lib/savings-utils';
 import { disputeWinnabilityHook } from '@/lib/category-taxonomy';
+import PendingDisputeLettersCard from '@/components/dashboard/PendingDisputeLettersCard';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -39,7 +40,20 @@ export default function DashboardPage() {
   const [bankConnected, setBankConnected] = useState(false);
   const [expiringContracts, setExpiringContracts] = useState(0);
   const [userTier, setUserTier] = useState('free');
+  // Effective tier mirrors `getEffectiveTier(userId)` server-side: stored
+  // subscription_tier, with an active onboarding trial flipping the user
+  // to 'pro' for the trial window. Used for the WhatsApp Pocket Agent
+  // gate so trial Pros (who pass `canUseWhatsApp`) actually see the CTA.
+  const [effectiveTier, setEffectiveTier] = useState('free');
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
+  // Pocket Agent connection state — null until loaded so the card
+  // doesn't flash. Card hides if either telegram or whatsapp is
+  // already connected, otherwise shows two CTAs (WhatsApp Pro-only).
+  const [pocketAgentConnected, setPocketAgentConnected] = useState<{ telegram: boolean; whatsapp: boolean } | null>(null);
+  // Number of tasks the user has snoozed (snooze_until > now via the
+  // bot's snooze_task tool). Surfaced as a small badge under the
+  // Action items header so users know how many are hidden.
+  const [snoozedTaskCount, setSnoozedTaskCount] = useState(0);
   const [taskFilter, setTaskFilter] = useState('all');
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
@@ -55,6 +69,11 @@ export default function DashboardPage() {
   const [emailScanning, setEmailScanning] = useState(false);
   const [emailScanResults, setEmailScanResults] = useState<number | null>(null);
   const [emailOpportunities, setEmailOpportunities] = useState<any[]>([]);
+  // Inline completion banner for the Scan-now button. Founders reported
+  // "spins and items don't update — is it working?" when the count was
+  // unchanged (30 → 30). The spinner stopping is too quiet a signal.
+  const [scanFeedback, setScanFeedback] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  const scanFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null; status: string }>>([]);
   const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email_address: string; provider_type: string }>>([]);
@@ -102,6 +121,17 @@ export default function DashboardPage() {
   };
 
   // Meta Pixel + Awin tracking for free signups
+  // Clear the email-scan auto-dismiss timer on unmount so we don't try
+  // to setState after the component has gone.
+  useEffect(() => {
+    return () => {
+      if (scanFeedbackTimerRef.current) {
+        clearTimeout(scanFeedbackTimerRef.current);
+        scanFeedbackTimerRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (searchParams.get('signup') === '1') {
       // Meta Pixel Lead event
@@ -282,19 +312,31 @@ export default function DashboardPage() {
         if (!user) { setLoading(false); return; }
 
         const [profile, subs, tasks, banks, userTasks] = await Promise.all([
-          supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).maybeSingle(),
+          supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at').eq('id', user.id).maybeSingle(),
           supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('disputes').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),
           supabase.from('bank_connections').select('id, bank_name, account_display_names, status')
             .eq('user_id', user.id).neq('status', 'disconnected'),
-          supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority')
+          supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority, snooze_until')
             .eq('user_id', user.id).eq('status', 'pending_review')
             .order('created_at', { ascending: false }).limit(50),
         ]);
 
-        setUserTier(profile.data?.subscription_tier || 'free');
+        const storedTier = profile.data?.subscription_tier || 'free';
+        setUserTier(storedTier);
+        // Mirror `getEffectiveTier` (src/lib/plan-limits.ts): an active
+        // onboarding trial promotes the user to 'pro' for the trial
+        // window. The WhatsApp CTA gate below honours `canUseWhatsApp`,
+        // which checks the effective tier — without this, trial Pros
+        // pass the server-side `/api/whatsapp/opt-in` check but never
+        // see the CTA on the dashboard.
+        const onboardingTrialActive = !!profile.data?.trial_ends_at
+          && new Date(profile.data.trial_ends_at) > new Date()
+          && !profile.data?.trial_converted_at
+          && !profile.data?.trial_expired_at;
+        setEffectiveTier(onboardingTrialActive ? 'pro' : storedTier);
         hasBankConnection = (banks.data || []).length > 0;
         setBankConnected(hasBankConnection);
         setBankAccounts(banks.data || []);
@@ -322,6 +364,30 @@ export default function DashboardPage() {
             setEmailConnected(true);
             setEmailAddress(gmailToken.email);
           }
+        }
+
+        // Pocket Agent connection state — fetched from a privileged
+        // server route. The browser Supabase client can't read
+        // telegram_sessions / whatsapp_sessions directly under RLS,
+        // so we delegate the lookup to /api/pocket-agent/connection-status
+        // which verifies the user server-side and uses the service-role
+        // client. Mirrors the active-session predicates in
+        // src/lib/pocket-agent/dispatch.ts.
+        try {
+          const res = await fetch('/api/pocket-agent/connection-status', {
+            cache: 'no-store',
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setPocketAgentConnected({
+              telegram: Boolean(data?.telegram),
+              whatsapp: Boolean(data?.whatsapp),
+            });
+          } else {
+            setPocketAgentConnected({ telegram: false, whatsapp: false });
+          }
+        } catch {
+          setPocketAgentConnected({ telegram: false, whatsapp: false });
         }
 
         // Load saved email scan opportunities from the centralised email_scan_findings table
@@ -383,6 +449,9 @@ export default function DashboardPage() {
             });
             setEmailOpportunities(mapped);
             setEmailScanResults(mapped.length);
+            // These rows come from the `tasks` table — some will overlap
+            // with `pendingTasks` (also from `tasks`). `combinedActions`
+            // dedupes by id below so they're not double-counted.
           }
         }
 
@@ -402,8 +471,20 @@ export default function DashboardPage() {
         // A single bank-sync run can fan out 20+ identical "review" tasks
         // for the same merchant (one per matching transaction) — these
         // were drowning the action-items card.
-        const cleanTasks = (userTasks.data || []).filter((t: any) =>
+        // Also drop tasks that are snoozed (snooze_until > now) — bot
+        // sets this via snooze_task; they reappear automatically once
+        // the date passes. Surface the count separately so the user
+        // knows how many are hidden.
+        const nowMs = Date.now();
+        const allRaw = (userTasks.data || []).filter((t: any) =>
           !((t.provider_name || '').toLowerCase().includes('paybacker'))
+        );
+        const snoozedCount = allRaw.filter((t: any) =>
+          t.snooze_until && new Date(t.snooze_until).getTime() > nowMs
+        ).length;
+        setSnoozedTaskCount(snoozedCount);
+        const cleanTasks = allRaw.filter((t: any) =>
+          !t.snooze_until || new Date(t.snooze_until).getTime() <= nowMs
         );
         const taskGroups = new Map<string, any>();
         for (const t of cleanTasks) {
@@ -514,6 +595,14 @@ export default function DashboardPage() {
   // endpoint succeeded or whether new findings were produced.
   const handleEmailScan = async () => {
     setEmailScanning(true);
+    // Clear any in-flight banner from a previous scan so the new run
+    // doesn't auto-dismiss prematurely.
+    if (scanFeedbackTimerRef.current) {
+      clearTimeout(scanFeedbackTimerRef.current);
+      scanFeedbackTimerRef.current = null;
+    }
+    setScanFeedback(null);
+    const priorCount = emailOpportunities.length;
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
@@ -536,17 +625,40 @@ export default function DashboardPage() {
       // hit the same endpoint twice (the endpoints loop over all the
       // user's connections of their type internally).
       const seen = new Set<string>();
-      const calls = targets
-        .filter(({ endpoint }) => (seen.has(endpoint) ? false : (seen.add(endpoint), true)))
-        .map(({ endpoint }) => fetch(endpoint, { method: 'POST' }).catch(() => null));
+      const dedupedTargets = targets.filter(({ endpoint }) =>
+        seen.has(endpoint) ? false : (seen.add(endpoint), true)
+      );
+      const calls = dedupedTargets.map(({ endpoint }) =>
+        fetch(endpoint, { method: 'POST' }).catch(() => null)
+      );
 
-      await Promise.all(calls);
+      // Track per-call success so we can distinguish "scan ran clean,
+      // 0 findings" from "every endpoint blew up (revoked OAuth → 401/
+      // 500)". Without this, the success banner fires even when nothing
+      // actually scanned — Codex P1.
+      const results = await Promise.all(calls);
+      const okCount = results.filter((r): r is Response => !!r && r.ok).length;
 
       // Always refresh state from the canonical tables, regardless of
       // per-endpoint success. Fixes the "scan-now button doesn't seem
       // to update" report — previously a same-result scan left the UI
       // showing stale opportunity counts.
-      const [{ data: scanFindings }, { data: refreshedConns }] = await Promise.all([
+      //
+      // We run a separate count-only query alongside the capped list so
+      // the delta math reflects the TRUE total count, not the displayed
+      // (limited to 30) list length. Without this, a user going from 30
+      // → 31 actual findings would see "no new findings (30 total)"
+      // because mapped.length saturates at the cap — Codex P2 round 2.
+      // Refetch tasks alongside the findings so the "Action items"
+      // count reflects new pending_review rows that the scan just
+      // inserted. Without this the count stays frozen at the initial
+      // load value even though the user can see "386 new findings".
+      const [
+        { data: scanFindings },
+        { count: trueTotal },
+        { data: refreshedConns },
+        { data: refreshedTasks },
+      ] = await Promise.all([
         supabase
           .from('email_scan_findings')
           .select('*')
@@ -555,10 +667,22 @@ export default function DashboardPage() {
           .order('created_at', { ascending: false })
           .limit(30),
         supabase
+          .from('email_scan_findings')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', authUser.id)
+          .in('status', ['new', 'reviewing']),
+        supabase
           .from('email_connections')
           .select('id, email_address, provider_type, last_scanned_at')
           .eq('user_id', authUser.id)
           .eq('status', 'active'),
+        supabase
+          .from('tasks')
+          .select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority, snooze_until')
+          .eq('user_id', authUser.id)
+          .eq('status', 'pending_review')
+          .order('created_at', { ascending: false })
+          .limit(50),
       ]);
 
       const mapped = (scanFindings ?? []).map((f: any) => {
@@ -582,6 +706,70 @@ export default function DashboardPage() {
       setEmailOpportunities(mapped);
       setEmailScanResults(mapped.length);
 
+      // Mirror the initial-load task grouping (lines 478-503) so the
+      // "Action items" count picks up newly inserted pending_review
+      // rows from the scan. Same paybacker-self-filter, same snooze
+      // filter, same provider+type grouping.
+      if (refreshedTasks) {
+        const nowMs = Date.now();
+        const allRaw = refreshedTasks.filter((t: any) =>
+          !((t.provider_name || '').toLowerCase().includes('paybacker'))
+        );
+        const snoozedCount = allRaw.filter((t: any) =>
+          t.snooze_until && new Date(t.snooze_until).getTime() > nowMs
+        ).length;
+        setSnoozedTaskCount(snoozedCount);
+        const cleanTasks = allRaw.filter((t: any) =>
+          !t.snooze_until || new Date(t.snooze_until).getTime() <= nowMs
+        );
+        const taskGroups = new Map<string, any>();
+        for (const t of cleanTasks) {
+          const key = `${(t.provider_name || '').toLowerCase()}::${(t.type || '').toLowerCase()}`;
+          const cur = taskGroups.get(key);
+          if (!cur) {
+            taskGroups.set(key, { ...t, _groupIds: [t.id], _groupCount: 1, _groupTotal: parseFloat(t.disputed_amount) || 0 });
+          } else {
+            cur._groupIds.push(t.id);
+            cur._groupCount += 1;
+            cur._groupTotal += parseFloat(t.disputed_amount) || 0;
+          }
+        }
+        setPendingTasks(Array.from(taskGroups.values()).sort((a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ));
+      }
+
+      // Visible completion signal — addresses "spins and items don't
+      // update — is it working?". A same-count scan (30 → 30) used to
+      // leave the user without any signal at all.
+      //
+      // BUT: if every scan call failed (e.g. revoked OAuth → 401/500
+      // across all endpoints), we must NOT show "scan complete" — that
+      // misleads the user into thinking their inbox is clean when in
+      // reality nothing scanned. Codex P1.
+      if (dedupedTargets.length > 0 && okCount === 0) {
+        setScanFeedback({
+          kind: 'error',
+          message: 'Scan failed — please re-link your email or try again.',
+        });
+      } else {
+        // Use the uncapped trueTotal (count: 'exact', head: true) for
+        // delta math — mapped.length saturates at the .limit(30) cap so
+        // a user going from 30 → 31 actual findings would otherwise see
+        // "no new findings (30 total)". Codex P2 round 2.
+        const total = trueTotal ?? mapped.length;
+        const delta = total - priorCount;
+        let message: string;
+        if (total === 0) {
+          message = 'Scan complete · 0 findings — your inbox looks clean';
+        } else if (delta > 0) {
+          message = `Scan complete · ${delta} new finding${delta === 1 ? '' : 's'} (${total} total)`;
+        } else {
+          message = `Scan complete · no new findings (${total} total)`;
+        }
+        setScanFeedback({ kind: 'success', message });
+      }
+
       if (refreshedConns && refreshedConns.length > 0) {
         // Pick the most-recently-scanned timestamp so the UI shows the
         // freshest signal across all active accounts.
@@ -593,11 +781,18 @@ export default function DashboardPage() {
         setEmailLastScanned(latest);
       }
     } catch {
-      // No state mutation on a hard throw — leave the UI as it was
-      // and let the user retry. Setting results=0 here previously
-      // hid existing opportunities which felt worse than not updating.
+      // Surface the failure instead of swallowing it silently — the
+      // founder reported the spinner stopping with no feedback when a
+      // scan threw, leaving "is it working?" unanswered.
+      setScanFeedback({ kind: 'error', message: 'Scan failed — please try again.' });
     } finally {
       setEmailScanning(false);
+      // Auto-clear after 6s so the banner doesn't linger; cleared
+      // on unmount or new scan via the ref above.
+      scanFeedbackTimerRef.current = setTimeout(() => {
+        setScanFeedback(null);
+        scanFeedbackTimerRef.current = null;
+      }, 6000);
     }
   };
 
@@ -735,6 +930,39 @@ export default function DashboardPage() {
   // Total count includes everything the user can see (primary + track-only +
   // unknown), so the headline pill matches what's actually on screen.
   const totalActions = primaryActions.length + trackOnlyRows.length + unknownDisputeRows.length;
+  // Combined count also folds in email-scanner findings and pending tasks so
+  // the Action Centre pill can't say "0 ITEMS" while 30 email opps + 26 tasks
+  // sit immediately below. The £ headline still gates on price-detector data
+  // (deals/disputes) because email opps + tasks don't carry an annual £ figure.
+  //
+  // Dedup by id: when emailOpportunities was hydrated from the legacy
+  // `tasks`-table fallback, some of those rows ALSO appear in `pendingTasks`
+  // (both query `tasks`). But pendingTasks is filtered (snoozed/paybacker
+  // rows dropped) and grouped by provider+type, so a flat `if legacy then 0`
+  // either double-counts or under-counts depending on which way the data
+  // breaks. Build a Set of every task id represented in pendingTasks (each
+  // row carries `_groupIds` listing the underlying tasks it collapsed) and
+  // count only emailOpportunities whose id is NOT already in that set.
+  const pendingTaskIdSet = new Set<string>();
+  for (const t of pendingTasks) {
+    if (Array.isArray(t._groupIds)) {
+      for (const id of t._groupIds) {
+        if (id) pendingTaskIdSet.add(String(id));
+      }
+    } else if (t.id) {
+      pendingTaskIdSet.add(String(t.id));
+    }
+  }
+  const dedupedEmailOpportunityCount = emailOpportunities.reduce(
+    (n, o) => (o?.id && pendingTaskIdSet.has(String(o.id)) ? n : n + 1),
+    0,
+  );
+  const combinedActions =
+    primaryActions.length +
+    trackOnlyRows.length +
+    unknownDisputeRows.length +
+    dedupedEmailOpportunityCount +
+    pendingTasks.length;
   // Backwards-compat alias for downstream KPI cards that read actionRows.
   const actionRows = primaryActions;
 
@@ -883,11 +1111,12 @@ export default function DashboardPage() {
                 action-centre card's gating below. */}
             {dealsLoading ? (
               <>Loading your action centre…</>
-            ) : totalActions > 0 ? (
+            ) : combinedActions > 0 ? (
               <>
                 You have{' '}
                 <strong style={{ color: 'var(--mint-deep)' }}>
-                  {totalActions} action{totalActions === 1 ? '' : 's'} worth {formatGBP(potentialSavings)}/yr
+                  {combinedActions} action{combinedActions === 1 ? '' : 's'}
+                  {potentialSavings > 0 ? ` worth ${formatGBP(potentialSavings)}/yr` : ''}
                 </strong>{' '}
                 waiting. Start with the biggest wins.
               </>
@@ -942,14 +1171,29 @@ export default function DashboardPage() {
                 marginBottom: 10,
               }}
             >
-              ⚡ Action Centre · {dealsLoading ? '…' : `${totalActions} item${totalActions === 1 ? '' : 's'}`}
+              ⚡ Action Centre · {dealsLoading ? '…' : `${combinedActions} item${combinedActions === 1 ? '' : 's'}`}
             </div>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-.015em' }}>
               {dealsLoading
                 ? 'Crunching cheaper-alternatives + price alerts…'
-                : dealRows.length === 0 && disputeRows.length === 0
+                : dealRows.length === 0 &&
+                    disputeRows.length === 0 &&
+                    emailOpportunities.length === 0 &&
+                    pendingTasks.length === 0
                   ? 'No actions waiting — you\'re all caught up.'
-                  : `${formatGBP(potentialSavings)} of potential savings`}
+                  : dealRows.length > 0 || disputeRows.length > 0
+                    ? `${formatGBP(potentialSavings)} of potential savings`
+                    // No deals/disputes to render in this card — emails/tasks
+                    // live in their own cards below. Don't promise "to review"
+                    // here; point downward instead so the headline matches
+                    // what the card body actually shows.
+                    : `${combinedActions} item${combinedActions === 1 ? '' : 's'} below — see ${
+                        emailOpportunities.length > 0 && pendingTasks.length > 0
+                          ? 'Email Scanner & Action Items'
+                          : emailOpportunities.length > 0
+                            ? 'Email Scanner'
+                            : 'Action Items'
+                      }`}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-2)' }}>
               {dealRows.length > 0 && disputeRows.length > 0
@@ -958,7 +1202,13 @@ export default function DashboardPage() {
                   ? `${dealRows.length} cheaper deal${dealRows.length === 1 ? '' : 's'} found across your subscriptions`
                   : disputeRows.length > 0
                     ? `${disputeRows.length} price rise${disputeRows.length === 1 ? '' : 's'} detected — disputable under UK consumer law`
-                    : 'Connect a bank account to start finding savings.'}
+                    : emailOpportunities.length > 0 && pendingTasks.length > 0
+                      ? `${emailOpportunities.length} email finding${emailOpportunities.length === 1 ? '' : 's'} · ${pendingTasks.length} task${pendingTasks.length === 1 ? '' : 's'} pending`
+                      : emailOpportunities.length > 0
+                        ? `${emailOpportunities.length} email finding${emailOpportunities.length === 1 ? '' : 's'} from your inbox scan`
+                        : pendingTasks.length > 0
+                          ? `${pendingTasks.length} task${pendingTasks.length === 1 ? '' : 's'} pending — pick up where you left off`
+                          : 'Connect a bank account to start finding savings.'}
             </p>
           </div>
         </div>
@@ -972,7 +1222,21 @@ export default function DashboardPage() {
                 fontSize: 13,
               }}
             >
-              Ready to find your first saving? Connect a bank account to scan transactions for forgotten subscriptions and silent price rises — we&apos;ll flag every one automatically.
+              {emailOpportunities.length > 0 || pendingTasks.length > 0 ? (
+                // The Action Centre's own list (deals + disputes) is empty,
+                // but emails/tasks exist further down. Headline already
+                // points the user there; this microcopy reinforces it so
+                // the empty card doesn't feel like a dead end.
+                `Scroll to ${
+                  emailOpportunities.length > 0 && pendingTasks.length > 0
+                    ? 'Email Scanner & Action Items'
+                    : emailOpportunities.length > 0
+                      ? 'Email Scanner'
+                      : 'Action Items'
+                } to act on the ${combinedActions} item${combinedActions === 1 ? '' : 's'} above.`
+              ) : (
+                <>Ready to find your first saving? Connect a bank account to scan transactions for forgotten subscriptions and silent price rises — we&apos;ll flag every one automatically.</>
+              )}
             </div>
           ) : (
             actionRowsTop.map((r, i) => (
@@ -1312,6 +1576,32 @@ export default function DashboardPage() {
                   ? `Connected: ${emailAddress}${emailLastScanned ? ` · Last scanned ${new Date(emailLastScanned).toLocaleDateString()}` : ''}`
                   : 'Scan your inbox to find bills, overcharges and savings.'}
               </p>
+              {scanFeedback && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    margin: '0 0 10px',
+                    padding: '5px 10px',
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: scanFeedback.kind === 'success' ? 'var(--mint-wash)' : 'var(--amber-wash)',
+                    color: scanFeedback.kind === 'success' ? 'var(--mint-deep)' : '#92400E',
+                    border: `1px solid ${scanFeedback.kind === 'success' ? '#BBF7D0' : '#FCD34D'}`,
+                  }}
+                >
+                  {scanFeedback.kind === 'success' ? (
+                    <CheckCircle className="h-3.5 w-3.5" />
+                  ) : (
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  )}
+                  {scanFeedback.message}
+                </div>
+              )}
               {emailOpportunities.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {emailOpportunities.slice(0, 5).map((opp: any, i: number) => (
@@ -1394,12 +1684,32 @@ export default function DashboardPage() {
             userTier={userTier}
           />
 
+          {/* Prompt user to verify pending dispute letter drafts */}
+          <PendingDisputeLettersCard />
+
           {/* Action Items — preserves existing task logic; visuals simplified */}
           {pendingTasks.length > 0 && (
             <div className="card">
               <h3 style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <Clock className="h-4 w-4" /> Action items <span className="count-tag">{pendingTasks.length}</span>
+                  {snoozedTaskCount > 0 && (
+                    <span
+                      title={`${snoozedTaskCount} task${snoozedTaskCount === 1 ? '' : 's'} snoozed — they'll reappear once their snooze date passes. Ask the Pocket Agent to unsnooze.`}
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 500,
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        background: '#f1f5f9',
+                        color: '#64748b',
+                        border: '1px solid var(--divider)',
+                        cursor: 'help',
+                      }}
+                    >
+                      💤 {snoozedTaskCount} snoozed
+                    </span>
+                  )}
                 </span>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {(['all', 'disputes', 'deals', 'subscriptions'] as const).map((f) => (
@@ -1521,12 +1831,58 @@ export default function DashboardPage() {
                 Every subscription in one place. Sync from your bank or add manually.
               </p>
             </Link>
-            <Link href="/dashboard/deals" className="card" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div className="card">
               <h3><Tag className="h-4 w-4" style={{ color: 'var(--mint-deep)' }} /> Browse deals</h3>
-              <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>
-                Compare energy, broadband, mobile, insurance. Find cheaper alternatives.
-              </p>
-            </Link>
+              {collapsedDealsByMerchant.length === 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>
+                    {bankConnected
+                      ? "No cheaper alternatives found yet — we'll keep checking."
+                      : 'Connect a bank to find cheaper deals on your bills.'}
+                  </p>
+                  <Link
+                    href="/dashboard/deals"
+                    style={{ fontSize: 12, color: 'var(--mint-deep)', textDecoration: 'none' }}
+                  >
+                    Browse all deals →
+                  </Link>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {collapsedDealsByMerchant.slice(0, 3).map((d, i) => (
+                    <Link
+                      key={`${d.sub}-${i}`}
+                      href="/dashboard/deals"
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        padding: '10px 0',
+                        borderTop: '1px solid var(--divider-2)',
+                        alignItems: 'flex-start',
+                        textDecoration: 'none',
+                        color: 'inherit',
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{d.provider}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.35 }}>
+                          Switch from {d.sub}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--mint-deep)', whiteSpace: 'nowrap' }}>
+                        {formatGBP(d.saving)}/yr
+                      </div>
+                    </Link>
+                  ))}
+                  <Link
+                    href="/dashboard/deals"
+                    style={{ fontSize: 12, color: 'var(--mint-deep)', textDecoration: 'none', paddingTop: 10 }}
+                  >
+                    View all {collapsedDealsByMerchant.length} deal{collapsedDealsByMerchant.length === 1 ? '' : 's'} →
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1665,22 +2021,36 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Pocket Agent */}
-          <div className="card">
-            <h3>Pocket Agent</h3>
-            <p style={{ fontSize: 12.5, color: 'var(--text-2)', margin: '0 0 10px', lineHeight: 1.45 }}>
-              Chat on Telegram. Ask about your subs, dispute status, or start a new letter.
-            </p>
-            <a
-              className="cta-ghost"
-              href="https://t.me/PaybackerCoUkBot"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ width: '100%', justifyContent: 'center', fontSize: 12 }}
-            >
-              Open @PaybackerCoUkBot →
-            </a>
-          </div>
+          {/* Pocket Agent — hide once connected on either channel.
+              Renders nothing until state loads to avoid a flash. */}
+          {pocketAgentConnected !== null && !pocketAgentConnected.telegram && !pocketAgentConnected.whatsapp && (
+            <div className="card">
+              <h3>Pocket Agent</h3>
+              <p style={{ fontSize: 12.5, color: 'var(--text-2)', margin: '0 0 10px', lineHeight: 1.45 }}>
+                Chat to your Pocket Agent on Telegram or WhatsApp. Ask about your subs, dispute status, or start a new letter.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <a
+                  className="cta-ghost"
+                  href="https://t.me/PaybackerCoUkBot"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ width: '100%', justifyContent: 'center', fontSize: 12 }}
+                >
+                  Connect on Telegram →
+                </a>
+                {effectiveTier === 'pro' && (
+                  <Link
+                    href="/dashboard/settings/whatsapp"
+                    className="cta-ghost"
+                    style={{ width: '100%', justifyContent: 'center', fontSize: 12 }}
+                  >
+                    Connect on WhatsApp →
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Getting started — only while incomplete */}
           {!(bankConnected && emailConnected && complaintsGenerated > 0) && (

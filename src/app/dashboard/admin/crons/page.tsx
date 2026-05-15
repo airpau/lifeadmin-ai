@@ -19,8 +19,8 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, Clock, Loader2, Play, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Clock, Loader2, Play, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import AdminPage from '@/components/admin/AdminPage';
 
 interface CronRow {
   path: string;
@@ -133,28 +133,19 @@ export default function AdminCronsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <Link href="/dashboard/admin" className="text-slate-500 text-sm inline-flex items-center gap-1 hover:text-slate-900 mb-2">
-              <ArrowLeft className="h-4 w-4" /> Admin
-            </Link>
-            <h1 className="text-2xl font-bold text-slate-900">Cron jobs</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Every Vercel cron registered in <code className="text-xs bg-slate-200 px-1 rounded">vercel.json</code>.
-              Tap <strong>Run now</strong> to invoke one manually — the call is proxied server-side with <code className="text-xs bg-slate-200 px-1 rounded">CRON_SECRET</code>, never in the browser.
-            </p>
-          </div>
-          <button
-            onClick={loadCrons}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
-          </button>
-        </div>
-
+    <AdminPage
+      title="Cron jobs"
+      description="Every Vercel cron registered in vercel.json. Tap Run now to invoke one manually — the call is proxied server-side with CRON_SECRET, never in the browser."
+      actions={
+        <button
+          onClick={loadCrons}
+          disabled={loading}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+        </button>
+      }
+    >
         {runResult && (
           <div
             className={`mb-4 rounded-xl p-3 text-sm flex items-start gap-2 ${
@@ -249,7 +240,6 @@ export default function AdminCronsPage() {
         <p className="text-xs text-slate-500 mt-6">
           The &quot;Last run&quot; column reads from <code className="text-[11px] bg-slate-200 px-1 rounded">business_log</code> where <code className="text-[11px] bg-slate-200 px-1 rounded">category=&apos;cron_run&apos;</code>. Cron runs triggered by Vercel itself (on their schedule) need to opt in to this log by inserting a row in their handler — manual runs via this page always log. Vercel&apos;s built-in cron logs are still available in the Vercel dashboard.
         </p>
-      </div>
-    </div>
+    </AdminPage>
   );
 }

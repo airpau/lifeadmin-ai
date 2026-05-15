@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { handleConfirmationReply, isAwaitingConfirmation } from '@/lib/support/confirmation-reply';
 // product-context.ts is the seed/fallback; runtime source of truth is product_features table
 import { PRODUCT_CONTEXT } from '@/lib/product-context';
 import { getToolDefinitions, executeTool } from './tools/registry';
@@ -263,6 +264,33 @@ NEVER say "I have created a support ticket" unless the user confirmed they want 
 - Include the phrase "feature request" in your response so the system can detect and log it.
 - Always make the user feel heard and valued when giving feedback
 
+## DISPUTE TOOLS
+You can read the user's disputes and link email threads to them — same flow as the WhatsApp / Telegram Pocket Agent.
+
+When the user asks "what's the status of my OneStream dispute" / "show me my open complaints" / "how's my Nuki case":
+- Call get_dispute_detail with the provider name. The tool prefers ACTIVE over resolved disputes and surfaces both opened-date and last-activity-date explicitly. Don't conflate them. If the response is prefixed "(This dispute is CLOSED ...)", do NOT describe it as the current state — explain it's closed and ask if they want to open a new one.
+
+When the user says "link an email", "connect a thread", "find the email about X", "attach the response from Y":
+1. Call find_email_thread_for_dispute with provider=<dispute name> and optionally query=<extra keyword>.
+2. The tool returns up to 5 candidates with subject + sender + date + a metadata blob in square brackets containing connection_id, thread_id, and provider_type.
+3. Show the candidates EXACTLY as the tool returned them (preserve numbering) and ask the user to pick.
+4. When the user picks, call link_email_thread_to_dispute with connection_id + thread_id + provider_type from the chosen candidate's bracketed metadata, plus subject + sender_address.
+5. Confirm what got imported. If imported=0, the watchdog cron will sync within 30 min.
+NEVER auto-link the top result without user confirmation. NEVER guess a thread_id.
+
+After draft_dispute_letter the user is in one of three states; interpret their next reply:
+
+(A) SAVE — "SAVE", "save it", "I've sent it", "use this one", "go with the firm version", "finalise":
+   → Call record_letter_sent(provider, letter_text). Read letter_text verbatim from your most recent draft. Inserts ai_letter row + bumps status to awaiting_response + clears the 1-hour nudge.
+
+(B) DISCARD — "DISCARD", "drop it", "forget it", "don't send", "cancel":
+   → Call discard_letter_draft(provider, reason?). Clears the nudge.
+
+(C) CHANGES — "make it firmer", "add the £85 figure", "shorter", "more polite":
+   → Call draft_dispute_letter again with the new tone/brief. Auto-supersedes the prior pending draft.
+
+A 1-hour cron pings the user if they don't reply, so we don't lose dispute drafts to forgetfulness. Always take action immediately — don't ask "would you like me to save?" when the user already said SAVE.
+
 ## SUBSCRIPTION MANAGEMENT TOOLS
 You have tools to manage the user's subscriptions. When the user asks to add, edit, remove, or view their subscriptions, use the appropriate tool. After using a tool, describe what you did in natural language.
 
@@ -397,6 +425,52 @@ export async function POST(request: NextRequest) {
 
     const isLoggedIn = !!userId;
     const userTier = isLoggedIn ? (tier || 'free') : 'anonymous';
+
+    // ── Confirmation reply handler (chatbot) ──
+    // Logged-in users with a ticket in awaiting_user_confirmation get their
+    // next message classified positive/negative/unclear and routed before
+    // the regular Claude call. Short-circuits to a Riley acknowledgement.
+    if (isLoggedIn && userId) {
+      try {
+        const admin = getAdmin();
+        const { data: confirmationTicket } = await admin
+          .from('support_tickets')
+          .select('id, ticket_number, status, subject, source, metadata')
+          .eq('user_id', userId)
+          .eq('status', 'awaiting_user_confirmation')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (confirmationTicket && isAwaitingConfirmation((confirmationTicket as { status: string }).status)) {
+          const lastUser = [...messages].reverse().find((m: { role: string; content: string }) => m.role === 'user');
+          const userText = (lastUser?.content || '').trim();
+          if (userText) {
+            const result = await handleConfirmationReply(
+              admin,
+              confirmationTicket as { id: string; ticket_number: string | null; status: string; subject: string; source: string; metadata: Record<string, unknown> | null },
+              userText,
+            );
+            if (result.handled && result.reply_to_user) {
+              await admin.from('ticket_messages').insert({
+                ticket_id: (confirmationTicket as { id: string }).id,
+                sender_type: 'user',
+                sender_name: 'User (via chatbot)',
+                message: userText,
+              });
+              await admin.from('ticket_messages').insert({
+                ticket_id: (confirmationTicket as { id: string }).id,
+                sender_type: 'system',
+                sender_name: 'Riley',
+                message: result.reply_to_user,
+              });
+              return NextResponse.json({ reply: result.reply_to_user });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[chat] Confirmation reply hook failed (non-fatal):', e);
+      }
+    }
 
     // Anonymous visitors get a restricted prompt -- no free advice
     const anonymousRules = !isLoggedIn ? `
@@ -633,7 +707,7 @@ ${userTier === 'pro' ? `
 
         // Categorise based on keywords
         const allText = conversationSummary.toLowerCase();
-        const category = allText.includes('bank') || allText.includes('truelayer') || allText.includes('sync') ? 'technical'
+        const category = allText.includes('bank') || allText.includes('yapily') || allText.includes('sync') ? 'technical'
           : allText.includes('billing') || allText.includes('payment') || allText.includes('charge') || allText.includes('refund') ? 'billing'
           : allText.includes('cancel') || allText.includes('subscription') ? 'billing'
           : allText.includes('letter') || allText.includes('complaint') ? 'feature'

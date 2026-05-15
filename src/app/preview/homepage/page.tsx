@@ -7,7 +7,7 @@
  *   design_handoff_paybacker_homepage/index.html
  * with extra scroll-driven dynamism (intersection-observer reveals,
  * animated counters, scroll progress bar, 3D dashboard tilt, sticky
- * conversion CTA, marquee testimonials).
+ * conversion CTA).
  *
  * Everything is wrapped in `.m-v2-root` so the scoped stylesheet at
  * `./styles.css` cannot leak onto `/`, the dashboard, or any other
@@ -17,7 +17,8 @@
  * Content rules (see redesign/CONTENT_SOURCES_OF_TRUTH.md):
  *   - No fabricated specific savings claims.
  *   - Member counts are forbidden.
- *   - Six named testimonials may appear ONLY on this surface.
+ *   - No testimonials anywhere — first-launch trust would suffer from
+ *     unverifiable named quotes.
  */
 
 import Link from 'next/link';
@@ -40,6 +41,7 @@ import {
   DealsDemo,
   McpDemo,
 } from './demos';
+import { createClient } from '@/lib/supabase/client';
 import './styles.css';
 
 // React.CSSProperties doesn't know about CSS custom properties.
@@ -173,8 +175,43 @@ function Counter({
 // ---------------------------------------------------------------------------
 // Nav — pill nav with scroll-shrink + scroll-progress bar
 // ---------------------------------------------------------------------------
+// Client-side auth probe used by the marketing nav / mobile drawer to
+// swap "Sign in / Start free" → "Open Dashboard" for users who already
+// have a valid Supabase session. Without this, signed-in users land
+// here in a new tab, see the prominent "Sign in" button, and assume
+// their session has expired — even though the cookie is still valid
+// (proxy.ts has been refreshing it on every request). Returns:
+//   null  → not yet resolved (initial server-matched render)
+//   true  → logged in
+//   false → logged out
+function useIsLoggedIn(): boolean | null {
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (cancelled) return;
+      setIsLoggedIn(!!data.user);
+    }).catch(() => {
+      if (cancelled) return;
+      setIsLoggedIn(false);
+    });
+    // Pick up sign-in / sign-out that happened in another tab.
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      if (cancelled) return;
+      setIsLoggedIn(!!session?.user);
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+  return isLoggedIn;
+}
+
 function Nav() {
   const [scrolled, setScrolled] = useState(false);
+  const isLoggedIn = useIsLoggedIn();
 
   useEffect(() => {
     let rafId = 0;
@@ -251,12 +288,37 @@ function Nav() {
             )}
           </div>
           <div className="nav-cta-row">
-            <Link className="nav-signin" href="/auth/login">
-              Sign in
-            </Link>
-            <Link className="nav-start" href="/auth/signup">
-              Start free
-            </Link>
+            {/*
+              While the auth probe is in flight (`isLoggedIn === null`)
+              we render the logged-out CTAs but visually hide them so
+              the slot reserves layout (matches SSR + prevents layout
+              shift) and signed-in users don't see a flash of
+              "Sign in / Start free" before the probe resolves. Codex
+              P2 on PR #450 — the whole point of this hook is to kill
+              that flash.
+            */}
+            {isLoggedIn === true ? (
+              <Link className="nav-start" href="/dashboard">
+                Open Dashboard
+              </Link>
+            ) : isLoggedIn === false ? (
+              <>
+                <Link className="nav-signin" href="/auth/login">
+                  Sign in
+                </Link>
+                <Link className="nav-start" href="/auth/signup">
+                  Start free
+                </Link>
+              </>
+            ) : (
+              <span
+                aria-hidden="true"
+                style={{ visibility: 'hidden', display: 'inline-flex', gap: 'var(--m-v2-cta-gap, 8px)' }}
+              >
+                <span className="nav-signin">Sign in</span>
+                <span className="nav-start">Start free</span>
+              </span>
+            )}
             <button
               type="button"
               className="nav-burger"
@@ -305,12 +367,27 @@ function Nav() {
               )}
             </div>
             <div className="nav-drawer-ctas">
-              <Link className="btn btn-ghost" href="/auth/login" onClick={() => setMenuOpen(false)}>
-                Sign in
-              </Link>
-              <Link className="btn btn-mint" href="/auth/signup" onClick={() => setMenuOpen(false)}>
-                Sign up free
-              </Link>
+              {isLoggedIn === true ? (
+                <Link className="btn btn-mint" href="/dashboard" onClick={() => setMenuOpen(false)}>
+                  Open Dashboard
+                </Link>
+              ) : isLoggedIn === false ? (
+                <>
+                  <Link className="btn btn-ghost" href="/auth/login" onClick={() => setMenuOpen(false)}>
+                    Sign in
+                  </Link>
+                  <Link className="btn btn-mint" href="/auth/signup" onClick={() => setMenuOpen(false)}>
+                    Sign up free
+                  </Link>
+                </>
+              ) : (
+                // Same null-state guard as the desktop nav — reserve
+                // layout but stay invisible until the probe resolves.
+                <span aria-hidden="true" style={{ visibility: 'hidden' }}>
+                  <span className="btn btn-ghost">Sign in</span>
+                  <span className="btn btn-mint">Sign up free</span>
+                </span>
+              )}
             </div>
           </div>
         </>
@@ -426,7 +503,25 @@ function HeroVisual() {
 
       <div className="agent-bubble float" style={{ animationDelay: '-3s' }}>
         <div className="who">
-          <span className="dot-mint" /> Pocket Agent · Telegram
+          <span
+            aria-hidden="true"
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              background: '#25D366',
+              display: 'inline-grid',
+              placeItems: 'center',
+              marginRight: 6,
+              verticalAlign: 'middle',
+              boxShadow: '0 1px 3px rgba(37,211,102,.4)',
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="#fff">
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.71.306 1.263.489 1.695.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413"/>
+            </svg>
+          </span>
+          Pocket Agent · WhatsApp
         </div>
         <div className="msg">
           Virgin Media bill increased by <strong>£12</strong> this month — want me to draft a dispute citing Ofcom&rsquo;s mid-contract price rise rules?
@@ -661,101 +756,6 @@ function HeroDemo() {
 }
 
 // ---------------------------------------------------------------------------
-// Testimonials — marquee, doubled for seamless loop
-// ---------------------------------------------------------------------------
-const TESTIMONIALS = [
-  {
-    name: 'Paul R.',
-    meta: 'Homeowner · Bristol',
-    quote:
-      "Found nearly a grand of forgotten subs in five minutes. The Virgin dispute letter cut my bill back to the original contract rate — first try.",
-    saved: 'Saved £1,240 over the year',
-    color: 'var(--accent-mint-deep)',
-  },
-  {
-    name: 'Aisha K.',
-    meta: 'Freelancer · Manchester',
-    quote:
-      "I thought I was on top of my subs. Paybacker found six I'd completely forgotten about, including two gym memberships.",
-    saved: 'Saved £392',
-    color: 'var(--accent-orange-deep)',
-  },
-  {
-    name: 'Dan M.',
-    meta: 'Commuter · London',
-    quote:
-      "The Ofcom letter took 30 seconds. EE cancelled the mid-contract rise without a phone call. Still can't quite believe it.",
-    saved: 'Saved £168',
-    color: 'var(--accent-mint-deep)',
-  },
-  {
-    name: 'Sarah J.',
-    meta: 'Student · Edinburgh',
-    quote:
-      "Pocket Agent in Telegram is the bit I didn't expect to love. I just ask if things are fair and it tells me.",
-    saved: 'Saved £284',
-    color: 'var(--accent-orange-deep)',
-  },
-  {
-    name: 'Rita N.',
-    meta: 'Teacher · Leeds',
-    quote:
-      "Paybacker caught a £41/month energy hike British Gas quietly slipped in. The dispute paid for a year of Pro in one letter.",
-    saved: 'Saved £492',
-    color: 'var(--accent-mint-deep)',
-  },
-  {
-    name: 'Tom B.',
-    meta: 'New parent · Cardiff',
-    quote:
-      "Tiny baby, no time to read bills. Paybacker does it for us. The broadband switch alone saved us £400 a year.",
-    saved: 'Saved £638',
-    color: 'var(--accent-orange-deep)',
-  },
-];
-
-function Testimonials() {
-  const trackRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const node = trackRef.current;
-    if (!node || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          node.style.animationPlayState = entry.isIntersecting ? 'running' : 'paused';
-        });
-      },
-      { threshold: 0.05 }
-    );
-    io.observe(node);
-    return () => io.disconnect();
-  }, []);
-
-  const doubled = [...TESTIMONIALS, ...TESTIMONIALS];
-
-  return (
-    <div className="t-track" ref={trackRef}>
-      {doubled.map((t, i) => (
-        <div className="t-card" key={`${t.name}-${i}`}>
-          <div className="who">
-            <div className="avatar" style={{ background: t.color }}>
-              {t.name[0]}
-            </div>
-            <div>
-              <div className="name">{t.name}</div>
-              <div className="meta">{t.meta}</div>
-            </div>
-          </div>
-          <div className="quote">&ldquo;{t.quote}&rdquo;</div>
-          <div className="saved">{t.saved}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // StickyCTA — appears past the hero, hides before the final CTA
 // ---------------------------------------------------------------------------
 function StickyCTA() {
@@ -782,12 +782,18 @@ function StickyCTA() {
       ticking = true;
       rafId = requestAnimationFrame(update);
     };
+    // Resize must always run the mobile-width check immediately,
+    // even when the scroll tick guard is already active.
+    const onResize = () => {
+      if (window.innerWidth <= 768) { setVisible(false); return; }
+      onScroll();
+    };
     update();
     window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
+    window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
+      window.removeEventListener('resize', onResize);
       cancelAnimationFrame(rafId);
     };
   }, []);
@@ -825,28 +831,30 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="hero-copy">
               <span className="eyebrow">Free forever tier · No card required</span>
               <h1>
-                <span className="l1">Find the £1,000+</span>
-                <span className="l2">you&rsquo;re overpaying.</span>
-                <span className="l3">Get your money back.</span>
+                <span className="l1">Your AI consumer champion</span>
+                <span className="l2">for unfair bills.</span>
+                <span className="l3">You keep 100% of what we recover.</span>
               </h1>
               <p className="hero-sub">
-                Paybacker scans your bank and email to spot overcharges, forgotten
-                subscriptions, and unfair bills — then writes professional complaint
-                letters citing UK law in 30 seconds.
+                Paybacker reads your bank and inbox, drafts complaint letters
+                citing the exact UK statute, and runs every dispute end-to-end —
+                through provider escalation and Ombudsman if needed. Solicitors
+                charge £250/hour. Claims firms take 30%. We charge £4.99/month
+                and you keep every penny we win back.
               </p>
               <div className="hero-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
-                  Start free — 3 AI letters included →
+                  Start free — keep 100% of your wins →
                 </Link>
-                <a className="btn btn-ghost" href="#how">
-                  See how it works
+                <a className="btn btn-ghost" href="#vs-claims-firms">
+                  Why not a solicitor?
                 </a>
               </div>
               <div className="hero-ticker">
                 <span className="pulse" />
                 <span>
-                  UK households are typically overcharged{' '}
-                  <strong>£1,000+ a year</strong> — we find it.
+                  Solicitors: £250/hr. Claims firms: 30% cut.{' '}
+                  <strong>Paybacker: £4.99/mo, you keep 100%.</strong>
                 </span>
               </div>
             </Reveal>
@@ -996,6 +1004,264 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
+      {/* ========== Features intro ========== */}
+      <section className="features-intro section-light" id="features">
+        <div className="wrap">
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow">What&rsquo;s in the box</span>
+            <h2>
+              Seven tools. One subscription.
+              <br />
+              Every £ you overpay — found, disputed, cancelled.
+            </h2>
+            <p>
+              Most UK households are overcharged by £1,000+ a year. Paybacker
+              finds it, disputes it, and cancels it — in minutes, not hours on
+              hold.
+            </p>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ----- 01 · AI Disputes Centre (copy + demo merged) ----- */}
+      <section className="feature-section section-light" id="disputes">
+        <div className="wrap">
+          <div className="feature-grid">
+            <Reveal className="feature-copy">
+              <h2 className="feature-title">AI Disputes Centre</h2>
+              <p className="feature-tagline">
+                Draft a UK-law-cited complaint in 30 seconds.
+              </p>
+              <p>
+                Type one sentence — Paybacker writes the formal letter, cites
+                the exact regulation, and sends it on your behalf.
+              </p>
+              <p className="freshness-chip">
+                <span className="freshness-chip__dot" aria-hidden="true" />
+                Every citation verified today against legislation.gov.uk, GOV.UK and Find Case Law.{' '}
+                <a className="freshness-chip__link" href="#compliance">
+                  See how &rarr;
+                </a>
+              </p>
+              <ul className="feature-bullets">
+                <li>Consumer Rights Act 2015, Ofcom, Ofgem, UK261, DVSA, HMRC</li>
+                <li>Energy, broadband, parking, flight delays, council tax</li>
+                <li>Pre-send freshness gate blocks any letter citing stale law</li>
+                <li>3 free letters / month. Unlimited on Essential and Pro.</li>
+                <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan).</li>
+              </ul>
+              <div className="feature-cta-row">
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fcomplaints">
+                  Draft your first letter →
+                </Link>
+              </div>
+            </Reveal>
+            <Reveal className="feature-stage" delay={120}>
+              <DisputesDemo />
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ----- Pocket Agent · reframed as "personal caseworker" ----- */}
+      <section className="feature-section feature-section--ink" id="pocket-agent">
+        <div className="wrap">
+          <div className="feature-grid">
+            <Reveal className="feature-copy">
+              <h2 className="feature-title">Your personal caseworker — on WhatsApp</h2>
+              <p className="feature-tagline">
+                A solicitor takes a week to reply to email. Your Paybacker
+                caseworker is on WhatsApp 24/7.
+              </p>
+              <p>
+                It tells you when a dispute is ready to send, when the company
+                replies, and when the 8-week Ombudsman clock hits. Tap to
+                approve. Done — no chasing, no hold music.
+              </p>
+              <ul className="feature-bullets">
+                <li>Drafts ready in 30 seconds — approve with one tap</li>
+                <li>Watches your inbox for the provider&rsquo;s response</li>
+                <li>Auto-escalates to Ombudsman at the 8-week mark</li>
+                <li>
+                  <strong>WhatsApp Pocket Agent</strong>{' '}
+                  <span className="tier-chip tier-chip--pro">Pro</span> — £9.99/month.
+                  Your caseworker on the app you already use every day.
+                </li>
+                <li>
+                  Also available on{' '}
+                  <strong>Telegram</strong>{' '}
+                  <span className="tier-chip tier-chip--free">Free</span> — same agent, any plan.
+                </li>
+              </ul>
+              <div className="feature-cta-row">
+                <Link className="btn btn-mint" href="/pocket-agent">
+                  Set up your Pocket Agent →
+                </Link>
+              </div>
+            </Reveal>
+            <Reveal className="feature-stage" delay={120}>
+              <PocketAgentDemo />
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ----- 02 · Compliance pipeline (trust strip between Disputes
+              and Money Hub) ----- */}
+      <section
+        className="compliance-pipeline section-light"
+        id="compliance"
+        aria-label="How citations are kept current"
+      >
+        <div className="wrap">
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow">Compliance pipeline</span>
+            <h2 className="compliance-pipeline__title">
+              Every citation verified today.
+            </h2>
+            <p className="compliance-pipeline__lead">
+              A daily cron checks every UK statute and regulator citation in our
+              library against the canonical source, recovers dead URLs, and flags
+              anything stale &mdash; before a letter ever leaves your inbox.
+            </p>
+          </Reveal>
+
+          <Reveal className="compliance-pipeline__grid">
+            <div className="compliance-source">
+              <div className="compliance-source__name">legislation.gov.uk</div>
+              <div className="compliance-source__sub">Primary statute source</div>
+              <div className="compliance-source__detail">
+                Consumer Rights Act 2015, Consumer Credit Act 1974, UK261, every
+                regulation in scope.
+              </div>
+            </div>
+            <div className="compliance-source">
+              <div className="compliance-source__name">GOV.UK &middot; CMA</div>
+              <div className="compliance-source__sub">Regulator + market guidance</div>
+              <div className="compliance-source__detail">
+                Ofcom, Ofgem, FCA, CMA published rules and enforcement notices.
+              </div>
+            </div>
+            <div className="compliance-source">
+              <div className="compliance-source__name">Find Case Law</div>
+              <div className="compliance-source__sub">TNA case-law authority</div>
+              <div className="compliance-source__detail">
+                Tribunal and court decisions that bind the regulator and the
+                provider.
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal className="compliance-pipeline__callout">
+            <strong>Pre-send freshness gate:</strong> if any citation in your draft has
+            gone stale or its source URL has died, Paybacker blocks the send and
+            surfaces a fresh alternative &mdash; so no letter ever cites
+            yesterday&rsquo;s law.
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ----- 03 · Money Hub ----- */}
+      <section className="feature-section section-light" id="money-hub">
+        <div className="wrap">
+          <div className="feature-grid">
+            <Reveal className="feature-copy">
+              <h2 className="feature-title">Money Hub</h2>
+              <p className="feature-tagline">
+                Every account, every bill, every trend — in one view.
+              </p>
+              <p>
+                Connect your bank via Open Banking (Yapily, FCA-authorised).
+                Read-only, bank-grade, never stored longer than needed.
+              </p>
+              <ul className="feature-bullets">
+                <li>Transactions auto-categorised across 20+ spend buckets</li>
+                <li>Budgets, savings goals, income tracking, net worth</li>
+                <li>Daily sync on Essential. Unlimited accounts on Pro.</li>
+                <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan) — ask &ldquo;did I get paid?&rdquo;, check balances, see recent transactions.</li>
+              </ul>
+              <div className="feature-cta-row">
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fmoney-hub">
+                  Connect your bank →
+                </Link>
+              </div>
+            </Reveal>
+            <Reveal className="feature-stage" delay={120}>
+              <MoneyHubDemo />
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ----- 04 · Subscriptions tracker (alt bg; copy above demo) ----- */}
+      <section
+        className="feature-section feature-section--alt"
+        id="subscriptions"
+      >
+        <div className="wrap">
+          <div className="feature-grid">
+            <Reveal className="feature-copy">
+              <h2 className="feature-title">Subscriptions Tracker</h2>
+              <p className="feature-tagline">
+                Every fixed outgoing — surfaced, sorted, cancelled with one tap.
+              </p>
+              <p>
+                Auto-detects every subscription, direct debit and recurring
+                charge. Flags price rises, duplicates, and forgotten trials.
+                When you&apos;re ready to walk away, we draft the letter, address
+                it to the right team, and track their reply in Disputes for you.
+              </p>
+              <ul className="feature-bullets">
+                <li>One-tap cancellation — letter drafted with UK consumer law, pre-addressed to the provider&apos;s cancellation team</li>
+                <li>Auto-reply tracking — Watchdog picks up the provider&apos;s response from your inbox and progresses the dispute without you chasing</li>
+                <li>Renewal reminders 30, 14 and 7 days before charge</li>
+                <li>Contract end-date tracking for broadband, energy &amp; mobile</li>
+                <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan).</li>
+              </ul>
+              <div className="feature-cta-row">
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fsubscriptions">
+                  See every subscription →
+                </Link>
+              </div>
+            </Reveal>
+            <Reveal className="feature-stage" delay={120}>
+              <SubscriptionsDemo />
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ----- 05 · Export hub ----- */}
+      <section className="feature-section section-light" id="export">
+        <div className="wrap">
+          <div className="feature-grid">
+            <Reveal className="feature-copy">
+              <h2 className="feature-title">Export Hub</h2>
+              <p className="feature-tagline">
+                Live-sync to Google Sheets. Or one-shot CSV, Excel, PDF.
+              </p>
+              <p>
+                Your money is your data. Export it anywhere — including live
+                spreadsheets that update as your bank moves.
+              </p>
+              <ul className="feature-bullets">
+                <li>Google Sheets live sync (bi-directional)</li>
+                <li>CSV, Excel and PDF statements by month or category</li>
+                <li>Accountant-ready annual exports for self-assessment</li>
+              </ul>
+              <div className="feature-cta-row">
+                <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fexport">
+                  Export your money →
+                </Link>
+              </div>
+            </Reveal>
+            <Reveal className="feature-stage" delay={120}>
+              <ExportDemo />
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
       {/* ========== Real win — OneStream broadband ========== */}
       {/* Real Paybacker case used here as social-proof + ROI proof
           point. Sits after the trust band so credentials → real proof
@@ -1013,7 +1279,7 @@ export default function HomepageV3PreviewPage() {
             </h2>
             <p>
               Two flats. 35 days and 17 days without broadband. The provider offered
-              roughly 1.5 months&rsquo; rental as &ldquo;goodwill&rdquo;. Paybacker
+              roughly 1.5 months&rsquo; service charges as &ldquo;goodwill&rdquo;. Paybacker
               cited the Ofcom Voluntary Automatic Compensation Scheme — £10.07 per
               calendar day from day three of an outage — plus £31.19 per missed
               engineer appointment. The gap is £398.50.
@@ -1025,8 +1291,8 @@ export default function HomepageV3PreviewPage() {
               <div className="real-win__label">What the supplier offered</div>
               <div className="real-win__amount">£106.96</div>
               <ul className="real-win__list">
-                <li>1 month rental on Flat 2 — £38.65</li>
-                <li>1.5 months rental on Flat 1 — £68.31</li>
+                <li>1 month of service charges on Flat 2 — £38.65</li>
+                <li>1.5 months of service charges on Flat 1 — £68.31</li>
                 <li>Framed as &ldquo;goodwill&rdquo;, not entitlement</li>
                 <li>No mention of Ofcom Auto-Comp Scheme</li>
                 <li>No allowance for missed engineer visits</li>
@@ -1087,183 +1353,158 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
-      {/* ========== Features intro ========== */}
-      <section className="features-intro section-light" id="features">
+      {/* ========== vs Solicitors / Claims firms ==========
+          Strategic positioning: Paybacker replaces the legal-services
+          spend (solicitors at £250/hr, claims firms taking 30%), not
+          another budgeting app. This block sits straight after the
+          case study so the reader has the proof first, then the
+          alternative-cost framing. Re-uses .pricing-grid + .price-card
+          so it inherits the responsive stacking already wired into the
+          mobile breakpoint. */}
+      <section className="pricing-section section-light" id="vs-claims-firms" aria-label="Paybacker vs claims management firms">
         <div className="wrap">
           <Reveal className="section-head section-head--center">
-            <span className="eyebrow">What&rsquo;s in the box</span>
-            <h2>
-              Seven tools. One subscription.
+            <span className="eyebrow">The category we replace</span>
+            <h2 style={{ margin: '12px 0' }}>
+              Why people pay solicitors and claims firms —
               <br />
-              Every £ you overpay — found, disputed, cancelled.
+              and why you don&rsquo;t need to.
             </h2>
             <p>
-              Most UK households are overcharged by £1,000+ a year. Paybacker
-              finds it, disputes it, and cancels it — in minutes, not hours on
-              hold.
+              The same dispute, three ways to run it. Same UK statutes
+              cited. Wildly different price tag.
             </p>
           </Reveal>
-        </div>
-      </section>
 
-      {/* ----- 01 · AI Disputes Centre (copy + demo merged) ----- */}
-      <section className="feature-section section-light" id="disputes">
-        <div className="wrap">
-          <div className="feature-grid">
-            <Reveal className="feature-copy">
-              <h2 className="feature-title">AI Disputes Centre</h2>
-              <p className="feature-tagline">
-                Draft a UK-law-cited complaint in 30 seconds.
-              </p>
-              <p>
-                Type one sentence — Paybacker writes the formal letter, cites
-                the exact regulation, and sends it on your behalf.
-              </p>
-              <ul className="feature-bullets">
-                <li>Consumer Rights Act 2015, Ofcom, Ofgem, UK261, DVSA, HMRC</li>
-                <li>Energy, broadband, parking, flight delays, council tax</li>
-                <li>3 free letters / month. Unlimited on Essential and Pro.</li>
+          <div className="pricing-grid">
+            <Reveal className="price-card" delay={0}>
+              <div className="tier">Solicitor</div>
+              <div className="price">£250<span className="per">/hour</span></div>
+              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
+              <ul>
+                <li>Books a 30-minute consultation</li>
+                <li>You repeat the facts on the call</li>
+                <li>Drafts one letter, then bills you</li>
+                <li>Forgets to chase the response</li>
+                <li>Won&rsquo;t take cases under £1,000</li>
               </ul>
-              <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
-                  Try it free →
-                </Link>
-              </div>
             </Reveal>
-            <Reveal className="feature-stage" delay={120}>
-              <DisputesDemo />
+
+            <Reveal className="price-card" delay={80}>
+              <div className="tier">Claims management firm</div>
+              <div className="price">30%<span className="per">of recovery</span></div>
+              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
+              <ul>
+                <li>Takes a third of whatever you recover</li>
+                <li>Cherry-picks high-value cases only</li>
+                <li>Drops you if your claim is under £200</li>
+                <li>You sign over conduct of the case</li>
+                <li>Often run by ex-PPI shops, not consumer rights experts</li>
+              </ul>
+            </Reveal>
+
+            <Reveal className="price-card featured" delay={160}>
+              <span className="ribbon">You keep 100%</span>
+              <div className="tier">Paybacker</div>
+              <div className="price">£4.99<span className="per">/month</span></div>
+              <div className="founding">Or use the free tier — 3 letters / month</div>
+              <ul>
+                <li>Drafts the letter in 30 seconds</li>
+                <li>Cites the exact UK statute, not a template</li>
+                <li>Tracks the response in your inbox automatically</li>
+                <li>Escalates to the Ombudsman when the 8-week clock hits</li>
+                <li>You keep 100% of every £ recovered</li>
+              </ul>
+              <Link className="btn btn-mint cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
+                Start free →
+              </Link>
             </Reveal>
           </div>
+
+          <p className="compare-footnote" style={{ marginTop: 24 }}>
+            Paybacker is not a law firm and AI-generated letters are guidance,
+            not legal advice. For complex litigation, instruct a solicitor.
+            For everyday consumer disputes — broadband, energy, parking,
+            flights, faulty goods — paying £250/hour is the part we&rsquo;re
+            replacing.
+          </p>
         </div>
       </section>
 
-      {/* ----- 02 · Pocket Agent (dark; copy above demo) ----- */}
-      <section className="feature-section feature-section--ink" id="pocket-agent">
+      {/* ========== How it works (dark) ========== */}
+      <section className="how-section section-ink" id="how">
         <div className="wrap">
-          <div className="feature-grid">
-            <Reveal className="feature-copy">
-              <h2 className="feature-title">Pocket Agent</h2>
-              <p className="feature-tagline">
-                Your AI money agent, in Telegram.
-              </p>
+          <Reveal className="section-head">
+            <span className="eyebrow on-ink">How it works</span>
+            <h2>
+              Three steps. Ten minutes.
+              <br />
+              Usually four-figure savings.
+            </h2>
+            <p className="sub">
+              You don&rsquo;t have to connect anything to see it work. Try the
+              Disputes Centre for free — no account needed.
+            </p>
+          </Reveal>
+
+          <div className="how-steps">
+            <Reveal className="how-step" delay={0}>
+              <div className="num">01</div>
+              <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
               <p>
-                Ask anything. Fix anything. &ldquo;Is my energy bill fair?&rdquo;
-                &ldquo;Cancel my gym.&rdquo; &ldquo;Dispute my parking ticket.&rdquo;
-                Done — from your phone.
+                Pick the category, type a sentence. We cite the law, you send the
+                letter.
               </p>
-              <ul className="feature-bullets">
-                <li>Reads your transactions, emails and contracts securely</li>
-                <li>Acts for you: drafts letters, queues cancellations</li>
-                <li>Telegram today · WhatsApp &amp; SMS on the roadmap</li>
-              </ul>
-              <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
-                  Connect Telegram →
-                </Link>
+              <HeroDemo />
+            </Reveal>
+
+            <Reveal className="how-step" delay={80}>
+              <div className="num">02</div>
+              <h3>Connect your bank and email to find hidden costs.</h3>
+              <p>Open Banking via Yapily. Read-only. Never stored longer than needed.</p>
+              <div className="bank-list">
+                <div className="bank-row"><span className="n">Monzo · main</span><span className="v">Connected</span></div>
+                <div className="bank-row"><span className="n">Barclays · joint</span><span className="v">Connected</span></div>
+                <div className="bank-row"><span className="n">Chase · savings</span><span className="v">Connected</span></div>
+                <div className="bank-row"><span className="n">Gmail · inbox scan</span><span className="v orange">3 hikes</span></div>
+                <div className="bank-row"><span className="n">Outlook · work</span><span className="v orange">1 duplicate</span></div>
               </div>
             </Reveal>
-            <Reveal className="feature-stage" delay={120}>
-              <PocketAgentDemo />
+
+            <Reveal className="how-step" delay={160}>
+              <div className="num">03</div>
+              <h3>We escalate the dispute end-to-end — provider, then Ombudsman.</h3>
+              <p>Watchdog reads the provider&rsquo;s reply, escalates after 8 weeks if needed, and tracks every step. You keep 100% of what we recover.</p>
+              <div style={{ marginTop: 'auto' }}>
+                <div className="deal-row">
+                  <div>
+                    <div className="cat">Step 1</div>
+                    <div className="name">Provider escalation</div>
+                  </div>
+                  <div className="save">Auto</div>
+                </div>
+                <div className="deal-row">
+                  <div>
+                    <div className="cat">Step 2</div>
+                    <div className="name">Ombudsman at 8 weeks</div>
+                  </div>
+                  <div className="save">Auto</div>
+                </div>
+                <div className="deal-row">
+                  <div>
+                    <div className="cat">Step 3</div>
+                    <div className="name">Refund recovered</div>
+                  </div>
+                  <div className="save">100% yours</div>
+                </div>
+              </div>
             </Reveal>
           </div>
-        </div>
-      </section>
 
-      {/* ----- 03 · Money Hub ----- */}
-      <section className="feature-section section-light" id="money-hub">
-        <div className="wrap">
-          <div className="feature-grid">
-            <Reveal className="feature-copy">
-              <h2 className="feature-title">Money Hub</h2>
-              <p className="feature-tagline">
-                Every account, every bill, every trend — in one view.
-              </p>
-              <p>
-                Connect your bank via Open Banking (Yapily, FCA-authorised).
-                Read-only, bank-grade, never stored longer than needed.
-              </p>
-              <ul className="feature-bullets">
-                <li>Transactions auto-categorised across 20+ spend buckets</li>
-                <li>Budgets, savings goals, income tracking, net worth</li>
-                <li>Daily sync on Essential. Unlimited accounts on Pro.</li>
-              </ul>
-              <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
-                  Connect your bank →
-                </Link>
-              </div>
-            </Reveal>
-            <Reveal className="feature-stage" delay={120}>
-              <MoneyHubDemo />
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
-      {/* ----- 04 · Subscriptions tracker (alt bg; copy above demo) ----- */}
-      <section
-        className="feature-section feature-section--alt"
-        id="subscriptions"
-      >
-        <div className="wrap">
-          <div className="feature-grid">
-            <Reveal className="feature-copy">
-              <h2 className="feature-title">Subscriptions Tracker</h2>
-              <p className="feature-tagline">
-                Every fixed outgoing — surfaced, sorted, cancelled with one tap.
-              </p>
-              <p>
-                Auto-detects every subscription, direct debit and recurring
-                charge. Flags price rises, duplicates, and forgotten trials.
-                When you&apos;re ready to walk away, we draft the letter, address
-                it to the right team, and track their reply in Disputes for you.
-              </p>
-              <ul className="feature-bullets">
-                <li>One-tap cancellation — letter drafted with UK consumer law, pre-addressed to the provider&apos;s cancellation team</li>
-                <li>Auto-reply tracking — Watchdog picks up the provider&apos;s response from your inbox and progresses the dispute without you chasing</li>
-                <li>Renewal reminders 30, 14 and 7 days before charge</li>
-                <li>Contract end-date tracking for broadband, energy &amp; mobile</li>
-              </ul>
-              <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
-                  See every subscription →
-                </Link>
-              </div>
-            </Reveal>
-            <Reveal className="feature-stage" delay={120}>
-              <SubscriptionsDemo />
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
-      {/* ----- 05 · Export hub ----- */}
-      <section className="feature-section section-light" id="export">
-        <div className="wrap">
-          <div className="feature-grid">
-            <Reveal className="feature-copy">
-              <h2 className="feature-title">Export Hub</h2>
-              <p className="feature-tagline">
-                Live-sync to Google Sheets. Or one-shot CSV, Excel, PDF.
-              </p>
-              <p>
-                Your money is your data. Export it anywhere — including live
-                spreadsheets that update as your bank moves.
-              </p>
-              <ul className="feature-bullets">
-                <li>Google Sheets live sync (bi-directional)</li>
-                <li>CSV, Excel and PDF statements by month or category</li>
-                <li>Accountant-ready annual exports for self-assessment</li>
-              </ul>
-              <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/auth/signup">
-                  Export your money →
-                </Link>
-              </div>
-            </Reveal>
-            <Reveal className="feature-stage" delay={120}>
-              <ExportDemo />
-            </Reveal>
+          <div className="how-cta-row">
+            <Link className="btn btn-mint" href="/auth/signup">
+              Try it free — no account needed
+            </Link>
           </div>
         </div>
       </section>
@@ -1285,7 +1526,7 @@ export default function HomepageV3PreviewPage() {
                 <li>UK banks via Yapily</li>
                 <li>Gmail / Outlook inbox scan</li>
                 <li>Manual subscription add</li>
-                <li>Telegram commands</li>
+                <li>WhatsApp + Telegram commands</li>
                 <li>Dispute form (web or chat)</li>
               </ul>
             </div>
@@ -1324,7 +1565,8 @@ export default function HomepageV3PreviewPage() {
               <div className="arch-label arch-label--mint">Outputs</div>
               <ul className="arch-list">
                 <li>Web app — Money Hub + Disputes</li>
-                <li>Telegram Pocket Agent</li>
+                <li>WhatsApp Pocket Agent (Pro)</li>
+                <li>Telegram Pocket Agent (free)</li>
                 <li>Complaint letters (copy/email/PDF)</li>
                 <li>Google Sheets live sync</li>
                 <li>Deep-links to cancel / switch</li>
@@ -1384,7 +1626,7 @@ export default function HomepageV3PreviewPage() {
                   <td className="us">5+ statutes</td>
                 </tr>
                 <tr>
-                  <td>Telegram / chat agent</td>
+                  <td>WhatsApp + Telegram Pocket Agent</td>
                   <td><span className="x">—</span></td>
                   <td><span className="x">—</span></td>
                   <td><span className="x">—</span></td>
@@ -1428,84 +1670,6 @@ export default function HomepageV3PreviewPage() {
             we&rsquo;ve missed? Email{' '}
             <a href="mailto:hello@paybacker.co.uk">hello@paybacker.co.uk</a>.
           </p>
-        </div>
-      </section>
-
-      {/* ========== How it works (dark) ========== */}
-      <section className="how-section section-ink" id="how">
-        <div className="wrap">
-          <Reveal className="section-head">
-            <span className="eyebrow on-ink">How it works</span>
-            <h2>
-              Three steps. Ten minutes.
-              <br />
-              Usually four-figure savings.
-            </h2>
-            <p className="sub">
-              You don&rsquo;t have to connect anything to see it work. Try the
-              Disputes Centre for free — no account needed.
-            </p>
-          </Reveal>
-
-          <div className="how-steps">
-            <Reveal className="how-step" delay={0}>
-              <div className="num">01</div>
-              <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
-              <p>
-                Pick the category, type a sentence. We cite the law, you send the
-                letter.
-              </p>
-              <HeroDemo />
-            </Reveal>
-
-            <Reveal className="how-step" delay={80}>
-              <div className="num">02</div>
-              <h3>Connect your bank and email to find hidden costs.</h3>
-              <p>Open Banking via Yapily. Read-only. Never stored longer than needed.</p>
-              <div className="bank-list">
-                <div className="bank-row"><span className="n">Monzo · main</span><span className="v">Connected</span></div>
-                <div className="bank-row"><span className="n">Barclays · joint</span><span className="v">Connected</span></div>
-                <div className="bank-row"><span className="n">Chase · savings</span><span className="v">Connected</span></div>
-                <div className="bank-row"><span className="n">Gmail · inbox scan</span><span className="v orange">3 hikes</span></div>
-                <div className="bank-row"><span className="n">Outlook · work</span><span className="v orange">1 duplicate</span></div>
-              </div>
-            </Reveal>
-
-            <Reveal className="how-step" delay={160}>
-              <div className="num">03</div>
-              <h3>Get personalised recommendations from 53+ verified UK partners.</h3>
-              <p>We only show deals that beat your current bill. No sponsored nonsense.</p>
-              <div style={{ marginTop: 'auto' }}>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Broadband</div>
-                    <div className="name">Fibre 150 · 24mo</div>
-                  </div>
-                  <div className="save">Save £432</div>
-                </div>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Energy</div>
-                    <div className="name">Octopus Tracker</div>
-                  </div>
-                  <div className="save">Save £287</div>
-                </div>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Mobile</div>
-                    <div className="name">20GB 5G · SIM only</div>
-                  </div>
-                  <div className="save">Save £156</div>
-                </div>
-              </div>
-            </Reveal>
-          </div>
-
-          <div className="how-cta-row">
-            <Link className="btn btn-mint" href="/auth/signup">
-              Try it free — no account needed
-            </Link>
-          </div>
         </div>
       </section>
 
@@ -1562,7 +1726,7 @@ export default function HomepageV3PreviewPage() {
                 <li>2 bank accounts · daily auto-sync</li>
                 <li>1 email inbox · Watchdog reply monitoring</li>
                 <li>Unlimited subscription tracker</li>
-                <li>Pocket Agent + AI chatbot</li>
+                <li>Telegram Pocket Agent + AI chatbot — free on every plan</li>
               </ul>
               <Link className="btn btn-ghost cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
                 Start free →
@@ -1581,6 +1745,7 @@ export default function HomepageV3PreviewPage() {
                 <li>AI cancellation emails + renewal reminders</li>
                 <li>Full spending intelligence + budgets</li>
                 <li>Price-increase alerts by email</li>
+                <li>Telegram Pocket Agent included</li>
               </ul>
               <Link className="btn btn-mint cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
                 Get Essential →
@@ -1594,7 +1759,18 @@ export default function HomepageV3PreviewPage() {
               <ul>
                 <li>Everything in Essential</li>
                 <li>Unlimited bank &amp; email connections</li>
-                <li>Price-increase alerts via Telegram (instant)</li>
+                <li><strong>WhatsApp Pocket Agent</strong> (Pro-only) — your caseworker on chat 24/7:
+                  <ul style={{ marginTop: 6 }}>
+                    <li>Better-deal alerts when a cheaper tariff is found</li>
+                    <li>Instant price-increase alerts</li>
+                    <li>Read &amp; reply to merchant correspondence on the move</li>
+                    <li>&ldquo;Did I get paid?&rdquo; balance &amp; transaction queries</li>
+                    <li>Money-received income alerts</li>
+                    <li>Bill-due reminders + FCA 8-week clock alerts on open disputes</li>
+                    <li>Dispute Agent next-step prompts (approve / override / snooze)</li>
+                    <li>Quick search across UK consumer-rights references</li>
+                  </ul>
+                </li>
                 <li>Money Hub top merchants + transaction analysis</li>
                 <li>Paybacker MCP (Claude Desktop)</li>
                 <li>CSV / PDF export · priority support</li>
@@ -1611,31 +1787,21 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
-      {/* ========== Testimonials ========== */}
-      <section className="testimonials-section section-light" id="testimonials">
-        <Reveal className="testimonials-head">
-          <span className="eyebrow">Honest words from real users</span>
-          <h2>
-            What the money
-            <br />
-            we found meant for them.
-          </h2>
-        </Reveal>
-        <Testimonials />
-      </section>
-
       {/* ========== Developer · MCP ========== */}
       <section className="mcp-section section-ink" id="mcp">
         <div className="wrap">
           <Reveal className="section-head">
-            <span className="pill-pro">Pro plan</span>
-            <span className="eyebrow on-ink">Developer · MCP</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+              <span className="pill-pro" style={{ marginBottom: 0 }}>Pro plan</span>
+              <span aria-hidden="true" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>·</span>
+              <span className="eyebrow on-ink" style={{ marginBottom: 0 }}>Developer tools — MCP server</span>
+            </div>
             <h2>
               Talk to your money
               <br />
               from Claude Desktop.
             </h2>
-            <p className="sub">
+            <p className="sub" style={{ color: 'var(--text-on-ink)' }}>
               The Paybacker MCP server gives Claude direct read-only access to your
               transactions, hikes, and savings opportunities. Available on Pro.
             </p>
@@ -1702,9 +1868,9 @@ export default function HomepageV3PreviewPage() {
             </div>
             <div className="footer-col">
               <h5>Product</h5>
-              <a href="#features">Disputes Centre</a>
-              <a href="#features">Money Hub</a>
-              <a href="#features">Pocket Agent</a>
+              <a href="#disputes">Disputes Centre</a>
+              <a href="#money-hub">Money Hub</a>
+              <a href="#pocket-agent">Pocket Agent</a>
               <a href="#deals">Deals</a>
               <Link href="/templates">Letter templates</Link>
               <Link href="/pricing">Pricing</Link>
@@ -1721,6 +1887,8 @@ export default function HomepageV3PreviewPage() {
               <h5>Legal</h5>
               <Link href="/privacy-policy">Privacy</Link>
               <Link href="/terms-of-service">Terms</Link>
+              <Link href="/legal/methodology">Methodology</Link>
+              <Link href="/legal/ethics-code">Ethics Code</Link>
               <Link href="/cookie-policy">Cookies</Link>
               <Link href="/ico-notice">ICO notice</Link>
             </div>
