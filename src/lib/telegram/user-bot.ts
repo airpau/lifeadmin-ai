@@ -17,6 +17,27 @@ import { telegramTools } from './tools';
 import { executeToolCall, type PendingAction } from './tool-handlers';
 import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
 import { handleConfirmationReply, isAwaitingConfirmation } from '@/lib/support/confirmation-reply';
+import { logAlertInteraction } from '@/lib/alert-interactions';
+
+/**
+ * Telegram callback handlers operate on chat_id; the user_id we need
+ * for alert_interactions lives in telegram_sessions. Resolve once per
+ * callback. Returns null if no active session (logging is skipped).
+ *
+ * Typed `any` for the client because we receive either the project's
+ * service-role client or the supabase-js generic client, and the
+ * supabase typings here diverge across the call sites.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function lookupTelegramUserId(supabase: any, chatId: number): Promise<string | null> {
+  const { data } = await supabase
+    .from('telegram_sessions')
+    .select('user_id')
+    .eq('telegram_chat_id', chatId)
+    .eq('is_active', true)
+    .maybeSingle();
+  return (data as { user_id?: string } | null)?.user_id ?? null;
+}
 
 // ============================================================
 // Supabase admin client
@@ -694,6 +715,16 @@ export function createUserBot(): Bot<UserBotContext> {
     // Delete pending action
     await supabase.from('telegram_pending_actions').delete().eq('id', actionId);
 
+    void logAlertInteraction({
+      userId: pending.user_id,
+      alertType: 'dispute',
+      alertKey: dispute?.id ?? actionId,
+      action: 'acted',
+      surface: 'telegram',
+      metadata: { provider: payload.provider, reason: 'letter_approved' },
+      client: supabase,
+    });
+
     await safeEdit(
       bot.api,
       chatId,
@@ -729,7 +760,26 @@ export function createUserBot(): Bot<UserBotContext> {
     const msgId = ctx.update.callback_query?.message?.message_id;
     const supabase = getAdmin();
 
+    const { data: pending } = await supabase
+      .from('telegram_pending_actions')
+      .select('user_id, payload')
+      .eq('id', actionId)
+      .maybeSingle();
+
     await supabase.from('telegram_pending_actions').delete().eq('id', actionId);
+
+    if (pending?.user_id) {
+      void logAlertInteraction({
+        userId: pending.user_id,
+        alertType: 'dispute',
+        alertKey: actionId,
+        action: 'dismissed',
+        surface: 'telegram',
+        metadata: { reason: 'letter_cancelled' },
+        client: supabase,
+      });
+    }
+
     if (chatId) {
       await safeEdit(bot.api, chatId, msgId, 'Letter cancelled. Send me a message if you want to try again.');
     }
@@ -1195,7 +1245,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
       // Fetch the issue so we can also update the linked subscription
       const { data: issue } = await supabase
         .from('detected_issues')
-        .select('source_id, source_type')
+        .select('source_id, source_type, issue_type, user_id, created_at')
         .eq('id', issueId)
         .single();
 
@@ -1204,6 +1254,18 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .from('detected_issues')
         .update({ status: 'dismissed' })
         .eq('id', issueId);
+
+      if (issue?.user_id) {
+        void logAlertInteraction({
+          userId: issue.user_id,
+          alertType: 'detected_issues',
+          alertKey: issueId,
+          action: 'dismissed',
+          surface: 'telegram',
+          metadata: { issue_type: issue.issue_type, source_type: issue.source_type },
+          client: supabase,
+        });
+      }
 
       // If this alert is linked to a subscription, set dismissed_at on the subscription too.
       // The renewal-reminders email cron filters .is('dismissed_at', null) — so this
@@ -1241,10 +1303,28 @@ Return JSON: { "subject": "...", "body": "..." }`;
     if (!chatId) return;
 
     try {
+      const { data: issue } = await supabase
+        .from('detected_issues')
+        .select('user_id, issue_type')
+        .eq('id', issueId)
+        .maybeSingle();
+
       await supabase
         .from('detected_issues')
         .update({ status: 'snoozed', snooze_until: snoozeUntil.toISOString() })
         .eq('id', issueId);
+
+      if (issue?.user_id) {
+        void logAlertInteraction({
+          userId: issue.user_id,
+          alertType: 'detected_issues',
+          alertKey: issueId,
+          action: 'snoozed',
+          surface: 'telegram',
+          metadata: { issue_type: issue.issue_type, snooze_days: 7 },
+          client: supabase,
+        });
+      }
 
       await safeEdit(bot.api, chatId, msgId, `Snoozed 7 days ✓ — I'll remind you again on ${snoozeLabel}.`);
     } catch (err) {
@@ -1266,7 +1346,26 @@ Return JSON: { "subject": "...", "body": "..." }`;
     if (!chatId) return;
     const supabase = getAdmin();
     try {
+      const { data: issue } = await supabase
+        .from('detected_issues')
+        .select('user_id, issue_type')
+        .eq('id', issueId)
+        .maybeSingle();
+
       await supabase.from('detected_issues').update({ status: 'dismissed' }).eq('id', issueId);
+
+      if (issue?.user_id) {
+        void logAlertInteraction({
+          userId: issue.user_id,
+          alertType: 'price_increase',
+          alertKey: issueId,
+          action: 'acted',
+          surface: 'telegram',
+          metadata: { issue_type: issue.issue_type, reason: 'accepted_increase' },
+          client: supabase,
+        });
+      }
+
       await safeEdit(bot.api, chatId, msgId, "✅ Accepted — I won't alert you about this increase again.");
     } catch (err) {
       console.error('[UserBot] accept_increase_ error:', err);
@@ -1702,7 +1801,26 @@ Return JSON: { "subject": "...", "body": "..." }`;
     if (!chatId) return;
     const supabase = getAdmin();
     try {
+      const { data: alert } = await supabase
+        .from('telegram_pending_alerts')
+        .select('alert_type, provider_name, created_at')
+        .eq('id', alertId)
+        .maybeSingle();
       await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+
+      const userId = await lookupTelegramUserId(supabase, chatId);
+      if (userId) {
+        void logAlertInteraction({
+          userId,
+          alertType: (alert?.alert_type ?? 'notification') as never,
+          alertKey: alertId,
+          action: 'dismissed',
+          surface: 'telegram',
+          metadata: { provider: alert?.provider_name ?? null },
+          client: supabase,
+        });
+      }
+
       await safeEdit(bot.api, chatId, msgId, "Dismissed ✓");
     } catch (err) {
       console.error('[UserBot] palert_dismiss_ error:', err);
@@ -1717,11 +1835,33 @@ Return JSON: { "subject": "...", "body": "..." }`;
     if (!chatId) return;
     const supabase = getAdmin();
     try {
+      const { data: alerts } = await supabase
+        .from('telegram_pending_alerts')
+        .select('id, alert_type, provider_name')
+        .eq('telegram_chat_id', chatId)
+        .eq('status', 'pending');
+
       await supabase
         .from('telegram_pending_alerts')
         .update({ status: 'dismissed' })
         .eq('telegram_chat_id', chatId)
         .eq('status', 'pending');
+
+      const userId = await lookupTelegramUserId(supabase, chatId);
+      if (userId && alerts?.length) {
+        for (const a of alerts) {
+          void logAlertInteraction({
+            userId,
+            alertType: (a.alert_type ?? 'notification') as never,
+            alertKey: a.id,
+            action: 'dismissed',
+            surface: 'telegram',
+            metadata: { provider: a.provider_name ?? null, batch: true },
+            client: supabase,
+          });
+        }
+      }
+
       await safeEdit(bot.api, chatId, msgId, "All dismissed ✓");
     } catch (err) {
       console.error('[UserBot] palert_dismiss_all error:', err);
@@ -1738,6 +1878,18 @@ Return JSON: { "subject": "...", "body": "..." }`;
     const supabase = getAdmin();
     try {
       await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+      const userId = await lookupTelegramUserId(supabase, chatId);
+      if (userId) {
+        void logAlertInteraction({
+          userId,
+          alertType: 'price_increase',
+          alertKey: alertId,
+          action: 'acted',
+          surface: 'telegram',
+          metadata: { reason: 'accepted_increase' },
+          client: supabase,
+        });
+      }
       await safeEdit(bot.api, chatId, msgId, "✅ Accepted — I won't alert you about this increase again.");
     } catch (err) {
       console.error('[UserBot] palert_accept_ error:', err);
@@ -1754,6 +1906,18 @@ Return JSON: { "subject": "...", "body": "..." }`;
     const supabase = getAdmin();
     try {
       await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+      const userId = await lookupTelegramUserId(supabase, chatId);
+      if (userId) {
+        void logAlertInteraction({
+          userId,
+          alertType: 'budget',
+          alertKey: alertId,
+          action: 'acted',
+          surface: 'telegram',
+          metadata: { reason: 'marked_paid' },
+          client: supabase,
+        });
+      }
       await safeEdit(bot.api, chatId, msgId, "✅ Got it — marked as paid.");
     } catch (err) {
       console.error('[UserBot] palert_paid_ error:', err);
@@ -1790,6 +1954,17 @@ Return JSON: { "subject": "...", "body": "..." }`;
         detected_at:  new Date().toISOString(),
       });
       await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+
+      void logAlertInteraction({
+        userId: session.user_id,
+        alertType: 'subscription',
+        alertKey: alertId,
+        action: 'acted',
+        surface: 'telegram',
+        metadata: { provider: alert.provider_name ?? null, reason: 'added_to_subscriptions' },
+        client: supabase,
+      });
+
       await safeEdit(bot.api, chatId, msgId, `✅ ${alert.provider_name ?? 'Subscription'} added to your subscriptions.`);
     } catch (err) {
       console.error('[UserBot] palert_add_sub_ error:', err);

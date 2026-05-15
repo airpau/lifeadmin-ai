@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { awardPoints } from '@/lib/loyalty';
 import { learnFromCorrection, normalisePattern } from '@/lib/learning-engine';
+import { logAlertInteraction } from '@/lib/alert-interactions';
 
 export async function PATCH(
   request: NextRequest,
@@ -52,6 +53,34 @@ export async function PATCH(
 
     if (error) throw error;
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    // Subscription marked cancelled → log as an 'acted' interaction
+    // on the unused_subscription / subscription alert track.
+    if (body.status === 'cancelled' && original) {
+      void logAlertInteraction({
+        userId: user.id,
+        alertType: 'subscription',
+        alertKey: id,
+        action: 'acted',
+        surface: 'web',
+        metadata: {
+          provider: data.provider_name,
+          amount: data.amount,
+          billing_cycle: data.billing_cycle,
+          reason: 'marked_cancelled',
+        },
+      });
+    }
+    if (body.dismissed_at && original) {
+      void logAlertInteraction({
+        userId: user.id,
+        alertType: 'subscription',
+        alertKey: id,
+        action: 'dismissed',
+        surface: 'web',
+        metadata: { provider: data.provider_name },
+      });
+    }
 
     // Award loyalty points and track savings when subscription is cancelled
     if (body.status === 'cancelled' && original) {
@@ -197,6 +226,14 @@ export async function DELETE(
     });
 
     if (error) throw error;
+
+    void logAlertInteraction({
+      userId: user.id,
+      alertType: 'subscription',
+      alertKey: id,
+      action: 'dismissed',
+      surface: 'web',
+    });
 
     return NextResponse.json({ success: true, ...totals });
   } catch (error: any) {

@@ -14,6 +14,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { logAlertInteraction } from '@/lib/alert-interactions';
 
 export const runtime = 'nodejs';
 
@@ -54,6 +55,15 @@ export async function POST(
     .eq('dispute_id', id)
     .is('read_at', null)
     .in('type', ['dispute_reply', 'dispute_reply_action']);
+
+  void logAlertInteraction({
+    userId: user.id,
+    alertType: 'dispute_reply',
+    alertKey: id,
+    action: 'viewed',
+    surface: 'web',
+    metadata: { unread_before: dispute.unread_reply_count ?? 0 },
+  });
 
   return NextResponse.json({ ok: true });
 }

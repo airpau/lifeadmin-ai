@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { logAlertInteraction } from '@/lib/alert-interactions';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +93,23 @@ export async function POST(
       .update({ agent_paused_until: until, next_agent_action_at: until })
       .eq('id', disputeId);
   }
+
+  // Log the agent-recommendation interaction so the learning loop sees
+  // approve / override / snooze rates on dispute-agent decisions.
+  void logAlertInteraction({
+    userId: user.id,
+    alertType: 'dispute_agent_recommendation',
+    alertKey: disputeId,
+    action: body.action === 'approve' ? 'acted' : body.action === 'snooze' ? 'snoozed' : 'dismissed',
+    surface: 'web',
+    metadata: {
+      decision_id: body.decision_id,
+      recommended_action: updatedDecision?.recommended_action,
+      override_target: body.override_target_action ?? null,
+      user_decision: body.action,
+    },
+    client: sb,
+  });
 
   if (body.action === 'approve' && updatedDecision?.to_state) {
     // Approving a recommendation locks in the agent's proposed state.

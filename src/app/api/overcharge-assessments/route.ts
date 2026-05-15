@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { runAssessment } from '@/lib/overcharge-engine';
+import { logAlertInteraction, responseTimeFrom } from '@/lib/alert-interactions';
 
 function getAdmin() {
   return createAdmin(
@@ -127,6 +128,17 @@ export async function PATCH(request: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  void logAlertInteraction({
+    userId: user.id,
+    alertType: 'overcharge',
+    alertKey: id,
+    action: status === 'dismissed' ? 'dismissed' : 'acted',
+    responseTimeSeconds: responseTimeFrom(data?.created_at),
+    surface: 'web',
+    metadata: data?.merchant_name ? { merchant: data.merchant_name, score: data.overcharge_score } : null,
+    client: admin,
+  });
 
   return NextResponse.json({ assessment: data });
 }
