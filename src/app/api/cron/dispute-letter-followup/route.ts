@@ -88,6 +88,71 @@ async function getProviderName(supabase: ReturnType<typeof getAdmin>, disputeId:
   return data?.provider_name || 'your supplier';
 }
 
+/**
+ * Returns true when there is strong evidence the user has already
+ * actioned this draft, so the 1-hour "did you send the letter?" nudge
+ * would be a confusing duplicate.
+ *
+ * Bug Paul flagged 2026-05-16: he replied SAVE in WhatsApp, got the
+ * "Letter saved to your OneStream dispute timeline" confirmation, and
+ * an hour later the cron asked again — because the LLM sometimes
+ * replies inline ("Letter saved…") without actually calling the
+ * `record_letter_sent` tool, leaving pending_dispute_letters.status
+ * stuck on 'pending'. We now check the dispute itself for evidence:
+ *
+ *   1. A new ai_letter correspondence row inserted after drafted_at,
+ *   2. last_letter_sent_at >= drafted_at (set by recordLetterSent),
+ *   3. dispute moved past 'open' / 'draft' into awaiting_response,
+ *      escalated, or any terminal state (resolved_*, closed,
+ *      withdrawn, dismissed, dropped).
+ *
+ * Any one of these means the user already moved on — don't re-ask.
+ */
+async function alreadyHandled(
+  supabase: ReturnType<typeof getAdmin>,
+  disputeId: string,
+  draftedAt: string,
+): Promise<boolean> {
+  // 1. Look for an ai_letter correspondence row created since the draft.
+  const { count: letterCount } = await supabase
+    .from('correspondence')
+    .select('id', { count: 'exact', head: true })
+    .eq('dispute_id', disputeId)
+    .eq('entry_type', 'ai_letter')
+    .gte('created_at', draftedAt);
+  if ((letterCount ?? 0) > 0) return true;
+
+  // 2 + 3. Dispute status / last_letter_sent_at probe.
+  const { data: dispute } = await supabase
+    .from('disputes')
+    .select('status, last_letter_sent_at')
+    .eq('id', disputeId)
+    .maybeSingle();
+  if (!dispute) return false;
+
+  const terminalOrInFlight = new Set([
+    'awaiting_response',
+    'escalated',
+    'resolved_won',
+    'resolved_partial',
+    'resolved_lost',
+    'closed',
+    'withdrawn',
+    'dismissed',
+    'dropped',
+    'won',
+    'partial',
+    'lost',
+  ]);
+  if (terminalOrInFlight.has(dispute.status ?? '')) return true;
+
+  if (dispute.last_letter_sent_at && new Date(dispute.last_letter_sent_at) >= new Date(draftedAt)) {
+    return true;
+  }
+
+  return false;
+}
+
 function buildFollowupCopy(provider: string): string {
   return (
     `📤 Did you send the *${provider}* letter via email?\n\n` +
@@ -142,7 +207,27 @@ export async function GET(request: NextRequest) {
 
   let sent = 0;
   let skipped = 0;
+  let autoResolved = 0;
   for (const row of (due as PendingLetter[]) ?? []) {
+    // Re-check the dispute right before dispatching — the user may have
+    // already SAVED via the bot since this row was queued. Without this
+    // probe the LLM-misses-the-tool-call case produces a duplicate
+    // "did you send the letter?" message an hour after the inline
+    // "Letter saved" confirmation (Paul flagged 2026-05-16, OneStream).
+    if (await alreadyHandled(supabase, row.dispute_id, row.drafted_at)) {
+      await supabase
+        .from('pending_dispute_letters')
+        .update({
+          status: 'saved',
+          resolved_at: now.toISOString(),
+          followup_sent_at: now.toISOString(),
+        })
+        .eq('id', row.id)
+        .eq('status', 'pending');
+      autoResolved++;
+      continue;
+    }
+
     const provider = await getProviderName(supabase, row.dispute_id);
     const text = buildFollowupCopy(provider);
     const ok = await dispatchToUser(supabase, row.user_id, row.channel, text);
@@ -160,11 +245,11 @@ export async function GET(request: NextRequest) {
   await supabase.from('business_log').insert({
     category: sent > 0 ? 'action' : 'milestone',
     title: 'Dispute letter follow-up sweep',
-    content: `Sent ${sent} follow-ups, expired ${expired} drafts, skipped ${skipped}.`,
+    content: `Sent ${sent} follow-ups, expired ${expired} drafts, auto-resolved ${autoResolved} (already actioned), skipped ${skipped}.`,
     created_by: AGENT_ID,
   });
 
-  return NextResponse.json({ ok: true, sent, expired, skipped });
+  return NextResponse.json({ ok: true, sent, expired, autoResolved, skipped });
 }
 
 async function dispatchToUser(
