@@ -250,7 +250,7 @@
     },
     {
       "path": "/api/cron/telegram-weekly-summary",
-      "schedule": "0 8 * * 1"
+      "schedule": "0 8 * * 6"
     },
     {
       "path": "/api/cron/telegram-budget-alerts",

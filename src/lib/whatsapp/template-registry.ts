@@ -326,13 +326,14 @@ export const TEMPLATES = {
     proOnly: true,
     body: 'Your {{1}} connection has expired. Reconnect here: {{2}} — alerts pause until you do.',
   },
-  /** Sunday 9am weekly recovery digest */
+  /** Saturday 09:00 BST weekly recovery digest. Fired by
+   *  /api/cron/telegram-weekly-summary (schedule "0 8 * * 6"). */
   paybacker_recovery_total_weekly: {
     // Resubmission required — original body ended on `{{2}}`.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['amount_this_week', 'lifetime_amount'] as const,
-    description: 'Weekly recovery digest (Sunday 9am)',
+    description: 'Weekly recovery digest (Saturday 09:00 BST)',
     proOnly: true,
     body: 'This week Paybacker recovered £{{1}} for you. Lifetime total: £{{2}}. Tap to see the wins.',
   },

@@ -1,12 +1,28 @@
 /**
- * Telegram Weekly Summary Cron
+ * Telegram + WhatsApp Weekly Summary Cron
  *
- * Runs every Monday at 8am. Sends each linked Pro user a week-ahead lookahead:
- * - Bills due this week (from get_expected_bills RPC)
- * - Total outgoings for the week
- * - Contracts/subscriptions renewing in the next 30 days
+ * Runs every Saturday at 08:00 UTC (09:00 BST). Sends each linked Pro
+ * user the week-ahead lookahead + the weekly recovery digest:
  *
- * Data sourced exclusively from the same RPCs used by the Money Hub dashboard.
+ * Telegram (and inline WhatsApp pass):
+ *   - Bills due in the upcoming 7 days (get_expected_bills RPC)
+ *   - Total outgoings for the upcoming week
+ *   - Contracts/subscriptions ending in the next 30 days
+ *
+ * WhatsApp recovery digest (separate pass at the bottom of this route):
+ *   - £ recovered this week via Paybacker
+ *   - £ recovered lifetime
+ *   Sent via the `paybacker_recovery_total_weekly` UTILITY template
+ *   (Meta approval pending — see template-registry.ts).
+ *
+ * Schedule history: previously fired Mondays at 08:00 UTC. Moved to
+ * Saturdays on 2026-05-16 — Paul flagged that the Saturday recovery
+ * digest never went out because the cron was set to Monday. Saturday
+ * morning is the weekly recap slot per the Pro plan promise ("weekly
+ * recovery digest via WhatsApp").
+ *
+ * Data sourced exclusively from the same RPCs used by the Money Hub
+ * dashboard.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
