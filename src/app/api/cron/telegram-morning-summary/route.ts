@@ -138,7 +138,10 @@ async function buildMorningBrief(
   if (!txCount || txCount === 0) return null;
 
   const sections: string[] = [];
-  sections.push("*Good morning! Here's your daily money briefing:*");
+  // Divider used between major sections — a thin rule that renders the
+  // same in both Telegram and WhatsApp (no emoji-specific glyphs).
+  const DIVIDER = '\n\n────────';
+  sections.push("☀️ *Good morning!*\n_Your daily money briefing:_");
 
   // ------ 1. Yesterday's spending ------
   const EXCLUDE_CATS = new Set([
@@ -147,17 +150,29 @@ async function buildMorningBrief(
     'investment', 'investments', 'savings', 'pension',
     'income', 'fee_refund',
   ]);
+  // Fetch every yesterday-window debit across all of the user's
+  // connected banks (HSBC Business, Monzo, etc.). We deliberately do
+  // NOT filter by connection_id or account_id — every row in
+  // bank_transactions belongs to the user via user_id and is already
+  // the de-duplicated view after the sync's enrichment RPCs run.
+  // Filtering by deleted_at IS NULL keeps soft-deleted disconnect
+  // history out of the totals. Pending transactions stay in because
+  // a £2,000+ direct debit is a real cash outflow either way.
   const { data: yesterdayTxRaw } = await supabase
     .from('bank_transactions')
-    .select('user_category, amount')
+    .select('user_category, amount, merchant_name, description, account_id')
     .eq('user_id', userId)
+    .is('deleted_at', null)
     .lt('amount', 0)
     .gte('timestamp', yesterdayStart.toISOString())
     .lt('timestamp', todayStart.toISOString());
 
-  const yesterdayTx = ((yesterdayTxRaw ?? []) as Array<{ user_category: string | null; amount: number | string }>).filter(
-    (t) => !EXCLUDE_CATS.has(t.user_category ?? ''),
-  );
+  const yesterdayTx = ((yesterdayTxRaw ?? []) as Array<{
+    user_category: string | null;
+    amount: number | string;
+    merchant_name: string | null;
+    description: string | null;
+  }>).filter((t) => !EXCLUDE_CATS.has(t.user_category ?? ''));
 
   if (yesterdayTx.length > 0) {
     const total = yesterdayTx.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
@@ -170,16 +185,39 @@ async function buildMorningBrief(
       .sort(([, a], [, b]) => b - a)
       .slice(0, 3);
 
-    let spendingSection = `\n\n*Yesterday's Spending*\nTotal: *${fmt(total)}*`;
+    let spendingSection = `${DIVIDER}\n💷 *Yesterday's Spending*\nTotal: *${fmt(total)}*`;
     if (topCategories.length > 0) {
-      spendingSection += '\nTop categories:';
+      spendingSection += '\n_Top categories:_';
       for (const [cat, amount] of topCategories) {
-        spendingSection += `\n  - ${cat}: ${fmt(amount)}`;
+        const prettyCat = cat
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+        spendingSection += `\n  •  ${prettyCat} — *${fmt(amount)}*`;
+      }
+    }
+    // Surface the largest individual debit by merchant so big one-off
+    // payments (e.g. a £2,200 British Gas direct debit) are not buried
+    // inside an aggregated category total.
+    const byMerchant: Record<string, number> = {};
+    for (const t of yesterdayTx) {
+      const label = (t.merchant_name || t.description || 'Other').trim();
+      if (!label) continue;
+      byMerchant[label] = (byMerchant[label] ?? 0) + Math.abs(Number(t.amount));
+    }
+    const topMerchants = Object.entries(byMerchant)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 3)
+      .filter(([, amt]) => amt >= 25); // skip noise
+    if (topMerchants.length > 0) {
+      spendingSection += '\n_Largest payments:_';
+      for (const [m, amt] of topMerchants) {
+        const cleanLabel = m.length > 40 ? `${m.slice(0, 37)}...` : m;
+        spendingSection += `\n  •  ${cleanLabel} — *${fmt(amt)}*`;
       }
     }
     sections.push(spendingSection);
   } else {
-    sections.push("\n\n*Yesterday's Spending*\nNo spending recorded yesterday.");
+    sections.push(`${DIVIDER}\n💷 *Yesterday's Spending*\n_No spending recorded yesterday._`);
   }
 
   // ------ 2. Subscriptions renewing today or tomorrow ------
@@ -192,10 +230,10 @@ async function buildMorningBrief(
     .lte('next_billing_date', tomorrowStr);
 
   if (renewals && renewals.length > 0) {
-    let renewalSection = '\n\n*Upcoming Renewals*';
+    let renewalSection = `${DIVIDER}\n🔁 *Upcoming Renewals*`;
     for (const sub of renewals as Array<{ provider_name: string; amount: number | string; billing_cycle: string | null; next_billing_date: string }>) {
       const when = sub.next_billing_date === todayStr ? 'Today' : 'Tomorrow';
-      renewalSection += `\n  - ${sub.provider_name}: ${fmt(Number(sub.amount))}/${sub.billing_cycle ?? 'month'} (${when})`;
+      renewalSection += `\n  •  *${sub.provider_name}* — *${fmt(Number(sub.amount))}* / ${sub.billing_cycle ?? 'month'} _(${when})_`;
     }
     sections.push(renewalSection);
   }
@@ -211,9 +249,9 @@ async function buildMorningBrief(
     .lte('contract_end_date', in7DaysStr);
 
   if (expiringContracts && expiringContracts.length > 0) {
-    let contractSection = '\n\n*Contracts Expiring This Week*';
+    let contractSection = `${DIVIDER}\n📄 *Contracts Expiring This Week*`;
     for (const c of expiringContracts as Array<{ provider_name: string; contract_end_date: string }>) {
-      contractSection += `\n  - ${c.provider_name}: ends ${fmtDate(c.contract_end_date)}`;
+      contractSection += `\n  •  *${c.provider_name}* — ends _${fmtDate(c.contract_end_date)}_`;
     }
     sections.push(contractSection);
   }
@@ -245,25 +283,52 @@ async function buildMorningBrief(
 
   if (budgetWarnings.length > 0) {
     budgetWarnings.sort((a, b) => b.pct - a.pct);
-    let budgetSection = '\n\n*Budget Warnings*';
+    let budgetSection = `${DIVIDER}\n⚠️ *Budget Warnings*`;
     for (const w of budgetWarnings) {
-      const emoji = w.pct >= 100 ? '⚠️' : '⏳';
-      budgetSection += `\n  ${emoji} ${w.category}: ${fmt(w.spent)} / ${fmt(w.limit)} (${Math.round(w.pct)}%)`;
+      const emoji = w.pct >= 100 ? '🔴' : '🟡';
+      const prettyCat = w.category
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+      budgetSection += `\n  ${emoji} *${prettyCat}* — *${fmt(w.spent)}* / ${fmt(w.limit)} _(${Math.round(w.pct)}%)_`;
     }
     sections.push(budgetSection);
   }
 
   // ------ 5. Unresolved disputes ------
-  const { data: openDisputes } = await supabase
+  // Filter out every terminal status. Earlier code only excluded
+  // 'resolved' / 'dismissed', which let resolved_won / resolved_partial /
+  // resolved_lost / closed / withdrawn rows through — Paul's morning
+  // brief on 2026-05-16 listed Winchester City Council (resolved_won)
+  // and Virgin Media (resolved_won) under "Open Disputes (16)". The
+  // outcome column is also checked: a row with status='open' but
+  // outcome IN ('won','partial','lost','withdrawn') is concluded.
+  const TERMINAL_DISPUTE_STATUSES = [
+    'resolved_won',
+    'resolved_partial',
+    'resolved_lost',
+    'closed',
+    'withdrawn',
+    'dismissed',
+    'dropped',
+    'won',
+    'partial',
+    'lost',
+  ];
+  const { data: openDisputesRaw } = await supabase
     .from('disputes')
-    .select('id, provider_name, issue_type, status')
+    .select('id, provider_name, issue_type, status, outcome')
     .eq('user_id', userId)
-    .not('status', 'in', '(resolved,dismissed)');
+    .not('status', 'in', `(${TERMINAL_DISPUTE_STATUSES.join(',')})`);
 
-  if (openDisputes && openDisputes.length > 0) {
-    let disputeSection = `\n\n*Open Disputes (${openDisputes.length})*`;
+  const openDisputes = (openDisputesRaw ?? []).filter(
+    (d: { outcome: string | null }) =>
+      d.outcome == null || !['won', 'partial', 'lost', 'withdrawn'].includes(d.outcome),
+  );
+
+  if (openDisputes.length > 0) {
+    let disputeSection = `${DIVIDER}\n⚖️ *Open Disputes (${openDisputes.length})*`;
     for (const d of (openDisputes as Array<{ provider_name: string; issue_type: string; status: string }>).slice(0, 3)) {
-      disputeSection += `\n  - ${d.provider_name}: ${d.issue_type} (${d.status})`;
+      disputeSection += `\n  • ${d.provider_name} — _${d.issue_type.replace(/_/g, ' ')}_ (${d.status.replace(/_/g, ' ')})`;
     }
     if (openDisputes.length > 3) {
       disputeSection += `\n  _...and ${openDisputes.length - 3} more_`;
@@ -272,7 +337,7 @@ async function buildMorningBrief(
   }
 
   // ------ 6. Money-saving tip of the day ------
-  sections.push(`\n\n💡 *Tip of the Day*\n${MONEY_TIPS[tipIndex]}`);
+  sections.push(`${DIVIDER}\n💡 *Tip of the Day*\n_${MONEY_TIPS[tipIndex]}_`);
 
   return sections.join('');
 }
@@ -414,26 +479,65 @@ export async function GET(request: NextRequest) {
   const whatsappDispatchedUserIds = new Set<string>();
 
   // -------------------------------------------------------
-  // Date helpers
+  // Date helpers — compute "yesterday" in Europe/London, not UTC.
+  // Vercel runs in UTC; setHours(0,0,0,0) on a UTC Date gives UTC
+  // midnight, which mis-aligns by 1 hour during BST. Before this fix,
+  // a UK debit at 23:30 on 14 May (= 22:30 UTC) was excluded from the
+  // 16 May briefing's "yesterday" window because that started at
+  // 15 May 00:00 UTC. Paul's ~£2,200 British Gas payment fell into
+  // this gap on 2026-05-16.
   // -------------------------------------------------------
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
 
-  // Yesterday boundaries (UTC-based, but data is stored consistently)
-  const yesterdayStart = new Date(now);
-  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-  yesterdayStart.setHours(0, 0, 0, 0);
+  // Resolve "today" / "yesterday" in Europe/London by formatting the
+  // current instant in that timezone. The YYYY-MM-DD parts then feed
+  // into a Date constructed via the local Vercel TZ (UTC) so the
+  // boundaries are UTC instants representing the UK midnight transition.
+  const fmtUk = (d: Date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/London',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d); // en-CA → YYYY-MM-DD
 
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
+  // Determine the UK timezone offset (e.g. +01:00 in BST, +00:00 in GMT)
+  // at the current instant. Used to pin midnight in that timezone.
+  const ukOffsetMinutes = (() => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London',
+      timeZoneName: 'shortOffset',
+    })
+      .formatToParts(now)
+      .find((p) => p.type === 'timeZoneName')?.value;
+    // parts looks like "GMT+1" / "GMT" / "GMT+0"
+    const match = parts?.match(/GMT(?:([+-])(\d{1,2})(?::?(\d{2}))?)?/);
+    if (!match) return 0;
+    const sign = match[1] === '-' ? -1 : 1;
+    const hours = Number(match[2] ?? '0');
+    const mins = Number(match[3] ?? '0');
+    return sign * (hours * 60 + mins);
+  })();
 
-  const tomorrowStr = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split('T')[0];
+  // Construct an ISO instant that represents 00:00 in Europe/London
+  // for a given UK calendar date.
+  const ukMidnight = (ukDateStr: string): Date => {
+    const offsetSign = ukOffsetMinutes >= 0 ? '+' : '-';
+    const absMin = Math.abs(ukOffsetMinutes);
+    const oh = String(Math.floor(absMin / 60)).padStart(2, '0');
+    const om = String(absMin % 60).padStart(2, '0');
+    return new Date(`${ukDateStr}T00:00:00${offsetSign}${oh}:${om}`);
+  };
 
-  const in7DaysStr = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split('T')[0];
+  const ukTodayStr = fmtUk(now);
+  const ukYesterdayDate = new Date(ukMidnight(ukTodayStr).getTime() - 24 * 60 * 60 * 1000);
+  const ukYesterdayStr = fmtUk(ukYesterdayDate);
+  const todayStr = ukTodayStr;
+  const yesterdayStart = ukMidnight(ukYesterdayStr);
+  const todayStart = ukMidnight(ukTodayStr);
+
+  const tomorrowStr = fmtUk(new Date(ukMidnight(ukTodayStr).getTime() + 24 * 60 * 60 * 1000));
+  const in7DaysStr = fmtUk(new Date(ukMidnight(ukTodayStr).getTime() + 7 * 24 * 60 * 60 * 1000));
 
   // Current month boundaries
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();

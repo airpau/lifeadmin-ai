@@ -3499,6 +3499,41 @@ const STATUS_TO_OUTCOME: Record<string, 'won' | 'partial' | 'lost' | 'withdrawn'
   closed: 'withdrawn',
 };
 
+/**
+ * Best-effort extraction of a £ amount from supplier correspondence.
+ * Used as a safety net when the agent confirms a resolved_won /
+ * resolved_partial outcome without explicitly passing money_recovered
+ * — e.g. WhatsApp ACCEPT flow with no number, where the offer is sat
+ * in the most recent company_email but never made it onto the tool
+ * call.
+ *
+ * Returns the largest plausible figure (e.g. "£135", "£1,250.50",
+ * "GBP 200", "£2.5k"). Returns null when no figure is found. Numbers
+ * outside £1–£100,000 are filtered out — that band covers >99% of
+ * consumer disputes and rejects obvious noise like reference numbers
+ * masquerading as totals.
+ */
+export function extractPoundsAmount(text: string): number | null {
+  if (!text) return null;
+  const normalised = text.replace(/£/g, '£');
+  const candidates: number[] = [];
+
+  // £1,234.56  £135  £2.5k  GBP 250
+  const re = /(?:£|\bGBP\s*)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)\s*(k|m)?\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(normalised)) !== null) {
+    const raw = match[1].replace(/,/g, '');
+    const suffix = match[2]?.toLowerCase();
+    let value = Number(raw);
+    if (!Number.isFinite(value)) continue;
+    if (suffix === 'k') value *= 1000;
+    else if (suffix === 'm') value *= 1_000_000;
+    if (value >= 1 && value <= 100_000) candidates.push(value);
+  }
+  if (candidates.length === 0) return null;
+  return Math.max(...candidates);
+}
+
 interface DisputeOutcomeUpdate {
   /** Direct dispute UUID (preferred when known — skips fuzzy provider match). */
   dispute_id?: string;
@@ -3592,12 +3627,43 @@ async function applyDisputeOutcomeUpdate(
   // 2. Resolve the money figure.
   //    - explicit money_recovered wins
   //    - else use_disputed_amount + disputes.disputed_amount fallback
+  //    - else (won / partial outcomes only) try to parse a £ amount from
+  //      the most recent inbound correspondence — the agent occasionally
+  //      forgets to pass money_recovered on ACCEPT (e.g. 2026-05-15
+  //      OneStream: £135 partial offer was accepted but no figure
+  //      reached this function, so the running total stayed at £8,611
+  //      instead of jumping to £8,746). Last-ditch safety net so the
+  //      saved amount, the verified_savings row, and the cumulative
+  //      counter stay in step.
   //    - else 0 (only meaningful for won / partial; lost stays 0)
   let recovered = 0;
   if (params.money_recovered !== undefined && params.money_recovered !== null) {
     recovered = Number(params.money_recovered) || 0;
   } else if (params.use_disputed_amount && dispute.disputed_amount) {
     recovered = Number(dispute.disputed_amount) || 0;
+  } else if (params.new_status === 'resolved_won' || params.new_status === 'resolved_partial') {
+    try {
+      const { data: lastReply } = await supabase
+        .from('correspondence')
+        .select('content, entry_type')
+        .eq('dispute_id', dispute.id)
+        .in('entry_type', ['company_email', 'company_response', 'company_letter', 'email_reply'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const sourceText =
+        (params.provider_response ?? '') + ' ' + (lastReply?.content ?? '');
+      const parsed = extractPoundsAmount(sourceText);
+      if (parsed != null && parsed > 0) {
+        recovered = parsed;
+      } else if (params.new_status === 'resolved_won' && dispute.disputed_amount) {
+        // resolved_won with no explicit amount and no parseable offer →
+        // assume the user got the full disputed amount back.
+        recovered = Number(dispute.disputed_amount) || 0;
+      }
+    } catch {
+      // Best-effort — never let the fallback break the update.
+    }
   }
 
   const isResolved = RESOLVED_STATUSES.has(params.new_status);
@@ -3740,14 +3806,24 @@ async function updateDisputeStatus(
   if (result.outcome === 'won' || result.outcome === 'partial') {
     // Pull the running total so the user gets the cumulative figure
     // in the same response — saves a follow-up "how much in total?".
+    //
+    // Run AFTER applyDisputeOutcomeUpdate has committed so this dispute's
+    // recovered_amount_gbp is included. Earlier code coalesced with
+    // `recovered_amount_gbp ?? money_recovered`, which silently dropped
+    // rows where recovered_amount_gbp defaulted to 0 (the column has
+    // DEFAULT 0) but money_recovered carried the real figure. Sum the
+    // larger of the two so legacy rows + just-updated rows both count.
     const { data: wonRows } = await supabase
       .from('disputes')
-      .select('recovered_amount_gbp, money_recovered')
+      .select('recovered_amount_gbp, money_recovered, status')
       .eq('user_id', userId)
-      .in('outcome', ['won', 'partial']);
+      .or('outcome.eq.won,outcome.eq.partial,status.eq.resolved_won,status.eq.resolved_partial');
     const total = (wonRows ?? []).reduce(
-      (sum: number, r: { recovered_amount_gbp: number | string | null; money_recovered: number | string | null }) =>
-        sum + (Number(r.recovered_amount_gbp ?? r.money_recovered) || 0),
+      (sum: number, r: { recovered_amount_gbp: number | string | null; money_recovered: number | string | null }) => {
+        const a = Number(r.recovered_amount_gbp) || 0;
+        const b = Number(r.money_recovered) || 0;
+        return sum + Math.max(a, b);
+      },
       0,
     );
     if (total > 0) {
@@ -3844,15 +3920,21 @@ async function recordDisputeOutcomes(
   if (recoveredThisBatch > 0) {
     text += `\nTotal recovered this batch: *${fmt(recoveredThisBatch)}* 🎉\n`;
 
-    // Running cumulative total across all won/partial disputes.
+    // Running cumulative total across all won/partial disputes. Read
+    // after every batch update has committed so just-updated disputes
+    // are included. Sum the larger of recovered_amount_gbp /
+    // money_recovered so legacy rows with one or the other still count.
     const { data: wonRows } = await supabase
       .from('disputes')
-      .select('recovered_amount_gbp, money_recovered')
+      .select('recovered_amount_gbp, money_recovered, status')
       .eq('user_id', userId)
-      .in('outcome', ['won', 'partial']);
+      .or('outcome.eq.won,outcome.eq.partial,status.eq.resolved_won,status.eq.resolved_partial');
     const total = (wonRows ?? []).reduce(
-      (sum: number, r: { recovered_amount_gbp: number | string | null; money_recovered: number | string | null }) =>
-        sum + (Number(r.recovered_amount_gbp ?? r.money_recovered) || 0),
+      (sum: number, r: { recovered_amount_gbp: number | string | null; money_recovered: number | string | null }) => {
+        const a = Number(r.recovered_amount_gbp) || 0;
+        const b = Number(r.money_recovered) || 0;
+        return sum + Math.max(a, b);
+      },
       0,
     );
     if (total > recoveredThisBatch) {

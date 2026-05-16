@@ -33,22 +33,24 @@ export interface DispatchOutcome {
 }
 
 /**
- * Convert the Telegram-flavoured Markdown brief to plain text suitable
- * for WhatsApp's free-form text channel. WhatsApp uses a different
- * (much smaller) Markdown subset and does NOT support `*bold*` the
- * same way — asterisks render literally on most clients. Strip the
- * Markdown markers so the body reads cleanly on either side.
+ * Adapt the Telegram-flavoured Markdown brief for WhatsApp's free-form
+ * text channel. WhatsApp DOES render `*bold*`, `_italic_`, `~strike~`,
+ * and `` `mono` `` (same single-character delimiters as Telegram, even
+ * though Telegram strictly speaking uses MarkdownV1). Earlier versions
+ * stripped the markers because we'd misread WhatsApp's spec — the
+ * morning brief landed in WhatsApp as unformatted text. We now KEEP
+ * the markers so headers render bold on iOS / Android / Web WhatsApp.
  *
- * We keep the layout and emojis. WhatsApp body limit is 4096 chars;
- * we hard-truncate well below that as a defensive measure.
+ * WhatsApp body limit is 4096 chars; we hard-truncate at 3897 so a
+ * trailing "..." still fits cleanly.
  */
 export function toWhatsAppPlainText(markdown: string): string {
-  const stripped = markdown
-    // *bold* -> bold
-    .replace(/\*([^*\n]+)\*/g, '$1')
-    // _italic_ -> italic (only when it's a standalone wrapper, not mid-word)
-    .replace(/(^|\s)_([^_\n]+)_(?=\s|$)/g, '$1$2');
-  return stripped.length > 3900 ? `${stripped.slice(0, 3897)}...` : stripped;
+  // Markdown is preserved verbatim — WhatsApp renders *bold*, _italic_,
+  // ~strike~ and `mono` with the same single-char delimiters used by
+  // the Telegram brief. The function name stays for backwards
+  // compatibility with imports that already exist in tests + admin
+  // routes.
+  return markdown.length > 3900 ? `${markdown.slice(0, 3897)}...` : markdown;
 }
 
 /**
