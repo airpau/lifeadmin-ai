@@ -163,6 +163,14 @@ export async function GET(request: NextRequest) {
 
     const tier = userTierMap.get(connection.user_id) ?? 'free';
     let connectionApiCalls = 0;
+    // Hoisted so the bank_sync_log writes at the bottom of this loop
+    // body can see the actual ISO range used for the Yapily /transactions
+    // call. Paul flagged 2026-05-15 that date_range_from / date_range_to
+    // were NULL on every log row — they're populated below.
+    let syncFromDate: string | null = null;
+    let syncToDate: string | null = null;
+    let totalReturned = 0; // raw transactions seen across all accounts
+    let totalSkippedAsDuplicate = 0;
 
     try {
       let totalSynced = 0;
@@ -177,7 +185,7 @@ export async function GET(request: NextRequest) {
             .update({ status: 'expired', updated_at: now })
             .eq('id', connection.id);
 
-          await supabase.from('bank_sync_log').insert({
+          await insertSyncLog(supabase, {
             user_id: connection.user_id,
             connection_id: connection.id,
             trigger_type: 'cron',
@@ -209,7 +217,7 @@ export async function GET(request: NextRequest) {
               .update({ status: 'expired', updated_at: now })
               .eq('id', connection.id);
 
-            await supabase.from('bank_sync_log').insert({
+            await insertSyncLog(supabase, {
               user_id: connection.user_id,
               connection_id: connection.id,
               trigger_type: 'cron',
@@ -322,6 +330,8 @@ export async function GET(request: NextRequest) {
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         const toDate = tomorrow.toISOString();
+        syncFromDate = fromDate;
+        syncToDate = toDate;
 
         for (let i = 0; i < accountIds.length; i++) {
           const accountId = accountIds[i];
@@ -334,7 +344,13 @@ export async function GET(request: NextRequest) {
             const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
             connectionApiCalls++;
             transactionSyncSucceeded = true;
-            if (transactions.length === 0) continue;
+            totalReturned += transactions.length;
+            if (transactions.length === 0) {
+              console.warn(
+                `[bank-sync] 0 transactions returned for account ${accountId} (user ${connection.user_id}, conn ${connection.id}, window ${fromDate} → ${toDate})`,
+              );
+              continue;
+            }
 
             const accountSnapshot: AccountSnapshot = {
               yapilyAccountId: accountId,
@@ -350,6 +366,10 @@ export async function GET(request: NextRequest) {
               transactions,
             });
             totalSynced += result.inserted;
+            totalSkippedAsDuplicate += result.skippedAsDuplicate;
+            console.log(
+              `[bank-sync] conn=${connection.id} account=${accountId} returned=${transactions.length} inserted=${result.inserted} duplicate=${result.skippedAsDuplicate} noHash=${result.skippedNoHash}`,
+            );
           } catch (err: any) {
             console.error(`Bank sync: error on account ${accountId}:`, err.message);
           }
@@ -409,13 +429,20 @@ export async function GET(request: NextRequest) {
         .update({ last_synced_at: now, updated_at: now, status: 'active' })
         .eq('id', connection.id);
 
-      // Log success
-      await supabase.from('bank_sync_log').insert({
+      // Log success. Populates the diagnostic columns Paul added live
+      // 2026-05-15 so the next 0-transaction regression doesn't take
+      // 10 silent "success" runs to spot — the log row now shows the
+      // exact date window queried plus seen / inserted counts.
+      await insertSyncLog(supabase, {
         user_id: connection.user_id,
         connection_id: connection.id,
         trigger_type: 'cron',
         status: 'success',
         api_calls_made: connectionApiCalls,
+        date_range_from: syncFromDate,
+        date_range_to: syncToDate,
+        transactions_synced: totalReturned,
+        transactions_new: totalSynced,
       });
 
       results.push({
@@ -434,13 +461,17 @@ export async function GET(request: NextRequest) {
     } catch (err: any) {
       console.error(`Bank sync: fatal error for ${connection.id}:`, err.message);
 
-      await supabase.from('bank_sync_log').insert({
+      await insertSyncLog(supabase, {
         user_id: connection.user_id,
         connection_id: connection.id,
         trigger_type: 'cron',
         status: 'failed',
         api_calls_made: connectionApiCalls,
         error_message: err.message,
+        date_range_from: syncFromDate,
+        date_range_to: syncToDate,
+        transactions_synced: totalReturned,
+        transactions_new: 0,
       });
 
       results.push({
@@ -496,4 +527,56 @@ export async function GET(request: NextRequest) {
     errors,
     ceiling: { used: callCountAtStart + totalApiCalls, limit: GLOBAL_DAILY_API_CEILING },
   });
+}
+
+/**
+ * Insert into bank_sync_log with the diagnostic columns Paul added
+ * live 2026-05-15 (date_range_from, date_range_to, transactions_synced,
+ * transactions_new). If those columns don't exist in the local /
+ * preview DB (the project's migration history hasn't caught up yet),
+ * fall back to the original minimal payload so a schema mismatch
+ * doesn't 500 the sync and lose the legacy log row too.
+ */
+type SyncLogPayload = {
+  user_id: string;
+  connection_id: string;
+  trigger_type: 'cron' | 'manual' | 'initial';
+  status: 'success' | 'failed' | 'skipped';
+  api_calls_made: number;
+  error_message?: string;
+  date_range_from?: string | null;
+  date_range_to?: string | null;
+  transactions_synced?: number;
+  transactions_new?: number;
+};
+
+async function insertSyncLog(
+  supabase: ReturnType<typeof getAdmin>,
+  payload: SyncLogPayload,
+): Promise<void> {
+  const { error } = await supabase.from('bank_sync_log').insert(payload);
+  if (!error) return;
+  const code = (error as { code?: string }).code;
+  // 42703 = column does not exist. Retry with the minimal column set
+  // so the failure mode for an out-of-sync schema is "missing
+  // diagnostic columns", not "no log row at all".
+  if (code === '42703' || /column .* does not exist/i.test(error.message)) {
+    console.warn(
+      `[bank-sync] bank_sync_log schema missing diagnostic columns — retrying with legacy payload: ${error.message}`,
+    );
+    const legacy = {
+      user_id: payload.user_id,
+      connection_id: payload.connection_id,
+      trigger_type: payload.trigger_type,
+      status: payload.status,
+      api_calls_made: payload.api_calls_made,
+      error_message: payload.error_message,
+    };
+    const { error: legacyErr } = await supabase.from('bank_sync_log').insert(legacy);
+    if (legacyErr) {
+      console.error('[bank-sync] legacy bank_sync_log insert also failed:', legacyErr.message);
+    }
+    return;
+  }
+  console.error('[bank-sync] bank_sync_log insert failed:', error.message);
 }

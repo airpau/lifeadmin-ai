@@ -348,19 +348,49 @@ export async function upsertYapilyTransactions(
     };
   }
 
-  // 4. Insert the survivors in batches of 500. The partial UNIQUE
-  //    index is the final safety net — if two concurrent syncs both
-  //    decide to insert the same hash, one batch errors and we log;
-  //    the other already won.
+  // 4. Insert the survivors in batches of 500. On batch failure (the
+  //    legacy (user_id, transaction_id) UNIQUE constraint firing
+  //    against a soft-deleted row from a previous consent — Yapily
+  //    sometimes reissues the same transaction_id after a reconnect
+  //    or disconnect/restore), fall back to per-row inserts so a
+  //    single bad row doesn't drop today's other new transactions.
+  //
+  //    Bug Paul flagged 2026-05-15: bank_sync_log was logging
+  //    status='success' for 10 consecutive runs but 0 inserts each
+  //    time, because Vercel logs at 16:00 UTC showed
+  //    `[yapily.connection-store] insert batch failed` and the catch
+  //    just logged the message without rescuing the rest of the batch.
+  //    The £2,200 British Gas debit on 2026-05-15 sat in the API
+  //    response but never landed in Postgres.
   let inserted = 0;
+  let perRowSkipped = 0;
   for (let i = 0; i < newRows.length; i += 500) {
     const batch = newRows.slice(i, i + 500).map((r) => r!.row);
     const { error } = await admin.from('bank_transactions').insert(batch);
-    if (error) {
-      console.error('[yapily.connection-store] insert batch failed:', error.message);
-    } else {
+    if (!error) {
       inserted += batch.length;
+      continue;
     }
+    console.error(
+      `[yapily.connection-store] insert batch failed (${batch.length} rows) — falling back to per-row: ${error.message} (code=${(error as { code?: string }).code ?? '?'})`,
+    );
+    for (const row of batch) {
+      const { error: rowErr } = await admin.from('bank_transactions').insert(row);
+      if (rowErr) {
+        perRowSkipped++;
+        const code = (rowErr as { code?: string }).code ?? '?';
+        console.warn(
+          `[yapily.connection-store] row skipped tx=${row.transaction_id} date=${row.timestamp} amount=${row.amount} code=${code}: ${rowErr.message}`,
+        );
+      } else {
+        inserted++;
+      }
+    }
+  }
+  if (perRowSkipped > 0) {
+    console.warn(
+      `[yapily.connection-store] per-row fallback rescued ${inserted} rows but skipped ${perRowSkipped} (likely tx_id collisions against soft-deleted rows — see legacy UNIQUE(user_id, transaction_id) constraint)`,
+    );
   }
 
   return {
