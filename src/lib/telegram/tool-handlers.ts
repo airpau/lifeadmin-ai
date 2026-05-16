@@ -17,7 +17,8 @@ import {
   getEventMeta,
   type NotificationEventType,
 } from '@/lib/notifications/events';
-import { getEffectiveTier, checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { getEffectiveTier } from '@/lib/plan-limits';
+import { checkFreeLetterGate, incrementFreeLetterUsage, FREE_LETTER_LIMIT } from '@/lib/dispute-gate';
 import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
 import { syncLinkedThread } from '@/lib/dispute-sync/sync-runner';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
@@ -1451,6 +1452,16 @@ async function draftDisputeLetter(
     reply_tone?: ReplyTone;
   },
 ): Promise<ToolResult> {
+  // Free-letter gate. Free users are capped at FREE_LETTER_LIMIT lifetime
+  // dispute letters across web + Pocket Agent. Paid tiers and active
+  // onboarding trials pass through.
+  const gate = await checkFreeLetterGate(userId);
+  if (!gate.allowed) {
+    return {
+      text: `You've used all ${FREE_LETTER_LIMIT} of your free dispute letters. To create more, upgrade to Pro at paybacker.co.uk/pricing`,
+    };
+  }
+
   // Get user's name and address for the letter
   const { data: profile } = await supabase
     .from('profiles')
@@ -1602,6 +1613,15 @@ async function draftDisputeLetter(
   } catch (err) {
     console.warn('[draftDisputeLetter] pending_dispute_letters insert failed', err);
     // Non-fatal — letter still drafted, just won't get a follow-up.
+  }
+
+  // Bump the lifetime free-letter counter. Best-effort — never block the
+  // user's draft on a counter write. Paid tiers tolerate this no-op
+  // since the gate ignores the counter for non-free tiers.
+  try {
+    await incrementFreeLetterUsage(userId);
+  } catch (err) {
+    console.warn('[draftDisputeLetter] incrementFreeLetterUsage failed', err);
   }
 
   // text = HEADER ONLY. The letter body lives in pendingAction.letter_text
@@ -7999,13 +8019,13 @@ async function generateComplaintLetterTool(
     return { text: 'I need a provider name and an issue description to draft the letter.' };
   }
 
-  // Free tier is capped at 3 letters/month. checkUsageLimit reads the
-  // same usage_logs counter that /api/complaints/usage exposes — it's
-  // the single source of truth for `complaints_generated_this_month`.
-  const usage = await checkUsageLimit(userId, 'complaint_generated');
+  // Free tier is capped at FREE_LETTER_LIMIT lifetime letters. checkFreeLetterGate
+  // reads `profiles.free_letters_used` — the single source of truth that
+  // `/api/complaints/usage` also exposes.
+  const usage = await checkFreeLetterGate(userId);
   if (!usage.allowed) {
     return {
-      text: `You've used ${usage.used} of ${usage.limit} free letters this month on the ${usage.tier} plan. Upgrade to Essential or Pro for unlimited letters: paybacker.co.uk/pricing`,
+      text: `You've used all ${FREE_LETTER_LIMIT} of your free dispute letters. To create more, upgrade to Pro at paybacker.co.uk/pricing`,
     };
   }
 
@@ -8124,7 +8144,7 @@ async function generateComplaintLetterTool(
     });
   }
 
-  await incrementUsage(userId, 'complaint_generated');
+  await incrementFreeLetterUsage(userId);
 
   const excerpt = (result.letter || '').slice(0, 400);
   const taskRef = task?.id ? task.id.slice(0, 8) : '—';
@@ -8136,7 +8156,9 @@ async function generateComplaintLetterTool(
   const link = task?.id
     ? `${origin}/dashboard/complaints/${task.id}`
     : `${origin}/dashboard/complaints`;
-  const remaining = usage.limit === null ? 'unlimited' : `${Math.max(0, (usage.limit ?? 0) - usage.used - 1)} left this month`;
+  const remaining = usage.limit === null
+    ? 'unlimited'
+    : `${Math.max(0, (usage.limit ?? 0) - usage.used - 1)} free letter${(usage.limit ?? 0) - usage.used - 1 === 1 ? '' : 's'} left`;
 
   return {
     text: `✓ Generated letter ID ${taskRef} — see ${link}\n\n${excerpt}${result.letter && result.letter.length > 400 ? '…' : ''}\n\n_${remaining} on the ${usage.tier} plan._`,

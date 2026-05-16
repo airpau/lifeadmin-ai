@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
-import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { checkFreeLetterGate, incrementFreeLetterUsage } from '@/lib/dispute-gate';
 import { awardPoints } from '@/lib/loyalty';
 import { AI_LETTER_DISCLAIMER } from '@/lib/legal-disclaimer';
 
@@ -117,15 +117,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const usageCheck = await checkUsageLimit(user.id, 'complaint_generated');
+    const usageCheck = await checkFreeLetterGate(user.id);
     if (!usageCheck.allowed) {
       return NextResponse.json({
-        error: 'Monthly limit reached',
+        error: 'FREE_LIMIT_REACHED',
         upgradeRequired: true,
+        lettersUsed: usageCheck.used,
         used: usageCheck.used,
         limit: usageCheck.limit,
         tier: usageCheck.tier,
-      }, { status: 403 });
+      }, { status: 402 });
     }
 
     const body = await request.json();
@@ -233,7 +234,7 @@ Return as JSON with keys:
       });
     }
 
-    await incrementUsage(user.id, 'complaint_generated');
+    await incrementFreeLetterUsage(user.id);
 
     // Award loyalty points
     awardPoints(user.id, 'complaint_generated', { type: formType }).then(result => {

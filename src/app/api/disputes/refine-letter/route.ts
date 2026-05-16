@@ -24,7 +24,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { checkFreeLetterGate, incrementFreeLetterUsage } from '@/lib/dispute-gate';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 
 export const maxDuration = 60;
@@ -72,15 +72,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Plan + Claude rate limits. Refining counts as a complaint_generated
-    // tick because it's a creative call with the same cost profile.
+    // Plan + Claude rate limits. Refining counts as a free-letter tick
+    // because it's a creative Claude call with the same cost profile.
     const isAdmin = user.email === 'aireypaul@googlemail.com';
     if (!isAdmin) {
-      const usage = await checkUsageLimit(user.id, 'complaint_generated');
+      const usage = await checkFreeLetterGate(user.id);
       if (!usage.allowed) {
         return NextResponse.json(
-          { error: 'You\'ve hit your monthly letter limit. Upgrade for unlimited.', upgradeRequired: true, used: usage.used, limit: usage.limit },
-          { status: 403 },
+          {
+            error: 'FREE_LIMIT_REACHED',
+            upgradeRequired: true,
+            lettersUsed: usage.used,
+            used: usage.used,
+            limit: usage.limit,
+            tier: usage.tier,
+          },
+          { status: 402 },
         );
       }
       const rate = await checkClaudeRateLimit(user.id, usage.tier);
@@ -124,9 +131,9 @@ Apply the instruction. Output ONLY the refined letter, no commentary.`;
     }
 
     if (!isAdmin) {
-      const tier = (await checkUsageLimit(user.id, 'complaint_generated')).tier;
+      const tier = (await checkFreeLetterGate(user.id)).tier;
       await recordClaudeCall(user.id, tier);
-      await incrementUsage(user.id, 'complaint_generated');
+      await incrementFreeLetterUsage(user.id);
     }
 
     return NextResponse.json({

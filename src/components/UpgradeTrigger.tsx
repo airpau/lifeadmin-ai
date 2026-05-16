@@ -110,11 +110,11 @@ export default function UpgradeTrigger({
       border: 'border-amber-500/20',
       iconBg: 'bg-amber-500/10',
       title: lettersLimit !== null && lettersUsed >= lettersLimit
-        ? "You've used all your free letters this month"
-        : `${lettersLimit !== null ? lettersLimit - lettersUsed : ''} free letter${lettersLimit !== null && lettersLimit - lettersUsed !== 1 ? 's' : ''} remaining this month`,
-      body: 'Upgrade to Essential for unlimited complaint letters every month.',
-      cta: 'Get unlimited letters — £4.99/mo',
-      ctaClass: 'bg-amber-500 hover:bg-amber-600 text-slate-950',
+        ? "You've used all 3 free letters"
+        : `${lettersUsed} of ${lettersLimit ?? 3} free letters used`,
+      body: 'Upgrade to Pro for unlimited dispute letters, automated follow-ups, and the full Pocket Agent.',
+      cta: 'Upgrade to Pro',
+      ctaClass: 'bg-emerald-500 hover:bg-emerald-600 text-slate-950',
     },
     email_scan: {
       icon: <Mail className="h-5 w-5 text-purple-400" />,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
-import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { checkFreeLetterGate, incrementFreeLetterUsage } from '@/lib/dispute-gate';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { trackLetterGenerated } from '@/lib/meta-conversions';
 import { awardPoints } from '@/lib/loyalty';
@@ -59,18 +59,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check plan limits
-    const usageCheck = await checkUsageLimit(user.id, 'complaint_generated');
+    // Count-based free-letter gate (no time window — see src/lib/dispute-gate.ts).
+    const usageCheck = await checkFreeLetterGate(user.id);
     if (!usageCheck.allowed) {
       return NextResponse.json(
         {
-          error: 'Monthly limit reached',
+          error: 'FREE_LIMIT_REACHED',
           upgradeRequired: true,
+          lettersUsed: usageCheck.used,
           used: usageCheck.used,
           limit: usageCheck.limit,
           tier: usageCheck.tier,
         },
-        { status: 403 }
+        { status: 402 }
       );
     }
 
@@ -749,9 +750,9 @@ export async function POST(request: NextRequest) {
         .eq('id', body.disputeId);
     }
 
-    // Record Claude call for rate limiting and increment plan usage
+    // Record Claude call for rate limiting and bump the lifetime free-letter counter
     await recordClaudeCall(user.id, usageCheck.tier);
-    await incrementUsage(user.id, 'complaint_generated');
+    await incrementFreeLetterUsage(user.id);
 
     // Award loyalty points
     awardPoints(user.id, 'complaint_generated', { company: body.companyName })

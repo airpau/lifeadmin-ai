@@ -64,8 +64,7 @@ export async function GET(req: NextRequest) {
   const delivered: Array<{ email: string; chat_id: number; message_id?: number }> = [];
 
   for (const recipient of recipients) {
-    // @ts-expect-error joined shape
-    const chatId: number = recipient.telegram_sessions[0].telegram_chat_id;
+    const chatId: number = (recipient as { telegram_sessions: Array<{ telegram_chat_id: number }> }).telegram_sessions[0].telegram_chat_id;
 
     // 3. Build the inline keyboard: one "Fix" button per fixable finding,
     //    plus a "Show details" button, plus a "Snooze" button.
@@ -86,8 +85,7 @@ export async function GET(req: NextRequest) {
       const pending = audit.findings
         .filter(f => f.fixable)
         .map(f => ({
-          // @ts-expect-error joined shape
-          user_id: recipient.id,
+          user_id: (recipient as { id: string }).id,
           telegram_chat_id: chatId,
           action_type: f.id,
           payload: { title: f.title, detail: f.detail, severity: f.severity },
@@ -107,8 +105,7 @@ export async function GET(req: NextRequest) {
     });
 
     delivered.push({
-      // @ts-expect-error joined shape
-      email: recipient.email,
+      email: (recipient as { email: string }).email,
       chat_id: chatId,
       message_id: sendResult.result?.message_id,
     });

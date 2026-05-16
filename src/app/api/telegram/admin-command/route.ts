@@ -251,10 +251,10 @@ function toRole(name: string): string {
 export async function POST(request: NextRequest) {
   // [audit] forward callback_query.data starting with "audit:" to the audit dispatcher
   try {
-    const _maybe = await req.clone().json().catch(() => null);
+    const _maybe = await request.clone().json().catch(() => null);
     const _cq = _maybe?.callback_query;
     if (_cq?.data?.startsWith('audit:')) {
-      return fetch(new URL('/api/telegram/audit-actions', req.url), {
+      return fetch(new URL('/api/telegram/audit-actions', request.url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callback_query: _cq }),

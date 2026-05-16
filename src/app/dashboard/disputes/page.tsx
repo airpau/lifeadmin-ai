@@ -1404,7 +1404,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
           }),
         });
         const genData = await genRes.json();
-        if (genRes.status === 403 && genData.upgradeRequired) {
+        if ((genRes.status === 402 || genRes.status === 403) && genData.upgradeRequired) {
           setUpgradeModal({ open: true, used: genData.used, limit: genData.limit, tier: genData.tier });
         }
       } catch {
@@ -1686,30 +1686,48 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
             )}
           </div>
 
-          {usageInfo && usageInfo.limit !== null && (
-            <p className="text-xs text-slate-500 text-right">
-              {usageInfo.used} of {usageInfo.limit} letters used this month
-              {usageInfo.used >= usageInfo.limit && <span className="text-emerald-600 ml-1">— upgrade for unlimited</span>}
-            </p>
-          )}
+          {(() => {
+            const atLimit = !!usageInfo && usageInfo.limit !== null && usageInfo.used >= usageInfo.limit;
+            return (
+              <>
+                {usageInfo && usageInfo.limit !== null && (
+                  <p className="text-xs text-slate-500 text-right">
+                    {atLimit
+                      ? "You've used all 3 free letters"
+                      : `${usageInfo.used} of ${usageInfo.limit} free letters used`}
+                    {atLimit && <span className="text-emerald-600 ml-1">— upgrade for unlimited</span>}
+                  </p>
+                )}
 
-          <div className="flex gap-3">
-            <button type="button" onClick={onCancel} className="px-6 py-4 bg-white hover:bg-slate-50 text-slate-600 rounded-lg transition-all">
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => {
-                if (formRef.current && !formRef.current.reportValidity()) return;
-                setShowPreviewModal(true);
-              }}
-              className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-slate-900 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              <Eye className="h-5 w-5" />
-              {saving ? 'Starting dispute...' : 'Preview & Confirm'}
-            </button>
-          </div>
+                <div className="flex gap-3">
+                  <button type="button" onClick={onCancel} className="px-6 py-4 bg-white hover:bg-slate-50 text-slate-600 rounded-lg transition-all">
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving || atLimit}
+                    onClick={() => {
+                      if (atLimit) {
+                        setUpgradeModal({
+                          open: true,
+                          used: usageInfo?.used ?? 0,
+                          limit: usageInfo?.limit ?? 3,
+                          tier: usageInfo?.tier ?? 'free',
+                        });
+                        return;
+                      }
+                      if (formRef.current && !formRef.current.reportValidity()) return;
+                      setShowPreviewModal(true);
+                    }}
+                    className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-slate-900 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <Eye className="h-5 w-5" />
+                    {saving ? 'Starting dispute...' : atLimit ? 'Free limit reached — Upgrade to Pro' : 'Preview & Confirm'}
+                  </button>
+                </div>
+              </>
+            );
+          })()}
         </form>
       </div>
       </div>
