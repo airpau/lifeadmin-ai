@@ -3521,6 +3521,8 @@ interface DisputeOutcomeResult {
   status: string;
   outcome: string | null;
   recovered: number;
+  /** Set on ok=true so callers can deep-link to the dispute. */
+  dispute_id?: string;
   /** Diagnostic when ok=false. */
   reason?: string;
 }
@@ -3686,6 +3688,7 @@ async function applyDisputeOutcomeUpdate(
     status: params.new_status,
     outcome,
     recovered,
+    dispute_id: dispute.id,
   };
 }
 
@@ -3751,6 +3754,9 @@ async function updateDisputeStatus(
       text += `\n\nTotal recovered via Paybacker: *${fmt(total)}* 🎉`;
     } else if (result.outcome === 'won') {
       text += `\n\n🎉 Well done on winning this dispute!`;
+    }
+    if (result.outcome === 'won' && result.dispute_id) {
+      text += `\n\nWant to share your win? Visit: https://paybacker.co.uk/disputes/${result.dispute_id}?share=win`;
     }
   }
 

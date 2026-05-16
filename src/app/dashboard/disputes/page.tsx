@@ -17,6 +17,7 @@ import UpgradeModal from '@/components/UpgradeModal';
 import { AI_LETTER_DISCLAIMER_HTML } from '@/lib/legal-disclaimer';
 import ShareWinModal from '@/components/share/ShareWinModal';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
+import ShareMyWinModal from '@/components/disputes/ShareMyWinModal';
 import EmailDisputeFinder from '@/components/dispute/EmailDisputeFinder';
 import DisputeOverviewCard from '@/components/dispute/DisputeOverviewCard';
 import EditDisputeDetailsModal from '@/components/dispute/EditDisputeDetailsModal';
@@ -259,6 +260,8 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(false);
+  const [showShareMyWin, setShowShareMyWin] = useState(false);
+  const detailSearchParams = useSearchParams();
   const [letterModal, setLetterModal] = useState<{ content: string; title: string; refs: string[]; pills?: RightsPill[] } | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -296,6 +299,15 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   useEffect(() => {
     fetch(`/api/disputes/${disputeId}/mark-read`, { method: 'POST' }).catch(() => {});
   }, [disputeId]);
+
+  // Auto-open the Share My Win modal when arriving from a pocket-agent
+  // win notification (?share=win) once the dispute payload is loaded
+  // and confirms it's a won outcome.
+  useEffect(() => {
+    if (!dispute) return;
+    if (detailSearchParams.get('share') !== 'win') return;
+    if (isWon(dispute.status)) setShowShareMyWin(true);
+  }, [dispute, detailSearchParams]);
 
   const FOLLOWUP_CAPTIONS = [
     { icon: '👀', text: 'Reading their response...' },
@@ -495,6 +507,13 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           onResolved={fetchDispute}
         />
       )}
+
+      <ShareMyWinModal
+        disputeId={disputeId}
+        open={showShareMyWin}
+        onClose={() => setShowShareMyWin(false)}
+      />
+
 
       {editingDetails && (
         <EditDisputeDetailsModal
@@ -1026,10 +1045,30 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             </button>
           )}
           {isResolved(dispute.status) && dispute.money_recovered > 0 && (
-            <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20 font-medium">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Recovered £{dispute.money_recovered.toFixed(2)}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20 font-medium">
+                <TrendingUp className="h-3.5 w-3.5" />
+                Recovered £{dispute.money_recovered.toFixed(2)}
+              </div>
+              {isWon(dispute.status) && (
+                <button
+                  onClick={() => setShowShareMyWin(true)}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all hover:opacity-90"
+                  style={{ background: '#34d399', color: '#0a1628' }}
+                >
+                  🎉 Share My Win
+                </button>
+              )}
             </div>
+          )}
+          {isResolved(dispute.status) && !(dispute.money_recovered > 0) && isWon(dispute.status) && (
+            <button
+              onClick={() => setShowShareMyWin(true)}
+              className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all hover:opacity-90"
+              style={{ background: '#34d399', color: '#0a1628' }}
+            >
+              🎉 Share My Win
+            </button>
           )}
         </div>
       </div>

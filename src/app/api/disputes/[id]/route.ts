@@ -48,7 +48,8 @@ async function fireMoneyRecoveredAlert(args: {
       text:
         `💸 *Money recovered: £${args.amount.toFixed(2)}*\n\n` +
         `*${args.merchant}* paid out on a dispute you opened with Paybacker.\n\n` +
-        `Lifetime recovery: *£${lifetime.toFixed(2)}*`,
+        `Lifetime recovery: *£${lifetime.toFixed(2)}*\n\n` +
+        `🎉 Want to share your win? Visit: https://paybacker.co.uk/disputes/${args.disputeId}?share=win`,
     },
     whatsapp: {
       templateName: 'paybacker_money_recovered',
