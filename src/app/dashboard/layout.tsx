@@ -92,6 +92,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         sessionStorage.removeItem('pb_pending_consent');
       }
 
+      // Founder signup notification for OAuth users.
+      // The email/password signup page calls /api/auth/welcome inline, but
+      // the OAuth path lands here without ever firing it — so OAuth signups
+      // were never reaching the founder inbox. Fire here on the first
+      // dashboard load for a brand-new user. /api/auth/welcome is idempotent
+      // (it checks user_metadata.welcome_sent_at), so re-fires are no-ops.
+      // Guarded by isFreshUser so we don't fire for legacy accounts.
+      try {
+        const userCreatedMs = user.created_at ? Date.parse(user.created_at) : NaN;
+        const NEW_USER_WINDOW_MS = 15 * 60 * 1000;
+        const isFreshUser =
+          Number.isFinite(userCreatedMs) && Date.now() - userCreatedMs < NEW_USER_WINDOW_MS;
+        if (isFreshUser && !user.user_metadata?.welcome_sent_at) {
+          // Fire-and-forget — failure here must not block the dashboard.
+          fetch('/api/auth/welcome', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: null }),
+          }).catch(() => { /* silent — admin email is best-effort */ });
+        }
+      } catch { /* silent */ }
+
       const { data } = await supabase
         .from('profiles')
         .select('first_name, full_name, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')

@@ -386,6 +386,35 @@ export const TEMPLATES = {
     proOnly: true,
     body: 'Update on your {{1}} dispute: {{2}}. Tap to {{3}} — open Paybacker to review.',
   },
+  /**
+   * Opt-out confirmation — sent after the user replies STOP (or hits
+   * Unsubscribe in the dashboard) so they get a single, branded
+   * confirmation that they have been opted out.
+   *
+   * Today the webhook (`/api/whatsapp/webhook`) replies with free-form
+   * text inside the 24h customer-service window — that works for the
+   * keyword case but fails outside the window. This template covers
+   * both paths uniformly and is the canonical send for any future
+   * dashboard-driven opt-out flow.
+   *
+   * ⚠️ NEEDS META APPROVAL VIA TWILIO CONSOLE.
+   * Paul submits the body verbatim via Twilio Content Template Builder
+   * → submit for WhatsApp approval (UTILITY category) → replace
+   * PENDING_RESUBMISSION with the live HX… SID once approved.
+   *
+   * Variables: none (zero-arg template). No risk of variable-at-start
+   * or variable-at-end Meta rejections.
+   *
+   * `proOnly: false` — anyone who's connected WhatsApp can opt out of it.
+   */
+  paybacker_opted_out: {
+    sid: PENDING_RESUBMISSION,
+    category: 'UTILITY',
+    vars: [] as const,
+    description: 'WhatsApp opt-out confirmation',
+    proOnly: false,
+    body: "You've been unsubscribed from Paybacker alerts. Reply SUBSCRIBE to re-enable them at any time.",
+  },
   /** Switchcraft-style cheaper-deal nudge (MARKETING — needs separate opt-in) */
   paybacker_better_deal_found: {
     // Resubmitted 2026-04-27 — first version ended with `{{3}}` URL. APPROVED — do not change.

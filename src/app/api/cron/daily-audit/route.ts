@@ -118,12 +118,22 @@ export async function GET(req: NextRequest) {
   }
 
   // 6. Also write the handoff into the daily log table for in-app history.
-  await admin.from('telegram_message_log').insert({
-    chat_id: delivered[0]?.chat_id ?? null,
-    direction: 'outbound',
-    content: audit.summary_markdown,
-    metadata: { source: 'daily-audit', findings_count: audit.findings.length },
-  });
+  // telegram_message_log columns are (telegram_chat_id NOT NULL, direction,
+  // message_text, tools_used[], processing_time_ms, user_id) — see
+  // 20260402030000_telegram_user_bot.sql. Skip the insert when nothing was
+  // delivered so we don't violate the NOT NULL constraint on chat_id.
+  if (delivered.length > 0) {
+    const first = delivered[0];
+    const { error: logErr } = await admin.from('telegram_message_log').insert({
+      telegram_chat_id: first.chat_id,
+      direction: 'outbound',
+      message_text: audit.summary_markdown,
+      tools_used: [`daily-audit:findings=${audit.findings.length}`],
+    });
+    if (logErr) {
+      console.error('telegram_message_log insert failed', logErr);
+    }
+  }
 
   return NextResponse.json({
     ok: true,
