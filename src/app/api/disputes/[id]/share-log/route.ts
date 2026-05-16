@@ -8,7 +8,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-const VALID_PLATFORMS = ['twitter', 'whatsapp', 'linkedin', 'facebook', 'copy'] as const;
+const VALID_PLATFORMS = [
+  'twitter',
+  'whatsapp',
+  'linkedin',
+  'facebook',
+  'copy',
+  'instagram',
+  'tiktok',
+] as const;
 type Platform = typeof VALID_PLATFORMS[number];
 
 export async function POST(

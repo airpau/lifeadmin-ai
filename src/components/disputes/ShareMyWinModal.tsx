@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react';
 import { X, Copy, Check, Loader2 } from 'lucide-react';
 
-type Platform = 'twitter' | 'whatsapp' | 'linkedin' | 'facebook' | 'copy';
+type Platform = 'twitter' | 'whatsapp' | 'linkedin' | 'facebook' | 'copy' | 'instagram' | 'tiktok';
 
 interface ShareCard {
   disputeId: string;
@@ -45,6 +45,9 @@ export default function ShareMyWinModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // For Instagram/TikTok we copy-then-open and surface a contextual
+  // hint banner so the user knows to paste into the destination app.
+  const [copyHint, setCopyHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -113,6 +116,26 @@ export default function ShareMyWinModal({
     } catch {
       setError('Could not access clipboard.');
     }
+  };
+
+  // Instagram and TikTok have no web share intent URL. Best UX is to
+  // copy the caption and pop the destination open in a new tab so the
+  // user can paste straight into a story / post / caption.
+  const handleCopyAndOpen = async (
+    platform: 'instagram' | 'tiktok',
+    url: string,
+    hint: string,
+  ) => {
+    try {
+      await navigator.clipboard.writeText(draft);
+    } catch {
+      setError('Could not access clipboard.');
+      return;
+    }
+    logShare(platform);
+    setCopyHint(hint);
+    setTimeout(() => setCopyHint((current) => (current === hint ? null : current)), 4000);
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   if (!open) return null;
@@ -214,7 +237,51 @@ export default function ShareMyWinModal({
                   </svg>
                   Facebook
                 </button>
+                <button
+                  onClick={() => handleCopyAndOpen(
+                    'instagram',
+                    'https://www.instagram.com',
+                    'Copied! Paste into your Instagram story or post',
+                  )}
+                  title="Copy text and open Instagram"
+                  className="flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"
+                  style={{ background: 'rgba(52,211,153,0.15)', color: '#34d399', border: '1px solid rgba(52,211,153,0.35)' }}
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.334 3.608 1.308.974.974 1.246 2.241 1.308 3.608.058 1.266.07 1.646.07 4.849 0 3.205-.012 3.584-.07 4.85-.062 1.366-.334 2.633-1.308 3.608-.974.974-2.242 1.246-3.608 1.308-1.266.058-1.645.07-4.85.07-3.204 0-3.584-.012-4.849-.07-1.366-.062-2.633-.334-3.608-1.308-.974-.974-1.246-2.242-1.308-3.608-.058-1.266-.07-1.645-.07-4.85 0-3.203.012-3.583.07-4.849.062-1.367.334-2.634 1.308-3.608.974-.974 2.241-1.246 3.608-1.308 1.265-.058 1.645-.07 4.849-.07zm0 2.163c-3.141 0-3.512.012-4.751.068-.93.042-1.435.196-1.771.327-.445.173-.762.379-1.096.713-.334.334-.54.652-.713 1.096-.131.336-.285.84-.327 1.771-.057 1.24-.069 1.61-.069 4.751 0 3.142.012 3.512.069 4.751.042.93.196 1.435.327 1.771.173.445.379.762.713 1.096.334.334.652.54 1.096.713.336.131.84.285 1.771.327 1.24.057 1.61.069 4.751.069 3.142 0 3.512-.012 4.751-.069.93-.042 1.435-.196 1.771-.327.445-.173.762-.379 1.096-.713.334-.334.54-.652.713-1.096.131-.336.285-.84.327-1.771.057-1.24.069-1.61.069-4.751 0-3.141-.012-3.512-.069-4.751-.042-.93-.196-1.435-.327-1.771-.173-.445-.379-.762-.713-1.096-.334-.334-.652-.54-1.096-.713-.336-.131-.84-.285-1.771-.327-1.24-.056-1.61-.068-4.751-.068zm0 3.679a4.158 4.158 0 110 8.317 4.158 4.158 0 010-8.317zm0 6.857a2.699 2.699 0 100-5.398 2.699 2.699 0 000 5.398zm5.293-7.029a.972.972 0 110 1.943.972.972 0 010-1.943z" />
+                  </svg>
+                  Instagram
+                </button>
+                <button
+                  onClick={() => handleCopyAndOpen(
+                    'tiktok',
+                    'https://www.tiktok.com',
+                    'Copied! Paste into your TikTok caption',
+                  )}
+                  title="Copy text and open TikTok"
+                  className="flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"
+                  style={{ background: 'rgba(52,211,153,0.15)', color: '#34d399', border: '1px solid rgba(52,211,153,0.35)' }}
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005.8 20.1a6.34 6.34 0 0010.86-4.43V8.83a8.16 8.16 0 004.77 1.52V6.92a4.85 4.85 0 01-1.84-.23z" />
+                  </svg>
+                  TikTok
+                </button>
               </div>
+
+              {copyHint && (
+                <div
+                  className="mt-3 rounded-lg px-3 py-2 text-xs text-center"
+                  role="status"
+                  style={{
+                    background: 'rgba(52,211,153,0.15)',
+                    color: '#34d399',
+                    border: '1px solid rgba(52,211,153,0.35)',
+                  }}
+                >
+                  {copyHint}
+                </div>
+              )}
 
               <button
                 onClick={handleCopy}
