@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import { getAccounts, getTransactions } from '@/lib/yapily';
+import { getAccounts, getAllTransactions } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
@@ -165,11 +165,19 @@ export async function POST(request: NextRequest) {
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 89);
 
   let totalSynced = 0;
+  let totalReturned = 0;
   let apiCallsMade = 0;
   const now = new Date().toISOString();
 
   for (const conn of connections as BankConnection[]) {
     let transactionSyncSucceeded = false;
+    // Diagnostic columns Paul added live 2026-05-15. Populated below
+    // so a manual "Sync now" click leaves a log row with the same
+    // observability as a cron run.
+    let syncFromDate: string | null = null;
+    let syncToDate: string | null = null;
+    let connectionReturned = 0;
+    let connectionSynced = 0;
 
       if (!conn.consent_token) {
         await supabase
@@ -301,6 +309,8 @@ export async function POST(request: NextRequest) {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const toDate = tomorrow.toISOString();
+      syncFromDate = fromDate;
+      syncToDate = toDate;
 
       for (let i = 0; i < accountIds.length; i++) {
         const accountId = accountIds[i];
@@ -313,9 +323,19 @@ export async function POST(request: NextRequest) {
           continue;
         }
         try {
-          const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
-          apiCallsMade++;
+          // Paginating fetch — see getAllTransactions for the cursor
+          // walk. Necessary because Yapily's default page size capped
+          // the first page; on accounts that crossed the threshold
+          // (HSBC Business, Paul 2026-05-15) the most recent
+          // transactions silently fell off.
+          const transactions = await getAllTransactions(accountId, consentToken, {
+            from: fromDate,
+            before: toDate,
+          });
+          const pagesFetched = Math.max(1, Math.ceil(transactions.length / 1000));
+          apiCallsMade += pagesFetched;
           transactionSyncSucceeded = true;
+          connectionReturned += transactions.length;
           if (transactions.length === 0) continue;
 
           const accountSnapshot: AccountSnapshot = {
@@ -332,22 +352,32 @@ export async function POST(request: NextRequest) {
             transactions,
           });
           totalSynced += result.inserted;
+          connectionSynced += result.inserted;
+          console.log(
+            `[sync-now] conn=${conn.id} account=${accountId} returned=${transactions.length} inserted=${result.inserted} duplicate=${result.skippedAsDuplicate} noHash=${result.skippedNoHash}`,
+          );
         } catch (err: any) {
           console.error(`Sync: Yapily error for account ${accountId}:`, err?.message || err);
         }
       }
 
     if (!transactionSyncSucceeded) {
-      await supabase.from('bank_sync_log').insert({
+      await insertSyncLog(admin, {
         user_id: user.id,
         connection_id: conn.id,
         trigger_type: 'manual',
         status: 'failed',
         api_calls_made: apiCallsMade,
         error_message: 'All account sync attempts failed',
+        date_range_from: syncFromDate,
+        date_range_to: syncToDate,
+        transactions_synced: connectionReturned,
+        transactions_new: 0,
       });
       continue;
     }
+
+    totalReturned += connectionReturned;
 
     // Update sync timestamps
     await supabase
@@ -359,13 +389,19 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', conn.id);
 
-    // Log success
-    await supabase.from('bank_sync_log').insert({
+    // Log success — populates the diagnostic columns Paul added live
+    // 2026-05-15 so a manual sync row is now indistinguishable in
+    // observability terms from a cron row.
+    await insertSyncLog(admin, {
       user_id: user.id,
       connection_id: conn.id,
       trigger_type: 'manual',
       status: 'success',
       api_calls_made: apiCallsMade,
+      date_range_from: syncFromDate,
+      date_range_to: syncToDate,
+      transactions_synced: connectionReturned,
+      transactions_new: connectionSynced,
     });
   }
 
@@ -389,6 +425,55 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     synced: totalSynced,
+    returned: totalReturned,
+    api_calls: apiCallsMade,
     recurring_detected: recurringDetected,
   });
+}
+
+/**
+ * Mirror of the cron-side helper in bank-sync/route.ts. Falls back
+ * to the legacy column set when bank_sync_log doesn't have the
+ * diagnostic columns yet (preview / local envs that haven't picked
+ * up Paul's 2026-05-15 live ALTER).
+ */
+type SyncLogPayload = {
+  user_id: string;
+  connection_id: string;
+  trigger_type: 'cron' | 'manual' | 'initial';
+  status: 'success' | 'failed' | 'skipped';
+  api_calls_made: number;
+  error_message?: string;
+  date_range_from?: string | null;
+  date_range_to?: string | null;
+  transactions_synced?: number;
+  transactions_new?: number;
+};
+
+async function insertSyncLog(
+  supabase: ReturnType<typeof getAdmin>,
+  payload: SyncLogPayload,
+): Promise<void> {
+  const { error } = await supabase.from('bank_sync_log').insert(payload);
+  if (!error) return;
+  const code = (error as { code?: string }).code;
+  if (code === '42703' || /column .* does not exist/i.test(error.message)) {
+    console.warn(
+      `[sync-now] bank_sync_log schema missing diagnostic columns — retrying with legacy payload: ${error.message}`,
+    );
+    const legacy = {
+      user_id: payload.user_id,
+      connection_id: payload.connection_id,
+      trigger_type: payload.trigger_type,
+      status: payload.status,
+      api_calls_made: payload.api_calls_made,
+      error_message: payload.error_message,
+    };
+    const { error: legacyErr } = await supabase.from('bank_sync_log').insert(legacy);
+    if (legacyErr) {
+      console.error('[sync-now] legacy bank_sync_log insert also failed:', legacyErr.message);
+    }
+    return;
+  }
+  console.error('[sync-now] bank_sync_log insert failed:', error.message);
 }

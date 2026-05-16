@@ -219,31 +219,164 @@ export async function getAccounts(
 // ── Transactions ──
 
 /**
- * Fetches transactions for a specific account.
- * Optionally filter by date range (ISO 8601 format).
+ * Fetches a single page of transactions for an account.
+ *
+ * Yapily's transactions endpoint pagination params, from the API
+ * docs as of 2026-05-16:
+ *   from   — earliest transaction date (ISO 8601, inclusive)
+ *   before — latest transaction date (ISO 8601, exclusive). This is
+ *            the canonical upper-bound name — the `to` alias the
+ *            wrapper used to send was silently ignored, which became
+ *            the proximate cause of the 2026-05-15 "0 transactions"
+ *            outage: as soon as Paul's HSBC Business statement
+ *            crossed Yapily's default page size in the 89-day
+ *            window, the most recent transactions (including the
+ *            May 15 ~£2,200 British Gas debit) fell off the first
+ *            page and were never paged through.
+ *   limit  — page size; Yapily caps at 1000 per page for /transactions.
+ *
+ * Pagination cursor: when more rows exist, callers walk the result
+ * by passing the EARLIEST `bookingDateTime` (or `date`) seen in the
+ * previous page as the next call's `before`. `getAllTransactions`
+ * below implements that walk.
+ *
+ * This function is intentionally kept as the single-page primitive
+ * so the debug endpoint can introspect one page at a time. Sync
+ * routes call `getAllTransactions`.
  */
+export interface GetTransactionsOptions {
+  from?: string;
+  /** Yapily's canonical upper-bound + pagination cursor. */
+  before?: string;
+  /** Legacy alias for `before` — kept for older call sites; Yapily
+   * silently ignores it, so we mirror it onto `before` when no
+   * explicit `before` is supplied. */
+  to?: string;
+  /** Page size. Defaults to 1000 (Yapily's documented max). */
+  limit?: number;
+}
+
+export interface GetTransactionsPageResult {
+  data: YapilyTransaction[];
+  meta?: YapilyApiResponse<YapilyTransaction[]>['meta'];
+}
+
 export async function getTransactions(
   accountId: string,
   consentToken: string,
-  from?: string,
-  to?: string
+  fromOrOpts?: string | GetTransactionsOptions,
+  to?: string,
 ): Promise<YapilyTransaction[]> {
+  const opts: GetTransactionsOptions =
+    typeof fromOrOpts === 'object' && fromOrOpts !== null
+      ? fromOrOpts
+      : { from: fromOrOpts as string | undefined, to };
+
+  const page = await getTransactionsPage(accountId, consentToken, opts);
+  return page.data;
+}
+
+/**
+ * Single-page fetch that ALSO returns Yapily's pagination metadata
+ * so callers can decide whether to walk to the next page. Used by
+ * `getAllTransactions` and the debug endpoint.
+ */
+export async function getTransactionsPage(
+  accountId: string,
+  consentToken: string,
+  opts: GetTransactionsOptions = {},
+): Promise<GetTransactionsPageResult> {
   const params = new URLSearchParams();
-  if (from) params.set('from', from);
-  if (to) params.set('to', to);
+  if (opts.from) params.set('from', opts.from);
+  // Send `before` as the upper bound. Mirror the legacy `to` alias
+  // onto `before` when the caller didn't supply one — Yapily ignores
+  // `to`, so without this every pre-2026-05-16 call site would
+  // request unbounded windows.
+  const upperBound = opts.before ?? opts.to;
+  if (upperBound) params.set('before', upperBound);
+  const limit = opts.limit ?? 1000;
+  params.set('limit', String(limit));
 
   const queryString = params.toString();
   const path = `/accounts/${accountId}/transactions${queryString ? `?${queryString}` : ''}`;
 
-  const response = await yapilyRequest<
-    YapilyApiResponse<YapilyTransaction[]>
-  >(path, {
-    headers: {
-      consent: consentToken,
-    },
+  const response = await yapilyRequest<YapilyApiResponse<YapilyTransaction[]>>(path, {
+    headers: { consent: consentToken },
   });
 
-  return response.data || [];
+  const data = response.data || [];
+  console.log(
+    `[yapily.getTransactionsPage] account=${accountId} from=${opts.from ?? ''} before=${upperBound ?? ''} limit=${limit} returned=${data.length}` +
+      (response.meta?.pagination
+        ? ` pagination=${JSON.stringify(response.meta.pagination)}`
+        : ''),
+  );
+  return { data, meta: response.meta };
+}
+
+/**
+ * Paginated transaction fetch — walks Yapily's `before` cursor from
+ * the latest page backwards until either (a) the page comes back
+ * empty, (b) the earliest tx in the page is at/below `from`, or
+ * (c) we hit the safety cap.
+ *
+ * Returns the full deduped set, ordered as Yapily returned it
+ * (newest-first per page; combined order preserved). De-duplication
+ * is done on the (transaction_id, date) pair because Yapily can
+ * include a row at exactly the cursor on the next page.
+ *
+ * Cap: 50 pages × 1000 = 50k transactions per account per sync.
+ * That covers 12 months of even very high-volume merchant
+ * accounts; the cron only ever asks for 90 days so this is purely
+ * a runaway-loop safety belt.
+ */
+export async function getAllTransactions(
+  accountId: string,
+  consentToken: string,
+  opts: GetTransactionsOptions = {},
+): Promise<YapilyTransaction[]> {
+  const MAX_PAGES = 50;
+  const pageLimit = opts.limit ?? 1000;
+
+  const seen = new Set<string>();
+  const collected: YapilyTransaction[] = [];
+  let before: string | undefined = opts.before ?? opts.to;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data } = await getTransactionsPage(accountId, consentToken, {
+      from: opts.from,
+      before,
+      limit: pageLimit,
+    });
+
+    if (data.length === 0) break;
+
+    let earliest: string | null = null;
+    for (const tx of data) {
+      const dt = tx.bookingDateTime || tx.date;
+      if (!dt) continue;
+      if (!earliest || dt < earliest) earliest = dt;
+      const key = `${tx.id}|${dt}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      collected.push(tx);
+    }
+
+    if (!earliest) break;
+    // Yapily's `before` is EXCLUSIVE — passing the earliest tx
+    // datetime we just received as the next page's `before` walks
+    // strictly older without overlap. If `earliest` ever equals the
+    // current cursor, Yapily would loop on the same boundary, so
+    // bail to avoid a stuck cursor.
+    if (earliest === before) break;
+    // If we've already walked past `from`, stop — the next page
+    // would be entirely older than the user's window.
+    if (opts.from && earliest <= opts.from) break;
+    if (data.length < pageLimit) break;
+    before = earliest;
+  }
+
+  return collected;
 }
 
 // ── Consent Renewal ──

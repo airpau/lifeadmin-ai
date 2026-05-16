@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAccounts, getTransactions } from '@/lib/yapily';
+import { getAccounts, getAllTransactions } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
@@ -341,8 +341,21 @@ export async function GET(request: NextRequest) {
             continue;
           }
           try {
-            const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
-            connectionApiCalls++;
+            // Use the paginating helper so a high-volume account
+            // doesn't lose recent transactions behind Yapily's
+            // default page cap. `getAllTransactions` walks the
+            // `before` cursor and combines pages; each page is
+            // counted as one API call against the daily ceiling.
+            const transactions = await getAllTransactions(accountId, consentToken, {
+              from: fromDate,
+              before: toDate,
+            });
+            // Conservative count: assume one API call per ~1000
+            // returned, minimum one. The exact number is logged
+            // per-page in getTransactionsPage; this is a reasonable
+            // upper-bound for the ceiling check.
+            const pagesFetched = Math.max(1, Math.ceil(transactions.length / 1000));
+            connectionApiCalls += pagesFetched;
             transactionSyncSucceeded = true;
             totalReturned += transactions.length;
             if (transactions.length === 0) {

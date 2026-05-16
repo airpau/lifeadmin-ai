@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getTransactions } from '@/lib/yapily';
+import { getAllTransactions } from '@/lib/yapily';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
@@ -95,13 +95,12 @@ export async function POST(request: NextRequest) {
   // Migle's "wait for response before next request" rule.
   for (const account of accountSnapshots) {
     try {
-      const transactions = await getTransactions(
+      const transactions = await getAllTransactions(
         account.yapilyAccountId,
         consentToken,
-        ninetyDaysAgoIso,
-        toDate,
+        { from: ninetyDaysAgoIso, before: toDate },
       );
-      apiCallsMade++;
+      apiCallsMade += Math.max(1, Math.ceil(transactions.length / 1000));
       if (transactions.length === 0) continue;
 
       const result = await upsertYapilyTransactions({
@@ -134,13 +133,12 @@ export async function POST(request: NextRequest) {
       continue;
     }
     try {
-      const transactions = await getTransactions(
+      const transactions = await getAllTransactions(
         account.yapilyAccountId,
         consentToken,
-        twelveMonthsAgoIso,
-        ninetyDaysAgoIso,
+        { from: twelveMonthsAgoIso, before: ninetyDaysAgoIso },
       );
-      apiCallsMade++;
+      apiCallsMade += Math.max(1, Math.ceil(transactions.length / 1000));
       if (transactions.length === 0) continue;
 
       const result = await upsertYapilyTransactions({
