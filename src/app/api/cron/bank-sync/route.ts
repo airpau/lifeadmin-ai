@@ -384,7 +384,9 @@ export async function GET(request: NextRequest) {
               `[bank-sync] conn=${connection.id} account=${accountId} returned=${transactions.length} inserted=${result.inserted} duplicate=${result.skippedAsDuplicate} noHash=${result.skippedNoHash}`,
             );
           } catch (err: any) {
-            console.error(`Bank sync: error on account ${accountId}:`, err.message);
+            const errorMsg = `account ${accountId}: ${err?.message || err}`;
+            console.error(`Bank sync: error on ${errorMsg}`);
+            accountErrors.push(errorMsg);
           }
         }
       }
