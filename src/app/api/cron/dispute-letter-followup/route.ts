@@ -1,39 +1,54 @@
 /**
  * Dispute letter follow-up cron.
  *
- * Runs every 30 minutes. Finds pending_dispute_letters rows where:
- *   status = 'pending'
- *   followup_due_at <= NOW()        (~1h after the draft fired)
- *   followup_sent_at IS NULL
+ * Runs every 30 minutes. Three stages per tick:
  *
- * For each, sends a free-form message via the user's active
- * pocket-agent channel (Telegram or WhatsApp — chatbot drafts get
- * skipped because the on-site chatbot has no proactive push):
+ *   1. Auto-expire stale pending_dispute_letters rows (>48h
+ *      unresolved). Sends a final "expired" note.
  *
- *   "📤 Did you send the [provider] letter? Reply SAVE to log it
- *   and start the 14-day clock, DISCARD to drop it, or tell me
- *   what to change."
+ *   2. 1-hour follow-up nudge for pending drafts:
+ *        "📤 Did you send the [provider] letter? Reply SAVE to log
+ *         it and start the 14-day clock, DISCARD to drop it, or tell
+ *         me what to change."
+ *      Stamps followup_sent_at so it only fires once.
  *
- * Stamps followup_sent_at so it only fires once. After 48h
- * unresolved, status flips to 'expired' (handled by a separate
- * cleanup pass at the end of this run).
+ *   3. 14-day stall alert (added 2026-05-17). Finds disputes still in
+ *      open / awaiting_user_input / draft with no updated_at movement
+ *      for ≥14 days and sends a WhatsApp / Telegram nudge via the
+ *      paybacker_dispute_agent_action template. Dedups on
+ *      disputes.stall_alert_sent_at — re-alerts at most once per 7
+ *      days. Skips test/QA accounts (src/lib/test-accounts.ts).
  *
- * Why this exists: Paul flagged 2026-04-29 that users draft a
- * letter via the bot, copy + email externally, then never come
- * back to say "I've sent it". Without proactive nudges the
- * dispute timeline stays empty and the watchdog 14-day clock
- * never starts.
+ * Why this exists: Paul flagged 2026-04-29 that users draft a letter
+ * via the bot, copy + email externally, then never come back to say
+ * "I've sent it". Stage 3 was added later because the resulting open
+ * disputes were silently going cold once the supplier stalled.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendWhatsAppText } from '@/lib/whatsapp';
+import {
+  dispatchPocketAgentAlert,
+  listActivePocketAgentSessions,
+  type ActiveSession,
+} from '@/lib/pocket-agent/dispatch';
+import { isTestAccount } from '@/lib/test-accounts';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 const AGENT_ID = 'dispute-letter-followup';
 const EXPIRE_AFTER_HOURS = 48;
+// 14-day stall sweep — disputes sitting in 'open' / 'awaiting_user_input'
+// / 'draft' for this long without movement get a WhatsApp/Telegram nudge.
+// 'open' is on disputes.status; 'awaiting_user_input' and 'draft' are on
+// the agent_state column added by 20260501100000_dispute_agent.sql. We
+// match on the union of both.
+const STALL_THRESHOLD_DAYS = 14;
+// Re-alert cadence once a dispute first hits the threshold. Without
+// this dedup the cron (runs every 30 min) would WhatsApp the user 48x/day.
+const STALL_REALERT_DAYS = 7;
 
 function getAdmin() {
   return createClient(
@@ -242,14 +257,182 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // ── Stage 3: 14-day stall sweep ────────────────────────────────────
+  // Finds disputes that have been in open / awaiting_user_input / draft
+  // for ≥14 days with no updated_at movement, where we either never
+  // sent a stall nudge or sent the last one ≥7 days ago. Re-uses the
+  // already-Meta-approved paybacker_dispute_agent_action template via
+  // dispatchPocketAgentAlert so we send through WhatsApp even outside
+  // the 24h session window (free-form sendWhatsAppText would silently
+  // skip there). Telegram users get the rich text path.
+  const stallResult = await runStallSweep(supabase);
+
   await supabase.from('business_log').insert({
-    category: sent > 0 ? 'action' : 'milestone',
+    category: sent > 0 || stallResult.alerted > 0 ? 'action' : 'milestone',
     title: 'Dispute letter follow-up sweep',
-    content: `Sent ${sent} follow-ups, expired ${expired} drafts, auto-resolved ${autoResolved} (already actioned), skipped ${skipped}.`,
+    content:
+      `Sent ${sent} follow-ups, expired ${expired} drafts, ` +
+      `auto-resolved ${autoResolved} (already actioned), skipped ${skipped}. ` +
+      `Stall sweep: ${stallResult.alerted} alerted, ${stallResult.skippedTest} test, ` +
+      `${stallResult.skippedNoSession} no session, ${stallResult.errors} errors.`,
     created_by: AGENT_ID,
   });
 
-  return NextResponse.json({ ok: true, sent, expired, autoResolved, skipped });
+  return NextResponse.json({
+    ok: true,
+    sent,
+    expired,
+    autoResolved,
+    skipped,
+    stall: stallResult,
+  });
+}
+
+interface StalledDispute {
+  id: string;
+  user_id: string;
+  provider_name: string | null;
+  merchant_normalised: string | null;
+  status: string | null;
+  agent_state: string | null;
+  updated_at: string;
+}
+
+interface StallSweepResult {
+  considered: number;
+  alerted: number;
+  skippedTest: number;
+  skippedNoSession: number;
+  errors: number;
+}
+
+async function runStallSweep(
+  supabase: ReturnType<typeof getAdmin>,
+): Promise<StallSweepResult> {
+  const now = new Date();
+  const stalledBefore = new Date(now.getTime() - STALL_THRESHOLD_DAYS * 86_400_000).toISOString();
+  const reAlertBefore = new Date(now.getTime() - STALL_REALERT_DAYS * 86_400_000).toISOString();
+
+  // Pull candidates. updated_at must be 14+ days old AND the dispute
+  // must be in a stall-prone state: status='open' OR agent_state in
+  // ('draft','awaiting_user_input'). The dedup on stall_alert_sent_at
+  // is applied in JS because Supabase's .or() doesn't compose neatly
+  // with a NULL-or-old check. Row count is bounded by the partial
+  // index in 20260517110000_disputes_stall_alert_sent_at.sql.
+  const { data: rows, error } = await supabase
+    .from('disputes')
+    .select(
+      'id, user_id, provider_name, merchant_normalised, status, agent_state, updated_at, stall_alert_sent_at, archived_at',
+    )
+    .or('status.eq.open,agent_state.in.(draft,awaiting_user_input)')
+    .lt('updated_at', stalledBefore)
+    .is('archived_at', null)
+    .limit(200);
+
+  if (error) {
+    console.error('[dispute-letter-followup] stall sweep query failed', error.message);
+    return { considered: 0, alerted: 0, skippedTest: 0, skippedNoSession: 0, errors: 1 };
+  }
+
+  const candidates = (rows ?? []).filter((r) => {
+    const stamp = (r as { stall_alert_sent_at: string | null }).stall_alert_sent_at;
+    return !stamp || stamp < reAlertBefore;
+  }) as StalledDispute[];
+
+  if (candidates.length === 0) {
+    return { considered: 0, alerted: 0, skippedTest: 0, skippedNoSession: 0, errors: 0 };
+  }
+
+  // Pre-load profile emails so we can filter out QA accounts in one go.
+  const userIds = Array.from(new Set(candidates.map((c) => c.user_id)));
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, email')
+    .in('id', userIds);
+  const emailById = new Map<string, string | null>(
+    (profiles ?? []).map((p) => [p.id as string, (p as { email: string | null }).email]),
+  );
+
+  // Pre-load active Pocket Agent sessions so we don't re-query per dispute.
+  const sessions = await listActivePocketAgentSessions(supabase);
+  const sessionByUser = new Map<string, ActiveSession>(
+    sessions.map((s) => [s.user_id, s]),
+  );
+
+  let alerted = 0;
+  let skippedTest = 0;
+  let skippedNoSession = 0;
+  let errors = 0;
+
+  for (const d of candidates) {
+    // Excluded test/QA accounts — they pollute WhatsApp delivery metrics
+    // and Twilio cost. The set lives in src/lib/test-accounts.ts.
+    if (isTestAccount(emailById.get(d.user_id))) {
+      skippedTest++;
+      continue;
+    }
+    const session = sessionByUser.get(d.user_id);
+    if (!session) {
+      // User has no Pocket Agent session (no Telegram or WhatsApp wired
+      // up). Nothing to send — bail without stamping so we re-check on
+      // the next run in case they connect.
+      skippedNoSession++;
+      continue;
+    }
+
+    const daysStalled = Math.floor(
+      (Date.now() - new Date(d.updated_at).getTime()) / 86_400_000,
+    );
+    const merchant = d.provider_name || d.merchant_normalised || 'your dispute';
+    const summary =
+      `No movement in ${daysStalled} days — chase the supplier or escalate before it goes cold`;
+    const cta = 'review and act';
+    // Prefer the agent_state label when set (it's more specific —
+    // 'draft' vs 'awaiting_user_input') and fall back to status.
+    const stateLabel = d.agent_state || d.status || 'open';
+
+    try {
+      const result = await dispatchPocketAgentAlert({
+        session,
+        alertType: 'dispute_agent_action',
+        detectedIssueId: d.id,
+        telegram: {
+          title: `Stalled dispute: ${merchant}`,
+          detail:
+            `Your ${merchant} dispute has been sitting in *${stateLabel}* for ${daysStalled} days. ` +
+            `Suppliers stall hoping you give up — a chase letter or ombudsman escalation usually unblocks it. ` +
+            `Open Paybacker to review the next step.`,
+          recommendation: cta,
+        },
+        whatsappVars: {
+          merchant,
+          action_summary: summary,
+          cta,
+        },
+      });
+      if (result.ok) {
+        await supabase
+          .from('disputes')
+          .update({ stall_alert_sent_at: now.toISOString() })
+          .eq('id', d.id);
+        alerted++;
+      } else {
+        errors++;
+        console.warn('[dispute-letter-followup] stall alert dispatch failed', d.id, result.error);
+      }
+    } catch (err) {
+      errors++;
+      console.error('[dispute-letter-followup] stall alert threw', d.id, err);
+    }
+  }
+
+  return {
+    considered: candidates.length,
+    alerted,
+    skippedTest,
+    skippedNoSession,
+    errors,
+  };
 }
 
 async function dispatchToUser(
