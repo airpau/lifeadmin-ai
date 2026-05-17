@@ -673,6 +673,51 @@ function isYapily403(err: unknown): err is Error & { status?: number } {
   return err instanceof Error && (err as Error & { status?: number }).status === 403;
 }
 
+/**
+ * Returns true ONLY when the error is a Yapily 401/403 that genuinely
+ * indicates consent or token expiry — NOT a generic permission issue.
+ *
+ * Yapily uses a handful of distinct 403 codes. Only the consent/token
+ * lifecycle ones should flip `bank_connections.status` to 'expired' and
+ * prompt the user to reconnect. A 403 with `insufficient_rights` or
+ * `feature_not_supported` is a permission problem against a still-valid
+ * consent (e.g. the institution didn't grant /transactions scope, or the
+ * bank doesn't expose direct-debits) — those must NOT disconnect the
+ * connection, otherwise a single noisy bank takes down all sync surfaces
+ * for the user.
+ *
+ * 401 is always treated as token expiry because Yapily returns it when
+ * the consent token is invalid/revoked at the application-credentials
+ * layer (and there's no legitimate "transient" 401 on a healthy consent).
+ *
+ * The check is message-substring-based because Yapily's `error.code`
+ * field isn't always present on the response body — yapilyRequest folds
+ * `error.message` into the thrown Error's `.message`, so we look there.
+ */
+export function isYapilyConsentExpiryError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const status = (err as Error & { status?: number }).status;
+  if (status === 401) return true;
+  if (status !== 403) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    msg.includes('consent_expired') ||
+    msg.includes('expired_consent') ||
+    msg.includes('consent has expired') ||
+    msg.includes('consent expired') ||
+    msg.includes('consent_invalid') ||
+    msg.includes('invalid_consent') ||
+    msg.includes('consent is invalid') ||
+    msg.includes('consent_revoked') ||
+    msg.includes('revoked_consent') ||
+    msg.includes('consent has been revoked') ||
+    msg.includes('token_expired') ||
+    msg.includes('access_token_expired') ||
+    msg.includes('access token has expired') ||
+    msg.includes('token has expired')
+  );
+}
+
 export async function withConsentRetry<T>(
   consentId: string,
   fn: () => Promise<T>,

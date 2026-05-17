@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import { getAccounts, getAllTransactions } from '@/lib/yapily';
+import { getAccounts, getAllTransactions, isYapilyConsentExpiryError } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
@@ -178,6 +178,13 @@ export async function POST(request: NextRequest) {
     let syncToDate: string | null = null;
     let connectionReturned = 0;
     let connectionSynced = 0;
+    // True only when a per-account Yapily call returns a consent/token
+    // expiry signal (see isYapilyConsentExpiryError). Generic 403s (e.g.
+    // insufficient_rights, feature_not_supported) DO NOT flip this — they
+    // mean the consent is healthy but the specific endpoint isn't
+    // available, so the bank stays connected.
+    let consentExpiryDetected = false;
+    const accountErrors: string[] = [];
 
       if (!conn.consent_token) {
         await supabase
@@ -357,18 +364,52 @@ export async function POST(request: NextRequest) {
             `[sync-now] conn=${conn.id} account=${accountId} returned=${transactions.length} inserted=${result.inserted} duplicate=${result.skippedAsDuplicate} noHash=${result.skippedNoHash}`,
           );
         } catch (err: any) {
-          console.error(`Sync: Yapily error for account ${accountId}:`, err?.message || err);
+          const errorMsg = `account ${accountId}: ${err?.message || err}`;
+          const status = (err as Error & { status?: number })?.status;
+          if (isYapilyConsentExpiryError(err)) {
+            consentExpiryDetected = true;
+            console.error(`Sync: Yapily consent expiry on ${errorMsg}`);
+            accountErrors.push(errorMsg);
+            break;
+          }
+          // Generic Yapily error (including 403 insufficient_rights and
+          // 5xx) — log and continue. Connection stays 'active'.
+          console.warn(`Sync: non-fatal Yapily error on ${errorMsg}${status ? ` (status=${status})` : ''}`);
+          accountErrors.push(errorMsg);
         }
       }
 
-    if (!transactionSyncSucceeded) {
+    if (consentExpiryDetected) {
+      const detail = accountErrors.join('; ');
+      await supabase
+        .from('bank_connections')
+        .update({ status: 'expired', updated_at: now })
+        .eq('id', conn.id);
+
       await insertSyncLog(admin, {
         user_id: user.id,
         connection_id: conn.id,
         trigger_type: 'manual',
         status: 'failed',
         api_calls_made: apiCallsMade,
-        error_message: 'All account sync attempts failed',
+        error_message: `Consent expired (Yapily): ${detail}`,
+        date_range_from: syncFromDate,
+        date_range_to: syncToDate,
+        transactions_synced: connectionReturned,
+        transactions_new: 0,
+      });
+      continue;
+    }
+
+    if (!transactionSyncSucceeded) {
+      const detail = accountErrors.length > 0 ? accountErrors.join('; ') : 'unknown error';
+      await insertSyncLog(admin, {
+        user_id: user.id,
+        connection_id: conn.id,
+        trigger_type: 'manual',
+        status: 'failed',
+        api_calls_made: apiCallsMade,
+        error_message: `All account sync attempts failed: ${detail}`,
         date_range_from: syncFromDate,
         date_range_to: syncToDate,
         transactions_synced: connectionReturned,

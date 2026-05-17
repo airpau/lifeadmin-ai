@@ -68,16 +68,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'name required (1–50 chars)' }, { status: 400 });
   }
 
-  // Use the upsert RPC so the call is idempotent — repeated "create rent" calls
-  // from the agent return the existing row instead of erroring.
-  const { data, error } = await supabase.rpc('upsert_user_subcategory', {
-    p_user_id: user.id,
-    p_parent: parent,
-    p_name: cleaned,
-    p_emoji: emoji ?? null,
-  });
+  // Direct upsert on the table — the upsert_user_subcategory RPC was missing
+  // from prod schema (Paul, 2026-05-17) and the call 404s. UNIQUE constraint
+  // (user_id, parent_category, name) on user_category_custom makes this
+  // idempotent: repeated "create Client Payment" calls return the existing
+  // row's id instead of erroring.
+  const { data, error } = await supabase
+    .from('user_category_custom')
+    .upsert(
+      {
+        user_id: user.id,
+        parent_category: parent,
+        name: cleaned,
+        emoji: emoji ?? null,
+      },
+      { onConflict: 'user_id,parent_category,name' },
+    )
+    .select('id, parent_category, name, emoji')
+    .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ id: data, parent_category: parent, name: cleaned, emoji: emoji ?? null }, { status: 201 });
+  return NextResponse.json({
+    id: data?.id,
+    parent_category: data?.parent_category ?? parent,
+    name: data?.name ?? cleaned,
+    emoji: data?.emoji ?? emoji ?? null,
+  }, { status: 201 });
 }

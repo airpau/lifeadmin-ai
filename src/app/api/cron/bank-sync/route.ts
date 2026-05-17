@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAccounts, getAllTransactions } from '@/lib/yapily';
+import { getAccounts, getAllTransactions, isYapilyConsentExpiryError } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
@@ -176,6 +176,12 @@ export async function GET(request: NextRequest) {
       let totalSynced = 0;
       let transactionSyncSucceeded = false;
       const accountErrors: string[] = [];
+      // Set to true ONLY when a per-account Yapily call comes back with a
+      // consent/token expiry signal (see isYapilyConsentExpiryError). A
+      // generic 403 (e.g. insufficient_rights, feature_not_supported) does
+      // NOT flip this — those are permission/scope problems against a
+      // still-valid consent and must not disconnect the bank.
+      let consentExpiryDetected = false;
 
       {
         if (!connection.consent_token) {
@@ -385,10 +391,61 @@ export async function GET(request: NextRequest) {
             );
           } catch (err: any) {
             const errorMsg = `account ${accountId}: ${err?.message || err}`;
-            console.error(`Bank sync: error on ${errorMsg}`);
+            const status = (err as Error & { status?: number })?.status;
+            if (isYapilyConsentExpiryError(err)) {
+              // True consent/token expiry — flag so we flip status='expired'
+              // after the loop and bail without hammering Yapily for the
+              // remaining accounts on this same dead consent.
+              consentExpiryDetected = true;
+              console.error(`Bank sync: consent expiry on ${errorMsg}`);
+              accountErrors.push(errorMsg);
+              break;
+            }
+            // Generic Yapily error (including 403 insufficient_rights and
+            // 5xx) — log a warning and continue. The bank stays 'active'
+            // so a one-bank hiccup doesn't take down the user's UI.
+            console.warn(`Bank sync: non-fatal Yapily error on ${errorMsg}${status ? ` (status=${status})` : ''}`);
             accountErrors.push(errorMsg);
           }
         }
+      }
+
+      // If every account failed AND none of the failures was a consent
+      // expiry, the connection itself is fine — log as a sync failure but
+      // don't disconnect. Only consent_expires_at past now (handled above)
+      // or a Yapily 401/CONSENT_EXPIRED-class 403 flips the status.
+      if (consentExpiryDetected) {
+        const detail = accountErrors.join('; ');
+        console.error(`Bank sync: Yapily consent expiry for ${connection.id} — flipping to expired`);
+        await supabase
+          .from('bank_connections')
+          .update({ status: 'expired', updated_at: now })
+          .eq('id', connection.id);
+
+        await insertSyncLog(supabase, {
+          user_id: connection.user_id,
+          connection_id: connection.id,
+          trigger_type: 'cron',
+          status: 'failed',
+          api_calls_made: connectionApiCalls,
+          error_message: `Consent expired (Yapily): ${detail}`,
+          date_range_from: syncFromDate,
+          date_range_to: syncToDate,
+          transactions_synced: totalReturned,
+          transactions_new: 0,
+        });
+
+        results.push({
+          user_id: connection.user_id,
+          connection_id: connection.id,
+          tier,
+          transactions: 0,
+          recurring: 0,
+          api_calls: connectionApiCalls,
+          error: 'Yapily consent expired',
+        });
+        totalApiCalls += connectionApiCalls;
+        continue;
       }
 
       if (!transactionSyncSucceeded) {

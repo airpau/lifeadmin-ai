@@ -84,10 +84,20 @@ export async function POST(request: NextRequest) {
       // When the user reclassifies to a real income type, clear any conflicting
       // user_category spending override (e.g. if they'd previously marked it 'loans').
       //
-      // If a custom income subcategory was supplied (e.g. "Client Payment"),
-      // user_subcategory carries the actual label and user_category is set to
-      // 'income' so the user_category_custom registry's usage-count join in
-      // get_user_subcategories can find these rows.
+      // When a custom income subcategory is supplied (e.g. "Client Payment",
+      // "Director Salary", "Dividends" — business-account use cases the
+      // canonical 9-value income_type list can't represent), the write MUST
+      // tag user_category='income' AND user_subcategory=<label>. Both are
+      // load-bearing:
+      //   • user_category='income' keeps the txn OUT of spending aggregation
+      //     (get_monthly_spending excludes user_category IN ('transfers',
+      //     'income')) AND lets get_user_subcategories' usage_count join hit
+      //     for this label (it joins on user_category = parent_category).
+      //   • user_subcategory carries the actual personal label since
+      //     income_type is CHECK-constrained to the canonical 9 values.
+      // The frontend already coerces income_type to 'other' for customs, but
+      // we set user_category='income' whenever incomeSubcat is present
+      // regardless, so any future caller can't bypass this invariant.
       const incomePatch: Record<string, any> = incomeSubcat
         ? { income_type: newIncomeType, user_category: 'income', user_subcategory: incomeSubcat }
         : { income_type: newIncomeType, user_category: null };
