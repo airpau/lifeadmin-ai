@@ -32,6 +32,13 @@ function getAdmin() {
  *   Stored on bank_transactions.user_subcategory. Reporting RPCs aggregate on
  *   the canonical Tier-1 (`user_category`) and ignore this field — so subcats
  *   are pure display sugar and never fragment cross-user statistics.
+ *
+ * Optional on the income form:
+ * - newIncomeSubcategory: TEXT — custom income label (e.g. "Director Salary",
+ *   "Client Payment"). When set, income_type is held to a CHECK-compliant
+ *   placeholder ('other') and the actual label lives on user_subcategory.
+ *   user_category is set to 'income' so the user_category_custom registry's
+ *   usage_count join in get_user_subcategories stays meaningful.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -40,9 +47,12 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json();
-    const { transactionId, merchantPattern, newCategory, newIncomeType, applyToAll, userSubcategory } = body;
+    const { transactionId, merchantPattern, newCategory, newIncomeType, applyToAll, userSubcategory, newIncomeSubcategory } = body;
     const subcat = typeof userSubcategory === 'string' && userSubcategory.trim().length > 0
       ? userSubcategory.trim().slice(0, 50)
+      : null;
+    const incomeSubcat = typeof newIncomeSubcategory === 'string' && newIncomeSubcategory.trim().length > 0
+      ? newIncomeSubcategory.trim().slice(0, 50)
       : null;
 
     // Resolve the category label through the subcategory engine so custom
@@ -73,7 +83,14 @@ export async function POST(request: NextRequest) {
     if (newIncomeType) {
       // When the user reclassifies to a real income type, clear any conflicting
       // user_category spending override (e.g. if they'd previously marked it 'loans').
-      const incomePatch: Record<string, any> = { income_type: newIncomeType, user_category: null };
+      //
+      // If a custom income subcategory was supplied (e.g. "Client Payment"),
+      // user_subcategory carries the actual label and user_category is set to
+      // 'income' so the user_category_custom registry's usage-count join in
+      // get_user_subcategories can find these rows.
+      const incomePatch: Record<string, any> = incomeSubcat
+        ? { income_type: newIncomeType, user_category: 'income', user_subcategory: incomeSubcat }
+        : { income_type: newIncomeType, user_category: null };
 
       if (transactionId) {
         await admin.from('bank_transactions')
@@ -89,7 +106,13 @@ export async function POST(request: NextRequest) {
             .eq('transaction_id', transactionId);
         } catch { /* silent */ }
 
-        return NextResponse.json({ success: true, updated: 1, transactionId, incomeType: newIncomeType });
+        return NextResponse.json({
+          success: true,
+          updated: 1,
+          transactionId,
+          incomeType: newIncomeType,
+          ...(incomeSubcat ? { incomeSubcategory: incomeSubcat } : {}),
+        });
       }
 
       if (merchantPattern) {
@@ -134,7 +157,13 @@ export async function POST(request: NextRequest) {
         // 'client_payment' is a strong business signal).
         void bumpUserIntelligence(admin, user.id, newIncomeType);
 
-        return NextResponse.json({ success: true, updated, merchant: merchantPattern, incomeType: newIncomeType });
+        return NextResponse.json({
+          success: true,
+          updated,
+          merchant: merchantPattern,
+          incomeType: newIncomeType,
+          ...(incomeSubcat ? { incomeSubcategory: incomeSubcat } : {}),
+        });
       }
       return NextResponse.json({ error: 'transactionId or merchantPattern required' }, { status: 400 });
     }

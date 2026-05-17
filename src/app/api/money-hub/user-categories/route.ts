@@ -52,9 +52,14 @@ export async function POST(request: NextRequest) {
   if (!parent || !isValidCategory(parent)) {
     return NextResponse.json({ error: 'parent must be a canonical category id' }, { status: 400 });
   }
-  if (parent === 'income' || parent === 'transfers') {
+  // 'transfers' is a system category (internal money movement, never shown in
+  // breakdowns) so it can't have personal labels. 'income' is also a system
+  // category for spending-side analysis, but users genuinely need to label
+  // income streams (e.g. "Director Salary", "Client Payment", "Dividends")
+  // — especially on business accounts — so we allow it as a parent.
+  if (parent === 'transfers') {
     return NextResponse.json(
-      { error: 'income and transfers are system categories — pick a spending parent' },
+      { error: 'transfers is a system category — pick another parent' },
       { status: 400 },
     );
   }

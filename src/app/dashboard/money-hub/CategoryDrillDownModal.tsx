@@ -1,9 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, Search, ChevronDown, CheckCircle2, Loader2, ArrowRight, Plus } from 'lucide-react';
 import { fmtNum } from '@/lib/format';
 import { cleanMerchantName, isGarbageMerchantName, pickRawMerchantSource } from '@/lib/merchant-utils';
 import { USER_SELECTABLE_CATEGORIES } from '@/lib/categories';
 import { createClient } from '@/lib/supabase/client';
+
+interface UserSubcategory {
+  id: string;
+  parent_category: string;
+  name: string;
+  emoji: string | null;
+}
 
 interface CategoryDrillDownModalProps {
   isOpen: boolean;
@@ -50,13 +57,31 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
   // Custom category creation
   const [showCustomInput, setShowCustomInput] = useState<string | null>(null); // holds the merchant pattern
   const [customCategoryValue, setCustomCategoryValue] = useState('');
+  // User's saved Tier-2 subcategories (loaded on open). For income drill-down
+  // we surface entries with parent='income'; for spending drill-down we filter
+  // to entries under the current canonical category.
+  const [userSubcats, setUserSubcats] = useState<UserSubcategory[]>([]);
+
+  const refreshSubcats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/money-hub/user-categories', { cache: 'no-store' });
+      if (!res.ok) return;
+      const json = await res.json();
+      setUserSubcats(json.subcategories ?? []);
+    } catch {
+      /* silent — non-critical */
+    }
+  }, []);
 
   useEffect(() => {
     if (isOpen && (category || incomeType || searchQuery)) {
       loadData();
+      refreshSubcats();
     } else {
       setData(null);
       setErrorMsg(null);
+      setShowCustomInput(null);
+      setCustomCategoryValue('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, category, incomeType, searchQuery, selectedMonth, activeSpaceId]);
@@ -110,10 +135,14 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
   // Unified recategorise handler.
   // `mode` decides whether we POST { newIncomeType } (income-type change) or
   // { newCategory } (spending-category / non-income label).
+  // `subLabel` is an optional free-text subcategory: for income it goes via
+  // newIncomeSubcategory (so the label can be free-text outside the CHECK-
+  // constrained income_type enum); for spending it goes via userSubcategory.
   const handleRecategorise = async (
     merchantPattern: string,
     newValue: string,
     mode: 'incomeType' | 'category' = 'category',
+    subLabel: string | null = null,
   ) => {
     setRecatLoading(true);
     setErrorMsg(null);
@@ -122,6 +151,11 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
         mode === 'incomeType'
           ? { merchantPattern, newIncomeType: newValue, applyToAll: true }
           : { merchantPattern, newCategory: newValue, applyToAll: true };
+
+      if (subLabel) {
+        if (mode === 'incomeType') body.newIncomeSubcategory = subLabel;
+        else body.userSubcategory = subLabel;
+      }
 
       const recatRes = await fetch('/api/money-hub/recategorise', {
         method: 'POST',
@@ -159,6 +193,43 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
     setRecatLoading(false);
   };
 
+  // Register a free-text custom income label in user_category_custom (idempotent),
+  // then apply it to the merchant. The income_type column has a CHECK constraint
+  // so the free text rides on user_subcategory while income_type is held at
+  // 'other' as a CHECK-compliant placeholder.
+  const handleAddCustomIncome = async (merchantPattern: string) => {
+    const name = customCategoryValue.trim();
+    if (!name) return;
+    if (name.length > 50) {
+      setErrorMsg('Custom labels must be 50 characters or fewer.');
+      return;
+    }
+    setRecatLoading(true);
+    setErrorMsg(null);
+    try {
+      const regRes = await fetch('/api/money-hub/user-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent: 'income', name }),
+      });
+      if (!regRes.ok) {
+        const err = await regRes.json().catch(() => ({}));
+        setErrorMsg(err.error || 'Could not save custom income type — please retry.');
+        setRecatLoading(false);
+        return;
+      }
+      await refreshSubcats();
+      // Apply to the merchant via the same handler the canonical buttons use.
+      await handleRecategorise(merchantPattern, 'other', 'incomeType', name);
+    } catch {
+      setErrorMsg('Could not save custom income type — please retry.');
+      setRecatLoading(false);
+    } finally {
+      setShowCustomInput(null);
+      setCustomCategoryValue('');
+    }
+  };
+
   if (!isOpen || !(category || incomeType || searchQuery)) return null;
 
   let displayTitle = '';
@@ -168,9 +239,15 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
   // When the modal is opened in income context, the dropdown offers income types
   // plus a "Not income" escape hatch. Otherwise we fall back to spending categories.
   const isIncomeMode = !!incomeType;
+  // Customs to surface for the current mode: income customs if we're in
+  // income mode, otherwise customs scoped to the current canonical category.
+  const relevantCustoms = userSubcats.filter((s) =>
+    isIncomeMode ? s.parent_category === 'income' : s.parent_category === category,
+  );
 
   const renderReassignOptions = (pattern: string) => {
     if (isIncomeMode) {
+      const isCustomMode = showCustomInput === pattern;
       return (
         <>
           <div className="p-2 border-b border-slate-200 bg-white">
@@ -188,6 +265,69 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
               </button>
             ))}
           </div>
+
+          {/* User's previously-saved custom income types */}
+          {relevantCustoms.length > 0 && (
+            <>
+              <div className="p-2 border-t border-b border-slate-200 bg-white">
+                <p className="text-xs text-slate-500 font-medium">Your custom income types</p>
+              </div>
+              <div className="max-h-40 overflow-y-auto custom-scrollbar p-1">
+                {relevantCustoms.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => handleRecategorise(pattern, 'other', 'incomeType', s.name)}
+                    disabled={recatLoading}
+                    className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-purple-500/20 hover:text-purple-300 rounded flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <span aria-hidden>{s.emoji ?? '·'}</span>
+                    <span className="flex-1 truncate">{s.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Inline "Add custom income type" — for business accounts where the
+              canonical list (Salary, Freelance, Rental, etc.) doesn't fit. */}
+          <div className="border-t border-slate-200 p-1">
+            {isCustomMode ? (
+              <div className="flex gap-1 p-1">
+                <input
+                  autoFocus
+                  type="text"
+                  value={customCategoryValue}
+                  onChange={e => setCustomCategoryValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && customCategoryValue.trim()) {
+                      handleAddCustomIncome(pattern);
+                    } else if (e.key === 'Escape') {
+                      setShowCustomInput(null);
+                      setCustomCategoryValue('');
+                    }
+                  }}
+                  placeholder="e.g. Client Payment"
+                  maxLength={50}
+                  className="flex-1 text-sm px-2 py-1 rounded border border-slate-300 focus:outline-none focus:border-purple-400"
+                />
+                <button
+                  onClick={() => handleAddCustomIncome(pattern)}
+                  disabled={!customCategoryValue.trim() || recatLoading}
+                  className="px-2 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
+                >
+                  Save
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setShowCustomInput(pattern); setCustomCategoryValue(''); }}
+                className="w-full text-left px-3 py-2 text-sm text-purple-400 hover:bg-purple-500/10 hover:text-purple-300 rounded flex items-center gap-1"
+              >
+                <Plus className="h-3 w-3" /> Add custom income type
+              </button>
+            )}
+          </div>
+
           <div className="p-2 border-t border-b border-slate-200 bg-white">
             <p className="text-xs text-slate-500 font-medium">Not income — tag as</p>
           </div>
@@ -366,7 +506,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                       </div>
                       
                       {merchantRecatIdx === idx && (
-                        <div className="absolute top-16 right-0 w-56 max-w-[calc(100vw-2.5rem)] bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
+                        <div className="absolute top-16 right-0 w-64 max-w-[calc(100vw-2.5rem)] bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
                           {renderReassignOptions(m.merchant)}
                         </div>
                       )}
@@ -384,9 +524,12 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                     const isRecatOpen = recatDropdown === txn.id;
                     return (
                       <div key={txn.id || idx} className="p-4 flex items-center justify-between group relative">
-                        <div>
-                          <p className="text-slate-900 text-sm font-medium">{isGarbageMerchantName(txn.merchant_name) ? (txn.description || txn.merchant_name) : txn.merchant_name}</p>
-                          <p className="text-slate-500 text-xs mt-0.5">{dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
+                        <div className="min-w-0">
+                          <p className="text-slate-900 text-sm font-medium truncate">{isGarbageMerchantName(txn.merchant_name) ? (txn.description || txn.merchant_name) : txn.merchant_name}</p>
+                          <p className="text-slate-500 text-xs mt-0.5">
+                            {dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            {txn.user_subcategory ? <span className="text-slate-400"> · {txn.user_subcategory}</span> : null}
+                          </p>
                         </div>
                         <div className="text-right">
                           <p className="text-slate-900 text-sm font-medium">£{fmtNum(Math.abs(txn.amount))}</p>
@@ -399,7 +542,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                         </div>
 
                         {isRecatOpen && (
-                          <div className="absolute top-12 right-4 w-56 max-w-[calc(100vw-2.5rem)] bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
+                          <div className="absolute top-12 right-4 w-64 max-w-[calc(100vw-2.5rem)] bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
                             {renderReassignOptions(cleanMerchantName(txn.description || ''))}
                           </div>
                         )}
