@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   ShieldAlert, Users, CreditCard, TrendingUp,
   Building2, FileText, Bot, Loader2, ChevronRight, ArrowLeft,
-  Banknote, Mail, Database, BarChart3, Tag, RefreshCw,
+  Banknote, Mail, Database, BarChart3, Tag, RefreshCw, Crown,
 } from 'lucide-react';
 import TicketList from '@/components/admin/TicketList';
 import AITeamPanel from '@/components/admin/AITeamPanel';
@@ -24,6 +24,7 @@ interface Metrics {
   overview: Record<string, number>;
   revenue: { mrr: number; arr: number; paying_customers: number; free_users: number };
   tier_breakdown: Record<string, number>;
+  founding_members: { total: number; active: number };
   recent_signups: Array<{ id: string; email: string; name: string; tier: string; status: string; joined: string }>;
 }
 
@@ -34,6 +35,9 @@ interface Member {
   subscription_tier: string;
   subscription_status: string;
   created_at: string;
+  last_sign_in_at: string | null;
+  founding_member: boolean;
+  founding_member_expires: string | null;
   total_money_recovered: number;
   total_tasks_completed: number;
   opportunity_score: number;
@@ -98,9 +102,11 @@ export default function AdminPage() {
 
       // Session-auth handles admin gating server-side (see authorizeAdminOrCron).
       // No bearer secret needed — the cookie travels with same-origin fetch.
+      // cache:'no-store' so a back/forward navigation doesn't show stale
+      // membership counts after a test-account delete or new sign-up.
       const [metricsRes, dealsRes] = await Promise.all([
-        fetch('/api/admin/metrics', { credentials: 'include' }).then(r => r.json()),
-        fetch('/api/admin/deals', { credentials: 'include' }).then(r => r.json()),
+        fetch('/api/admin/metrics', { credentials: 'include', cache: 'no-store' }).then(r => r.json()),
+        fetch('/api/admin/deals', { credentials: 'include', cache: 'no-store' }).then(r => r.json()),
       ]);
 
       if (metricsRes.overview) {
@@ -128,7 +134,7 @@ export default function AdminPage() {
   }, [supabase]);
 
   const loadMembers = async () => {
-    const res = await fetch('/api/admin/members', { credentials: 'include' }).then(r => r.json());
+    const res = await fetch('/api/admin/members', { credentials: 'include', cache: 'no-store' }).then(r => r.json());
 
     if (res.members) {
       setMembers(res.members.map((m: any) => ({
@@ -136,6 +142,9 @@ export default function AdminPage() {
         full_name: m.full_name || '',
         subscription_tier: m.subscription_tier || 'free',
         subscription_status: m.subscription_status || '',
+        last_sign_in_at: m.last_sign_in_at ?? null,
+        founding_member: !!m.founding_member,
+        founding_member_expires: m.founding_member_expires ?? null,
         total_money_recovered: m.total_money_recovered || 0,
         total_tasks_completed: m.total_tasks_completed || 0,
         opportunity_score: m.opportunity_score || 0,
@@ -149,7 +158,7 @@ export default function AdminPage() {
   const loadMemberDetail = async (memberId: string) => {
     setSelectedMemberId(memberId);
 
-    const res = await fetch(`/api/admin/members?id=${memberId}`, { credentials: 'include' }).then(r => r.json());
+    const res = await fetch(`/api/admin/members?id=${memberId}`, { credentials: 'include', cache: 'no-store' }).then(r => r.json());
 
     if (res.profile) {
       setSelectedMember(res);
@@ -294,13 +303,29 @@ export default function AdminPage() {
           {/* Tier Breakdown */}
           <div className="card mb-6">
             <h3 className="text-slate-900 font-semibold mb-3">Plan Distribution</h3>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-4 items-center">
               {Object.entries(metrics.tier_breakdown).map(([tier, count]) => (
                 <div key={tier} className="flex items-center gap-2">
                   <span className={`px-2 py-1 rounded text-xs font-semibold ${tierColor(tier)}`}>{tier}</span>
                   <span className="text-slate-900 font-bold">{count}</span>
                 </div>
               ))}
+              {/* Founding members cuts across tiers — surfaced as its own
+                  chip so Paul can see total signups in the programme + how
+                  many are still inside the 30-day Pro window. */}
+              {metrics.founding_members && (
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="px-2 py-1 rounded text-xs font-semibold bg-amber-500/10 text-amber-700 inline-flex items-center gap-1">
+                    <Crown className="h-3 w-3" /> founding
+                  </span>
+                  <span className="text-slate-900 font-bold">
+                    {metrics.founding_members.total}
+                  </span>
+                  <span className="text-slate-500 text-xs">
+                    ({metrics.founding_members.active} active)
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -550,11 +575,16 @@ export default function AdminPage() {
                 onClick={() => loadMemberDetail(m.id)}
                 className="w-full flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-3 border border-slate-200/50 hover:border-emerald-500/50 transition-all text-left"
               >
-                <div>
-                  <p className="text-slate-900 text-sm font-medium">{m.full_name || m.email}</p>
-                  <p className="text-slate-500 text-xs">{m.email}</p>
+                <div className="min-w-0">
+                  <p className="text-slate-900 text-sm font-medium truncate">{m.full_name || m.email}</p>
+                  <p className="text-slate-500 text-xs truncate">{m.email}</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 shrink-0">
+                  {m.founding_member && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-700 inline-flex items-center gap-1">
+                      <Crown className="h-2.5 w-2.5" /> founding
+                    </span>
+                  )}
                   {m.opportunity_score > 0 && (
                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${
                       m.opportunity_score >= 100 ? 'bg-red-500/20 text-red-400' :
@@ -565,7 +595,12 @@ export default function AdminPage() {
                     </span>
                   )}
                   <span className={`px-2 py-0.5 rounded text-xs font-semibold ${tierColor(m.subscription_tier)}`}>{m.subscription_tier}</span>
-                  <span className="text-slate-500 text-xs">{new Date(m.created_at).toLocaleDateString('en-GB')}</span>
+                  <div className="text-right">
+                    <span className="text-slate-500 text-xs block">Joined {new Date(m.created_at).toLocaleDateString('en-GB')}</span>
+                    <span className="text-slate-400 text-[10px] block">
+                      Last in: {m.last_sign_in_at ? new Date(m.last_sign_in_at).toLocaleDateString('en-GB') : 'never'}
+                    </span>
+                  </div>
                   <ChevronRight className="h-4 w-4 text-slate-500" />
                 </div>
               </button>
@@ -583,18 +618,38 @@ export default function AdminPage() {
 
           {/* Profile Header */}
           <div className="card mb-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900">{selectedMember.profile?.full_name || selectedMember.profile?.email}</h2>
-                <p className="text-slate-600">{selectedMember.profile?.email}</p>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h2 className="text-2xl font-bold text-slate-900 truncate">{selectedMember.profile?.full_name || selectedMember.profile?.email}</h2>
+                <p className="text-slate-600 truncate">{selectedMember.profile?.email}</p>
                 <p className="text-slate-500 text-xs mt-1">
-                  Joined {new Date(selectedMember.profile?.created_at).toLocaleDateString('en-GB')} ·
+                  Joined {new Date(selectedMember.profile?.created_at).toLocaleDateString('en-GB')}
+                  {' · '}
+                  Last sign-in: {selectedMember.profile?.last_sign_in_at
+                    ? new Date(selectedMember.profile.last_sign_in_at).toLocaleString('en-GB', {
+                        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                      })
+                    : 'never'}
+                  {' · '}
                   Stripe: {selectedMember.profile?.stripe_customer_id || 'none'}
                 </p>
               </div>
-              <span className={`px-3 py-1 rounded-full text-sm font-semibold ${tierColor(selectedMember.profile?.subscription_tier || 'free')}`}>
-                {selectedMember.profile?.subscription_tier || 'free'}
-              </span>
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${tierColor(selectedMember.profile?.subscription_tier || 'free')}`}>
+                  {selectedMember.profile?.subscription_tier || 'free'}
+                </span>
+                {selectedMember.profile?.founding_member && (
+                  <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-500/10 text-amber-700 inline-flex items-center gap-1">
+                    <Crown className="h-3 w-3" />
+                    founding
+                    {selectedMember.profile?.founding_member_expires && (
+                      <span className="text-amber-600 font-normal">
+                        — to {new Date(selectedMember.profile.founding_member_expires).toLocaleDateString('en-GB')}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
