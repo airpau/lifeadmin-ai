@@ -52,9 +52,13 @@ export async function POST(request: NextRequest) {
   if (!parent || !isValidCategory(parent)) {
     return NextResponse.json({ error: 'parent must be a canonical category id' }, { status: 400 });
   }
-  if (parent === 'income' || parent === 'transfers') {
+  // 'income' is a legitimate parent — business accounts register custom
+  // income labels (Director Salary, Client Payment) under it from the
+  // income drill-down. 'transfers' stays blocked because it's a system
+  // category populated by mark_internal_transfers, not user labelling.
+  if (parent === 'transfers') {
     return NextResponse.json(
-      { error: 'income and transfers are system categories — pick a spending parent' },
+      { error: 'transfers is a system category — pick a different parent' },
       { status: 400 },
     );
   }
@@ -63,16 +67,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'name required (1–50 chars)' }, { status: 400 });
   }
 
-  // Use the upsert RPC so the call is idempotent — repeated "create rent" calls
-  // from the agent return the existing row instead of erroring.
-  const { data, error } = await supabase.rpc('upsert_user_subcategory', {
-    p_user_id: user.id,
-    p_parent: parent,
-    p_name: cleaned,
-    p_emoji: emoji ?? null,
-  });
+  // Direct table upsert keyed on the (user_id, parent_category, name)
+  // uniqueness constraint — idempotent without depending on an RPC.
+  // The upsert_user_subcategory RPC isn't deployed everywhere; calling
+  // it surfaced a schema-cache miss in prod ("Could not find the function
+  // public.upsert_user_subcategory(...)"), so we go direct.
+  const { data, error } = await supabase
+    .from('user_category_custom')
+    .upsert(
+      {
+        user_id: user.id,
+        parent_category: parent,
+        name: cleaned,
+        emoji: emoji ?? null,
+      },
+      { onConflict: 'user_id,parent_category,name', ignoreDuplicates: false },
+    )
+    .select('id, parent_category, name, emoji')
+    .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ id: data, parent_category: parent, name: cleaned, emoji: emoji ?? null }, { status: 201 });
+  return NextResponse.json(
+    {
+      id: data?.id,
+      parent_category: data?.parent_category ?? parent,
+      name: data?.name ?? cleaned,
+      emoji: data?.emoji ?? emoji ?? null,
+    },
+    { status: 201 },
+  );
 }

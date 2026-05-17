@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAccounts, getTransactions } from '@/lib/yapily';
+import { getAccounts, getTransactions, isYapilyConsentExpiredError } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { detectRecurring } from '@/lib/detect-recurring';
@@ -163,6 +163,11 @@ export async function GET(request: NextRequest) {
 
     const tier = userTierMap.get(connection.user_id) ?? 'free';
     let connectionApiCalls = 0;
+    // Hoisted so the outer catch can also classify the error and decide
+    // whether to flip the connection to expired. Only flipped to true
+    // when isYapilyConsentExpiredError matches — a single generic 403
+    // mustn't strand the user on a reconnect prompt.
+    let consentExpiredDetected = false;
 
     try {
       let totalSynced = 0;
@@ -304,6 +309,9 @@ export async function GET(request: NextRequest) {
             }
           } catch (err: any) {
             console.error(`Bank sync: hash backfill failed for ${connection.id}:`, err.message);
+            if (isYapilyConsentExpiredError(err)) {
+              consentExpiredDetected = true;
+            }
             await sendTelegramAlert(
               `🚨 *Bank sync hash backfill FAILED*\n\n` +
               `Connection \`${connection.id}\` for user \`${connection.user_id}\`. ` +
@@ -352,12 +360,34 @@ export async function GET(request: NextRequest) {
             totalSynced += result.inserted;
           } catch (err: any) {
             console.error(`Bank sync: error on account ${accountId}:`, err.message);
+            accountErrors.push(`account ${accountId}: ${err?.message || err}`);
+            if (isYapilyConsentExpiredError(err)) {
+              consentExpiredDetected = true;
+            }
           }
         }
       }
 
       if (!transactionSyncSucceeded) {
         const detail = accountErrors.length > 0 ? accountErrors.join('; ') : 'unknown error';
+        // Mark expired ONLY when Yapily told us the consent is actually
+        // expired/revoked. Generic 403 "insufficient rights" / 5xx / network
+        // errors fall through to a logged failure with status untouched so
+        // the next cron run retries — a single hiccup mustn't strand the user
+        // on a reconnect prompt.
+        if (consentExpiredDetected) {
+          await supabase
+            .from('bank_connections')
+            .update({ status: 'expired', updated_at: now })
+            .eq('id', connection.id);
+          console.warn(
+            `Bank sync: connection ${connection.id} marked expired — Yapily returned consent/token expired (${detail})`,
+          );
+        } else {
+          console.warn(
+            `Bank sync: connection ${connection.id} sync failed but status left unchanged — error not a consent expiry (${detail})`,
+          );
+        }
         throw new Error(`All account sync attempts failed: ${detail}`);
       }
 
@@ -433,6 +463,24 @@ export async function GET(request: NextRequest) {
       );
     } catch (err: any) {
       console.error(`Bank sync: fatal error for ${connection.id}:`, err.message);
+
+      // Promote the per-account detection AND classify the throwing error
+      // itself. Mark the connection expired ONLY when Yapily told us the
+      // consent or token is actually expired/revoked. Generic 403
+      // "insufficient rights", 5xx, and network errors leave status
+      // unchanged so the next cron run retries — a single hiccup mustn't
+      // strand the user on a reconnect prompt.
+      const isExpiry = consentExpiredDetected || isYapilyConsentExpiredError(err);
+      if (isExpiry) {
+        await supabase
+          .from('bank_connections')
+          .update({ status: 'expired', updated_at: now })
+          .eq('id', connection.id);
+      } else {
+        console.warn(
+          `Bank sync: connection ${connection.id} sync failed but status left unchanged — error not a consent expiry (${err.message})`,
+        );
+      }
 
       await supabase.from('bank_sync_log').insert({
         user_id: connection.user_id,

@@ -540,6 +540,49 @@ function isYapily403(err: unknown): err is Error & { status?: number } {
   return err instanceof Error && (err as Error & { status?: number }).status === 403;
 }
 
+/**
+ * Differentiates a true Yapily consent/token-expired signal from a generic
+ * 403. We were flipping bank_connections.status='expired' on every 403 —
+ * including transient "insufficient rights" / scope mismatches that the
+ * next sync would have recovered from. That left users stuck on a
+ * reconnect prompt after a single hiccup.
+ *
+ * Returns true only when the error message names a consent or token
+ * expiry (the patterns Yapily actually uses on lapsed consents). Status
+ * 410 (Gone) is treated as a real expiry too — Yapily returns it for
+ * fully-revoked consents.
+ *
+ * Generic 403s, 5xx, network errors, and anything we don't recognise →
+ * false. The caller should log and leave status unchanged.
+ */
+export function isYapilyConsentExpiredError(err: unknown): boolean {
+  if (err instanceof ConsentExpiredError) return true;
+  if (!(err instanceof Error)) return false;
+  const status = (err as Error & { status?: number }).status;
+  if (status === 410) return true;
+  if (status !== 403) return false;
+
+  const msg = err.message.toLowerCase();
+  // Conservative allowlist — only the phrases Yapily uses on a real
+  // consent/token expiry. "insufficient rights" / "forbidden" alone is
+  // NOT enough.
+  return (
+    msg.includes('consent has expired') ||
+    msg.includes('consent expired') ||
+    msg.includes('consent is expired') ||
+    msg.includes('consent revoked') ||
+    msg.includes('consent has been revoked') ||
+    msg.includes('consent withdrawn') ||
+    msg.includes('token has expired') ||
+    msg.includes('token expired') ||
+    msg.includes('access token expired') ||
+    msg.includes('authorisation expired') ||
+    msg.includes('authorization expired') ||
+    msg.includes('consent_expired') ||
+    msg.includes('token_expired')
+  );
+}
+
 export async function withConsentRetry<T>(
   consentId: string,
   fn: () => Promise<T>,
