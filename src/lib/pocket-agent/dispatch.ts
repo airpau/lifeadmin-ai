@@ -54,8 +54,12 @@ export interface ActiveSession {
 
 /**
  * Pull every active Pocket Agent session across BOTH channels, in
- * one go. The mutex guarantees a user has at most one active row,
- * so we never duplicate.
+ * one go. The DB mutex is supposed to guarantee a user has at most
+ * one active row but in practice users have ended up with rows in
+ * both tables (manual admin flips, race conditions). To prevent
+ * duplicate user-facing alerts (2026-05-17 fix), we dedup per user
+ * and prefer WhatsApp — the user-facing Pocket Agent channel.
+ * Telegram is reserved for admin / founder system messages now.
  */
 export async function listActivePocketAgentSessions(
   supabase: AdminClient,
@@ -72,19 +76,26 @@ export async function listActivePocketAgentSessions(
       .is('opted_out_at', null),
   ]);
 
+  const waUserIds = new Set(
+    ((wa ?? []) as Array<{ user_id: string }>).map((r) => r.user_id),
+  );
+
   const sessions: ActiveSession[] = [];
-  for (const r of (tg ?? []) as Array<{ user_id: string; telegram_chat_id: number }>) {
-    sessions.push({
-      user_id: r.user_id,
-      channel: 'telegram',
-      destination: r.telegram_chat_id,
-    });
-  }
   for (const r of (wa ?? []) as Array<{ user_id: string; whatsapp_phone: string }>) {
     sessions.push({
       user_id: r.user_id,
       channel: 'whatsapp',
       destination: r.whatsapp_phone,
+    });
+  }
+  for (const r of (tg ?? []) as Array<{ user_id: string; telegram_chat_id: number }>) {
+    // Skip Telegram for any user who also has an active WhatsApp session.
+    // WhatsApp is the user-facing channel; Telegram-only is admin now.
+    if (waUserIds.has(r.user_id)) continue;
+    sessions.push({
+      user_id: r.user_id,
+      channel: 'telegram',
+      destination: r.telegram_chat_id,
     });
   }
   return sessions;

@@ -143,41 +143,52 @@ async function buildMorningBrief(
   const DIVIDER = '\n\n────────';
   sections.push("☀️ *Good morning!*\n_Your daily money briefing:_");
 
-  // ------ 1. Yesterday's spending ------
+  // ------ 1. Yesterday's spending (with fallback to most recent day) ------
   const EXCLUDE_CATS = new Set([
     'transfer', 'transfers', 'internal_transfer', 'self_transfer',
     'credit_card_payment', 'credit_card',
     'investment', 'investments', 'savings', 'pension',
     'income', 'fee_refund',
   ]);
-  // Fetch every yesterday-window debit across all of the user's
-  // connected banks (HSBC Business, Monzo, etc.). We deliberately do
-  // NOT filter by connection_id or account_id — every row in
-  // bank_transactions belongs to the user via user_id and is already
-  // the de-duplicated view after the sync's enrichment RPCs run.
-  // Filtering by deleted_at IS NULL keeps soft-deleted disconnect
-  // history out of the totals. Pending transactions stay in because
-  // a £2,000+ direct debit is a real cash outflow either way.
-  const { data: yesterdayTxRaw } = await supabase
-    .from('bank_transactions')
-    .select('user_category, amount, merchant_name, description, account_id')
-    .eq('user_id', userId)
-    .is('deleted_at', null)
-    .lt('amount', 0)
-    .gte('timestamp', yesterdayStart.toISOString())
-    .lt('timestamp', todayStart.toISOString());
-
-  const yesterdayTx = ((yesterdayTxRaw ?? []) as Array<{
+  // Fetch every debit in the window across all of the user's connected
+  // banks. We deliberately do NOT filter by connection_id / account_id —
+  // every row in bank_transactions belongs to the user via user_id and
+  // is already de-duped by the sync's enrichment RPCs. deleted_at IS NULL
+  // keeps soft-deleted disconnect history out. Pending transactions stay
+  // in because a £2,000+ direct debit is a real cash outflow either way.
+  //
+  // Returns null when there are no non-excluded debits in the window —
+  // callers use that to chain a fallback lookup over the last 30 days
+  // when the literal "yesterday" window is empty (2026-05-17 fix).
+  type SpendTxRow = {
     user_category: string | null;
     amount: number | string;
     merchant_name: string | null;
     description: string | null;
-  }>).filter((t) => !EXCLUDE_CATS.has(t.user_category ?? ''));
+  };
+  const buildSpendingBlock = async (
+    startISO: string,
+    endISO: string,
+    headingEmoji: string,
+    headingLabel: string,
+  ): Promise<string | null> => {
+    const { data: raw } = await supabase
+      .from('bank_transactions')
+      .select('user_category, amount, merchant_name, description')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .lt('amount', 0)
+      .gte('timestamp', startISO)
+      .lt('timestamp', endISO);
+    const rows = ((raw ?? []) as SpendTxRow[]).filter(
+      (t) => !EXCLUDE_CATS.has(t.user_category ?? ''),
+    );
+    if (rows.length === 0) return null;
 
-  if (yesterdayTx.length > 0) {
-    const total = yesterdayTx.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
+    const total = rows.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
+
     const byCategory: Record<string, number> = {};
-    for (const t of yesterdayTx) {
+    for (const t of rows) {
       const cat = t.user_category ?? 'Other';
       byCategory[cat] = (byCategory[cat] ?? 0) + Math.abs(Number(t.amount));
     }
@@ -185,21 +196,22 @@ async function buildMorningBrief(
       .sort(([, a], [, b]) => b - a)
       .slice(0, 3);
 
-    let spendingSection = `${DIVIDER}\n💷 *Yesterday's Spending*\nTotal: *${fmt(total)}*`;
+    let block = `${DIVIDER}\n${headingEmoji} *${headingLabel}*\nTotal: *${fmt(total)}*`;
     if (topCategories.length > 0) {
-      spendingSection += '\n_Top categories:_';
+      block += '\n_Top categories:_';
       for (const [cat, amount] of topCategories) {
         const prettyCat = cat
           .replace(/_/g, ' ')
           .replace(/\b\w/g, (c) => c.toUpperCase());
-        spendingSection += `\n  •  ${prettyCat} — *${fmt(amount)}*`;
+        block += `\n  •  ${prettyCat} — *${fmt(amount)}*`;
       }
     }
+
     // Surface the largest individual debit by merchant so big one-off
     // payments (e.g. a £2,200 British Gas direct debit) are not buried
     // inside an aggregated category total.
     const byMerchant: Record<string, number> = {};
-    for (const t of yesterdayTx) {
+    for (const t of rows) {
       const label = (t.merchant_name || t.description || 'Other').trim();
       if (!label) continue;
       byMerchant[label] = (byMerchant[label] ?? 0) + Math.abs(Number(t.amount));
@@ -209,15 +221,96 @@ async function buildMorningBrief(
       .slice(0, 3)
       .filter(([, amt]) => amt >= 25); // skip noise
     if (topMerchants.length > 0) {
-      spendingSection += '\n_Largest payments:_';
+      block += '\n_Largest payments:_';
       for (const [m, amt] of topMerchants) {
         const cleanLabel = m.length > 40 ? `${m.slice(0, 37)}...` : m;
-        spendingSection += `\n  •  ${cleanLabel} — *${fmt(amt)}*`;
+        block += `\n  •  ${cleanLabel} — *${fmt(amt)}*`;
       }
     }
-    sections.push(spendingSection);
+    return block;
+  };
+
+  let spendingBlock = await buildSpendingBlock(
+    yesterdayStart.toISOString(),
+    todayStart.toISOString(),
+    '💷',
+    "Yesterday's Spending",
+  );
+
+  if (!spendingBlock) {
+    // Fall back to the most recent debit day within the last 30 days so
+    // the section never just reads "No spending recorded yesterday" when
+    // the user genuinely spent something three days ago (2026-05-17 fix).
+    const lookbackStart = new Date(now);
+    lookbackStart.setDate(lookbackStart.getDate() - 30);
+    const { data: lastTx } = await supabase
+      .from('bank_transactions')
+      .select('timestamp')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .lt('amount', 0)
+      .gte('timestamp', lookbackStart.toISOString())
+      .lt('timestamp', yesterdayStart.toISOString())
+      .order('timestamp', { ascending: false })
+      .limit(1);
+    const lastTs = (lastTx ?? [])[0]?.timestamp as string | undefined;
+    if (lastTs) {
+      const dayStart = new Date(lastTs);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const niceDate = dayStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      spendingBlock = await buildSpendingBlock(
+        dayStart.toISOString(),
+        dayEnd.toISOString(),
+        '💷',
+        `Last recorded spending (${niceDate})`,
+      );
+    }
+  }
+
+  sections.push(
+    spendingBlock ?? `${DIVIDER}\n💷 *Yesterday's Spending*\n_No spending recorded in the last 30 days._`,
+  );
+
+  // ------ 1b. Yesterday's income ------
+  const { data: yesterdayIncomeRaw } = await supabase
+    .from('bank_transactions')
+    .select('merchant_name, description, amount, user_category')
+    .eq('user_id', userId)
+    .gte('timestamp', yesterdayStart.toISOString())
+    .lt('timestamp', todayStart.toISOString());
+
+  const yesterdayIncome = ((yesterdayIncomeRaw ?? []) as Array<{
+    merchant_name: string | null;
+    description: string | null;
+    amount: number | string;
+    user_category: string | null;
+  }>).filter((t) => {
+    const amt = Number(t.amount);
+    if (amt <= 0) return false;
+    const cat = (t.user_category ?? '').toLowerCase();
+    // Treat positive transactions tagged 'income' as definite income.
+    // Also include uncategorised positive entries so payroll/refunds
+    // we haven't classified yet still surface.
+    if (cat === 'income') return true;
+    if (cat === '' || cat === 'other' || cat === 'uncategorised' || cat === 'uncategorized') return true;
+    return false;
+  });
+
+  if (yesterdayIncome.length > 0) {
+    const incomeTotal = yesterdayIncome.reduce((sum, t) => sum + Number(t.amount), 0);
+    const merchants = yesterdayIncome
+      .map((t) => (t.merchant_name || t.description || 'Unknown').trim())
+      .filter((s, i, arr) => arr.indexOf(s) === i)
+      .slice(0, 5);
+    let incomeSection = `${DIVIDER}\n💰 *Yesterday's Income*\nTotal: *${fmt(incomeTotal)}*`;
+    if (merchants.length > 0) {
+      incomeSection += `\n${merchants.join(' · ')}`;
+    }
+    sections.push(incomeSection);
   } else {
-    sections.push(`${DIVIDER}\n💷 *Yesterday's Spending*\n_No spending recorded yesterday._`);
+    sections.push(`${DIVIDER}\n💰 *Yesterday's Income*\n_No income recorded yesterday._`);
   }
 
   // ------ 2. Subscriptions renewing today or tomorrow ------
@@ -294,14 +387,20 @@ async function buildMorningBrief(
     sections.push(budgetSection);
   }
 
-  // ------ 5. Unresolved disputes ------
+  // ------ Money-saving tip of the day. Pushed BEFORE the disputes
+  // section so it survives the 3900-char WhatsApp truncation even when
+  // a user has many open disputes (2026-05-17 fix — was rendering as a
+  // header with no body when the brief overflowed). ------
+  const safeTipIndex = Number.isFinite(tipIndex) && tipIndex >= 0 ? tipIndex % MONEY_TIPS.length : 0;
+  const tipText = MONEY_TIPS[safeTipIndex] ?? MONEY_TIPS[0];
+  sections.push(`${DIVIDER}\n💡 *Tip of the Day*\n_${tipText}_`);
+
+  // ------ 5. Unresolved disputes — show ALL, no truncation.
   // Filter out every terminal status. Earlier code only excluded
   // 'resolved' / 'dismissed', which let resolved_won / resolved_partial /
-  // resolved_lost / closed / withdrawn rows through — Paul's morning
-  // brief on 2026-05-16 listed Winchester City Council (resolved_won)
-  // and Virgin Media (resolved_won) under "Open Disputes (16)". The
-  // outcome column is also checked: a row with status='open' but
-  // outcome IN ('won','partial','lost','withdrawn') is concluded.
+  // resolved_lost / closed / withdrawn rows through. The outcome column
+  // is also checked: a row with status='open' but outcome IN
+  // ('won','partial','lost','withdrawn') is concluded. ------
   const TERMINAL_DISPUTE_STATUSES = [
     'resolved_won',
     'resolved_partial',
@@ -316,28 +415,42 @@ async function buildMorningBrief(
   ];
   const { data: openDisputesRaw } = await supabase
     .from('disputes')
-    .select('id, provider_name, issue_type, status, outcome')
+    .select('id, provider_name, issue_type, status, outcome, updated_at, created_at')
     .eq('user_id', userId)
-    .not('status', 'in', `(${TERMINAL_DISPUTE_STATUSES.join(',')})`);
+    .not('status', 'in', `(${TERMINAL_DISPUTE_STATUSES.join(',')})`)
+    .order('updated_at', { ascending: false, nullsFirst: false });
 
   const openDisputes = (openDisputesRaw ?? []).filter(
     (d: { outcome: string | null }) =>
       d.outcome == null || !['won', 'partial', 'lost', 'withdrawn'].includes(d.outcome),
-  );
+  ) as Array<{
+    provider_name: string;
+    issue_type: string;
+    status: string;
+    updated_at: string | null;
+    created_at: string | null;
+  }>;
 
   if (openDisputes.length > 0) {
     let disputeSection = `${DIVIDER}\n⚖️ *Open Disputes (${openDisputes.length})*`;
-    for (const d of (openDisputes as Array<{ provider_name: string; issue_type: string; status: string }>).slice(0, 3)) {
-      disputeSection += `\n  • ${d.provider_name} — _${d.issue_type.replace(/_/g, ' ')}_ (${d.status.replace(/_/g, ' ')})`;
-    }
-    if (openDisputes.length > 3) {
-      disputeSection += `\n  _...and ${openDisputes.length - 3} more_`;
+    for (const d of openDisputes) {
+      const lastTs = d.updated_at ?? d.created_at;
+      let ageSuffix = '';
+      if (lastTs) {
+        const days = Math.max(
+          0,
+          Math.floor((now.getTime() - new Date(lastTs).getTime()) / (1000 * 60 * 60 * 24)),
+        );
+        ageSuffix = days === 0
+          ? ' — updated today'
+          : ` — ${days} day${days === 1 ? '' : 's'} since last update`;
+      }
+      const prettyIssue = d.issue_type.replace(/_/g, ' ');
+      const prettyStatus = d.status.replace(/_/g, ' ');
+      disputeSection += `\n  •  *${d.provider_name}* — _${prettyIssue}_ (${prettyStatus})${ageSuffix}`;
     }
     sections.push(disputeSection);
   }
-
-  // ------ 6. Money-saving tip of the day ------
-  sections.push(`${DIVIDER}\n💡 *Tip of the Day*\n_${MONEY_TIPS[tipIndex]}_`);
 
   return sections.join('');
 }
@@ -424,7 +537,14 @@ export async function GET(request: NextRequest) {
       .map((p) => p.id),
   );
 
-  const proSessions = tgSessions.filter((s) => proUserIds.has(s.user_id));
+  // Dedup policy (2026-05-17): WhatsApp is the only user-facing Pocket
+  // Agent channel. If a user has BOTH a Telegram and a WhatsApp session
+  // active, drop the Telegram side — Telegram is reserved for admin /
+  // founder system messages now (signups, audit digests, cron health).
+  const waUserIds = new Set(wapSessions.map((s) => s.user_id));
+  const proSessions = tgSessions
+    .filter((s) => proUserIds.has(s.user_id))
+    .filter((s) => !waUserIds.has(s.user_id));
   const proWhatsappSessions = wapSessions.filter((s) => proUserIds.has(s.user_id));
 
   // Check alert preferences — skip users who disabled morning summary.

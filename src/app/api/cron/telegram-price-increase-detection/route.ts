@@ -17,6 +17,7 @@ import { sendProactiveAlert } from '@/lib/telegram/user-bot';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { buildPriceAlertSuppressor } from '@/lib/price-alerts/suppression';
+import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -133,7 +134,13 @@ export async function GET(request: NextRequest) {
       .map((p) => p.id),
   );
 
-  const proSessions = sessions.filter((s) => proUserIds.has(s.user_id));
+  // Dedup user-facing alerts (2026-05-17): drop Telegram for WhatsApp users.
+  // Price-increase alerts go through the WhatsApp `paybacker_alert_price_increase`
+  // template via the channel-agnostic dispatcher in /api/cron/telegram-alerts.
+  const waUserIds = await loadUsersWithActiveWhatsApp(supabase);
+  const proSessions = sessions
+    .filter((s) => proUserIds.has(s.user_id))
+    .filter((s) => !waUserIds.has(s.user_id));
   if (proSessions.length === 0) return NextResponse.json({ ok: true, sent: 0 });
 
   // Check alert preferences

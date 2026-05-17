@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -89,7 +90,11 @@ export async function GET(request: NextRequest) {
       .map((p) => p.id),
   );
 
-  const proSessions = sessions.filter((s) => proUserIds.has(s.user_id));
+  // Dedup user-facing alerts (2026-05-17): drop Telegram for WhatsApp users.
+  const waUserIds = await loadUsersWithActiveWhatsApp(supabase);
+  const proSessions = sessions
+    .filter((s) => proUserIds.has(s.user_id))
+    .filter((s) => !waUserIds.has(s.user_id));
   if (proSessions.length === 0) return NextResponse.json({ ok: true, sent: 0 });
 
   // Check alert preferences
