@@ -243,6 +243,11 @@ export default function ChatWidget() {
     }
   };
 
+  // The B2B surface (/for-business and its subroutes) mounts its own
+  // BusinessChatWidget via src/app/for-business/layout.tsx. The consumer
+  // widget must stay out of those paths — wrong voice, wrong audience.
+  if (pathname?.startsWith('/for-business')) return null;
+
   if (hidden) return null;
 
   return (
