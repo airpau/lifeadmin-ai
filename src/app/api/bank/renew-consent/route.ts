@@ -112,6 +112,11 @@ export async function POST(request: NextRequest) {
         status: 'active',
         consent_granted_at: now.toISOString(),
         consent_expires_at: expiresAt.toISOString(),
+        // Threshold counter resets on renewal — the renewed consent is a
+        // fresh credential, so any past sync failures are no longer
+        // relevant.
+        consent_failure_count: 0,
+        consent_last_failure_at: null,
         updated_at: now.toISOString(),
       })
       .eq('id', connectionId);

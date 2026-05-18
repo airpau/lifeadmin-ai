@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getAccounts, getAllTransactions, isYapilyConsentExpiryError } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
+import { recordConsentFailure, clearConsentFailures } from '@/lib/yapily/consent-failure-tracker';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import { dispatchMoneyInAlertsForUser } from '@/lib/alerts/money-in';
@@ -413,14 +414,25 @@ export async function GET(request: NextRequest) {
       // If every account failed AND none of the failures was a consent
       // expiry, the connection itself is fine — log as a sync failure but
       // don't disconnect. Only consent_expires_at past now (handled above)
-      // or a Yapily 401/CONSENT_EXPIRED-class 403 flips the status.
+      // or a Yapily 401/CONSENT_EXPIRED-class 403 SUSTAINED OVER 3
+      // CONSECUTIVE RUNS flips the status (see CONSENT_FAILURE_THRESHOLD).
+      // Single transient errors increment the counter and are logged.
       if (consentExpiryDetected) {
         const detail = accountErrors.join('; ');
-        console.error(`Bank sync: Yapily consent expiry for ${connection.id} — flipping to expired`);
-        await supabase
-          .from('bank_connections')
-          .update({ status: 'expired', updated_at: now })
-          .eq('id', connection.id);
+        const failure = await recordConsentFailure(supabase, connection.id);
+        const errorLabel = failure.shouldFlipExpired
+          ? 'Yapily consent expired (threshold reached)'
+          : `Yapily consent error ${failure.count}/3`;
+
+        if (failure.shouldFlipExpired) {
+          console.error(`Bank sync: Yapily consent expiry for ${connection.id} — threshold ${failure.count} reached, flipping to expired`);
+          await supabase
+            .from('bank_connections')
+            .update({ status: 'expired', updated_at: now })
+            .eq('id', connection.id);
+        } else {
+          console.warn(`Bank sync: Yapily consent-expiry signal ${failure.count}/3 for ${connection.id} — staying active until threshold`);
+        }
 
         await insertSyncLog(supabase, {
           user_id: connection.user_id,
@@ -428,7 +440,7 @@ export async function GET(request: NextRequest) {
           trigger_type: 'cron',
           status: 'failed',
           api_calls_made: connectionApiCalls,
-          error_message: `Consent expired (Yapily): ${detail}`,
+          error_message: `${errorLabel}: ${detail}`,
           date_range_from: syncFromDate,
           date_range_to: syncToDate,
           transactions_synced: totalReturned,
@@ -442,7 +454,7 @@ export async function GET(request: NextRequest) {
           transactions: 0,
           recurring: 0,
           api_calls: connectionApiCalls,
-          error: 'Yapily consent expired',
+          error: errorLabel,
         });
         totalApiCalls += connectionApiCalls;
         continue;
@@ -500,6 +512,11 @@ export async function GET(request: NextRequest) {
         .from('bank_connections')
         .update({ last_synced_at: now, updated_at: now, status: 'active' })
         .eq('id', connection.id);
+
+      // Clear any accumulated consent-failure counter — a successful
+      // sync proves the consent is healthy, so the threshold restarts
+      // from 0 on the next signal.
+      await clearConsentFailures(supabase, connection.id);
 
       // Log success. Populates the diagnostic columns Paul added live
       // 2026-05-15 so the next 0-transaction regression doesn't take

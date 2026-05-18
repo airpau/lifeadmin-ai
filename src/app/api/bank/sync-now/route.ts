@@ -4,6 +4,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getAccounts, getAllTransactions, isYapilyConsentExpiryError } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
+import { recordConsentFailure, clearConsentFailures } from '@/lib/yapily/consent-failure-tracker';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
@@ -380,11 +381,23 @@ export async function POST(request: NextRequest) {
       }
 
     if (consentExpiryDetected) {
+      // Threshold-gated: a single consent-expiry signal does NOT flip
+      // status. It increments the counter; only the 3rd consecutive
+      // signal flips to 'expired'. See CONSENT_FAILURE_THRESHOLD.
       const detail = accountErrors.join('; ');
-      await supabase
-        .from('bank_connections')
-        .update({ status: 'expired', updated_at: now })
-        .eq('id', conn.id);
+      const failure = await recordConsentFailure(admin, conn.id);
+      const errorLabel = failure.shouldFlipExpired
+        ? 'Yapily consent expired (threshold reached)'
+        : `Yapily consent error ${failure.count}/3`;
+
+      if (failure.shouldFlipExpired) {
+        await admin
+          .from('bank_connections')
+          .update({ status: 'expired', updated_at: now })
+          .eq('id', conn.id);
+      } else {
+        console.warn(`Sync: Yapily consent-expiry signal ${failure.count}/3 for ${conn.id} — staying active until threshold`);
+      }
 
       await insertSyncLog(admin, {
         user_id: user.id,
@@ -392,7 +405,7 @@ export async function POST(request: NextRequest) {
         trigger_type: 'manual',
         status: 'failed',
         api_calls_made: apiCallsMade,
-        error_message: `Consent expired (Yapily): ${detail}`,
+        error_message: `${errorLabel}: ${detail}`,
         date_range_from: syncFromDate,
         date_range_to: syncToDate,
         transactions_synced: connectionReturned,
@@ -429,6 +442,10 @@ export async function POST(request: NextRequest) {
         updated_at: now,
       })
       .eq('id', conn.id);
+
+    // Clear any accumulated consent-failure counter — a successful manual
+    // sync proves the consent is healthy.
+    await clearConsentFailures(admin, conn.id);
 
     // Log success — populates the diagnostic columns Paul added live
     // 2026-05-15 so a manual sync row is now indistinguishable in

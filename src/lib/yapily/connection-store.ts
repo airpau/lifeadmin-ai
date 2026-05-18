@@ -192,6 +192,11 @@ export async function upsertYapilyConnection(
           ? incomingHashes
           : input.accounts.map((a) => a.accountIdentificationsHash ?? ''),
         status: 'active',
+        // Fresh consent always starts the threshold counter clean — a
+        // user who reconnects should not inherit failure history from
+        // the previous consent on the same row.
+        consent_failure_count: 0,
+        consent_last_failure_at: null,
         connected_at: now,
         updated_at: now,
         deleted_at: null,

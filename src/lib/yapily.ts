@@ -674,21 +674,24 @@ function isYapily403(err: unknown): err is Error & { status?: number } {
 }
 
 /**
- * Returns true ONLY when the error is a Yapily 401/403 that genuinely
- * indicates consent or token expiry — NOT a generic permission issue.
+ * Returns true ONLY when the error is a Yapily 401/403 whose message
+ * EXPLICITLY contains a consent/token-expiry token — NOT a generic
+ * auth or permission error.
  *
- * Yapily uses a handful of distinct 403 codes. Only the consent/token
- * lifecycle ones should flip `bank_connections.status` to 'expired' and
- * prompt the user to reconnect. A 403 with `insufficient_rights` or
- * `feature_not_supported` is a permission problem against a still-valid
- * consent (e.g. the institution didn't grant /transactions scope, or the
- * bank doesn't expose direct-debits) — those must NOT disconnect the
- * connection, otherwise a single noisy bank takes down all sync surfaces
- * for the user.
+ * Previously this returned `true` for ANY 401, on the rationale that
+ * Yapily only 401s for token-level issues. That assumption broke in
+ * production: Yapily sandbox (and occasionally the live API for newly-
+ * provisioned credentials) returns a plain 401 when an institution
+ * scope is missing or the request signing is briefly out of sync. With
+ * the old check, a single transient 401 was enough to flip a healthy
+ * bank to 'expired' and the cron's WHERE clause then locked it out of
+ * recovery permanently. We now require the SAME explicit message
+ * tokens we already required for 403 — anything else is logged but
+ * does not flip status.
  *
- * 401 is always treated as token expiry because Yapily returns it when
- * the consent token is invalid/revoked at the application-credentials
- * layer (and there's no legitimate "transient" 401 on a healthy consent).
+ * 403 codes Yapily uses but that should NOT flip status:
+ *   - insufficient_rights        (permission/scope problem)
+ *   - feature_not_supported      (institution doesn't expose endpoint)
  *
  * The check is message-substring-based because Yapily's `error.code`
  * field isn't always present on the response body — yapilyRequest folds
@@ -697,8 +700,7 @@ function isYapily403(err: unknown): err is Error & { status?: number } {
 export function isYapilyConsentExpiryError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const status = (err as Error & { status?: number }).status;
-  if (status === 401) return true;
-  if (status !== 403) return false;
+  if (status !== 401 && status !== 403) return false;
   const msg = err.message.toLowerCase();
   return (
     msg.includes('consent_expired') ||
@@ -717,6 +719,13 @@ export function isYapilyConsentExpiryError(err: unknown): boolean {
     msg.includes('token has expired')
   );
 }
+
+/**
+ * Consecutive consent-expiry errors required before bank_connections.status
+ * is flipped to 'expired'. A single transient error must not disconnect a
+ * bank — only sustained failures across multiple cron runs do.
+ */
+export const CONSENT_FAILURE_THRESHOLD = 3;
 
 export async function withConsentRetry<T>(
   consentId: string,
