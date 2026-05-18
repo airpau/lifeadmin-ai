@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { resend, FROM_EMAIL } from '@/lib/resend';
@@ -333,6 +334,28 @@ Make it genuinely useful for someone searching "${topic.keyword}" on Google. Inc
   if (insertErr) {
     console.error('[blog] Supabase upsert failed:', insertErr.message);
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
+  }
+
+  // /blog index has revalidate=3600. Without an explicit revalidate
+  // call here, a manual "Run now" looks broken — the post is in the
+  // DB but the marketing index won't show it for up to an hour.
+  try {
+    revalidatePath('/blog');
+    revalidatePath(`/blog/${topic.slug}`);
+  } catch (revalErr) {
+    console.warn('[blog] revalidatePath failed (non-fatal):', revalErr);
+  }
+
+  // Audit log so the founder can see in /dashboard/admin/crons that
+  // the cron actually fired without trawling Vercel logs.
+  try {
+    await supabase.from('business_log').insert({
+      category: 'blog_publish',
+      title: `Blog published: ${topic.slug}`,
+      content: `"${parsed.title}" — keyword="${topic.keyword}". Topics remaining: ${unwritten.length > 0 ? unwritten.length - 1 : TOPIC_POOL.length - 1}.`,
+    });
+  } catch (logErr) {
+    console.warn('[blog] business_log insert failed (non-fatal):', logErr);
   }
 
   console.log(`[blog] Published: ${topic.slug} - "${parsed.title}"`);

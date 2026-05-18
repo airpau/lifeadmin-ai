@@ -76,17 +76,32 @@ export async function POST(request: NextRequest) {
   const url = `${origin}${requestedPath}`;
   const startedAt = Date.now();
 
+  // Long-running crons (publish-blog, compliance-sync) can take 1-3
+  // minutes. We don't want the admin UI to spin indefinitely waiting
+  // for them — instead, we wait up to 25s for a fast response, and
+  // if the inner cron is still running we return "started_in_background"
+  // so the founder can check the Last-run column for the outcome.
+  // Aborting the outer fetch closes the proxy's TCP connection but the
+  // inner Vercel function keeps running through to its own maxDuration
+  // (publish-blog doesn't read request.signal).
+  const FAST_TIMEOUT_MS = 25_000;
+  const ac = new AbortController();
+  const fastTimer = setTimeout(() => ac.abort(), FAST_TIMEOUT_MS);
+
   let ok = false;
   let status = 0;
   let responseBody: unknown = null;
   let errorMessage: string | null = null;
+  let backgrounded = false;
 
   try {
     const res = await fetch(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${cronSecret}` },
       cache: 'no-store',
+      signal: ac.signal,
     });
+    clearTimeout(fastTimer);
     status = res.status;
     try {
       responseBody = await res.json();
@@ -100,7 +115,19 @@ export async function POST(request: NextRequest) {
         : String(responseBody).slice(0, 500);
     }
   } catch (err) {
-    errorMessage = err instanceof Error ? err.message : String(err);
+    clearTimeout(fastTimer);
+    if (err instanceof Error && err.name === 'AbortError') {
+      // Inner cron is still running. We're returning to the user with
+      // "started" — the cron itself will log its outcome to
+      // business_log when it finishes (e.g. publish-blog logs a
+      // `blog_publish` row), and the Last-run column on the admin
+      // page shows it on next refresh.
+      backgrounded = true;
+      ok = true;
+      status = 202;
+    } else {
+      errorMessage = err instanceof Error ? err.message : String(err);
+    }
   }
 
   const durationMs = Date.now() - startedAt;
@@ -114,10 +141,11 @@ export async function POST(request: NextRequest) {
   await admin.from('business_log').insert({
     category: 'cron_run',
     title: `cron_run ${requestedPath}`,
-    content: ok
-      ? `Manual run by ${user.email} succeeded in ${durationMs}ms. Response: ${JSON.stringify(responseBody).slice(0, 400)}`
-      : `Manual run by ${user.email} FAILED (HTTP ${status} in ${durationMs}ms): ${errorMessage}`,
-    severity: ok ? 'info' : 'error',
+    content: backgrounded
+      ? `Manual run by ${user.email} kicked off (still running in background after ${durationMs}ms). Outcome will be logged separately by the cron handler when it finishes.`
+      : ok
+        ? `Manual run by ${user.email} succeeded in ${durationMs}ms. Response: ${JSON.stringify(responseBody).slice(0, 400)}`
+        : `Manual run by ${user.email} FAILED (HTTP ${status} in ${durationMs}ms): ${errorMessage}`,
   }).then(({ error: e }) => {
     if (e) console.error('[admin/crons/run] business_log insert failed:', e.message);
   });
@@ -127,6 +155,15 @@ export async function POST(request: NextRequest) {
       { ok: false, status, error: errorMessage, durationMs },
       { status: 502 },
     );
+  }
+  if (backgrounded) {
+    return NextResponse.json({
+      ok: true,
+      status: 202,
+      durationMs,
+      backgrounded: true,
+      response: { message: 'Cron started in background — refresh the page in ~1-3 minutes to see the outcome in the Last run column.' },
+    });
   }
   return NextResponse.json({ ok: true, status, durationMs, response: responseBody });
 }

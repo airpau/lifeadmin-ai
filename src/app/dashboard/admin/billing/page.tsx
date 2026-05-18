@@ -73,7 +73,7 @@ export default async function AdminBillingPage() {
   return (
     <AdminPage
       title="API Billing"
-      description={`Internal cost ledger — actual paid third-party API spend across Anthropic, Perplexity, Resend, Stripe, TrueLayer. Generated ${new Date(summary.generatedAt).toLocaleString('en-GB')}.`}
+      description={`Internal cost ledger — actual paid third-party API spend across Anthropic, Perplexity, Resend, Stripe, Yapily. Generated ${new Date(summary.generatedAt).toLocaleString('en-GB')}.`}
     >
       <section className="grid md:grid-cols-3 gap-4">
         <Card label="This month so far" value={gbp(summary.monthSoFar.total_gbp)} />
