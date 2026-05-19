@@ -94,7 +94,8 @@ export async function GET(request: NextRequest) {
 
   const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
   if (!token) {
-    return NextResponse.json({ error: 'TELEGRAM_USER_BOT_TOKEN not set' }, { status: 500 });
+    console.warn('[telegram-payment-reminders] TELEGRAM_USER_BOT_TOKEN not set — skipping run');
+    return NextResponse.json({ ok: true, skipped: true, reason: 'TELEGRAM_USER_BOT_TOKEN not set' });
   }
 
   const supabase = getAdmin();

@@ -149,20 +149,73 @@ async function buildMorningBrief(
   ]);
   const { data: yesterdayTxRaw } = await supabase
     .from('bank_transactions')
-    .select('user_category, amount')
+    .select('user_category, amount, timestamp, description')
     .eq('user_id', userId)
     .lt('amount', 0)
     .gte('timestamp', yesterdayStart.toISOString())
     .lt('timestamp', todayStart.toISOString());
 
-  const yesterdayTx = ((yesterdayTxRaw ?? []) as Array<{ user_category: string | null; amount: number | string }>).filter(
+  type SpendRow = { user_category: string | null; amount: number | string; timestamp: string; description?: string | null };
+  let spendRows = ((yesterdayTxRaw ?? []) as SpendRow[]).filter(
     (t) => !EXCLUDE_CATS.has(t.user_category ?? ''),
   );
+  let spendLabel = "Yesterday's Spending";
+  let fallbackNote = '';
 
-  if (yesterdayTx.length > 0) {
-    const total = yesterdayTx.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
+  // Fallback — if yesterday is empty, walk back up to 14 days for the
+  // most recent day with debit activity so the brief is never blank
+  // when there's data in the account. Common when the user is travelling,
+  // when payroll lands on a weekend, or when the bank sync gap means
+  // yesterday genuinely has no rows yet.
+  if (spendRows.length === 0) {
+    const lookbackStart = new Date(yesterdayStart);
+    lookbackStart.setDate(lookbackStart.getDate() - 14);
+    const { data: recentRaw } = await supabase
+      .from('bank_transactions')
+      .select('user_category, amount, timestamp, description')
+      .eq('user_id', userId)
+      .lt('amount', 0)
+      .gte('timestamp', lookbackStart.toISOString())
+      .lt('timestamp', yesterdayStart.toISOString())
+      .order('timestamp', { ascending: false })
+      .limit(200);
+
+    const recent = ((recentRaw ?? []) as SpendRow[]).filter(
+      (t) => !EXCLUDE_CATS.has(t.user_category ?? ''),
+    );
+
+    if (recent.length > 0) {
+      // Group by day (YYYY-MM-DD) and pick the most recent one with rows.
+      const byDay = new Map<string, SpendRow[]>();
+      for (const t of recent) {
+        const day = String(t.timestamp).slice(0, 10);
+        const arr = byDay.get(day) ?? [];
+        arr.push(t);
+        byDay.set(day, arr);
+      }
+      const mostRecentDay = Array.from(byDay.keys()).sort().reverse()[0];
+      spendRows = byDay.get(mostRecentDay) ?? [];
+      const daysAgo = Math.max(
+        1,
+        Math.round(
+          (yesterdayStart.getTime() - new Date(`${mostRecentDay}T00:00:00Z`).getTime()) /
+            (1000 * 60 * 60 * 24),
+        ),
+      );
+      const friendly = new Date(`${mostRecentDay}T00:00:00Z`).toLocaleDateString('en-GB', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+      });
+      spendLabel = `Latest Spending (${friendly})`;
+      fallbackNote = `\n_No debits yesterday — showing last activity (${daysAgo} day${daysAgo === 1 ? '' : 's'} ago)._`;
+    }
+  }
+
+  if (spendRows.length > 0) {
+    const total = spendRows.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
     const byCategory: Record<string, number> = {};
-    for (const t of yesterdayTx) {
+    for (const t of spendRows) {
       const cat = t.user_category ?? 'Other';
       byCategory[cat] = (byCategory[cat] ?? 0) + Math.abs(Number(t.amount));
     }
@@ -170,16 +223,38 @@ async function buildMorningBrief(
       .sort(([, a], [, b]) => b - a)
       .slice(0, 3);
 
-    let spendingSection = `\n\n*Yesterday's Spending*\nTotal: *${fmt(total)}*`;
+    let spendingSection = `\n\n*${spendLabel}*\nTotal: *${fmt(total)}*`;
     if (topCategories.length > 0) {
       spendingSection += '\nTop categories:';
       for (const [cat, amount] of topCategories) {
         spendingSection += `\n  - ${cat}: ${fmt(amount)}`;
       }
     }
+    if (fallbackNote) spendingSection += fallbackNote;
     sections.push(spendingSection);
   } else {
-    sections.push("\n\n*Yesterday's Spending*\nNo spending recorded yesterday.");
+    // No debits anywhere in the last 15 days. Either a brand-new account
+    // or — more commonly — a stale bank sync. Show a diagnostic so the
+    // user knows the difference between "nothing to report" and
+    // "we can't see your data".
+    const { data: lastSync } = await supabase
+      .from('bank_connections')
+      .select('last_synced_at, status')
+      .eq('user_id', userId)
+      .order('last_synced_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    let line = 'No spending recorded yesterday.';
+    if (lastSync) {
+      const last = lastSync.last_synced_at ? new Date(lastSync.last_synced_at) : null;
+      const ageH = last ? Math.round((Date.now() - last.getTime()) / (1000 * 60 * 60)) : null;
+      if (lastSync.status && /expir|revok|fail/i.test(String(lastSync.status))) {
+        line = `Bank sync paused (status: ${lastSync.status}). Reconnect at paybacker.co.uk/dashboard/profile to refresh.`;
+      } else if (ageH !== null && ageH > 36) {
+        line = `No fresh transactions in the last 15 days. Last bank sync ${ageH}h ago — reconnect if your account is active.`;
+      }
+    }
+    sections.push(`\n\n*Yesterday's Spending*\n${line}`);
   }
 
   // ------ 2. Subscriptions renewing today or tomorrow ------
@@ -254,24 +329,96 @@ async function buildMorningBrief(
   }
 
   // ------ 5. Unresolved disputes ------
-  const { data: openDisputes } = await supabase
-    .from('disputes')
-    .select('id, provider_name, issue_type, status')
-    .eq('user_id', userId)
-    .not('status', 'in', '(resolved,dismissed)');
+  // Filter to genuinely open disputes — the legacy `(resolved,dismissed)`
+  // exclusion missed every `resolved_*` variant (resolved_won /
+  // resolved_partial / resolved_lost) plus `closed` and `withdrawn`, so
+  // resolved cases were leaking into the "Open Disputes" count and
+  // crowding the list. Use a positive whitelist of the agent-state machine's
+  // OPEN states instead, falling back to `status` when agent_state is null
+  // (legacy rows from before the agent state machine shipped).
+  const OPEN_DISPUTE_STATUSES = new Set([
+    'open',
+    'draft',
+    'sent',
+    'responded',
+    'awaiting_response',
+    'awaiting_user_input',
+    'escalation_due',
+    'escalated',
+    'still_open',
+    'timeout',
+  ]);
+  const isOpenDispute = (d: { status: string | null; agent_state: string | null }): boolean => {
+    const s = (d.agent_state ?? d.status ?? '').toLowerCase();
+    if (!s) return false;
+    // Belt-and-braces — any status containing "resolv", "won", "lost",
+    // "dismiss", "withdraw", "closed" is closed regardless of whitelist.
+    if (/resolv|won|lost|dismiss|withdraw|closed/.test(s)) return false;
+    return OPEN_DISPUTE_STATUSES.has(s);
+  };
 
-  if (openDisputes && openDisputes.length > 0) {
+  const { data: allDisputes } = await supabase
+    .from('disputes')
+    .select('id, provider_name, issue_type, status, agent_state, updated_at')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+
+  const openDisputes = (
+    (allDisputes ?? []) as Array<{
+      provider_name: string;
+      issue_type: string;
+      status: string | null;
+      agent_state: string | null;
+      updated_at: string | null;
+    }>
+  ).filter(isOpenDispute);
+
+  if (openDisputes.length > 0) {
     let disputeSection = `\n\n*Open Disputes (${openDisputes.length})*`;
-    for (const d of (openDisputes as Array<{ provider_name: string; issue_type: string; status: string }>).slice(0, 3)) {
-      disputeSection += `\n  - ${d.provider_name}: ${d.issue_type} (${d.status})`;
-    }
-    if (openDisputes.length > 3) {
-      disputeSection += `\n  _...and ${openDisputes.length - 3} more_`;
+    // No truncation — listing every open dispute so the user can act on
+    // each. If the list grows past the WhatsApp 3900-char cap the
+    // `toWhatsAppPlainText` helper will tail-truncate, but Telegram has
+    // its own chunked-message support so the full list survives there.
+    for (const d of openDisputes) {
+      const displayState = d.agent_state ?? d.status ?? 'open';
+      const daysAgo = d.updated_at
+        ? Math.floor((Date.now() - new Date(d.updated_at).getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      const ageStr = daysAgo !== null ? ` · ${daysAgo}d since update` : '';
+      disputeSection += `\n  - ${d.provider_name}: ${d.issue_type} (${displayState})${ageStr}`;
     }
     sections.push(disputeSection);
   }
 
-  // ------ 6. Money-saving tip of the day ------
+  // ------ 6. Inbox findings (new email-scan opportunities, last 48h) ------
+  // Surface anything the email scanner has flagged in the last two days —
+  // price increases, bills, contract renewals, dispute responses, etc.
+  // This is the data behind the WhatsApp template's "scanned/opportunities"
+  // line so it needs to be real, not a section-header count.
+  const findingsSince = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const { data: recentFindings } = await supabase
+    .from('email_scan_findings')
+    .select('finding_type, provider, title, urgency, amount, created_at')
+    .eq('user_id', userId)
+    .gte('created_at', findingsSince)
+    .eq('status', 'new')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (recentFindings && recentFindings.length > 0) {
+    const URGENCY_RANK: Record<string, number> = { immediate: 0, soon: 1, routine: 2 };
+    const sorted = [...(recentFindings as Array<{ finding_type: string; provider: string | null; title: string; urgency: string | null; amount: number | string | null }>)]
+      .sort((a, b) => (URGENCY_RANK[a.urgency ?? 'routine'] ?? 9) - (URGENCY_RANK[b.urgency ?? 'routine'] ?? 9));
+    let inboxSection = `\n\n*Inbox Findings (${recentFindings.length} new)*`;
+    for (const f of sorted) {
+      const tag = f.urgency === 'immediate' ? '🚨 ' : f.urgency === 'soon' ? '⏰ ' : '• ';
+      const amountStr = f.amount != null ? ` (${fmt(Number(f.amount))})` : '';
+      inboxSection += `\n  ${tag}${f.provider ?? f.finding_type}: ${f.title}${amountStr}`;
+    }
+    sections.push(inboxSection);
+  }
+
+  // ------ 7. Money-saving tip of the day ------
   sections.push(`\n\n💡 *Tip of the Day*\n${MONEY_TIPS[tipIndex]}`);
 
   return sections.join('');
