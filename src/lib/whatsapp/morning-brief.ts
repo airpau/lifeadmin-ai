@@ -148,15 +148,74 @@ export async function dispatchWhatsAppMorningBrief(
     // Use the default 'there' — name is not load-bearing.
   }
 
-  const sectionsHit = (markdownBody.match(/\*[A-Z][^*\n]{2,}\*/g) ?? []).length;
+  // Real "scanned/opportunities" counts — the previous code counted
+  // bolded section headers in the brief Markdown which produced
+  // misleading numbers like "scanned 9 items, found 0 opportunities"
+  // even when the user had genuine inbox findings and open disputes.
+  // Pull real counts from the underlying tables so the template message
+  // body ("Overnight we scanned {{2}} items and found {{3}} opportunities.
+  // Top focus: {{4}}") matches what the brief actually contains.
+  const sinceISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const [findingsRes, disputesRes, emailsRes] = await Promise.all([
+    supabase
+      .from('email_scan_findings')
+      .select('id, urgency, finding_type')
+      .eq('user_id', userId)
+      .gte('created_at', sinceISO),
+    supabase
+      .from('disputes')
+      .select('id, status, agent_state')
+      .eq('user_id', userId),
+    supabase
+      .from('email_connections')
+      .select('emails_scanned')
+      .eq('user_id', userId),
+  ]);
+
+  type FindingRow = { urgency: string | null; finding_type: string | null };
+  const findings = (findingsRes.data ?? []) as FindingRow[];
+  const opportunities = findings.length;
+
+  // Lifetime emails_scanned across active connections — best signal we
+  // have without a per-day scan log. The template body says "Overnight
+  // we scanned N items"; using the total is better than the bogus
+  // section-header count it replaces, even if it's not strictly
+  // "overnight". When a scan_sessions table lands we can swap to a
+  // strict 24h window.
+  const emailRows = (emailsRes.data ?? []) as Array<{ emails_scanned: number | null }>;
+  const totalEmailsScanned = emailRows.reduce(
+    (sum, r) => sum + (Number(r.emails_scanned) || 0),
+    0,
+  );
+  const scannedItems = Math.max(opportunities, totalEmailsScanned);
+
+  // Open dispute count — same rule as the brief body's dispute filter
+  // (TERMINAL_DISPUTE_STATUSES in the cron). Used to prioritise the
+  // top-focus line so the user's first read isn't "spending recap" when
+  // there are unresolved disputes waiting on them.
+  const allDisputes = (disputesRes.data ?? []) as Array<{ status: string | null; agent_state: string | null }>;
+  const openDisputeCount = allDisputes.filter((d) => {
+    const s = (d.agent_state ?? d.status ?? '').toLowerCase();
+    if (!s) return false;
+    if (/resolv|won|lost|dismiss|withdraw|closed/.test(s)) return false;
+    return true;
+  }).length;
+
   const renewalsCount = (markdownBody.match(/\*Upcoming Renewals\*/g) ?? []).length;
   const budgetWarnings = (markdownBody.match(/\*Budget Warnings\*/g) ?? []).length;
-  const opportunities = renewalsCount + budgetWarnings;
-  const topFocus = budgetWarnings > 0
-    ? 'budget warnings'
-    : renewalsCount > 0
-      ? 'upcoming renewals'
-      : 'spending recap';
+  const immediateFindings = findings.filter((f) => f.urgency === 'immediate').length;
+
+  const topFocus = immediateFindings > 0
+    ? `${immediateFindings} urgent inbox item${immediateFindings === 1 ? '' : 's'}`
+    : openDisputeCount > 0
+      ? `${openDisputeCount} open dispute${openDisputeCount === 1 ? '' : 's'}`
+      : budgetWarnings > 0
+        ? 'budget warnings'
+        : renewalsCount > 0
+          ? 'upcoming renewals'
+          : opportunities > 0
+            ? 'new inbox findings'
+            : 'spending recap';
 
   try {
     const result = await sendWhatsAppTemplate({
@@ -164,7 +223,7 @@ export async function dispatchWhatsAppMorningBrief(
       templateName,
       parameters: [
         firstName,
-        String(sectionsHit),
+        String(scannedItems),
         String(opportunities),
         topFocus,
       ],

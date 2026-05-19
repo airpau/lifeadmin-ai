@@ -452,6 +452,47 @@ async function buildMorningBrief(
     sections.push(disputeSection);
   }
 
+  // ------ Inbox findings (new email-scan opportunities, last 48h) ------
+  // Surface anything the email scanner has flagged in the last two days —
+  // price increases, bills, contract renewals, dispute responses, etc.
+  // This is the data behind the WhatsApp template's "scanned/opportunities"
+  // line and the brief was previously silent on it even when there were
+  // dozens of unread findings (2026-05-19 fix).
+  const findingsSince = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+  const { data: recentFindings } = await supabase
+    .from('email_scan_findings')
+    .select('finding_type, provider, title, urgency, amount, created_at')
+    .eq('user_id', userId)
+    .gte('created_at', findingsSince)
+    .eq('status', 'new')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (recentFindings && recentFindings.length > 0) {
+    const URGENCY_RANK: Record<string, number> = { immediate: 0, soon: 1, routine: 2 };
+    const sorted = [
+      ...(recentFindings as Array<{
+        finding_type: string;
+        provider: string | null;
+        title: string;
+        urgency: string | null;
+        amount: number | string | null;
+      }>),
+    ].sort(
+      (a, b) =>
+        (URGENCY_RANK[a.urgency ?? 'routine'] ?? 9) -
+        (URGENCY_RANK[b.urgency ?? 'routine'] ?? 9),
+    );
+    let inboxSection = `${DIVIDER}\n📨 *Inbox Findings (${recentFindings.length} new)*`;
+    for (const f of sorted) {
+      const tag = f.urgency === 'immediate' ? '🚨 ' : f.urgency === 'soon' ? '⏰ ' : '•  ';
+      const amountStr = f.amount != null ? ` — *${fmt(Number(f.amount))}*` : '';
+      const provider = f.provider ?? f.finding_type;
+      inboxSection += `\n  ${tag}*${provider}*: ${f.title}${amountStr}`;
+    }
+    sections.push(inboxSection);
+  }
+
   return sections.join('');
 }
 

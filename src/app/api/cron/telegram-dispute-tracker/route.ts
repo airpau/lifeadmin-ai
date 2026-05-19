@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
+import { sendWhatsAppText } from '@/lib/whatsapp';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -48,11 +49,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Soft Telegram gate — missing token is no longer fatal so the WhatsApp
+  // dispatch block below can still run for WhatsApp Pocket Agent users.
+  // Same pattern as the morning-summary P2 fix.
   const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
-  if (!token) return NextResponse.json({ error: 'TELEGRAM_USER_BOT_TOKEN not set' }, { status: 500 });
+  const telegramEnabled = Boolean(token);
 
   const supabase = getAdmin();
   let sent = 0;
+  let waSent = 0;
   const errors: string[] = [];
 
   const now = new Date();
@@ -70,21 +75,39 @@ export async function GET(request: NextRequest) {
   };
   const weekKey = `w${isoWeek(now)}_${now.getFullYear()}`;
 
-  // Get all active sessions
-  const { data: sessions } = await supabase
-    .from('telegram_sessions')
-    .select('user_id, telegram_chat_id')
-    .eq('is_active', true);
+  // Load BOTH channel session lists — Telegram and WhatsApp are
+  // independent transports. The dedup commit (2026-05-17) drops
+  // Telegram for WhatsApp users, but didn't add a WhatsApp dispatch
+  // pass — leaving WhatsApp users silent on dispute follow-ups, even
+  // when their FCA 8-week deadline was a couple of days away. This
+  // block restores parity.
+  const [{ data: tgRows }, { data: waRows }] = await Promise.all([
+    supabase
+      .from('telegram_sessions')
+      .select('user_id, telegram_chat_id')
+      .eq('is_active', true),
+    supabase
+      .from('whatsapp_sessions')
+      .select('user_id, whatsapp_phone, last_message_at')
+      .eq('is_active', true)
+      .is('opted_out_at', null),
+  ]);
+  const sessions = tgRows ?? [];
+  const waSessions = waRows ?? [];
 
-  if (!sessions || sessions.length === 0) {
+  if (sessions.length === 0 && waSessions.length === 0) {
     return NextResponse.json({ ok: true, message: 'No active sessions', sent: 0 });
   }
 
-  // Filter to Pro users (includes onboarding trial users)
+  // Filter to Pro users (includes onboarding trial users) — union of both
+  // channel session lists so each user is looked up once.
+  const allUserIds = Array.from(
+    new Set([...sessions.map((s) => s.user_id), ...waSessions.map((s) => s.user_id)]),
+  );
   const { data: profiles } = await supabase
     .from('profiles')
     .select('id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
-    .in('id', sessions.map((s) => s.user_id));
+    .in('id', allUserIds);
 
   // Eligibility helper handles past_due / unpaid / incomplete (Stripe
   // retry window) so users keep getting alerts during the 7-day grace
@@ -102,31 +125,74 @@ export async function GET(request: NextRequest) {
   const proSessions = sessions
     .filter((s) => proUserIds.has(s.user_id))
     .filter((s) => !waUserIds.has(s.user_id));
-  if (proSessions.length === 0) return NextResponse.json({ ok: true, sent: 0 });
+  const proWaSessions = waSessions.filter((s) => proUserIds.has(s.user_id));
 
-  // Check alert preferences
+  if (proSessions.length === 0 && proWaSessions.length === 0) {
+    return NextResponse.json({ ok: true, sent: 0 });
+  }
+
+  // Check alert preferences — one row per user, both channels honour the
+  // same `dispute_followups` flag.
+  const eligibleUserIds = Array.from(
+    new Set([
+      ...proSessions.map((s) => s.user_id),
+      ...proWaSessions.map((s) => s.user_id),
+    ]),
+  );
   const { data: allPrefs } = await supabase
     .from('telegram_alert_preferences')
     .select('user_id, proactive_alerts, dispute_followups')
-    .in('user_id', proSessions.map((s) => s.user_id));
+    .in('user_id', eligibleUserIds);
 
   const prefMap = new Map((allPrefs ?? []).map((p) => [p.user_id, p]));
-  const eligible = proSessions.filter((s) => {
-    const pref = prefMap.get(s.user_id);
+  const prefAllows = (uid: string): boolean => {
+    const pref = prefMap.get(uid);
     if (!pref) return true;
     return pref.proactive_alerts !== false && pref.dispute_followups !== false;
-  });
+  };
+  const eligible = proSessions.filter((s) => prefAllows(s.user_id));
+  const waEligible = proWaSessions.filter((s) => prefAllows(s.user_id));
 
-  for (const session of eligible) {
+  // user_id -> { phone, lastInbound } so the per-dispute loop can fan
+  // out to WhatsApp without re-querying.
+  const waPhoneByUser = new Map<string, { phone: string; lastInbound: string | null }>();
+  for (const s of waEligible) {
+    waPhoneByUser.set(s.user_id, {
+      phone: s.whatsapp_phone,
+      lastInbound: s.last_message_at,
+    });
+  }
+  // WhatsApp-only users (no Telegram session) — walk their disputes too
+  // with a pseudo-session whose chatId is 0 so the Telegram send is
+  // skipped but the WhatsApp send still fires.
+  const telegramUserIds = new Set(eligible.map((s) => s.user_id));
+  const waOnlyPseudoSessions = waEligible
+    .filter((s) => !telegramUserIds.has(s.user_id))
+    .map((s) => ({ user_id: s.user_id, telegram_chat_id: 0 }));
+  const allSessionsToProcess = [...eligible, ...waOnlyPseudoSessions];
+
+  for (const session of allSessionsToProcess) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
-      // Get open/awaiting disputes
+      // Get open/awaiting disputes. The legacy filter caught only
+      // open/awaiting_response/escalated, missing the agent state
+      // machine's awaiting_user_input, responded, escalation_due and
+      // still_open. Broaden the whitelist so disputes the agent has
+      // advanced still get the FCA-deadline follow-up.
       const { data: disputes } = await supabase
         .from('disputes')
-        .select('id, provider_name, issue_type, status, created_at, updated_at, disputed_amount')
+        .select('id, provider_name, issue_type, status, agent_state, created_at, updated_at, disputed_amount')
         .eq('user_id', userId)
-        .in('status', ['open', 'awaiting_response', 'escalated'])
+        .in('status', [
+          'open',
+          'awaiting_response',
+          'awaiting_user_input',
+          'escalated',
+          'responded',
+          'escalation_due',
+          'still_open',
+        ])
         .order('created_at', { ascending: true });
 
       if (!disputes || disputes.length === 0) continue;
@@ -186,16 +252,53 @@ export async function GET(request: NextRequest) {
             `_Ask me to "draft a follow-up letter to ${dispute.provider_name}" to escalate_`;
         }
 
-        const ok = await sendTelegramMessage(token, Number(chatId), message);
-        if (ok) {
-          sent++;
+        // Dispatch to both channels independently. The dedup helper
+        // already removed WhatsApp users from `eligible`, so Telegram
+        // only fires for users WITHOUT WhatsApp. WhatsApp dispatch
+        // covers everyone with an active session, regardless of
+        // Telegram. Only one notification_log row per dispute per week.
+        let anyDelivered = false;
+
+        if (telegramEnabled && token && chatId) {
+          const ok = await sendTelegramMessage(token, Number(chatId), message);
+          if (ok) {
+            sent++;
+            anyDelivered = true;
+          } else {
+            errors.push(`Failed chat ${chatId}`);
+          }
+        }
+
+        // WhatsApp dispatch — only inside the 24h customer-service window
+        // (free-form text). Outside the window we have no Meta-approved
+        // dispute template yet (see template-registry.ts — most are
+        // PENDING_RESUBMISSION) so we skip silently. The cron retries
+        // next day; once the user messages us or a template lands the
+        // alert flows.
+        const waEntry = waPhoneByUser.get(userId);
+        if (waEntry) {
+          const insideWindow =
+            waEntry.lastInbound &&
+            Date.now() - new Date(waEntry.lastInbound).getTime() < 24 * 60 * 60 * 1000;
+          if (insideWindow) {
+            try {
+              const waText = message.replace(/\*([^*\n]+)\*/g, '$1');
+              await sendWhatsAppText({ to: waEntry.phone, text: waText });
+              waSent++;
+              anyDelivered = true;
+            } catch (waErr) {
+              const m = waErr instanceof Error ? waErr.message : String(waErr);
+              errors.push(`wa:${userId}: ${m}`);
+            }
+          }
+        }
+
+        if (anyDelivered) {
           await supabase.from('notification_log').insert({
             user_id: userId,
             notification_type: 'dispute_followup',
             reference_key: refKey,
           }).select().single();
-        } else {
-          errors.push(`Failed chat ${chatId}`);
         }
 
         await new Promise((r) => setTimeout(r, 300));
@@ -207,5 +310,11 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, sent, errors: errors.length });
+  return NextResponse.json({
+    ok: true,
+    sent,
+    waSent,
+    telegramEnabled,
+    errors: errors.length,
+  });
 }
