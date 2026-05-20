@@ -41,6 +41,7 @@ export type AlertType =
   | 'savings_milestone'
   | 'reconnect_required'
   | 'trial_ending'
+  | 'dispute_created'
   | 'complaint_letter_ready'
   | 'outcome_check'
   | 'welcome';
@@ -417,6 +418,8 @@ function templateForAlertType(alertType: AlertType): string | null {
       return 'paybacker_reconnect_required';
     case 'trial_ending':
       return 'paybacker_alert_trial_ending';
+    case 'dispute_created':
+      return 'paybacker_dispute_created';
     case 'complaint_letter_ready':
       return 'paybacker_complaint_letter_ready';
     case 'outcome_check':

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { sendNotification } from '@/lib/notifications/dispatch';
 
 // GET /api/disputes — list all disputes for the user
 export async function GET() {
@@ -133,6 +135,34 @@ export async function POST(request: NextRequest) {
       .eq('id', body.alert_id)
       .eq('user_id', user.id);
   }
+
+  // Fire dispute_created across Pocket Agent channels so the user gets a
+  // confirmation buzz on WhatsApp / Telegram / push. Non-blocking — alert
+  // failure must never break the create response. complaint_letter_ready
+  // fires later when /api/complaints/generate finishes (separate event).
+  const disputeUrl = `https://paybacker.co.uk/dashboard/disputes?dispute=${dispute.id}`;
+  const adminBg = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+  sendNotification(adminBg, {
+    userId: user.id,
+    event: 'dispute_created',
+    telegram: {
+      text:
+        `📝 *Dispute opened with ${normalisedName}*\n\n` +
+        `${body.issue_summary}\n\n` +
+        `Follow it here: ${disputeUrl}`,
+    },
+    whatsapp: {
+      templateName: 'paybacker_dispute_created',
+      templateParameters: [normalisedName, disputeUrl],
+    },
+    push: {
+      title: 'Dispute opened',
+      body: `Dispute against ${normalisedName} is live.`,
+    },
+  }).catch((e) => console.error('[disputes.POST] dispute_created alert failed:', e));
 
   return NextResponse.json(dispute, { status: 201 });
 }

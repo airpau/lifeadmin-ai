@@ -31,6 +31,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { fetchNewMessages } from '@/lib/dispute-sync/fetchers';
 import type { EmailConnection } from '@/lib/dispute-sync/types';
+import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -326,7 +327,35 @@ export async function POST(request: Request) {
     await admin.from('correspondence').insert(rows);
   }
 
-  // 7. Defer the AI letter generation. /api/complaints/generate persists
+  // 7. Fire dispute_created across Pocket Agent channels NOW (telegram
+  // + whatsapp + push) so the user knows the dispute landed before the
+  // Sonnet letter finishes drafting. complaint_letter_ready fires
+  // separately ~20-30s later from /api/complaints/generate. Non-blocking
+  // — alert failure must never break the create flow.
+  const disputeUrl = `https://paybacker.co.uk/dashboard/disputes?dispute=${dispute.id}`;
+  sendNotification(admin, {
+    userId: user.id,
+    event: 'dispute_created',
+    telegram: {
+      text:
+        `📝 *Dispute opened with ${facts.provider_name}*\n\n` +
+        `${facts.issue_summary}\n\n` +
+        `Follow it here: ${disputeUrl}\n\n` +
+        `_The AI letter will arrive in this chat once it's drafted (~30s)._`,
+    },
+    whatsapp: {
+      templateName: 'paybacker_dispute_created',
+      templateParameters: [facts.provider_name, disputeUrl],
+    },
+    push: {
+      title: 'Dispute opened',
+      body: `Dispute against ${facts.provider_name} is live — letter on the way.`,
+    },
+  }).catch((e) =>
+    console.error('[from-email] dispute_created alert failed:', e),
+  );
+
+  // 8. Defer the AI letter generation. /api/complaints/generate persists
   // the letter to `correspondence` (entry_type='ai_letter') when
   // `disputeId` is supplied, and fires a `complaint_letter_ready`
   // notification on completion — so the user is told when it's ready

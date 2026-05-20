@@ -46,6 +46,7 @@ export type NotificationEventType =
   | 'daily_digest'           // Consolidated daily alerts
   | 'reconnect_required'     // Bank/email connection expired — needs action
   | 'trial_ending'           // Free trial → first charge in <=3 days
+  | 'dispute_created'        // A new dispute row was opened in the dispute centre
   | 'complaint_letter_ready' // Complaint letter generated and ready
   | 'outcome_check'          // T+7d follow-up nudge after dispute sent
   | 'welcome'                // First-touch welcome after channel opt-in
@@ -370,6 +371,15 @@ export const EVENT_CATALOG: EventMeta[] = [
     group: 'alerts',
     scheduleKind: 'system',
     critical: true,
+  },
+  {
+    event: 'dispute_created',
+    label: 'Dispute created',
+    description: 'A new dispute has been opened in the disputes centre.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'system',
   },
   {
     event: 'complaint_letter_ready',

@@ -234,6 +234,21 @@ export const TEMPLATES = {
     proOnly: true,
     body: 'Your {{1}} trial ends in {{2}} days — you will be charged £{{3}}. Tap to cancel before then.',
   },
+  /** A new dispute row was opened — fires immediately on creation,
+   *  before the AI letter is ready. paybacker_complaint_letter_ready
+   *  fires separately ~20-30s later when Sonnet finishes drafting. */
+  paybacker_dispute_created: {
+    // PENDING — needs Meta resubmission via /dashboard/admin/whatsapp.
+    // Body intentionally ends with static text (Meta rejects bodies
+    // that end on a {{var}}, same constraint that bit the original
+    // complaint_letter_ready submission).
+    sid: PENDING_RESUBMISSION,
+    category: 'UTILITY',
+    vars: ['merchant', 'dispute_url'] as const,
+    description: 'New dispute opened in the disputes centre',
+    proOnly: true,
+    body: 'New dispute opened against {{1}}. Tap to follow it: {{2}} — your AI letter will land in this chat once it is drafted.',
+  },
   /** Complaint letter generated and ready to download */
   paybacker_complaint_letter_ready: {
     // Resubmitted 2026-04-27 with trailing static text — Meta rejected the
