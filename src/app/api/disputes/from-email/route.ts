@@ -25,7 +25,7 @@
  * the existing pipeline.
  */
 
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -34,7 +34,14 @@ import type { EmailConnection } from '@/lib/dispute-sync/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// Sub-call to /api/complaints/generate (maxDuration=120) was previously
+// awaited inline while this route had maxDuration=60 — chained Sonnet
+// generation pushed total past 60s, triggering Vercel's
+// FUNCTION_INVOCATION_TIMEOUT. We now defer that call via after() so the
+// response returns once the dispute row + watchdog link + correspondence
+// import are persisted; the bump to 120 covers the worst-case extraction
+// + DB writes alone (no longer including the Sonnet leg).
+export const maxDuration = 120;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -278,39 +285,45 @@ export async function POST(request: Request) {
     await admin.from('correspondence').insert(rows);
   }
 
-  // 7. Kick off the AI letter generation by calling the existing
-  // /api/complaints/generate endpoint via internal fetch — keeps
-  // the same legal-reference injection + verification path.
-  let draftLetter: string | null = null;
-  try {
-    const origin = new URL(request.url).origin;
-    const cookieHeader = request.headers.get('cookie') ?? '';
-    const genRes = await fetch(`${origin}/api/complaints/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', cookie: cookieHeader },
-      body: JSON.stringify({
-        companyName: facts.provider_name,
-        issueDescription: `${facts.issue_summary}\n\nUser context:\n${userContext}\n\nThread summary:\n${facts.thread_summary}`,
-        desiredOutcome,
-        amount: facts.disputed_amount ? String(facts.disputed_amount) : '',
-        accountNumber: facts.account_number ?? '',
-        letterType: facts.issue_type,
-        disputeId: dispute.id,
-      }),
-    });
-    if (genRes.ok) {
-      const genJson = await genRes.json();
-      draftLetter = genJson.letter ?? null;
+  // 7. Defer the AI letter generation. /api/complaints/generate persists
+  // the letter to `correspondence` (entry_type='ai_letter') when
+  // `disputeId` is supplied, and fires a `complaint_letter_ready`
+  // notification on completion — so the user is told when it's ready
+  // and the dispute page picks it up on next render. Doing this in
+  // after() lets us respond to the client immediately instead of
+  // blocking another ~20-30s on Sonnet (which used to push total
+  // request time past Vercel's FUNCTION_INVOCATION_TIMEOUT and break
+  // the client's res.json() with the plaintext error page).
+  const origin = new URL(request.url).origin;
+  const cookieHeader = request.headers.get('cookie') ?? '';
+  const letterRequest = {
+    companyName: facts.provider_name,
+    issueDescription: `${facts.issue_summary}\n\nUser context:\n${userContext}\n\nThread summary:\n${facts.thread_summary}`,
+    desiredOutcome,
+    amount: facts.disputed_amount ? String(facts.disputed_amount) : '',
+    accountNumber: facts.account_number ?? '',
+    letterType: facts.issue_type,
+    disputeId: dispute.id,
+  };
+
+  after(async () => {
+    try {
+      await fetch(`${origin}/api/complaints/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', cookie: cookieHeader },
+        body: JSON.stringify(letterRequest),
+      });
+    } catch (err) {
+      console.error('[from-email] deferred complaint generation failed:', err);
     }
-  } catch (err) {
-    console.error('[from-email] complaint generation failed:', err);
-  }
+  });
 
   return NextResponse.json({
     dispute,
     extracted: facts,
     watchdogLinkId: link?.id ?? null,
     importedMessages: messages.length,
-    draftLetter,
+    draftLetter: null,
+    letterPending: true,
   });
 }

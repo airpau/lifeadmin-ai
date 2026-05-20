@@ -176,8 +176,24 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
           issueTypeOverride: issueType,
         }),
       });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || `Failed (${res.status})`);
+      // Read as text first — Vercel's gateway/timeout responses are
+      // plaintext HTML/text, and calling res.json() on those crashes
+      // the client with "Unexpected token A" before we can surface a
+      // useful error. Parse manually so we can give the user something
+      // they can act on.
+      const raw = await res.text();
+      let d: any = null;
+      try {
+        d = raw ? JSON.parse(raw) : null;
+      } catch {
+        throw new Error(
+          /An error occurred|server error|timed? out|gateway/i.test(raw)
+            ? 'The server took too long to respond. Your dispute may still be processing — check the Disputes page in a moment.'
+            : `Unexpected response from server (${res.status}). Please try again.`
+        );
+      }
+      if (!res.ok) throw new Error(d?.error || `Failed (${res.status})`);
+      if (!d?.dispute?.id) throw new Error('Server response missing dispute id.');
       onCreated(d.dispute.id);
     } catch (e: any) {
       setError(e?.message || 'Failed to create dispute');
@@ -447,8 +463,8 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
         {step === 'creating' && (
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
             <Loader2 className="h-10 w-10 text-emerald-600 animate-spin mb-4" />
-            <p className="text-sm font-semibold text-slate-900 mb-1">Writing your dispute</p>
-            <p className="text-xs text-slate-500 max-w-xs">Combining the email, your context and UK consumer law into a legally-grounded reply. About 20 seconds.</p>
+            <p className="text-sm font-semibold text-slate-900 mb-1">Setting up your dispute</p>
+            <p className="text-xs text-slate-500 max-w-xs">Importing the email thread and starting the letter. You&apos;ll land on the dispute page in a few seconds — the AI letter will appear there once it&apos;s ready.</p>
           </div>
         )}
       </div>
