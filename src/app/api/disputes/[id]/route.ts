@@ -478,3 +478,56 @@ export async function PATCH(
 
   return NextResponse.json(data);
 }
+
+// DELETE /api/disputes/[id] — permanently remove a dispute and all its
+// child rows. Used by the disputes centre to clean up duplicate rows
+// (the from-email flow used to create a fresh dispute on every retry
+// before the idempotency guard landed).
+//
+// FK cascades handle the heavy lifting: correspondence,
+// dispute_watchdog_links, dispute_outcome_events, dispute_agent_decisions,
+// dispute_shares are all ON DELETE CASCADE. tasks /
+// last_alert_dispute_id are ON DELETE SET NULL so historical references
+// survive.
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Confirm ownership before delete. We do this even though RLS would
+  // gate it — explicit 404 is friendlier than a silent no-op when the
+  // user happens to be staring at a stale tab.
+  const { data: existing } = await supabase
+    .from('disputes')
+    .select('id, user_id')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (!existing) {
+    return NextResponse.json({ error: 'Dispute not found' }, { status: 404 });
+  }
+
+  // Use the admin client so the cascade reaches rows in
+  // dispute_agent_decisions etc that may be RLS-restricted to the
+  // service role.
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+  const { error } = await admin
+    .from('disputes')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id);
+
+  if (error) {
+    console.error('Failed to delete dispute:', error);
+    return NextResponse.json({ error: 'Failed to delete dispute' }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}

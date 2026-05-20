@@ -1922,6 +1922,33 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
   const [loading, setLoading] = useState(true);
   const [showTour, setShowTour] = useState(false);
   const [summary, setSummary] = useState<DisputeSummary | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Hard-delete a dispute and remove it from the list. Used to clean
+  // up duplicate rows the pre-idempotency from-email flow created on
+  // every retry. Confirms first because cascade also drops the
+  // correspondence thread and agent decision log.
+  const handleDeleteDispute = async (id: string, providerName: string) => {
+    if (!confirm(`Delete the dispute for ${providerName}? This removes the entire correspondence thread and cannot be undone.`)) {
+      return;
+    }
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/disputes/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const raw = await res.text();
+        let msg = `Failed to delete (${res.status})`;
+        try { msg = (JSON.parse(raw) as { error?: string }).error || msg; } catch {}
+        alert(msg);
+        return;
+      }
+      setDisputes((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      alert(`Failed to delete: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
   // Filter: 'active' (everything not archived) or 'archived' (the
   // bot-archived rows). Archived rows still exist in the table —
   // the bot's archive_dispute tool sets archived_at — they're
@@ -2129,12 +2156,20 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
             )
             .map((d, idx) => {
             const statusConf = STATUS_CONFIG[d.status] || { label: d.status, className: 'bg-slate-100 text-slate-600' };
+            const isDeleting = deletingId === d.id;
             return (
-              <button
+              // Switched from <button> to a div+role so the Delete
+              // control inside can be its own <button> without nesting
+              // (which would be invalid HTML and swallow click events
+              // on a11y stacks).
+              <div
                 key={d.id}
                 id={idx === 0 ? 'tour-card' : undefined}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelect(d.id)}
-                className="w-full text-left card hover:border-emerald-500/30 transition-all"
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(d.id); } }}
+                className={`w-full text-left card hover:border-emerald-500/30 transition-all cursor-pointer ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
@@ -2176,9 +2211,19 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusConf.className}`}>
                       {statusConf.label}
                     </span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteDispute(d.id, d.provider_name); }}
+                      disabled={isDeleting}
+                      title="Delete this dispute"
+                      aria-label={`Delete dispute for ${d.provider_name}`}
+                      className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>

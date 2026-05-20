@@ -177,6 +177,40 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (!conn) return NextResponse.json({ error: 'Email connection not found' }, { status: 404 });
 
+  // 0. IDEMPOTENCY — if a watchdog link already exists for this user
+  // + thread, a dispute for it has already been created. Return that
+  // dispute instead of inserting a new one. Without this, every retry
+  // (e.g. after the FUNCTION_INVOCATION_TIMEOUT bug below) inserts a
+  // fresh dispute row and the disputes-centre fills with duplicates.
+  const providerKey = (conn.provider_type ?? '').toLowerCase().startsWith('g') ? 'gmail' : 'outlook';
+  const { data: existingLink } = await admin
+    .from('dispute_watchdog_links')
+    .select('id, dispute_id')
+    .eq('user_id', user.id)
+    .eq('provider', providerKey)
+    .eq('thread_id', threadId)
+    .maybeSingle();
+
+  if (existingLink?.dispute_id) {
+    const { data: existingDispute } = await admin
+      .from('disputes')
+      .select('*')
+      .eq('id', existingLink.dispute_id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (existingDispute) {
+      return NextResponse.json({
+        dispute: existingDispute,
+        extracted: null,
+        watchdogLinkId: existingLink.id,
+        importedMessages: 0,
+        draftLetter: null,
+        letterPending: false,
+        deduplicated: true,
+      });
+    }
+  }
+
   // 1. Pull the entire thread (since: null = full history) for AI context.
   let messages: Array<{ subject: string; fromAddress: string; fromName: string; receivedAt: Date; body: string; snippet: string }>;
   try {
@@ -245,26 +279,33 @@ export async function POST(request: Request) {
   if (!supplierMsg) supplierMsg = messages[messages.length - 1];
   const senderDomain = (supplierMsg.fromAddress.split('@')[1] || '').toLowerCase();
   const lastMsg = messages[messages.length - 1];
+  // Upsert against the (user_id, provider, thread_id) unique index so a
+  // concurrent retry can't duplicate the link. The idempotency check at
+  // the top of the route should make this branch unreachable in practice,
+  // but keep the upsert as a defensive belt-and-braces.
   const { data: link, error: linkErr } = await admin
     .from('dispute_watchdog_links')
-    .insert({
-      dispute_id: dispute.id,
-      user_id: user.id,
-      email_connection_id: connectionId,
-      provider: ((conn.provider_type ?? '').toLowerCase().startsWith('g') ? 'gmail' : 'outlook'),
-      thread_id: threadId,
-      subject: lastMsg.subject,
-      sender_domain: senderDomain,
-      sender_address: supplierMsg.fromAddress.toLowerCase(),
-      sync_enabled: true,
-      match_source: 'user_confirmed',
-      match_confidence: 1.0,
-      last_synced_at: new Date().toISOString(),
-    })
+    .upsert(
+      {
+        dispute_id: dispute.id,
+        user_id: user.id,
+        email_connection_id: connectionId,
+        provider: providerKey,
+        thread_id: threadId,
+        subject: lastMsg.subject,
+        sender_domain: senderDomain,
+        sender_address: supplierMsg.fromAddress.toLowerCase(),
+        sync_enabled: true,
+        match_source: 'user_confirmed',
+        match_confidence: 1.0,
+        last_synced_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,provider,thread_id', ignoreDuplicates: false },
+    )
     .select('id')
     .single();
   if (linkErr) {
-    console.error('[from-email] watchdog link insert failed:', linkErr.message);
+    console.error('[from-email] watchdog link upsert failed:', linkErr.message);
   }
 
   // 6. Import the thread history into correspondence so the dispute
