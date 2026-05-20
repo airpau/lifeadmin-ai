@@ -25,6 +25,7 @@ import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/cla
 import { generateAnnualReportData, generateOnDemandReportData } from '@/lib/report-generator';
 import { predictMonthlyIncome } from '@/lib/income-prediction';
 import { resolveAndStoreMapping } from '@/lib/subcategory-engine';
+import { isValidCategory, type Category } from '@/lib/categories';
 import { logAlertInteraction } from '@/lib/alert-interactions';
 import {
   bumpUserIntelligence,
@@ -228,7 +229,13 @@ export async function executeToolCall(
         toolInput.query as string,
       );
     case 'recategorise_transactions':
-      return recategoriseTransactions(supabase, userId, toolInput.merchant_name as string, toolInput.new_category as string);
+      return recategoriseTransactions(
+        supabase,
+        userId,
+        toolInput.merchant_name as string,
+        toolInput.new_category as string,
+        toolInput.user_subcategory as string | undefined,
+      );
     case 'set_budget':
       return setBudget(supabase, userId, toolInput.category as string, toolInput.monthly_limit as number);
     case 'recategorise_subscription':
@@ -328,6 +335,21 @@ export async function executeToolCall(
         userId,
         toolInput.transaction_id as string,
         toolInput.new_category as string,
+        toolInput.user_subcategory as string | undefined,
+      );
+    case 'upsert_user_subcategory':
+      return upsertUserSubcategory(
+        supabase,
+        userId,
+        toolInput.parent_category as string,
+        toolInput.name as string,
+        toolInput.emoji as string | undefined,
+      );
+    case 'list_user_subcategories':
+      return listUserSubcategories(
+        supabase,
+        userId,
+        toolInput.parent_category as string | undefined,
       );
     case 'get_weekly_outlook':
       return getWeeklyOutlook(supabase, userId);
@@ -1768,10 +1790,14 @@ async function recategoriseTransactions(
   userId: string,
   merchantName: string,
   newCategory: string,
+  userSubcategory?: string,
 ): Promise<ToolResult> {
-  // Resolve the user's label → canonical parent (handles custom subcategories)
-  const resolution = await resolveAndStoreMapping(supabase, userId, newCategory);
-  const { parentCategory, subcategoryLabel } = resolution;
+  // If the agent passed an explicit subcategory + a canonical parent, honour
+  // that pair directly. Otherwise auto-resolve the free-text label.
+  const hasExplicitPair = !!userSubcategory && isValidCategory(newCategory.toLowerCase().trim());
+  const { parentCategory, subcategoryLabel } = hasExplicitPair
+    ? { parentCategory: newCategory.toLowerCase().trim() as Category, subcategoryLabel: userSubcategory!.trim() }
+    : await resolveAndStoreMapping(supabase, userId, newCategory);
 
   // Build update payload: user_category always gets the canonical parent so
   // existing analytics/budget RPCs keep working. user_subcategory stores the
@@ -4219,6 +4245,77 @@ async function getDeals(
 }
 
 // ============================================================
+// CUSTOM SUBCATEGORY HANDLERS — let the agent build / re-use Tier-2
+// labels (e.g. "Energie Fitness membership" under "income") without
+// raising a support ticket.
+// ============================================================
+
+async function upsertUserSubcategory(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  parentCategory: string,
+  name: string,
+  emoji?: string,
+): Promise<ToolResult> {
+  const parent = (parentCategory || '').toLowerCase().trim();
+  const label = (name || '').trim();
+
+  if (!isValidCategory(parent)) {
+    return { text: `Invalid parent_category "${parentCategory}". Must be one of the canonical Tier-1 categories (income, transfers, groceries, …).` };
+  }
+  if (!label || label.length > 50) {
+    return { text: `Subcategory name must be 1–50 characters. Got ${label.length}.` };
+  }
+
+  const { data, error } = await supabase.rpc('upsert_user_subcategory', {
+    p_user_id: userId,
+    p_parent: parent,
+    p_name: label,
+    p_emoji: emoji?.trim() || null,
+  });
+
+  if (error) {
+    return { text: `Failed to save subcategory: ${error.message}` };
+  }
+
+  return {
+    text: `Subcategory *${label}* is now available under *${parent}*. You can recategorise transactions to it by calling recategorise_transaction / recategorise_transactions with new_category="${parent}" and user_subcategory="${label}". Subcategory id: ${data}`,
+  };
+}
+
+async function listUserSubcategories(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  parentCategory?: string,
+): Promise<ToolResult> {
+  const parent = parentCategory?.toLowerCase().trim();
+  if (parent && !isValidCategory(parent)) {
+    return { text: `Invalid parent_category "${parentCategory}".` };
+  }
+
+  const { data, error } = await supabase.rpc('get_user_subcategories', {
+    p_user_id: userId,
+    p_parent: parent ?? null,
+  });
+
+  if (error) {
+    return { text: `Failed to list subcategories: ${error.message}` };
+  }
+  if (!data || data.length === 0) {
+    return {
+      text: parent
+        ? `No custom subcategories defined yet under *${parent}*. Use upsert_user_subcategory to create one.`
+        : `No custom subcategories defined yet. Use upsert_user_subcategory to create one (e.g. "Membership income" under "income").`,
+    };
+  }
+
+  const lines = data.map((s: { parent_category: string; name: string; emoji: string | null; usage_count: number }) =>
+    `• ${s.emoji ? s.emoji + ' ' : ''}*${s.name}* — under ${s.parent_category} (${s.usage_count} transaction${s.usage_count === 1 ? '' : 's'})`,
+  );
+  return { text: `Your custom subcategories:\n${lines.join('\n')}` };
+}
+
+// ============================================================
 // PER-TRANSACTION RECATEGORISE HANDLER
 // ============================================================
 
@@ -4227,12 +4324,13 @@ async function recategoriseTransaction(
   userId: string,
   transactionId: string,
   newCategory: string,
+  userSubcategory?: string,
 ): Promise<ToolResult> {
   // Support truncated IDs (8-char prefix shown in list_transactions output)
   if (transactionId.length < 36) {
     return { text: `Error: You provided a truncated ID ("${transactionId}"). The database requires a full 36-character UUID. Please use the 'recategorise_transactions' tool to search by merchant_name instead.` };
   }
-  
+
   let txnQuery = supabase
     .from('bank_transactions')
     .select('id, merchant_name, description, amount, category, user_category')
@@ -4252,9 +4350,13 @@ async function recategoriseTransaction(
   }
   const txn = matches[0];
 
-  // Resolve the user's label → canonical parent (handles custom subcategories)
-  const resolution = await resolveAndStoreMapping(supabase, userId, newCategory);
-  const { parentCategory, subcategoryLabel } = resolution;
+  // If the agent passed an explicit subcategory + a canonical parent, honour
+  // that pair directly. Otherwise fall back to the auto-resolver, which
+  // infers a parent from the free-text label and persists the mapping.
+  const hasExplicitPair = !!userSubcategory && isValidCategory(newCategory.toLowerCase().trim());
+  const { parentCategory, subcategoryLabel } = hasExplicitPair
+    ? { parentCategory: newCategory.toLowerCase().trim() as Category, subcategoryLabel: userSubcategory!.trim() }
+    : await resolveAndStoreMapping(supabase, userId, newCategory);
 
   const { error: updateError } = await supabase
     .from('bank_transactions')

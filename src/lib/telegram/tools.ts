@@ -615,23 +615,28 @@ export const telegramTools: Tool[] = [
   {
     name: 'recategorise_transactions',
     description:
-      'Change the category of bank transactions matching a merchant name. For example, recategorise all "Costa" transactions from "other" to "food". Returns how many transactions were updated.',
+      'Change the category of bank transactions matching a merchant name. For example, recategorise all "Costa" transactions from "other" to "eating_out", or all "Energie Fitness" credits to "income" with a "Membership income" subcategory. Returns how many transactions were updated.',
     input_schema: {
       type: 'object' as const,
       properties: {
         merchant_name: {
           type: 'string',
-          description: 'The merchant name to match (case-insensitive partial match, e.g. "Costa", "Tesco", "Netflix").',
+          description: 'The merchant name to match (case-insensitive partial match, e.g. "Costa", "Tesco", "Netflix", "Energie Fitness", "Ad").',
         },
         new_category: {
           type: 'string',
           enum: [
-            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
-            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
-            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
-            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management', 'transfers',
+            'mortgage', 'housing', 'council_tax', 'energy', 'water', 'broadband', 'mobile', 'bills',
+            'groceries', 'eating_out', 'transport', 'travel', 'shopping', 'entertainment',
+            'streaming', 'software', 'health', 'personal_care', 'insurance', 'loans', 'savings',
+            'fees', 'tax', 'education', 'family', 'pets', 'charity', 'gambling',
+            'income', 'transfers', 'other',
           ],
-          description: 'The category to assign to matching transactions.',
+          description: "Canonical Tier-1 category to assign. Use 'income' for any money coming IN (salary, freelance, rent, membership income, ad revenue, refunds). Use 'transfers' ONLY for movements between the user's own accounts — never for third-party income.",
+        },
+        user_subcategory: {
+          type: 'string',
+          description: "Optional Tier-2 subcategory label (≤50 chars) for tracking a specific source under the parent — e.g. 'Energie Fitness membership' under 'income', 'Tesco shop' under 'groceries'. If the subcategory hasn't been used before, call upsert_user_subcategory(parent_category=new_category, name=this) first so it's registered for re-use.",
         },
       },
       required: ['merchant_name', 'new_category'],
@@ -1101,26 +1106,83 @@ export const telegramTools: Tool[] = [
   {
     name: 'recategorise_transaction',
     description:
-      "Change the category of a specific bank transaction by its ID. The change is immediately reflected in the Money Hub dashboard (writes to user_category). First use list_transactions to find the transaction ID, then use this tool to change its category.",
+      "Change the category of a specific bank transaction by its ID. The change is immediately reflected in the Money Hub dashboard (writes to user_category, and optionally user_subcategory). First use list_transactions to find the transaction ID, then use this tool. NEVER raise a support ticket for a categorisation request — this tool fixes it instantly.",
     input_schema: {
       type: 'object' as const,
       properties: {
         transaction_id: {
           type: 'string',
-          description: 'The unique ID of the transaction to recategorise (shown in list_transactions output).',
+          description: 'The unique ID of the transaction to recategorise (shown in list_transactions output — full 36-char UUID).',
         },
         new_category: {
           type: 'string',
           enum: [
-            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
-            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
-            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
-            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
+            'mortgage', 'housing', 'council_tax', 'energy', 'water', 'broadband', 'mobile', 'bills',
+            'groceries', 'eating_out', 'transport', 'travel', 'shopping', 'entertainment',
+            'streaming', 'software', 'health', 'personal_care', 'insurance', 'loans', 'savings',
+            'fees', 'tax', 'education', 'family', 'pets', 'charity', 'gambling',
+            'income', 'transfers', 'other',
           ],
-          description: 'The new category for this transaction.',
+          description: "Canonical Tier-1 category. Use 'income' for any money coming IN from outside (salary, freelance, rent received, membership income, ad revenue, refunds). Use 'transfers' ONLY for movements between the user's own accounts — never for third-party payments to the user.",
+        },
+        user_subcategory: {
+          type: 'string',
+          description: "Optional Tier-2 subcategory label (≤50 chars) to record alongside the parent category — e.g. 'Energie Fitness membership' under 'income'. If this subcategory hasn't been used before for this parent, call upsert_user_subcategory first so it's registered for re-use.",
         },
       },
       required: ['transaction_id', 'new_category'],
+    },
+  },
+  {
+    name: 'upsert_user_subcategory',
+    description:
+      "Define (or re-use) a custom Tier-2 subcategory under one of the canonical parent categories — e.g. 'Membership income' under 'income', 'Energie Fitness' under 'income', 'School fees' under 'family'. Idempotent: calling with an existing (parent, name) pair returns the existing subcategory ID. Call this BEFORE recategorise_transaction / recategorise_transactions whenever the user wants to track a specific source they haven't named before. This is how the user builds up their own taxonomy without raising support tickets.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        parent_category: {
+          type: 'string',
+          enum: [
+            'mortgage', 'housing', 'council_tax', 'energy', 'water', 'broadband', 'mobile', 'bills',
+            'groceries', 'eating_out', 'transport', 'travel', 'shopping', 'entertainment',
+            'streaming', 'software', 'health', 'personal_care', 'insurance', 'loans', 'savings',
+            'fees', 'tax', 'education', 'family', 'pets', 'charity', 'gambling',
+            'income', 'transfers', 'other',
+          ],
+          description: 'The canonical Tier-1 parent category this subcategory hangs under.',
+        },
+        name: {
+          type: 'string',
+          description: 'The subcategory label as the user described it (≤50 chars). Title-case it sensibly, e.g. "Energie Fitness membership", "Stripe / Glofox", "School fees".',
+        },
+        emoji: {
+          type: 'string',
+          description: "Optional one-character emoji for the dashboard chip, e.g. '🏋️', '💼', '🏠'.",
+        },
+      },
+      required: ['parent_category', 'name'],
+    },
+  },
+  {
+    name: 'list_user_subcategories',
+    description:
+      "List the user's existing custom subcategories, optionally filtered to one parent category. Use this before upsert_user_subcategory to check whether a similar label already exists (avoid creating 'Energie Fitness' AND 'Energie Fitness membership' for the same thing).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        parent_category: {
+          type: 'string',
+          enum: [
+            'mortgage', 'housing', 'council_tax', 'energy', 'water', 'broadband', 'mobile', 'bills',
+            'groceries', 'eating_out', 'transport', 'travel', 'shopping', 'entertainment',
+            'streaming', 'software', 'health', 'personal_care', 'insurance', 'loans', 'savings',
+            'fees', 'tax', 'education', 'family', 'pets', 'charity', 'gambling',
+            'income', 'transfers', 'other',
+          ],
+          description: 'Optional parent to filter by. Omit to list every custom subcategory the user has defined.',
+        },
+      },
+      required: [],
     },
   },
 
