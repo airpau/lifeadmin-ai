@@ -25,7 +25,7 @@
  * the existing pipeline.
  */
 
-import { NextResponse, after } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -35,14 +35,19 @@ import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-// Sub-call to /api/complaints/generate (maxDuration=120) was previously
-// awaited inline while this route had maxDuration=60 — chained Sonnet
-// generation pushed total past 60s, triggering Vercel's
-// FUNCTION_INVOCATION_TIMEOUT. We now defer that call via after() so the
-// response returns once the dispute row + watchdog link + correspondence
-// import are persisted; the bump to 120 covers the worst-case extraction
-// + DB writes alone (no longer including the Sonnet leg).
-export const maxDuration = 120;
+// Synchronous path: Haiku extraction (~3-10s) + DB writes (~1s) + sub-call
+// to /api/complaints/generate (~30-90s for Sonnet + legal-refs guardrail).
+// 180s comfortably covers the worst case while staying inside Vercel
+// Pro's 300s ceiling. Earlier attempt (0ca55920) tried to defer the
+// Sonnet call via after() so the response returned fast, but the
+// deferred callback wasn't reliably completing on Vercel — disputes
+// would land on the page with no ai_letter row in correspondence,
+// leaving the agent banner stuck on "All caught up, no action needed"
+// because there was no letter for the supplier to reply to. Synchronous
+// generation is slower for the user (modal spinner stays up longer)
+// but the letter is guaranteed to be in correspondence before they
+// hit the dispute page.
+export const maxDuration = 180;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -355,45 +360,61 @@ export async function POST(request: Request) {
     console.error('[from-email] dispute_created alert failed:', e),
   );
 
-  // 8. Defer the AI letter generation. /api/complaints/generate persists
-  // the letter to `correspondence` (entry_type='ai_letter') when
-  // `disputeId` is supplied, and fires a `complaint_letter_ready`
-  // notification on completion — so the user is told when it's ready
-  // and the dispute page picks it up on next render. Doing this in
-  // after() lets us respond to the client immediately instead of
-  // blocking another ~20-30s on Sonnet (which used to push total
-  // request time past Vercel's FUNCTION_INVOCATION_TIMEOUT and break
-  // the client's res.json() with the plaintext error page).
+  // 8. Generate the AI letter SYNCHRONOUSLY by calling the existing
+  // /api/complaints/generate endpoint via internal fetch. We tried
+  // deferring this via after() in 0ca55920 so the response returned
+  // fast, but the deferred callback wasn't reliably completing on
+  // Vercel — users landed on the dispute page with no ai_letter row
+  // and the dispute agent banner stuck on "All caught up". Calling
+  // it inline costs ~30-90s of modal spinner time but guarantees the
+  // letter is in correspondence before the user navigates.
+  //
+  // The endpoint persists the letter to `correspondence`
+  // (entry_type='ai_letter') when disputeId is supplied, creates a
+  // task row, and fires complaint_letter_ready on completion. We pull
+  // the letter text out of the JSON response so callers (and the
+  // dispute page that opens next) can see what was drafted.
   const origin = new URL(request.url).origin;
   const cookieHeader = request.headers.get('cookie') ?? '';
-  const letterRequest = {
-    companyName: facts.provider_name,
-    issueDescription: `${facts.issue_summary}\n\nUser context:\n${userContext}\n\nThread summary:\n${facts.thread_summary}`,
-    desiredOutcome,
-    amount: facts.disputed_amount ? String(facts.disputed_amount) : '',
-    accountNumber: facts.account_number ?? '',
-    letterType: facts.issue_type,
-    disputeId: dispute.id,
-  };
-
-  after(async () => {
-    try {
-      await fetch(`${origin}/api/complaints/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', cookie: cookieHeader },
-        body: JSON.stringify(letterRequest),
-      });
-    } catch (err) {
-      console.error('[from-email] deferred complaint generation failed:', err);
+  let draftLetter: string | null = null;
+  let letterGenerated = false;
+  try {
+    const genRes = await fetch(`${origin}/api/complaints/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie: cookieHeader },
+      body: JSON.stringify({
+        companyName: facts.provider_name,
+        issueDescription: `${facts.issue_summary}\n\nUser context:\n${userContext}\n\nThread summary:\n${facts.thread_summary}`,
+        desiredOutcome,
+        amount: facts.disputed_amount ? String(facts.disputed_amount) : '',
+        accountNumber: facts.account_number ?? '',
+        letterType: facts.issue_type,
+        disputeId: dispute.id,
+      }),
+    });
+    if (genRes.ok) {
+      const genJson = await genRes.json();
+      draftLetter = genJson.letter ?? null;
+      letterGenerated = !!draftLetter;
+    } else {
+      // Non-fatal — dispute is already saved, user lands on the dispute
+      // page, and they can click "Generate letter" from there to retry.
+      // Logging the status code lets us spot recurring upstream issues
+      // (rate-limit, plan cap, model-side errors) without taking the
+      // whole flow down.
+      const raw = await genRes.text().catch(() => '');
+      console.error(`[from-email] /api/complaints/generate returned ${genRes.status}:`, raw.slice(0, 500));
     }
-  });
+  } catch (err) {
+    console.error('[from-email] complaint generation failed:', err);
+  }
 
   return NextResponse.json({
     dispute,
     extracted: facts,
     watchdogLinkId: link?.id ?? null,
     importedMessages: messages.length,
-    draftLetter: null,
-    letterPending: true,
+    draftLetter,
+    letterPending: !letterGenerated,
   });
 }

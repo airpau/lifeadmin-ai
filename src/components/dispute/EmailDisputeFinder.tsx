@@ -463,8 +463,8 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
         {step === 'creating' && (
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
             <Loader2 className="h-10 w-10 text-emerald-600 animate-spin mb-4" />
-            <p className="text-sm font-semibold text-slate-900 mb-1">Setting up your dispute</p>
-            <p className="text-xs text-slate-500 max-w-xs">Importing the email thread and starting the letter. You&apos;ll land on the dispute page in a few seconds — the AI letter will appear there once it&apos;s ready.</p>
+            <p className="text-sm font-semibold text-slate-900 mb-1">Drafting your dispute</p>
+            <p className="text-xs text-slate-500 max-w-xs">Importing the email thread, writing your letter and citing the right UK consumer law. This usually takes 30-60 seconds — please don&apos;t close this window.</p>
           </div>
         )}
       </div>
