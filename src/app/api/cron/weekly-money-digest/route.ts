@@ -206,6 +206,68 @@ export async function GET(request: NextRequest) {
         (sum, s) => sum + (parseFloat(String(s.money_saved)) || 0), 0
       );
 
+      // ── Disputes section ────────────────────────────────────────
+      // The disputes overview in the email mirrors what the user
+      // sees in /dashboard/disputes: open cases with status + amount
+      // being claimed, plus any disputes that closed in the past 7
+      // days with their outcome and money recovered. Skipped silently
+      // for users with zero disputes — the email builder no-ops the
+      // section when both arrays are empty.
+      const { data: disputeRows } = await admin
+        .from('disputes')
+        .select('id, provider_name, status, disputed_amount, money_recovered, outcome, last_activity, resolved_at, created_at, archived_at, unread_reply_count')
+        .eq('user_id', userId)
+        .is('archived_at', null);
+
+      const OPEN_STATUSES = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
+      const STATUS_LABELS: Record<string, string> = {
+        open: 'Open',
+        in_progress: 'In progress',
+        awaiting_response: 'Awaiting reply',
+        escalated: 'Escalated',
+        ombudsman: 'With ombudsman',
+      };
+
+      const activeDisputes = (disputeRows || [])
+        .filter((d) => OPEN_STATUSES.includes(d.status))
+        .map((d) => {
+          const last = d.last_activity || d.created_at;
+          const days = last
+            ? Math.max(0, Math.floor((now.getTime() - new Date(last).getTime()) / (24 * 60 * 60 * 1000)))
+            : 0;
+          return {
+            id: d.id as string,
+            provider: d.provider_name as string,
+            statusLabel: STATUS_LABELS[d.status] || d.status,
+            disputedAmount: Number(d.disputed_amount) || 0,
+            daysSinceActivity: days,
+            unreadReplyCount: Number(d.unread_reply_count) || 0,
+          };
+        })
+        // Surface the most-recently-active disputes first — they're
+        // the ones most likely to want the user's attention this week.
+        .sort((a, b) => a.daysSinceActivity - b.daysSinceActivity);
+
+      const RESOLVED_OUTCOMES = ['won', 'partial', 'lost', 'withdrawn'] as const;
+      type Outcome = (typeof RESOLVED_OUTCOMES)[number];
+      const resolvedThisWeek = (disputeRows || [])
+        .filter((d) =>
+          !!d.outcome &&
+          RESOLVED_OUTCOMES.includes(d.outcome as Outcome) &&
+          d.resolved_at &&
+          new Date(d.resolved_at).getTime() >= weekStart.getTime(),
+        )
+        .map((d) => ({
+          id: d.id as string,
+          provider: d.provider_name as string,
+          outcome: d.outcome as Outcome,
+          moneyRecovered: Number(d.money_recovered) || 0,
+        }));
+
+      const totalDisputedAmount = activeDisputes.reduce(
+        (s, d) => s + (d.disputedAmount || 0), 0,
+      );
+
       // Send the email
       const success = await sendWeeklyDigestEmail(
         profile.email,
@@ -222,6 +284,9 @@ export async function GET(request: NextRequest) {
           // 17 self-transfers / loan principal hidden). Without this
           // we'd say "£800 across 52 transactions" which is incoherent.
           transactionCount: realThisWeek.length,
+          activeDisputes,
+          resolvedThisWeek,
+          totalDisputedAmount,
         },
         tier,
       );

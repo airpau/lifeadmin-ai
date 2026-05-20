@@ -1943,6 +1943,16 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
         return;
       }
       setDisputes((prev) => prev.filter((d) => d.id !== id));
+      // The KPI strip header (Active disputes, Being disputed £, Total
+      // recovered) is rendered off `summary`, fetched once on mount.
+      // Re-fetch after a delete so the "Being disputed" amount drops by
+      // the deleted dispute's disputed_amount immediately — without this
+      // the user sees the stale lifetime total even though the row is
+      // gone from the list below.
+      fetch('/api/disputes/summary')
+        .then((r) => r.json())
+        .then((data) => { if (!data.error) setSummary(data); })
+        .catch(() => {});
     } catch (err) {
       alert(`Failed to delete: ${err instanceof Error ? err.message : 'unknown error'}`);
     } finally {

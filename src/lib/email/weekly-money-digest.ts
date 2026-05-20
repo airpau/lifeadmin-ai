@@ -39,6 +39,22 @@ interface DigestData {
   budgetAlerts: { category: string; limit: number; spent: number; percentage: number }[];
   totalSaved: number;
   transactionCount: number;
+  activeDisputes?: {
+    id: string;
+    provider: string;
+    statusLabel: string;
+    disputedAmount: number;
+    daysSinceActivity: number;
+    unreadReplyCount: number;
+  }[];
+  resolvedThisWeek?: {
+    id: string;
+    provider: string;
+    outcome: 'won' | 'partial' | 'lost' | 'withdrawn';
+    moneyRecovered: number;
+  }[];
+  totalDisputedAmount?: number;
+  totalRecoveredLifetime?: number;
 }
 
 const COLOR = {
@@ -150,6 +166,120 @@ function budgetSection(rows: DigestData['budgetAlerts']): string {
   );
 }
 
+function disputesSection(data: DigestData): string {
+  const active = data.activeDisputes ?? [];
+  const resolved = data.resolvedThisWeek ?? [];
+  if (active.length === 0 && resolved.length === 0) return '';
+
+  const headlineBits: string[] = [];
+  if (active.length > 0) {
+    const claimingLine =
+      (data.totalDisputedAmount ?? 0) > 0
+        ? ` · claiming back ${fmtGBP(data.totalDisputedAmount ?? 0, { fractionDigits: 0 })}`
+        : '';
+    headlineBits.push(`${active.length} open dispute${active.length === 1 ? '' : 's'}${claimingLine}`);
+  }
+  if (resolved.length > 0) {
+    const wonAmt = resolved
+      .filter((r) => r.outcome === 'won' || r.outcome === 'partial')
+      .reduce((s, r) => s + (r.moneyRecovered || 0), 0);
+    if (wonAmt > 0) {
+      headlineBits.push(`${fmtGBP(wonAmt, { fractionDigits: 0 })} recovered this week`);
+    } else {
+      headlineBits.push(`${resolved.length} closed this week`);
+    }
+  }
+  const headline = headlineBits.length > 0
+    ? `<p style="color:${COLOR.inkMuted};font-size:13px;margin:0 0 12px;">${headlineBits.join(' · ')}</p>`
+    : '';
+
+  const activeRows = active
+    .slice(0, 5)
+    .map((d) => {
+      const amount = d.disputedAmount > 0
+        ? fmtGBP(d.disputedAmount, { fractionDigits: 2 })
+        : '—';
+      const replyBadge = d.unreadReplyCount > 0
+        ? ` <span style="background:${COLOR.danger};color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:9999px;">NEW REPLY</span>`
+        : '';
+      const lastSeen = d.daysSinceActivity === 0
+        ? 'today'
+        : `${d.daysSinceActivity}d ago`;
+      return `
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid ${COLOR.border};color:${COLOR.inkSoft};font-size:14px;">
+            ${escapeHtml(d.provider)}${replyBadge}
+            <div style="color:${COLOR.inkMuted};font-size:12px;margin-top:2px;">${escapeHtml(d.statusLabel)}</div>
+          </td>
+          <td style="padding:10px 12px;border-bottom:1px solid ${COLOR.border};color:${COLOR.ink};font-weight:600;font-size:14px;text-align:right;white-space:nowrap;">${amount}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid ${COLOR.border};color:${COLOR.inkMuted};font-size:13px;text-align:right;white-space:nowrap;">${lastSeen}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const activeTable = active.length > 0
+    ? `
+      <table style="width:100%;border-collapse:collapse;margin-bottom:${resolved.length > 0 ? '16px' : '8px'};">
+        <thead>
+          <tr>
+            <th style="padding:8px 12px;text-align:left;color:${COLOR.inkMuted};font-size:12px;border-bottom:2px solid ${COLOR.border};">Open with</th>
+            <th style="padding:8px 12px;text-align:right;color:${COLOR.inkMuted};font-size:12px;border-bottom:2px solid ${COLOR.border};">Claiming</th>
+            <th style="padding:8px 12px;text-align:right;color:${COLOR.inkMuted};font-size:12px;border-bottom:2px solid ${COLOR.border};">Last activity</th>
+          </tr>
+        </thead>
+        <tbody>${activeRows}</tbody>
+      </table>
+    `
+    : '';
+
+  const resolvedRows = resolved
+    .slice(0, 5)
+    .map((r) => {
+      const outcomeLabel: Record<typeof r.outcome, string> = {
+        won: '🏆 Won',
+        partial: '🤝 Partial',
+        lost: '❌ Lost',
+        withdrawn: '↩︎ Withdrawn',
+      };
+      const amount = (r.outcome === 'won' || r.outcome === 'partial') && r.moneyRecovered > 0
+        ? `<span style="color:${COLOR.brand};font-weight:600;">${fmtGBP(r.moneyRecovered, { fractionDigits: 2 })}</span>`
+        : '—';
+      return `
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid ${COLOR.border};color:${COLOR.inkSoft};font-size:13px;">${escapeHtml(r.provider)}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid ${COLOR.border};color:${COLOR.inkSoft};font-size:13px;text-align:right;">${outcomeLabel[r.outcome]}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid ${COLOR.border};font-size:13px;text-align:right;white-space:nowrap;">${amount}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const resolvedTable = resolved.length > 0
+    ? `
+      <h3 style="color:${COLOR.ink};font-size:14px;margin:0 0 8px;">Closed this week</h3>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+        <tbody>${resolvedRows}</tbody>
+      </table>
+    `
+    : '';
+
+  const ctaLine = `
+    <p style="margin:12px 0 0;font-size:13px;">
+      <a href="${SITE}/dashboard/disputes" style="color:${COLOR.brand};text-decoration:underline;">Open the disputes centre →</a>
+    </p>
+  `;
+
+  return `
+    <h2 style="color:${COLOR.ink};font-size:16px;margin:0 0 12px;">Your disputes</h2>
+    ${headline}
+    ${activeTable}
+    ${resolvedTable}
+    ${ctaLine}
+    <div style="height:24px;"></div>
+  `;
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -175,6 +305,7 @@ export function buildWeeklyDigestEmail(
     headlineStat(data, weekChange, changeLabel),
     categoriesTable(data.topCategories),
     tier !== 'free' ? budgetSection(data.budgetAlerts) : '',
+    disputesSection(data),
     renewalsTable(data.upcomingRenewals),
     callout('Money tip', tip),
   ]
