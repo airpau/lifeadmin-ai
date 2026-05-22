@@ -148,15 +148,15 @@ export async function dispatchWhatsAppMorningBrief(
     // Use the default 'there' — name is not load-bearing.
   }
 
-  // Real "scanned/opportunities" counts — the previous code counted
-  // bolded section headers in the brief Markdown which produced
-  // misleading numbers like "scanned 9 items, found 0 opportunities"
-  // even when the user had genuine inbox findings and open disputes.
-  // Pull real counts from the underlying tables so the template message
-  // body ("Overnight we scanned {{2}} items and found {{3}} opportunities.
-  // Top focus: {{4}}") matches what the brief actually contains.
+  // Real "scanned/opportunities" counts — the previous code mixed a
+  // lifetime emails_scanned total against a 24h opportunities count
+  // and produced misleading numbers like "scanned 1,500 items, found
+  // 0 opportunities" on quiet days. Both values now come from the
+  // same 24h `email_scan_findings` window so the template body
+  // ("Overnight we scanned {{2}} items and found {{3}} opportunities.
+  // Top focus: {{4}}") reflects what actually happened overnight.
   const sinceISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const [findingsRes, disputesRes, emailsRes] = await Promise.all([
+  const [findingsRes, disputesRes] = await Promise.all([
     supabase
       .from('email_scan_findings')
       .select('id, urgency, finding_type')
@@ -166,28 +166,12 @@ export async function dispatchWhatsAppMorningBrief(
       .from('disputes')
       .select('id, status, agent_state')
       .eq('user_id', userId),
-    supabase
-      .from('email_connections')
-      .select('emails_scanned')
-      .eq('user_id', userId),
   ]);
 
   type FindingRow = { urgency: string | null; finding_type: string | null };
   const findings = (findingsRes.data ?? []) as FindingRow[];
   const opportunities = findings.length;
-
-  // Lifetime emails_scanned across active connections — best signal we
-  // have without a per-day scan log. The template body says "Overnight
-  // we scanned N items"; using the total is better than the bogus
-  // section-header count it replaces, even if it's not strictly
-  // "overnight". When a scan_sessions table lands we can swap to a
-  // strict 24h window.
-  const emailRows = (emailsRes.data ?? []) as Array<{ emails_scanned: number | null }>;
-  const totalEmailsScanned = emailRows.reduce(
-    (sum, r) => sum + (Number(r.emails_scanned) || 0),
-    0,
-  );
-  const scannedItems = Math.max(opportunities, totalEmailsScanned);
+  const scannedItems = findings.length;
 
   // Open dispute count — same rule as the brief body's dispute filter
   // (TERMINAL_DISPUTE_STATUSES in the cron). Used to prioritise the

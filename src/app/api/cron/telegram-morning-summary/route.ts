@@ -26,6 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
 import { dispatchWhatsAppMorningBrief } from '@/lib/whatsapp/morning-brief';
 
 export const runtime = 'nodejs';
@@ -582,7 +583,9 @@ export async function GET(request: NextRequest) {
   // Agent channel. If a user has BOTH a Telegram and a WhatsApp session
   // active, drop the Telegram side — Telegram is reserved for admin /
   // founder system messages now (signups, audit digests, cron health).
-  const waUserIds = new Set(wapSessions.map((s) => s.user_id));
+  // Source the WhatsApp user set via the canonical helper so all crons
+  // share the same opt-in / opt-out filter.
+  const waUserIds = await loadUsersWithActiveWhatsApp(supabase);
   const proSessions = tgSessions
     .filter((s) => proUserIds.has(s.user_id))
     .filter((s) => !waUserIds.has(s.user_id));
@@ -626,18 +629,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Index whatsapp sessions by user_id so the per-user loop can find
-  // the matching phone in O(1). Map<user_id, whatsapp_phone>.
-  const whatsappByUserId = new Map<string, string>(
-    eligibleWhatsappSessions.map((s) => [s.user_id, s.whatsapp_phone]),
-  );
-
-  // Track which users got a WhatsApp send via the Telegram loop so the
-  // standalone WhatsApp loop (for users with NO Telegram session) doesn't
-  // double-dispatch. The DB mutex is supposed to guarantee at most one
-  // active row per user, but this cron treats them as independent so
-  // belt-and-braces here.
-  const whatsappDispatchedUserIds = new Set<string>();
+  // Post-dedup, eligibleSessions only contains users WITHOUT an active
+  // WhatsApp session — so the Telegram loop never needs to fan out to
+  // WhatsApp. The standalone WhatsApp loop below handles every
+  // WhatsApp user (including those who would previously have been
+  // dispatched twice).
 
   // -------------------------------------------------------
   // Date helpers — compute "yesterday" in Europe/London, not UTC.
@@ -722,10 +718,8 @@ export async function GET(request: NextRequest) {
     todayStart,
     tipIndex,
   };
-  // The Telegram dispatch loop only runs when the bot token is present.
-  // When telegramEnabled is false, users with both Telegram and WhatsApp
-  // sessions get picked up by the WhatsApp-only loop below (the
-  // whatsappDispatchedUserIds Set stays empty so no user is skipped).
+  // The Telegram dispatch loop only runs when the bot token is present
+  // AND only for users without an active WhatsApp session (dedup above).
   if (telegramEnabled && token) {
     for (const session of eligibleSessions) {
       const { user_id: userId, telegram_chat_id: chatId } = session;
@@ -738,50 +732,14 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        // ------ Send via Telegram ------
+        // ------ Send via Telegram only — WhatsApp users were excluded
+        // upstream so this user is single-channel. ------
         const ok = await sendTelegramMessage(token, Number(chatId), message);
 
         if (ok) {
           sent++;
         } else {
           errors.push(`Failed to send to user ${userId}`);
-        }
-
-        // ------ WhatsApp dispatch (independent channel) ------
-        // If this user also has an active WhatsApp Pocket Agent session,
-        // fan the same body out there too. Wrapped in its own try/catch
-        // so a bad number / unapproved template / Twilio outage can't
-        // kill the Telegram run for the rest of the user list.
-        const waPhone = whatsappByUserId.get(userId);
-        if (waPhone) {
-          try {
-            const waOutcome = await dispatchWhatsAppMorningBrief(
-              supabase,
-              userId,
-              waPhone,
-              message,
-            );
-            if (waOutcome.status === 'sent') {
-              whatsappSent++;
-            } else if (waOutcome.status === 'skipped') {
-              whatsappSkipped++;
-            } else {
-              // 'error' — operational failure (Twilio HTTP, network,
-              // auth, bad phone format, etc). Surface to on-call.
-              whatsappErrors.push(`${userId}: ${waOutcome.reason ?? 'unknown'}`);
-            }
-          } catch (waErr) {
-            // Defensive: dispatchWhatsAppMorningBrief no longer throws,
-            // but if anything in the surrounding code (Supabase lookups,
-            // etc) does, treat that as an error rather than a skip.
-            const errMsg = waErr instanceof Error ? waErr.message : String(waErr);
-            console.error(
-              `[telegram-morning-summary] WhatsApp dispatch failed for user ${userId}:`,
-              errMsg,
-            );
-            whatsappErrors.push(`${userId}: ${errMsg}`);
-          }
-          whatsappDispatchedUserIds.add(userId);
         }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -792,14 +750,10 @@ export async function GET(request: NextRequest) {
   }
 
   // -------------------------------------------------------
-  // WhatsApp-only users (no active Telegram session) — build the
-  // brief and dispatch via WhatsApp. Reuses the same Supabase
-  // queries from the Telegram loop via buildMorningBrief().
+  // WhatsApp users — every Pro WhatsApp opt-in receives the brief
+  // here. The Telegram loop above never sends to these users.
   // -------------------------------------------------------
-  const waOnlyUsers = eligibleWhatsappSessions.filter(
-    (s) => !whatsappDispatchedUserIds.has(s.user_id),
-  );
-  for (const session of waOnlyUsers) {
+  for (const session of eligibleWhatsappSessions) {
     const { user_id: userId, whatsapp_phone: waPhone } = session;
     try {
       const message = await buildMorningBrief(supabase, userId, briefCtx);
