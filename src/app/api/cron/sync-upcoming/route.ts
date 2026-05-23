@@ -420,6 +420,20 @@ export async function GET(request: NextRequest) {
       // Pro: instant. Essential: email only (handled elsewhere). Free: in-app only.
       if (tier !== 'pro') continue;
 
+      // Single-channel dedup (2026-05-23): WhatsApp Pro users must not
+      // also receive Telegram. There's no WhatsApp template for
+      // upcoming-payment alerts yet, so WhatsApp users get nothing
+      // here — preferable to the dupe-on-both-channels behaviour Paul
+      // was hitting elsewhere.
+      const { data: waSession } = await supabase
+        .from('whatsapp_sessions')
+        .select('user_id')
+        .eq('user_id', row.user_id)
+        .eq('is_active', true)
+        .is('opted_out_at', null)
+        .maybeSingle();
+      if (waSession) continue;
+
       const { data: session } = await supabase
         .from('telegram_sessions')
         .select('telegram_chat_id')

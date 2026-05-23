@@ -702,6 +702,22 @@ async function sendTelegramSafely(args: {
   // Default ON when preference row missing (per approved plan §7)
   if (prefs && prefs.dispute_replies === false) return;
 
+  // Single-channel dedup (2026-05-23): if the user has an active WhatsApp
+  // session, sendWhatsAppSafely below handles them — sending Telegram too
+  // would dupe every supplier reply onto both channels. The earlier
+  // comment claimed a Pocket Agent mutex prevents both sessions being
+  // active at once; in practice it does not (Paul was receiving every
+  // E.ON Next reply on Telegram AND WhatsApp). Same policy as
+  // src/lib/telegram/whatsapp-dedup.ts in the digest crons.
+  const { data: waSession } = await db
+    .from('whatsapp_sessions')
+    .select('user_id')
+    .eq('user_id', args.userId)
+    .eq('is_active', true)
+    .is('opted_out_at', null)
+    .maybeSingle();
+  if (waSession) return;
+
   const { data: session } = await db
     .from('telegram_sessions')
     .select('telegram_chat_id, is_active')
