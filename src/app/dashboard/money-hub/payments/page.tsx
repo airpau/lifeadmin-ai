@@ -7,6 +7,7 @@ import {
   AlertCircle, Calendar, Zap, Tag, X as XIcon, ChevronDown, Check, Edit3, Trash2,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { cleanMerchantName } from '@/lib/merchant-utils';
 
 interface Payment {
   id: string;
@@ -50,27 +51,6 @@ function formatDate(d: string | null) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
-function cleanProviderName(raw: string): string {
-  let clean = raw
-    .replace(/^DD\s+/i, '')
-    .replace(/^STO\s+/i, '')
-    .replace(/^PAYPAL \*/i, '')
-    .replace(/\.co\.uk\b.*/i, '')
-    .replace(/\.com\b.*/i, '')
-    .replace(/\.org\b.*/i, '')
-    .replace(/\d{10,}/g, '')
-    .replace(/\s+\d{4,}\s*\d*/g, '')
-    .replace(/\s+(LTD|LIMITED|PLC|UK|GB|CO)\s*$/i, '')
-    .replace(/\s+\d+\s*$/g, '')
-    .trim();
-
-  if (clean === clean.toUpperCase() && clean.length > 3) {
-    clean = clean.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-  }
-
-  return clean || raw;
-}
-
 function getInitials(name: string): string {
   return name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
@@ -90,7 +70,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
   onDelete: (id: string) => void;
   onAmountChange: (id: string, newAmount: number) => void;
 }) {
-  const name = cleanProviderName(payment.provider_name);
+  const name = cleanMerchantName(payment.provider_name);
   const initials = getInitials(name);
   const lastUsedDays = daysSince(payment.last_used_date);
   const unusedWarning = type === 'subscription' && lastUsedDays != null && lastUsedDays > 30;
