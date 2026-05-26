@@ -14,7 +14,7 @@
 
 ## URGENT - Email Spam Fix
 - [~PR#99] Implement global email rate limiter (max 2 emails per user per day) — rate limiter exists in email-rate-limit.ts; PR#99 fixes missing types (contract_expiry_alert, contract_end_alert, overcharge_alert) that were bypassing the cap (PR created 2026-04-20)
-- [ ] Consolidate deal alerts + targeted deals + price increases into single daily digest
+- [~PR#498] Consolidate deal alerts + targeted deals + price increases into single daily digest — daily-digest cron already does this; PR#498 removes the residual duplicate price-increases cron from vercel.json that was still emailing users at 7am (PR created 2026-05-26)
 - [ ] Add user email preference settings (daily digest / weekly / off)
 - [ ] Audit and restructure all 11 email cron triggers (see email-audit below)
 
