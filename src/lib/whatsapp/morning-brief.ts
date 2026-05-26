@@ -19,7 +19,7 @@
  *     primitives the cron also needs.
  */
 
-import { sendWhatsAppText, sendWhatsAppTemplate } from '@/lib/whatsapp';
+import { sendWhatsAppText } from '@/lib/whatsapp';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AdminClient = any;
@@ -78,15 +78,6 @@ export async function isInsideWhatsAppServiceWindow(
 }
 
 /**
- * Recognise template-send failures that represent an *intentional* skip
- * (template not yet approved) rather than an operational outage.
- */
-function isIntentionalTemplateSkip(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /pending Meta resubmission/i.test(msg);
-}
-
-/**
  * Send the morning brief to a single WhatsApp user. Smart-routes by
  * the 24h customer-service window (in-window text vs template).
  *
@@ -129,120 +120,43 @@ export async function dispatchWhatsAppMorningBrief(
     }
   }
 
-  // Outside the window (or text fallback) — template path.
-  const templateName = 'paybacker_morning_summary';
-
-  // Best-effort variable extraction from the brief.
-  let firstName = 'there';
-  try {
-    const { data } = await supabase
-      .from('profiles')
-      .select('full_name, email')
-      .eq('id', userId)
-      .maybeSingle();
-    if (data) {
-      const raw = (data.full_name || data.email || 'there').toString().trim();
-      firstName = raw.split(/\s+/)[0] || 'there';
-    }
-  } catch {
-    // Use the default 'there' — name is not load-bearing.
-  }
-
-  // Real "scanned/opportunities" counts — the previous code mixed a
-  // lifetime emails_scanned total against a 24h opportunities count
-  // and produced misleading numbers like "scanned 1,500 items, found
-  // 0 opportunities" on quiet days. Both values now come from the
-  // same 24h `email_scan_findings` window so the template body
-  // ("Overnight we scanned {{2}} items and found {{3}} opportunities.
-  // Top focus: {{4}}") reflects what actually happened overnight.
-  const sinceISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const [findingsRes, disputesRes] = await Promise.all([
-    supabase
-      .from('email_scan_findings')
-      .select('id, urgency, finding_type')
-      .eq('user_id', userId)
-      .gte('created_at', sinceISO),
-    supabase
-      .from('disputes')
-      .select('id, status, agent_state')
-      .eq('user_id', userId),
-  ]);
-
-  type FindingRow = { urgency: string | null; finding_type: string | null };
-  const findings = (findingsRes.data ?? []) as FindingRow[];
-  const opportunities = findings.length;
-  const scannedItems = findings.length;
-
-  // Open dispute count — same rule as the brief body's dispute filter
-  // (TERMINAL_DISPUTE_STATUSES in the cron). Used to prioritise the
-  // top-focus line so the user's first read isn't "spending recap" when
-  // there are unresolved disputes waiting on them.
-  const allDisputes = (disputesRes.data ?? []) as Array<{ status: string | null; agent_state: string | null }>;
-  const openDisputeCount = allDisputes.filter((d) => {
-    const s = (d.agent_state ?? d.status ?? '').toLowerCase();
-    if (!s) return false;
-    if (/resolv|won|lost|dismiss|withdraw|closed/.test(s)) return false;
-    return true;
-  }).length;
-
-  const renewalsCount = (markdownBody.match(/\*Upcoming Renewals\*/g) ?? []).length;
-  const budgetWarnings = (markdownBody.match(/\*Budget Warnings\*/g) ?? []).length;
-  const immediateFindings = findings.filter((f) => f.urgency === 'immediate').length;
-
-  const topFocus = immediateFindings > 0
-    ? `${immediateFindings} urgent inbox item${immediateFindings === 1 ? '' : 's'}`
-    : openDisputeCount > 0
-      ? `${openDisputeCount} open dispute${openDisputeCount === 1 ? '' : 's'}`
-      : budgetWarnings > 0
-        ? 'budget warnings'
-        : renewalsCount > 0
-          ? 'upcoming renewals'
-          : opportunities > 0
-            ? 'new inbox findings'
-            : 'spending recap';
-
-  try {
-    const result = await sendWhatsAppTemplate({
-      to: phone,
-      templateName,
-      parameters: [
-        firstName,
-        String(scannedItems),
-        String(opportunities),
-        topFocus,
-      ],
-    });
-    return {
-      status: 'sent',
-      channel: 'template',
-      providerMessageId: result.providerMessageId,
-    };
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    if (isIntentionalTemplateSkip(err)) {
-      if (inWindowTextError) {
-        const textMsg =
-          inWindowTextError instanceof Error
-            ? inWindowTextError.message
-            : String(inWindowTextError);
-        console.error(
-          `[whatsapp/morning-brief] WhatsApp delivery failed for user ${userId} (in-window text errored, template not approved):`,
-          textMsg,
-        );
-        return { status: 'error', reason: textMsg, channel: 'in_window' };
-      }
-      console.warn(
-        `[whatsapp/morning-brief] WhatsApp template skipped for user ${userId} (not approved):`,
-        errMsg,
-      );
-      return { status: 'skipped', reason: errMsg, channel: 'template' };
-    }
+  // Outside the window — template path.
+  //
+  // 2026-05-26: paused. The currently-approved `paybacker_morning_summary`
+  // template body is misleading: it advertises an "Overnight we scanned
+  // {{2}} items" line, but there is no overnight email-scanner cron — the
+  // scanner is user-triggered from /dashboard. Combined with the dead
+  // "Tap to open today's brief." CTA (WhatsApp does not turn the static
+  // string into a tappable link), out-of-window users were getting a
+  // demonstrably wrong message every morning. Sending nothing is strictly
+  // better than sending that.
+  //
+  // A new self-contained body has been staked out in the template
+  // registry (set back to `PENDING_RESUBMISSION`); once the founder
+  // resubmits via /dashboard/admin/whatsapp and Meta approves, re-enable
+  // this branch by replacing the early-return below with the real
+  // template send. The new body must include a plain URL the user can
+  // tap manually (paybacker.co.uk/dashboard) — no "tap to open" copy.
+  if (inWindowTextError) {
+    const textMsg =
+      inWindowTextError instanceof Error
+        ? inWindowTextError.message
+        : String(inWindowTextError);
     console.error(
-      `[whatsapp/morning-brief] WhatsApp template send failed for user ${userId}:`,
-      errMsg,
+      `[whatsapp/morning-brief] WhatsApp delivery failed for user ${userId} (in-window text errored; template path paused pending Meta resubmission):`,
+      textMsg,
     );
-    return { status: 'error', reason: errMsg, channel: 'template' };
+    return { status: 'error', reason: textMsg, channel: 'in_window' };
   }
+  console.warn(
+    `[whatsapp/morning-brief] Out-of-window morning brief skipped for user ${userId} — paybacker_morning_summary template paused pending Meta resubmission of a self-contained body.`,
+  );
+  return {
+    status: 'skipped',
+    reason:
+      'out-of-window template paused pending Meta resubmission (old body was misleading: see src/lib/whatsapp/template-registry.ts)',
+    channel: 'template',
+  };
 }
 
 export interface SendMorningBriefOptions {

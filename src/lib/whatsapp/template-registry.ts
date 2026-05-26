@@ -301,15 +301,57 @@ export const TEMPLATES = {
       { id: 'outcome_waiting', title: 'Still waiting' },
     ] as const,
   },
-  /** Pro-only daily 8am brief */
+  /**
+   * Pro-only daily 7:30am brief — outside the 24h customer-service window.
+   *
+   * 2026-05-26 resubmission required. The previously-approved body
+   * (SID HX10a9b00c50fc0041ee6d31b31bcc7898, body began "Morning {{1}}.
+   * Overnight we scanned {{2}} items and found {{3}} opportunities.
+   * Top focus: {{4}}. Tap to open today's brief.") was misleading in two
+   * ways:
+   *   1. There is no overnight email-scanner cron — the scanner is
+   *      user-triggered via the dashboard. So {{2}} / {{3}} routinely
+   *      rendered as "0" / "0" for users who hadn't recently clicked
+   *      Scan, producing copy like "Overnight we scanned 0 items and
+   *      found 0 opportunities."
+   *   2. "Tap to open today's brief." was dead text — WhatsApp does not
+   *      turn a static template string into a tappable link. There was
+   *      nothing for the user to tap.
+   *
+   * New self-contained body (below) carries the inline highlights in
+   * {{2}} and a tip in {{3}}, and replaces the dead CTA with a plain
+   * URL the user can manually tap in WhatsApp. The SID is reset to
+   * PENDING_RESUBMISSION; the founder resubmits via
+   * /dashboard/admin/whatsapp and Meta approves the new body before
+   * the dispatch path is re-enabled in
+   * src/lib/whatsapp/morning-brief.ts.
+   *
+   * Body shape (variable lengths capped by Meta — keep highlights <= ~600
+   * chars, tip <= ~200 chars to stay under the 1024-char body limit
+   * with the static framing):
+   *
+   *   "Morning {{1}}. {{2}} Tip of the day: {{3}} Open
+   *    paybacker.co.uk/dashboard for the full brief."
+   *
+   * Why this shape:
+   *   - Variable not at start (Meta rule 2388299) — static "Morning "
+   *     leads in.
+   *   - Variable not at end — static URL closes out.
+   *   - {{2}} carries a multi-line summary so the body is self-contained
+   *     (disputes / inbox findings / spend headline). Newlines inside
+   *     a Twilio Content Template variable render as literal line breaks
+   *     in WhatsApp.
+   *   - URL is a plain authority host, so WhatsApp auto-links it on every
+   *     device; the user taps the link itself, not a static "Tap to open"
+   *     instruction.
+   */
   paybacker_morning_summary: {
-    // Resubmission required — original body ended on `{{4}}`.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
-    vars: ['name', 'scanned_count', 'opportunities_count', 'top_focus'] as const,
-    description: 'Daily 8am morning summary (Pro only)',
+    vars: ['name', 'highlights', 'tip'] as const,
+    description: 'Daily 7:30am morning summary (Pro only) — self-contained body',
     proOnly: true,
-    body: 'Morning {{1}}. Overnight we scanned {{2}} items and found {{3}} opportunities. Top focus: {{4}}. Tap to open today\'s brief.',
+    body: 'Morning {{1}}. {{2}} Tip of the day: {{3}} Open paybacker.co.uk/dashboard for the full brief.',
   },
   /** Savings goal milestone (25/50/75/100% bands) */
   paybacker_savings_goal_milestone: {

@@ -453,18 +453,20 @@ async function buildMorningBrief(
     sections.push(disputeSection);
   }
 
-  // ------ Inbox findings (new email-scan opportunities, last 48h) ------
-  // Surface anything the email scanner has flagged in the last two days —
-  // price increases, bills, contract renewals, dispute responses, etc.
-  // This is the data behind the WhatsApp template's "scanned/opportunities"
-  // line and the brief was previously silent on it even when there were
-  // dozens of unread findings (2026-05-19 fix).
-  const findingsSince = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+  // ------ Inbox findings (unactioned email-scan opportunities) ------
+  // Surface anything the email scanner has flagged that the user hasn't
+  // actioned yet — price increases, bills, contract renewals, dispute
+  // responses, etc. We filter by `status='new'` (unactioned) and cap at
+  // 10 — there is no overnight scanner cron today (the email scanner
+  // is user-triggered via the dashboard), so a 48h "since" window was
+  // returning 0 rows for users who hadn't recently clicked Scan, even
+  // when they had a backlog of unactioned findings sitting in the
+  // queue (2026-05-26 fix — was reporting "0 items / 0 opportunities"
+  // when in fact 9 findings were open).
   const { data: recentFindings } = await supabase
     .from('email_scan_findings')
     .select('finding_type, provider, title, urgency, amount, created_at')
     .eq('user_id', userId)
-    .gte('created_at', findingsSince)
     .eq('status', 'new')
     .order('created_at', { ascending: false })
     .limit(10);
@@ -484,7 +486,7 @@ async function buildMorningBrief(
         (URGENCY_RANK[a.urgency ?? 'routine'] ?? 9) -
         (URGENCY_RANK[b.urgency ?? 'routine'] ?? 9),
     );
-    let inboxSection = `${DIVIDER}\n📨 *Inbox Findings (${recentFindings.length} new)*`;
+    let inboxSection = `${DIVIDER}\n📨 *Inbox Findings (${recentFindings.length} open)*`;
     for (const f of sorted) {
       const tag = f.urgency === 'immediate' ? '🚨 ' : f.urgency === 'soon' ? '⏰ ' : '•  ';
       const amountStr = f.amount != null ? ` — *${fmt(Number(f.amount))}*` : '';
@@ -492,6 +494,10 @@ async function buildMorningBrief(
       inboxSection += `\n  ${tag}*${provider}*: ${f.title}${amountStr}`;
     }
     sections.push(inboxSection);
+  } else {
+    sections.push(
+      `${DIVIDER}\n📨 *Inbox Findings*\n_Nothing new in your inbox queue. Run a fresh scan from paybacker.co.uk/dashboard if you want us to look again._`,
+    );
   }
 
   return sections.join('');
