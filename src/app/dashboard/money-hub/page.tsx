@@ -1423,7 +1423,7 @@ export default function MoneyHubPage() {
  <div className="mb-4">
  <div className="flex items-center justify-between mb-2">
  <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold flex items-center gap-1.5">
- <Building2 className="h-3.5 w-3.5 text-amber-600" /> Tracked Subscriptions
+ <Building2 className="h-3.5 w-3.5 text-amber-600" /> Regular Payments
  </p>
  <div className="flex items-center gap-3">
  {facLoading && <Loader2 className="h-3 w-3 text-slate-500 animate-spin" />}
