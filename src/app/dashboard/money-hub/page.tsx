@@ -502,6 +502,19 @@ export default function MoneyHubPage() {
  cacheRef.current.clear();
  await refreshData();
  await fetchExpectedBills();
+ // Re-fetch active bank_connections so the per-card "Last synced"
+ // timestamp updates immediately. Without this the row keeps the
+ // value from mount until the user hard-refreshes — looks broken.
+ try {
+   const { data: { user: syncUser } } = await supabase.auth.getUser();
+   if (syncUser) {
+     const { data: refreshedConns } = await supabase.from('bank_connections')
+       .select('id, bank_name, status, account_ids, account_display_names, last_synced_at')
+       .eq('user_id', syncUser.id)
+       .eq('status', 'active');
+     setActiveConnections(refreshedConns || []);
+   }
+ } catch { /* non-fatal */ }
  const synced = d.synced || 0;
  showToast(synced > 0 ? `Synced ${synced} transaction${synced !== 1 ? 's' : ''}` : 'Up to date', synced > 0 ? 'success' : 'info');
  } catch {
