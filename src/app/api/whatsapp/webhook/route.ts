@@ -24,7 +24,7 @@ import {
 } from '@/lib/whatsapp';
 import { verifyMetaWebhookChallenge } from '@/lib/whatsapp/meta-provider';
 import { canUseWhatsApp } from '@/lib/plan-limits';
-import { handleWhatsAppInbound } from '@/lib/whatsapp/user-bot';
+import { handlePocketAgentMessage } from '@/lib/whatsapp/pocket-agent';
 import type { InboundMediaType } from '@/lib/whatsapp/types';
 
 const NON_PRO_UPGRADE_NUDGE =
@@ -409,13 +409,17 @@ export async function POST(req: NextRequest) {
 
     // Hand off to the Pocket Agent. Pro users get the full Claude
     // tool-calling brain — same intelligence as the Telegram bot,
-    // same dashboard data. user-bot.ts handles rate limits, history,
-    // sending and logging.
+    // same dashboard data. pocket-agent wraps user-bot.ts with:
+    //   - 24h session-window awareness + template fallback
+    //   - YES/NO confirmation flow via whatsapp_sessions.pending_action
+    //   - conversation_history JSONB mirror
+    // The brain itself (rate-limit, history, tool loop, sending) is
+    // unchanged — pocket-agent.ts delegates to handleWhatsAppInbound.
     //
     // For kind='interactive' the parser already lifted the button label
     // into msg.text, so the agent reads "Won" / "Lost" / "Still waiting"
     // exactly as if the user had typed it. No special routing needed.
-    const agentResult = await handleWhatsAppInbound({
+    const agentResult = await handlePocketAgentMessage({
       phone: msg.from,
       text: msg.text,
       userId,
