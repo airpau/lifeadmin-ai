@@ -80,11 +80,25 @@ doesn't belong to this user, the tool returns an error string. The
 write never fires. Wired in `executeToolCall` for the default
 executor and in `buildGroundingContext` for the letter writer.
 
-### 2. Grounding check before letter generation
+### 2. Pre-flight grounding gate — no `[MISSING:]` placeholders
 
-Before the Sonnet call fires, `buildGroundingContext` populates a
-`DisputeGroundingContext` whose every field is read from a real
-Supabase row:
+The gate runs BEFORE the Sonnet call. There are exactly two outcomes:
+
+1. **All required fields present** → Sonnet is called with a fully-
+   populated grounding context. The letter writes cleanly and the user
+   sees a complete, professional letter. There are no `[MISSING: …]`
+   markers anywhere — ever. The letter writer's system prompt has no
+   escape hatch for missing data because the gate guarantees there
+   isn't any.
+
+2. **A required field is missing** → Sonnet is NOT called. The agent
+   sends the user a friendly, conversational message asking for what's
+   needed, and queues a `pending_action` slot with `awaiting_field`
+   set. The user's next reply is the answer; we persist it via the
+   write-back tools (§3 below) and auto-resume the original action.
+
+`buildGroundingContext` populates a `DisputeGroundingContext` whose
+every field is read from a real Supabase row:
 
 ```ts
 {
@@ -109,30 +123,138 @@ Supabase row:
 }
 ```
 
-If a critical field is missing (`userFullName`, `supplierName`,
-`disputeReason`), the writer returns the missing list to the agent.
-The agent then explains the gap to the user in plain English — for
-example, "I can't draft this letter — your full name is missing from
-your profile. Please update it at paybacker.co.uk/dashboard/profile."
+**Required fields** (initial letter): `supplierName`, `amount`,
+`transactionDate`, `userFullName`.
+**Required additionally for chase letters** (kind=`'chase'`): at
+least one prior letter on file.
 
-### 3. Letter-writer system prompt
+**Optional fields** (never validated, never block the gate):
+`userAddress`, `userPostcode`, `accountName`. The letter writer
+omits them gracefully when absent — users never see a marker for
+them.
+
+`validateGroundingForLetter(ctx, { kind })` returns either
+`{ ok: true }` or `{ ok: false, field, friendlyMessage, writeTarget }`.
+The `friendlyMessage` is ready to send to the user verbatim — no
+template, no technical phrasing. Examples:
+
+| Missing | Message sent to user |
+|---|---|
+| `userFullName` | "To sign this letter properly I need your full name — what should I use? (I'll save it to your profile so I don't ask again.)" |
+| `amount` | "How much is the disputed charge on Octopus Energy? Reply with the £ amount (e.g. '£142.30') and I'll add it to the dispute and draft the letter." |
+| `transactionDate` | "What date was the £142.30 Octopus Energy charge? Check your Money Hub if you're not sure — DD/MM/YYYY is fine." |
+| `priorLetters` (chase) | "There's no first letter on file for this dispute yet — a chase doesn't make sense without one. Want me to draft the initial complaint instead? Reply YES and I'll do it now." |
+
+The `writeTarget` on the validation result tells the runtime which
+write-back tool (`update_profile_field` or `update_dispute_field`) the
+user's answer should be persisted via — no second round of guesswork.
+
+### 3. Write-back tools — bidirectional sync
+
+When the user provides factual data (their address, name, a transaction
+date, a corrected supplier name), the agent persists it IMMEDIATELY
+via one of two WhatsApp-only tools, then re-fires the original action
+in the same turn. The user experiences it as a single flow: ask for the
+letter → answer the question → letter arrives.
+
+**`update_profile_field(field, value)`** — writes to `profiles`.
+Allowed fields: `full_name`, `address`, `postcode`, `phone`. The user_id
+is wired from the authenticated session; the agent cannot pass it.
+
+**`update_dispute_field(dispute_id, field, value)`** — writes to
+`disputes`. Allowed fields: `disputed_amount`, `transaction_date`,
+`provider_name`. Coerces user-friendly inputs (`"£142.30"` → `142.30`,
+`"23/05/2026"` → `2026-05-23`). Verifies `dispute.user_id === userId`
+BEFORE writing — cross-user writes are blocked at the handler level and
+logged for telemetry.
+
+Security:
+- Neither tool accepts a `user_id` argument from the model.
+- Field allowlist is enforced server-side; the model can't expand it.
+- All writes go through the service-role client AND scope by `user_id`.
+- Cross-user writes are logged as a warning.
+
+### 3a. Awaiting-input flow
+
+When a pre-flight check fails, the runtime queues a `pending_action`
+slot with the following shape (extends the generic slot from §3 of
+the architecture section):
+
+```json
+{
+  "kind": "awaiting_input",
+  "args": {},
+  "summary": "Awaiting transaction_date",
+  "queued_at": "2026-05-28T18:31:02Z",
+  "expires_at": "2026-05-28T19:01:02Z",
+  "awaiting_field": "transactionDate",
+  "awaiting_write_target": {
+    "table": "disputes",
+    "field": "transaction_date",
+    "dispute_id": "ab12…"
+  },
+  "awaiting_question": "What date was the £142.30 Octopus Energy charge?",
+  "original_action": {
+    "kind": "draft_dispute_letter",
+    "args": { "provider": "Octopus Energy", "reply_tone": "auto" }
+  }
+}
+```
+
+On the next inbound:
+
+1. Runtime detects `slot.awaiting_field` set.
+2. Runs the agent with a one-turn system addendum:
+   - "You previously asked for `<field>`. If the reply provides it,
+     call `<write_back_tool>` then IMMEDIATELY re-fire
+     `<original_action.kind>(<args>)`. If the reply pivots to a new
+     question, just answer normally."
+3. The agent decides — write + replay, OR answer pivot.
+4. After a successful replay, the validation gate passes (because the
+   write just landed) and the letter is generated normally.
+
+The user never sees the orchestration. They experience:
+
+```
+User:   draft a complaint to Octopus Energy
+Agent:  What date was the £142.30 Octopus Energy charge? Check your
+        Money Hub if you're not sure — DD/MM/YYYY is fine.
+User:   23/05/2026
+Agent:  Saved — transaction date 2026-05-23 on your dispute.
+
+        *Octopus Energy* — letter #1
+        Amount: £142.30
+        Charge date: 23/05/2026.
+        FCA 8-week clock: starts when this letter is sent.
+        Cites:
+        • Consumer Rights Act 2015, s.49 …
+        • Ofgem GSOP …
+
+        Reply YES to send, NO to cancel, or describe changes.
+```
+
+If the user pivots instead of answering (e.g. "actually what's my
+balance?"), the agent answers the new question and the awaiting slot
+clears on its own. Once cleared, the user has to re-ask for the letter
+to start the flow again — that's deliberate; we don't want stale
+intents firing days later.
+
+### 4. Letter-writer system prompt
 
 The Sonnet call (inside `complaints-agent.ts::generateComplaintLetter`)
-runs with a system prompt that includes:
+runs with a system prompt that:
 
-- "You are a dispute letter writer for Paybacker. You must ONLY use the
-  exact facts provided in the grounding context below. Do not infer
-  dates, amounts, names, or any other details not explicitly given. Do
-  not fabricate legislation references — only cite the legislation
-  items provided in the grounding context."
-- "If a piece of information you need to write the letter is not in
-  the grounding context, state `[MISSING: field_name]` in the letter
-  draft rather than guessing."
-- "Write in formal UK English. Reference specific sections of the
-  legislation provided."
+- Forbids inferring dates, amounts, names, or any details not in the
+  grounding payload.
+- Forbids citing legislation not in the payload.
+- Requires formal UK English with specific section references.
 
-The conversational layer's free-form text never reaches this prompt
-— only the grounding payload does.
+There is NO `[MISSING: field_name]` escape hatch. The pre-flight gate
+guarantees every required field is present, so the writer never has a
+reason to hedge.
+
+The conversational layer's free-form text never reaches this prompt —
+only the grounding payload does.
 
 ### 4. Legislation lookup
 
@@ -173,7 +295,7 @@ the SAVE state. The user types NO; `discard_letter_draft` clears it.
 
 ### 6. Agent system prompt addendum
 
-The Haiku conversation prompt includes this guard verbatim:
+The Haiku conversation prompt includes these guards:
 
 > CRITICAL — GROUNDING RULE (non-negotiable): You are grounded
 > entirely in the user's Paybacker account data. Never speculate
@@ -182,6 +304,16 @@ The Haiku conversation prompt includes this guard verbatim:
 > tool to fetch it; only after the tool returns do you state numbers.
 > Never say "approximately", "around", or "probably" when referring
 > to financial figures — always fetch and state the exact number.
+
+> PRE-FLIGHT GATE: draft_dispute_letter runs a strict validation gate
+> BEFORE writing. If any required field is missing, the tool returns
+> a friendly user-facing message prefixed with "[BLOCKED: …]". That
+> message has ALREADY been formatted to send to the user verbatim —
+> just echo it back, never paraphrase, never add caveats.
+
+> WRITE-BACK PRINCIPLE: When the user tells you factual data about
+> themselves (address, name, transaction date), persist it IMMEDIATELY
+> via update_profile_field or update_dispute_field. Never ask twice.
 
 Combined with the Drafting Rule ("never write a reply in chat prose
 — always call `draft_dispute_letter`"), this routes all
@@ -236,8 +368,9 @@ high-consequence text through the grounded Sonnet call.
                                               │    1. resolve dispute_id         │    │  dispatcher used by dashboard,  │
                                               │    2. buildGroundingContext      │    │  Telegram, WhatsApp)             │
                                               │       from real DB rows          │    └─────────────────────────────────┘
-                                              │    3. detectMissingCriticalFields│
-                                              │       → return MISSING if any    │
+                                              │    3. validateGroundingForLetter │
+                                              │       → friendly msg if blocked, │
+                                              │       queue awaiting_field slot  │
                                               │    4. call generateDisputeReply  │
                                               │       └ DISPUTE_MODEL =          │
                                               │         claude-sonnet-4-6        │
@@ -661,7 +794,8 @@ Agent                     [letter body — 450 words, cites CRA 2015 s.49
 | `src/lib/telegram/tools.ts` | Tool registry — shared between Telegram and WhatsApp. |
 | `src/lib/telegram/tool-handlers.ts` | Tool dispatcher — keyed by name, channel-aware (`'telegram' \| 'whatsapp'`). |
 | `src/app/api/whatsapp/webhook/route.ts` | Inbound webhook. Resolves user, gates, hands off to pocket-agent. |
-| `supabase/migrations/20260528120000_whatsapp_pocket_agent_memory.sql` | Adds `pending_action` + `conversation_history` JSONB. |
+| `supabase/migrations/20260528120000_whatsapp_pocket_agent_memory.sql` | Adds `pending_action` + `conversation_history` JSONB to `whatsapp_sessions`. The slot's awaiting-input fields (`awaiting_field`, `awaiting_write_target`, `original_action`) live inside the JSONB. |
+| `supabase/migrations/20260528170000_dispute_transaction_date.sql` | Adds `disputes.transaction_date` so the pre-flight gate can ask for and persist the real date of a charge. |
 
 ---
 

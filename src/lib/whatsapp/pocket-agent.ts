@@ -34,17 +34,21 @@
  *      the user, the tool returns an error string and the executor never
  *      fires.
  *
- *   2. **Grounding check before letter generation.** The letter-tool
- *      interceptor builds a `groundingContext` object whose every field
- *      came directly from a Supabase row. If any required field is
- *      null/empty, the call returns the missing list to the conversational
- *      agent, which then asks the user to fix the gap. The letter writer
- *      (DISPUTE_MODEL) is NEVER called with incomplete grounding.
+ *   2. **Pre-flight grounding gate.** Before the DISPUTE_MODEL call
+ *      fires, the letter-tool interceptor builds a `groundingContext`
+ *      from real DB rows and runs `validateGroundingForLetter`. If any
+ *      required field (supplierName, amount, transactionDate,
+ *      userFullName; priorLetters for chase letters) is missing, the
+ *      call returns a friendly, conversational message to the agent —
+ *      not a technical error, not a placeholder. The agent then asks
+ *      the user in plain English and we queue a `pending_action` slot
+ *      with `awaiting_field` so the next inbound is routed as the
+ *      answer. Sonnet is NEVER called with incomplete grounding.
  *
- *   3. **Letter-writer system prompt.** Lives in dispute-letter-writer.ts
- *      → generateDisputeReply → the shared complaints-agent. It instructs
- *      Sonnet to ONLY use facts from the grounding payload, and to emit
- *      `[MISSING: field_name]` placeholders rather than guessing.
+ *   3. **No placeholders in letters.** Optional fields (address,
+ *      account name) are omitted naturally by the writer when absent —
+ *      users never see `[MISSING: …]` markers. The pre-flight gate
+ *      guarantees the writer always has every required field.
  *
  *   4. **Legislation lookup.** Pulled from `legal_references` table with
  *      `verification_status IN ('verified','needs_review')`. Never
@@ -81,7 +85,8 @@ import {
 } from '@/lib/telegram/tool-handlers';
 import {
   generateGroundedDisputeLetter,
-  renderMissingFieldsReply,
+  type GroundingValidationFail,
+  type WriteTarget,
 } from '@/lib/whatsapp/dispute-letter-writer';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -100,12 +105,75 @@ export { AGENT_MODEL, DISPUTE_MODEL };
 /**
  * Tool names that produce or send a dispute letter. The agent runner
  * intercepts these and routes them through generateGroundedDisputeLetter
- * instead of the default executor. The default executor for
- * `draft_dispute_letter` also calls the grounded engine, but the
- * interceptor here adds the explicit pre-flight MISSING check AND the
- * structured confirmation summary that's required before SEND.
+ * instead of the default executor. The grounded writer runs a pre-flight
+ * validation gate; if any required field is missing it returns a
+ * friendly conversational message AND a `WriteTarget` so the awaiting-
+ * input flow can persist the user's answer on the next turn.
  */
 const LETTER_GENERATION_TOOLS = new Set(['draft_dispute_letter']);
+
+/**
+ * WhatsApp-only write-back tools. Telegram has its own field-update
+ * surface; these two live here so the Pocket Agent can persist data the
+ * user provides over chat (their address, their name, a missing dispute
+ * date, etc.) into the canonical DB tables. Same data the website would
+ * see immediately.
+ *
+ * Both handlers verify `user_id` ownership before any write. The agent
+ * is forbidden from passing a `user_id` argument — we wire it from the
+ * authenticated session.
+ */
+const WHATSAPP_WRITE_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'update_profile_field',
+    description:
+      "Persist a single field on the user's Paybacker profile. Use when the user provides personal data over chat (address, full name, phone). The value lands on the same `profiles` row the website reads. Allowed fields: 'full_name', 'address', 'postcode', 'phone'. Always confirm what was saved.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        field: {
+          type: 'string',
+          enum: ['full_name', 'address', 'postcode', 'phone'],
+          description: 'Which profile column to update.',
+        },
+        value: {
+          type: 'string',
+          description: 'The value provided by the user, trimmed.',
+        },
+      },
+      required: ['field', 'value'],
+    },
+  },
+  {
+    name: 'update_dispute_field',
+    description:
+      'Persist a single field on a specific dispute row. Use when the user clarifies dispute-specific data the writer needs (amount, transaction date, corrected supplier name). Allowed fields: `disputed_amount` (number), `transaction_date` (YYYY-MM-DD), `provider_name` (string). The dispute_id MUST be one the agent has previously seen from get_disputes / get_dispute_detail / a draft_dispute_letter interception — never invented.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        dispute_id: {
+          type: 'string',
+          description: 'UUID of the dispute row to update.',
+        },
+        field: {
+          type: 'string',
+          enum: ['disputed_amount', 'transaction_date', 'provider_name'],
+          description: 'Which dispute column to update.',
+        },
+        value: {
+          type: 'string',
+          description:
+            'New value as a string. Numbers are parsed server-side. Dates must be DD/MM/YYYY or YYYY-MM-DD.',
+        },
+      },
+      required: ['dispute_id', 'field', 'value'],
+    },
+  },
+];
+
+const WHATSAPP_WRITE_TOOL_NAMES = new Set(
+  WHATSAPP_WRITE_TOOLS.map((t) => t.name),
+);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Runtime tunables.
@@ -133,7 +201,11 @@ CITATION RULE — NON-NEGOTIABLE: When the user references their own email or le
 
 DRAFTING RULE — NON-NEGOTIABLE: When the user asks you to draft, redraft, respond to, reply to, follow up on, escalate, or write back about ANY dispute or company correspondence, you MUST call the draft_dispute_letter tool. NEVER write the reply yourself in chat prose. The letter is then drafted by the citation-grounded Sonnet writer (a separate Anthropic call you don't see), grounded entirely in DB-verified UK statute. Plain-prose replies without grounding are a product failure.
 
-CONFIRMATION FLOW: After draft_dispute_letter runs, the user will see a STRUCTURED confirmation block (supplier, amount, letter #, FCA deadline, citations). They reply YES to send, NO to cancel, or describe changes. You do NOT need to ask "would you like me to send?" — the confirmation block does it. If the user replies YES, call record_letter_sent. If NO, call discard_letter_draft. If they want changes, call draft_dispute_letter again with an adjusted tone/brief.
+PRE-FLIGHT GATE: draft_dispute_letter runs a strict validation gate BEFORE writing — it checks supplier, amount, transaction date, and the user's full name are on file. If any are missing, the tool returns a friendly user-facing message starting with "[BLOCKED: …]". That message has ALREADY been formatted to send to the user verbatim — just echo it back in your reply, never paraphrase it, never add caveats. The next inbound from the user will be the answer; the system routes it back to you with explicit instructions to persist via update_profile_field or update_dispute_field and then continue.
+
+WRITE-BACK PRINCIPLE: When the user tells you factual data about themselves (address, name, transaction date, etc.), persist it IMMEDIATELY via update_profile_field or update_dispute_field. Never ask twice. Confirm in one short line ("Saved — address on your profile.") then continue the action that prompted the question.
+
+CONFIRMATION FLOW: After draft_dispute_letter runs successfully, the user will see a STRUCTURED confirmation block (supplier, amount, letter #, FCA deadline, citations). They reply YES to send, NO to cancel, or describe changes. You do NOT need to ask "would you like me to send?" — the confirmation block does it. If the user replies YES, call record_letter_sent. If NO, call discard_letter_draft. If they want changes, call draft_dispute_letter again with an adjusted tone/brief.
 
 WHATSAPP-SPECIFIC:
 - Tight bullets, short bold headers, no essays. Currency: £X.XX. Dates: DD/MM/YYYY.
@@ -408,11 +480,39 @@ async function appendHistorySnapshot(
 // ─────────────────────────────────────────────────────────────────────────
 
 export interface PendingActionSlot {
+  /**
+   * The agent action that's queued. Two shapes today:
+   *   - `send_dispute_letter` — a draft is ready, user must YES/NO to send.
+   *   - `awaiting_input` — the action was blocked by a missing field;
+   *     the user's next reply is the answer.
+   * Other kinds may be added by future tools.
+   */
   kind: string;
+  /** Arbitrary action-specific args. */
   args: Record<string, unknown>;
+  /** One-line summary used in YES ack copy + the agent's view of the slot. */
   summary: string;
   queued_at: string;
   expires_at: string;
+  /**
+   * When set, the next inbound is treated as the user's answer to the
+   * missing field rather than a fresh conversational turn. The agent
+   * sees an explicit instruction to persist via the appropriate
+   * write-back tool and then resume the `original_action`.
+   */
+  awaiting_field?: string;
+  /** Write target hint for the agent (which table + field to persist to). */
+  awaiting_write_target?: WriteTarget;
+  /**
+   * The user-facing question we sent. Stored so we can resurface it on
+   * the next turn if needed (e.g. for telemetry / debug).
+   */
+  awaiting_question?: string;
+  /**
+   * The original action that was blocked. After the user provides the
+   * missing field, the agent re-fires this verbatim.
+   */
+  original_action?: { kind: string; args: Record<string, unknown> };
 }
 
 function detectIntent(text: string): 'yes' | 'no' | 'unknown' {
@@ -492,8 +592,21 @@ interface LetterInterceptResult {
   confirmation?: string;
   /** When the writer succeeded, the letter body to follow up with. */
   letter?: string;
-  /** Dispute id resolved (for the pending_action slot). */
+  /** Dispute id resolved (when known). */
   disputeId?: string;
+  /**
+   * When the pre-flight gate failed, the validation payload — used to
+   * queue an awaiting_field pending_action so the user's next reply is
+   * routed as the answer.
+   */
+  blockedBy?: GroundingValidationFail;
+  /**
+   * Original action args, captured at interception time. Stored on the
+   * awaiting slot so we can replay the SAME draft_dispute_letter call
+   * after the user fills in the gap. The user shouldn't have to
+   * re-state "draft a complaint to British Gas".
+   */
+  originalArgs?: Record<string, unknown>;
 }
 
 async function runLetterInterceptor(
@@ -524,9 +637,24 @@ async function runLetterInterceptor(
     userBrief,
   });
 
+  if (!result.ok && result.validation) {
+    // Pre-flight gate failed. Hand the friendly message back to the
+    // model with a "[BLOCKED]" prefix so the system prompt's PRE-FLIGHT
+    // GATE rule fires — the agent echoes the message verbatim. We also
+    // surface the validation payload to the caller so it can queue an
+    // awaiting_field slot for the auto-resume flow.
+    return {
+      toolResultText: `[BLOCKED: ${result.validation.field}] ${result.validation.friendlyMessage}`,
+      blockedBy: result.validation,
+      disputeId: result.disputeId,
+      originalArgs: { provider, reply_tone: tone, user_reply_brief: userBrief },
+    };
+  }
+
   if (!result.ok) {
     return {
-      toolResultText: renderMissingFieldsReply(result.missing ?? []),
+      toolResultText:
+        "I couldn't draft the letter — internal validation failed without a clear reason. Try again in a moment.",
     };
   }
 
@@ -534,16 +662,181 @@ async function runLetterInterceptor(
   // We hand the confirmation back to the model so the model knows what
   // it told the user, and we ALSO surface the letter body as a follow-up
   // chunk that the runner sends separately.
+  const letterNumber =
+    result.grounding != null ? result.grounding.priorLetterCount + 1 : 1;
   return {
-    toolResultText: `Grounded letter drafted for ${provider}. Letter #${
-      (result.grounding as { priorLetterCount?: number } | undefined)
-        ?.priorLetterCount != null
-        ? (result.grounding as { priorLetterCount: number }).priorLetterCount + 1
-        : 1
-    }. Confirmation summary below has been sent to the user — do NOT repeat it. Just acknowledge and wait for their YES/NO/changes reply.`,
+    toolResultText: `Grounded letter drafted for ${provider}. Letter #${letterNumber}. Confirmation summary below has been sent to the user — do NOT repeat it. Just acknowledge and wait for their YES/NO/changes reply.`,
     confirmation: result.confirmation,
     letter: result.letter,
     disputeId: result.disputeId,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Write-back tool handlers — update_profile_field, update_dispute_field.
+//
+// Both verify ownership before any write. The agent never passes a
+// user_id — we wire it from the authenticated session.
+// ─────────────────────────────────────────────────────────────────────────
+
+const ALLOWED_PROFILE_FIELDS = new Set([
+  'full_name',
+  'address',
+  'postcode',
+  'phone',
+]);
+const ALLOWED_DISPUTE_FIELDS = new Set([
+  'disputed_amount',
+  'transaction_date',
+  'provider_name',
+]);
+
+/** Normalise a user-supplied date string to YYYY-MM-DD. Returns null on parse fail. */
+function normaliseDate(input: string): string | null {
+  const t = input.trim();
+  // DD/MM/YYYY
+  const ukm = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ukm) {
+    const dd = ukm[1].padStart(2, '0');
+    const mm = ukm[2].padStart(2, '0');
+    const yyyy = ukm[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  // Date.parse fallback (handles "23 May 2026" etc.)
+  const ms = Date.parse(t);
+  if (Number.isFinite(ms)) {
+    const d = new Date(ms);
+    if (Number.isFinite(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+  }
+  return null;
+}
+
+async function handleUpdateProfileField(
+  userId: string,
+  toolInput: Record<string, unknown>,
+): Promise<{ text: string }> {
+  const field = String(toolInput.field ?? '').trim();
+  const value = String(toolInput.value ?? '').trim();
+  if (!ALLOWED_PROFILE_FIELDS.has(field)) {
+    return {
+      text: `update_profile_field: '${field}' is not an allowed field. Allowed: ${Array.from(ALLOWED_PROFILE_FIELDS).join(', ')}.`,
+    };
+  }
+  if (!value) {
+    return {
+      text: `update_profile_field: value is empty — nothing to save.`,
+    };
+  }
+  const sb = admin();
+  // Ownership check is implicit on profiles: the primary key IS the user_id.
+  // We use the user_id filter to be defensive against a future schema shift.
+  const { error } = await sb
+    .from('profiles')
+    .update({ [field]: value, updated_at: new Date().toISOString() })
+    .eq('id', userId);
+  if (error) {
+    console.error(
+      '[whatsapp/pocket-agent] update_profile_field failed',
+      error,
+    );
+    return {
+      text: `update_profile_field: write failed (${error.message}). Don't retry — surface the failure to the user.`,
+    };
+  }
+  return {
+    text: `Saved '${value}' to profile.${field}. Confirm to the user in one short line and immediately re-fire any blocked action that needed it.`,
+  };
+}
+
+async function handleUpdateDisputeField(
+  userId: string,
+  toolInput: Record<string, unknown>,
+): Promise<{ text: string }> {
+  const disputeId = String(toolInput.dispute_id ?? '').trim();
+  const field = String(toolInput.field ?? '').trim();
+  const rawValue = String(toolInput.value ?? '').trim();
+  if (!disputeId) {
+    return { text: 'update_dispute_field: dispute_id is required.' };
+  }
+  if (!ALLOWED_DISPUTE_FIELDS.has(field)) {
+    return {
+      text: `update_dispute_field: '${field}' is not an allowed field. Allowed: ${Array.from(ALLOWED_DISPUTE_FIELDS).join(', ')}.`,
+    };
+  }
+  if (!rawValue) {
+    return { text: `update_dispute_field: value is empty — nothing to save.` };
+  }
+
+  // Ownership check — confirm the dispute belongs to this user BEFORE write.
+  const sb = admin();
+  const { data: owner } = await sb
+    .from('disputes')
+    .select('id, user_id')
+    .eq('id', disputeId)
+    .maybeSingle();
+  if (!owner) {
+    return {
+      text: `update_dispute_field: dispute ${disputeId} not found.`,
+    };
+  }
+  if (owner.user_id !== userId) {
+    console.warn(
+      '[whatsapp/pocket-agent] update_dispute_field BLOCKED cross-user write',
+      { userId, disputeId, owner_user_id: owner.user_id },
+    );
+    return {
+      text: `update_dispute_field: this dispute doesn't belong to the authenticated user — write blocked.`,
+    };
+  }
+
+  // Field-specific coercion.
+  let coerced: string | number | null = null;
+  if (field === 'disputed_amount') {
+    const cleaned = rawValue.replace(/[£,\s]/g, '');
+    const n = Number(cleaned);
+    if (!Number.isFinite(n) || n < 0) {
+      return {
+        text: `update_dispute_field: '${rawValue}' isn't a valid £ amount. Ask the user to re-state.`,
+      };
+    }
+    coerced = n;
+  } else if (field === 'transaction_date') {
+    const iso = normaliseDate(rawValue);
+    if (!iso) {
+      return {
+        text: `update_dispute_field: '${rawValue}' isn't a valid date. Ask for DD/MM/YYYY.`,
+      };
+    }
+    coerced = iso;
+  } else if (field === 'provider_name') {
+    if (rawValue.length < 2) {
+      return {
+        text: `update_dispute_field: provider name is too short — ask the user to re-state.`,
+      };
+    }
+    coerced = rawValue;
+  }
+
+  const { error } = await sb
+    .from('disputes')
+    .update({ [field]: coerced, updated_at: new Date().toISOString() })
+    .eq('id', disputeId)
+    .eq('user_id', userId);
+  if (error) {
+    console.error(
+      '[whatsapp/pocket-agent] update_dispute_field failed',
+      error,
+    );
+    return {
+      text: `update_dispute_field: write failed (${error.message}).`,
+    };
+  }
+  return {
+    text: `Saved '${String(coerced)}' to disputes.${field} for dispute ${disputeId}. Confirm to the user in one short line and immediately re-fire any blocked action that needed it.`,
   };
 }
 
@@ -578,12 +871,31 @@ interface AgentRunResult {
   letter?: string;
   /** Dispute id queued in the pending_action slot. */
   disputeId?: string;
+  /**
+   * Pre-flight gate failure (if any) on the last draft_dispute_letter
+   * call this turn. Drives the awaiting_field pending_action slot.
+   */
+  blockedBy?: GroundingValidationFail;
+  /** Original args for the blocked action, so we can replay after fix. */
+  blockedOriginalArgs?: Record<string, unknown>;
+}
+
+/** Build the full tools array — telegram registry + WhatsApp-only write-backs. */
+function buildToolList(): Anthropic.Tool[] {
+  const all: Anthropic.Tool[] = [...telegramTools, ...WHATSAPP_WRITE_TOOLS];
+  // Cache the LAST tool so subsequent turns prompt-cache the whole list.
+  return all.map((tool, idx) =>
+    idx === all.length - 1
+      ? { ...tool, cache_control: { type: 'ephemeral' as const } }
+      : tool,
+  );
 }
 
 async function runAgent(
   userId: string,
   phone: string,
   userMessage: string,
+  opts: { systemAddendum?: string } = {},
 ): Promise<AgentRunResult> {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const sb = admin();
@@ -606,24 +918,22 @@ async function runAgent(
     messages.push({ role: 'user', content: userMessage });
   }
 
-  // Cache the largest static block (tools) to keep cost low across turns.
-  const cachedTools = telegramTools.map((tool, idx) => {
-    if (idx === telegramTools.length - 1) {
-      return { ...tool, cache_control: { type: 'ephemeral' as const } };
-    }
-    return tool;
-  });
+  const cachedTools = buildToolList();
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    {
+      type: 'text',
+      text: SYSTEM_PROMPT,
+      cache_control: { type: 'ephemeral' },
+    },
+  ];
+  if (opts.systemAddendum) {
+    systemBlocks.push({ type: 'text', text: opts.systemAddendum });
+  }
 
   let response = await anthropic.messages.create({
     model: AGENT_MODEL,
     max_tokens: 2048,
-    system: [
-      {
-        type: 'text',
-        text: SYSTEM_PROMPT,
-        cache_control: { type: 'ephemeral' },
-      },
-    ],
+    system: systemBlocks,
     tools: cachedTools,
     messages,
   });
@@ -633,6 +943,8 @@ async function runAgent(
   let interceptedConfirmation: string | undefined;
   let interceptedLetter: string | undefined;
   let interceptedDisputeId: string | undefined;
+  let interceptedBlockedBy: GroundingValidationFail | undefined;
+  let interceptedBlockedArgs: Record<string, unknown> | undefined;
 
   while (response.stop_reason === 'tool_use' && iterations < MAX_ITERATIONS) {
     if (Date.now() - loopStart > HARD_TIMEOUT_MS) {
@@ -660,6 +972,14 @@ async function runAgent(
             interceptedLetter = intercept.letter;
             interceptedDisputeId = intercept.disputeId;
           }
+          if (intercept.blockedBy) {
+            interceptedBlockedBy = intercept.blockedBy;
+            interceptedBlockedArgs = intercept.originalArgs;
+            // Latest write wins — a successful retry later this turn
+            // clears the block.
+            interceptedConfirmation = undefined;
+            interceptedLetter = undefined;
+          }
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id,
@@ -676,6 +996,41 @@ async function runAgent(
             content: `Letter generation failed: ${
               err instanceof Error ? err.message : 'unknown error'
             }. Please try again or rephrase.`,
+          });
+        }
+        continue;
+      }
+
+      // WhatsApp-only write-back tools — inline handlers, never reach
+      // the telegram dispatcher.
+      if (WHATSAPP_WRITE_TOOL_NAMES.has(block.name)) {
+        try {
+          const writeResult =
+            block.name === 'update_profile_field'
+              ? await handleUpdateProfileField(
+                  userId,
+                  block.input as Record<string, unknown>,
+                )
+              : await handleUpdateDisputeField(
+                  userId,
+                  block.input as Record<string, unknown>,
+                );
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: writeResult.text,
+          });
+        } catch (err) {
+          console.error(
+            `[whatsapp/pocket-agent] ${block.name} failed:`,
+            err,
+          );
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: `${block.name} failed: ${
+              err instanceof Error ? err.message : 'unknown error'
+            }`,
           });
         }
         continue;
@@ -726,13 +1081,7 @@ async function runAgent(
     response = await anthropic.messages.create({
       model: AGENT_MODEL,
       max_tokens: 2048,
-      system: [
-        {
-          type: 'text',
-          text: SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
+      system: systemBlocks,
       tools: cachedTools,
       messages,
     });
@@ -753,6 +1102,8 @@ async function runAgent(
     confirmation: interceptedConfirmation,
     letter: interceptedLetter,
     disputeId: interceptedDisputeId,
+    blockedBy: interceptedBlockedBy,
+    blockedOriginalArgs: interceptedBlockedArgs,
   };
 }
 
@@ -788,7 +1139,10 @@ export async function handlePocketAgentMessage(opts: {
     return { ok: false, reason: 'rate_limited' };
   }
 
-  // 2. Pending-action gate.
+  // 2. Pending-action gate. Three branches:
+  //    (a) awaiting_field set → route as answer to the missing field.
+  //    (b) draft ready (no awaiting_field) → YES/NO intent handling.
+  //    (c) anything else with a slot → treat as new message but clear stale slot.
   const { slot, expired } = await readPendingAction(phone);
   if (slot && expired) {
     await clearPendingAction(phone);
@@ -798,22 +1152,91 @@ export async function handlePocketAgentMessage(opts: {
     return { ok: true, reason: 'pending_action_expired' };
   }
 
-  if (slot) {
+  // 2a. Awaiting-input branch — the previous turn asked the user for
+  //     a missing field. Route this message to the agent with explicit
+  //     instructions to persist via the write-back tool AND re-fire the
+  //     original action. The agent decides whether the reply is the
+  //     answer or a pivot (new question), and acts accordingly.
+  if (slot && slot.awaiting_field && slot.original_action) {
+    const target = slot.awaiting_write_target;
+    const targetHint =
+      target?.table === 'profiles'
+        ? `update_profile_field({field: '${target.field}', value: <the user's answer>})`
+        : target?.table === 'disputes'
+          ? `update_dispute_field({dispute_id: '${target.dispute_id}', field: '${target.field}', value: <the user's answer>})`
+          : '(no direct write target — re-evaluate the dispute and continue)';
+
+    const addendum = [
+      'AWAITING-INPUT CONTEXT (active for this turn only):',
+      `You previously asked the user for their ${slot.awaiting_field} so you could complete:`,
+      `  Action: ${slot.original_action.kind}`,
+      `  Args:   ${JSON.stringify(slot.original_action.args)}`,
+      `The user's reply follows. Decide which case applies:`,
+      `  (a) Reply provides the value. Call ${targetHint} to persist it. After the write succeeds, IMMEDIATELY call ${slot.original_action.kind}(${JSON.stringify(slot.original_action.args)}) again — the validation gate should pass this time. Confirm the save in one short line ("Saved — address on your profile.").`,
+      `  (b) Reply is a new question. Ignore the awaiting context; just answer normally. The awaiting state will clear automatically.`,
+    ].join('\n');
+
+    await clearPendingAction(phone); // Clear pre-run; the agent may queue a fresh slot.
+    try {
+      const result = await runAgent(userId, phone, text, {
+        systemAddendum: addendum,
+      });
+      if (result.text) {
+        await sendChunked(phone, userId, result.text);
+      }
+      if (result.confirmation && result.letter) {
+        await sendChunked(phone, userId, result.confirmation);
+        await sendChunked(phone, userId, result.letter);
+        if (result.disputeId) {
+          await queuePendingAction(phone, {
+            kind: 'send_dispute_letter',
+            args: { dispute_id: result.disputeId, letter_text: result.letter },
+            summary: 'Dispute letter ready to send',
+          });
+        }
+      } else if (result.blockedBy) {
+        // Still blocked — likely a different missing field, OR the user
+        // pivoted and the agent re-attempted out of curiosity. Re-queue
+        // a fresh awaiting slot for the new field.
+        await queuePendingAction(phone, {
+          kind: 'awaiting_input',
+          args: {},
+          summary: `Awaiting ${result.blockedBy.field}`,
+          awaiting_field: result.blockedBy.field,
+          awaiting_write_target: result.blockedBy.writeTarget,
+          awaiting_question: result.blockedBy.friendlyMessage,
+          original_action: slot.original_action,
+        });
+      }
+      await appendHistorySnapshot(
+        phone,
+        text,
+        result.text || result.confirmation || '(awaiting-input continued)',
+      );
+      return { ok: true, reason: 'normal_reply' };
+    } catch (err) {
+      console.error(
+        '[whatsapp/pocket-agent] awaiting-input run failed',
+        err,
+      );
+      await sendChunked(
+        phone,
+        userId,
+        `I hit an error processing that — try again in a moment.`,
+      );
+      return { ok: false, reason: 'agent_error' };
+    }
+  }
+
+  // 2b. YES/NO intent handling for a queued draft.
+  if (slot && !slot.awaiting_field) {
     const intent = detectIntent(text);
     if (intent === 'yes') {
-      // The user-bot flow uses record_letter_sent / similar to actually
-      // persist the SAVE — we surface intent here and let the next agent
-      // turn handle the persistence by routing the YES into the agent
-      // with the pending_action context attached as a system hint. For
-      // now, we acknowledge and clear; the agent's next interaction
-      // (e.g. "did you send it?") will read state from the DB.
       await clearPendingAction(phone);
       const ackReply = `OK — ${slot.summary}`;
       await sendChunked(phone, userId, ackReply);
       await appendHistorySnapshot(phone, text, ackReply);
 
-      // Hand off to the agent with the YES as context so it can call
-      // record_letter_sent for the dispute that was queued.
       const followup = await runAgent(
         userId,
         phone,
@@ -835,7 +1258,7 @@ export async function handlePocketAgentMessage(opts: {
     await clearPendingAction(phone);
   }
 
-  // 3. Run the agent.
+  // 3. Run the agent — normal path.
   try {
     const result = await runAgent(userId, phone, text);
 
@@ -844,11 +1267,25 @@ export async function handlePocketAgentMessage(opts: {
       await sendChunked(phone, userId, result.text);
     }
 
-    // 3b. Letter draft path — the interceptor populated confirmation +
-    //     letter. Send confirmation first, then the letter body as a
-    //     follow-up, and queue the pending_action slot so the user's
-    //     YES/NO lands here on the next turn.
-    if (result.confirmation && result.letter) {
+    // 3b. Letter pre-flight blocked — queue an awaiting_field slot so
+    //     the user's next reply is routed as the answer. We rely on the
+    //     agent's text reply (containing the friendly message) for the
+    //     user-facing prompt; this slot is the orchestration state.
+    if (result.blockedBy && result.blockedOriginalArgs) {
+      await queuePendingAction(phone, {
+        kind: 'awaiting_input',
+        args: {},
+        summary: `Awaiting ${result.blockedBy.field}`,
+        awaiting_field: result.blockedBy.field,
+        awaiting_write_target: result.blockedBy.writeTarget,
+        awaiting_question: result.blockedBy.friendlyMessage,
+        original_action: {
+          kind: 'draft_dispute_letter',
+          args: result.blockedOriginalArgs,
+        },
+      });
+    } else if (result.confirmation && result.letter) {
+      // 3c. Letter ready — queue YES/NO slot.
       await sendChunked(phone, userId, result.confirmation);
       await sendChunked(phone, userId, result.letter);
       if (result.disputeId) {

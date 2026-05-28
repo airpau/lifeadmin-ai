@@ -1,42 +1,72 @@
 /**
  * Grounded dispute letter writer — WhatsApp Pocket Agent.
  *
- * The WhatsApp Pocket Agent runs the CONVERSATIONAL layer on Haiku for
- * speed + cost. Letter generation is too consequential to delegate to
- * the same model — every letter cites UK statute, is sent to a real
- * supplier, and may be referenced by FCA / Ombudsman / CISAS — so it
- * fires through a SEPARATE Anthropic call on Sonnet, with strictly
- * grounded inputs.
+ * The Pocket Agent's conversational layer runs on Haiku for speed + cost
+ * (AGENT_MODEL). Letter generation runs separately on Sonnet
+ * (DISPUTE_MODEL). The contract between them is non-negotiable:
  *
- * This module is the bridge:
+ *   THE SONNET CALL IS ONLY EVER FIRED WITH A FULLY-POPULATED
+ *   GROUNDING CONTEXT. If anything is missing, we stop BEFORE the
+ *   model call, ask the user a friendly question, and store the
+ *   intent so we can resume after they answer.
+ *
+ * No `[MISSING: …]` placeholders in letter bodies. No "approximately"
+ * in user-facing copy. No model-side gap-filling. Either we have every
+ * required field (and the letter writes cleanly) or we have a
+ * conversational, helpful question for the user.
+ *
+ * Pre-flight order:
  *
  *   1. Resolve the dispute the user is asking us to act on.
- *   2. Pull every input the letter writer needs DIRECTLY from Supabase
- *      (profile, dispute row, prior letters, supplier replies). No
- *      inference from conversation context.
- *   3. Validate every critical field. Missing? Return the gap to the
- *      caller — never fire the letter call with a placeholder.
- *   4. Delegate the actual writing to `generateDisputeReply` in
- *      `src/lib/agents/dispute-reply-engine.ts`, which is the single
- *      source of truth for citation-grounded letters and already calls
- *      DISPUTE_MODEL (claude-sonnet-4-6) under the hood with the
- *      `legal_references` table pre-loaded.
- *   5. Build a structured confirmation summary (supplier / amount /
- *      letter # / FCA deadline / legislation summary) so the user can
- *      eyeball the grounding before approving the send.
+ *   2. Build `groundingContext` from real Supabase rows
+ *      (profiles, disputes, correspondence, bank_connections,
+ *      legal_references).
+ *   3. Validate against `validateGroundingForLetter(ctx, { kind })`
+ *      — `kind: 'initial'` requires supplierName, amount,
+ *      transactionDate, userFullName. `kind: 'chase'` additionally
+ *      requires at least one priorLetter on file.
+ *   4. **Validation fails →** return `{ ok: false, friendlyMessage,
+ *      awaitingField, writeTarget }` so the agent can ask the user
+ *      in plain English AND queue a `pending_action` slot to auto-
+ *      resume after they answer.
+ *   5. **Validation passes →** call `generateDisputeReply` (Sonnet
+ *      + legal_references-grounded). Build a structured confirmation
+ *      summary and return the letter.
  *
- * Architectural promise: NO field the letter writer sees comes from
- * the conversational layer's free-form text. Every value is fetched
- * from a real DB row in the helpers below. The user prompt is treated
- * as INTENT ("draft a firmer reply about EE") — never as fact.
+ * Optional fields (`userAddress`, `userPostcode`, `accountName`) are
+ * never validated. The letter writer's prompt omits them naturally
+ * when absent — no surface to the user.
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
 
-/** Critical fields the writer cannot proceed without. */
-const REQUIRED_PROFILE_FIELDS = ['full_name'] as const;
 const FCA_WEEKS = 8;
+
+export type LetterKind = 'initial' | 'chase';
+
+/** Fields that block letter generation when missing. */
+export type RequiredField =
+  | 'supplierName'
+  | 'amount'
+  | 'transactionDate'
+  | 'userFullName'
+  | 'priorLetters';
+
+/**
+ * Where the missing field gets persisted when the user answers. Used by
+ * the conversational layer to pick the right write-back tool
+ * (update_profile_field vs update_dispute_field) without a second
+ * round of guesswork.
+ */
+export type WriteTarget =
+  | { table: 'profiles'; field: 'full_name' | 'address' | 'phone' }
+  | {
+      table: 'disputes';
+      field: 'disputed_amount' | 'transaction_date' | 'provider_name';
+      dispute_id: string;
+    }
+  | { table: 'none' }; // nothing to persist (e.g. "send the initial letter first")
 
 export interface DisputeGroundingContext {
   /** Supplier name as stored on the dispute row. */
@@ -78,25 +108,43 @@ export interface DisputeGroundingContext {
   fcaDeadline: string | null;
   /** Days remaining until the FCA deadline. Null if not yet started. */
   fcaDaysRemaining: number | null;
+  /** Resolved dispute id — for write-back targeting. */
+  disputeId: string;
 }
 
-export interface MissingField {
-  field: keyof DisputeGroundingContext | string;
-  /** User-facing reason this field blocks the letter. */
-  reason: string;
+export interface GroundingValidationOk {
+  ok: true;
 }
+
+export interface GroundingValidationFail {
+  ok: false;
+  field: RequiredField;
+  /** Plain-English message ready to send to the user verbatim. */
+  friendlyMessage: string;
+  /**
+   * Where the user's answer should be persisted. The agent uses this to
+   * pick update_profile_field vs update_dispute_field on the next turn.
+   * `none` means there's nothing to write — the user just needs to do
+   * something on the website / take a different action.
+   */
+  writeTarget: WriteTarget;
+}
+
+export type GroundingValidation =
+  | GroundingValidationOk
+  | GroundingValidationFail;
 
 export interface GroundedLetterResult {
   ok: boolean;
   /** Populated when ok=true. */
   letter?: string;
-  /** Structured confirmation block the agent sends before YES/NO. */
+  /** Structured confirmation block sent BEFORE the letter body. */
   confirmation?: string;
-  /** Populated when ok=false — the missing critical fields. */
-  missing?: MissingField[];
-  /** The grounding payload that was used (or attempted). For debugging / audit. */
-  grounding?: Partial<DisputeGroundingContext>;
-  /** Raw dispute_id (so the YES-path executor knows which row to act on). */
+  /** Populated when ok=false — the first blocking validation failure. */
+  validation?: GroundingValidationFail;
+  /** Grounding payload used (when ok=true). */
+  grounding?: DisputeGroundingContext;
+  /** Resolved dispute id. Always populated when a dispute matched. */
   disputeId?: string;
 }
 
@@ -108,13 +156,17 @@ export interface GroundedLetterInput {
   tone?: 'auto' | 'friendly' | 'balanced' | 'firm';
   /**
    * Optional free-text adjustment from the user ("make it firmer",
-   * "add the £85 figure"). NEVER treated as fact — only as a styling
-   * brief for the writer. The writer's grounding rules forbid
-   * inventing figures even when the user mentions them; if the user
-   * says "the £85 figure" and there's no £85 in the DB, the letter
-   * will say [MISSING: amount_referenced_by_user].
+   * "add the £85 figure"). The writer treats this as a STYLING brief
+   * only — figures and dates the user mentions here are NOT used as
+   * grounding; the gate above guarantees those came from the DB.
    */
   userBrief?: string;
+  /**
+   * Optional override — when the caller already knows whether this is
+   * an initial complaint or a chase letter, pass it through to skip
+   * the heuristic. Otherwise we infer from `priorLetterCount`.
+   */
+  kind?: LetterKind;
 }
 
 function admin(): SupabaseClient {
@@ -125,10 +177,10 @@ function admin(): SupabaseClient {
 }
 
 /**
- * Fuzzy-resolve the active dispute for this provider name. Mirrors the
- * dashboard/Telegram resolution rule — most-recently-updated OPEN dispute
- * wins, falls back to any matching dispute. Returns null if nothing
- * matches.
+ * Fuzzy-resolve the active dispute for this provider name. Returns
+ * null when nothing matches — the caller surfaces that as a separate
+ * friendly message ("I can't find a dispute against X — open it on
+ * the website first.").
  */
 async function resolveDispute(
   sb: SupabaseClient,
@@ -146,23 +198,24 @@ async function resolveDispute(
     .order('updated_at', { ascending: false })
     .limit(1);
   if (open && open.length > 0) return { id: open[0].id as string };
-  const { data: any } = await sb
+  const { data: anyMatch } = await sb
     .from('disputes')
     .select('id, provider_name, updated_at')
     .eq('user_id', userId)
     .ilike('provider_name', `%${needle}%`)
     .order('updated_at', { ascending: false })
     .limit(1);
-  if (any && any.length > 0) return { id: any[0].id as string };
+  if (anyMatch && anyMatch.length > 0) return { id: anyMatch[0].id as string };
   return null;
 }
 
-function categoriesForIssueType(issueType: string | null, providerType: string | null): string[] {
+function categoriesForIssueType(
+  issueType: string | null,
+  providerType: string | null,
+): string[] {
   const cats = new Set<string>();
   if (issueType) cats.add(issueType.toLowerCase());
   if (providerType) cats.add(providerType.toLowerCase());
-  // Always include the broad general fallback so we surface CRA/FCA rules
-  // even when the dispute is sparsely categorised.
   cats.add('general');
   return Array.from(cats);
 }
@@ -181,14 +234,14 @@ export async function buildGroundingContext(
       sb
         .from('disputes')
         .select(
-          'id, provider_name, provider_type, issue_type, issue_summary, disputed_amount, account_number, status, created_at',
+          'id, provider_name, provider_type, issue_type, issue_summary, disputed_amount, transaction_date, account_number, status, created_at',
         )
         .eq('id', disputeId)
         .eq('user_id', userId)
         .maybeSingle(),
       sb
         .from('profiles')
-        .select('full_name, first_name, last_name, address, postcode, email')
+        .select('full_name, first_name, last_name, address, postcode, email, phone')
         .eq('id', userId)
         .maybeSingle(),
       sb
@@ -211,10 +264,6 @@ export async function buildGroundingContext(
     return { error: 'Dispute not found for this user.' };
   }
 
-  // Optional — bank_connections / bank_accounts is a separate table that
-  // may or may not have a clean link to a dispute. We look it up by
-  // account_number if present; otherwise leave null. The letter writer
-  // tolerates a null account name.
   let accountName: string | null = null;
   if (dispute.account_number) {
     const { data: bank } = await sb
@@ -222,22 +271,23 @@ export async function buildGroundingContext(
       .select('name, account_name')
       .eq('user_id', userId)
       .maybeSingle();
-    accountName = bank?.account_name ?? bank?.name ?? null;
+    accountName =
+      (bank as { account_name?: string | null; name?: string | null } | null)
+        ?.account_name ??
+      (bank as { account_name?: string | null; name?: string | null } | null)
+        ?.name ??
+      null;
   }
 
-  // Legislation — we don't try to be cleverer than the existing
-  // dispute-reply-engine, which already pulls from legal_references with
-  // category-driven retrieval. We do an INDEPENDENT preview read here so
-  // the confirmation summary can show the user which statutes will be
-  // cited BEFORE the writer runs. The writer itself will re-run the
-  // retrieval; the previews must match by category.
   const categories = categoriesForIssueType(
     dispute.issue_type as string | null,
     dispute.provider_type as string | null,
   );
   const { data: rawRefs } = await sb
     .from('legal_references')
-    .select('law_name, section, summary, source_url, verification_status, category')
+    .select(
+      'law_name, section, summary, source_url, verification_status, category',
+    )
     .in('category', categories)
     .in('verification_status', ['verified', 'needs_review'])
     .limit(8);
@@ -249,16 +299,20 @@ export async function buildGroundingContext(
   }));
 
   const priorLetters = (letters ?? []).map((row) => ({
-    sent_at: (row.sent_at as string | null) ?? (row.created_at as string | null) ?? null,
+    sent_at:
+      (row.sent_at as string | null) ??
+      (row.created_at as string | null) ??
+      null,
     body: String(row.content ?? ''),
   }));
   const supplierReplies = (replies ?? []).map((row) => ({
-    received_at: (row.sent_at as string | null) ?? (row.created_at as string | null) ?? null,
+    received_at:
+      (row.sent_at as string | null) ??
+      (row.created_at as string | null) ??
+      null,
     body: String(row.content ?? ''),
   }));
 
-  // FCA clock — starts on the first ai_letter we sent to the supplier.
-  // Once 8 weeks have elapsed the user can escalate to FOS / Ombudsman.
   let firstLetterSentAt: string | null = null;
   for (const l of priorLetters) {
     if (l.sent_at) {
@@ -273,7 +327,9 @@ export async function buildGroundingContext(
     if (Number.isFinite(startMs)) {
       const deadlineMs = startMs + FCA_WEEKS * 7 * 24 * 60 * 60 * 1000;
       fcaDeadline = new Date(deadlineMs).toISOString();
-      fcaDaysRemaining = Math.ceil((deadlineMs - Date.now()) / (24 * 60 * 60 * 1000));
+      fcaDaysRemaining = Math.ceil(
+        (deadlineMs - Date.now()) / (24 * 60 * 60 * 1000),
+      );
     }
   }
 
@@ -284,8 +340,11 @@ export async function buildGroundingContext(
 
   return {
     supplierName: dispute.provider_name as string,
-    amount: dispute.disputed_amount != null ? Number(dispute.disputed_amount) : null,
-    transactionDate: (dispute.created_at as string | null) ?? null,
+    amount:
+      dispute.disputed_amount != null
+        ? Number(dispute.disputed_amount)
+        : null,
+    transactionDate: (dispute.transaction_date as string | null) ?? null,
     accountName,
     disputeReason: (dispute.issue_summary as string) ?? '',
     issueType: (dispute.issue_type as string | null) ?? null,
@@ -300,48 +359,90 @@ export async function buildGroundingContext(
     priorLetterCount: priorLetters.length,
     fcaDeadline,
     fcaDaysRemaining,
+    disputeId: dispute.id as string,
   };
 }
 
 /**
- * Walk the grounding payload and report any field that BLOCKS the letter.
- * Missing user name = block. Missing dispute reason = block. Everything
- * else can be expressed as [MISSING: …] in the letter body if the writer
- * needs to refer to it.
+ * Pre-flight gate. Walks the required fields in order; returns the FIRST
+ * failure as a friendly, conversational message ready to send to the
+ * user. Only critical fields are checked here — optional fields
+ * (address, postcode, account name) are deliberately not validated,
+ * because the letter writer omits them gracefully when absent.
+ *
+ * The order matters: the cheapest fix (one-line text reply) is asked
+ * for before the higher-friction fix (open the dashboard).
  */
-export function detectMissingCriticalFields(
+export function validateGroundingForLetter(
   ctx: DisputeGroundingContext,
-): MissingField[] {
-  const missing: MissingField[] = [];
-  for (const f of REQUIRED_PROFILE_FIELDS) {
-    if (f === 'full_name' && !ctx.userFullName) {
-      missing.push({
-        field: 'userFullName',
-        reason:
-          'Your full name is missing from your profile — supplier letters must be signed in your real name.',
-      });
-    }
-  }
-  if (!ctx.supplierName) {
-    missing.push({
+  opts: { kind: LetterKind },
+): GroundingValidation {
+  if (!ctx.supplierName || !ctx.supplierName.trim()) {
+    return {
+      ok: false,
       field: 'supplierName',
-      reason: 'The supplier on this dispute row is missing.',
-    });
+      friendlyMessage:
+        "I've got the dispute open but the supplier name on it is blank. Open it on the website at paybacker.co.uk/dashboard/disputes and add the supplier, then come back to me.",
+      writeTarget: {
+        table: 'disputes',
+        field: 'provider_name',
+        dispute_id: ctx.disputeId,
+      },
+    };
   }
-  if (!ctx.disputeReason || ctx.disputeReason.trim().length < 5) {
-    missing.push({
-      field: 'disputeReason',
-      reason:
-        "The dispute doesn't have an issue summary on file — open the dispute on the website and add one before drafting.",
-    });
+
+  if (!ctx.userFullName || !ctx.userFullName.trim()) {
+    return {
+      ok: false,
+      field: 'userFullName',
+      friendlyMessage:
+        "To sign this letter properly I need your full name — what should I use? (I'll save it to your profile so I don't ask again.)",
+      writeTarget: { table: 'profiles', field: 'full_name' },
+    };
   }
-  return missing;
+
+  if (ctx.amount == null) {
+    return {
+      ok: false,
+      field: 'amount',
+      friendlyMessage: `How much is the disputed charge on ${ctx.supplierName}? Reply with the £ amount (e.g. "£142.30") and I'll add it to the dispute and draft the letter.`,
+      writeTarget: {
+        table: 'disputes',
+        field: 'disputed_amount',
+        dispute_id: ctx.disputeId,
+      },
+    };
+  }
+
+  if (!ctx.transactionDate) {
+    return {
+      ok: false,
+      field: 'transactionDate',
+      friendlyMessage: `What date was the £${ctx.amount.toFixed(2)} ${ctx.supplierName} charge? Check your Money Hub if you're not sure — DD/MM/YYYY is fine.`,
+      writeTarget: {
+        table: 'disputes',
+        field: 'transaction_date',
+        dispute_id: ctx.disputeId,
+      },
+    };
+  }
+
+  if (opts.kind === 'chase' && ctx.priorLetters.length === 0) {
+    return {
+      ok: false,
+      field: 'priorLetters',
+      friendlyMessage:
+        "There's no first letter on file for this dispute yet — a chase doesn't make sense without one. Want me to draft the initial complaint instead? Reply YES and I'll do it now.",
+      writeTarget: { table: 'none' },
+    };
+  }
+
+  return { ok: true };
 }
 
 /**
- * Build the structured confirmation block the agent sends BEFORE the
- * user types YES to release the letter. Surfaces every fact the writer
- * was given, so the human can sanity-check grounding.
+ * Build the structured confirmation block. Surfaces every fact the
+ * writer was given so the human can sanity-check grounding.
  */
 export function buildConfirmationSummary(
   ctx: DisputeGroundingContext,
@@ -356,7 +457,10 @@ export function buildConfirmationSummary(
   const amountLine =
     ctx.amount != null
       ? `Amount: £${ctx.amount.toFixed(2)}`
-      : 'Amount: not recorded on dispute.';
+      : 'Amount: not recorded.';
+  const dateLine = ctx.transactionDate
+    ? `Charge date: ${new Date(ctx.transactionDate).toLocaleDateString('en-GB')}.`
+    : '';
   const legislationLines = ctx.legislation
     .slice(0, 3)
     .map(
@@ -376,25 +480,28 @@ export function buildConfirmationSummary(
   return [
     `*${ctx.supplierName}* — letter #${letterNumber}`,
     amountLine,
+    dateLine,
     fcaLine,
     legislationBlock,
     preview,
     '',
     'Reply YES to send, NO to cancel, or describe changes ("make it firmer", "add the £85 figure").',
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**
  * Main entry — orchestrate the grounded letter generation.
  *
- *   1. Resolve the dispute id from the user's free-text provider.
- *   2. Build the grounding context from real DB rows.
- *   3. Validate critical fields — bail with MISSING list if any are absent.
- *   4. Delegate to generateDisputeReply (which calls DISPUTE_MODEL =
- *      claude-sonnet-4-6 with the legal_references table grounded in).
- *   5. Return the letter + confirmation summary.
+ *   1. Resolve the dispute from the user's free-text provider.
+ *   2. Build the grounding context.
+ *   3. Run the pre-flight gate — bail with `friendlyMessage` if any
+ *      required field is missing. Sonnet is NOT called.
+ *   4. Otherwise, call generateDisputeReply (Sonnet + legal_references).
+ *   5. Return letter + confirmation summary.
  *
- * Errors are returned as `{ ok: false, missing: [...] }` rather than
+ * Errors are returned as `{ ok: false, validation }` rather than
  * thrown so the conversational agent can present them inline.
  */
 export async function generateGroundedDisputeLetter(
@@ -405,34 +512,42 @@ export async function generateGroundedDisputeLetter(
   if (!dispute) {
     return {
       ok: false,
-      missing: [
-        {
-          field: 'dispute',
-          reason: `I couldn't find a dispute against "${input.provider}" on your account. Open it on the website at paybacker.co.uk/dashboard/disputes first.`,
-        },
-      ],
+      validation: {
+        ok: false,
+        field: 'supplierName',
+        friendlyMessage: `I couldn't find a dispute against "${input.provider}" on your account. Open it on the website at paybacker.co.uk/dashboard/disputes first, then come back to me.`,
+        writeTarget: { table: 'none' },
+      },
     };
   }
   const ctx = await buildGroundingContext(sb, input.userId, dispute.id);
   if ('error' in ctx) {
     return {
       ok: false,
-      missing: [{ field: 'dispute', reason: ctx.error }],
+      validation: {
+        ok: false,
+        field: 'supplierName',
+        friendlyMessage: ctx.error,
+        writeTarget: { table: 'none' },
+      },
+      disputeId: dispute.id,
     };
   }
-  const missing = detectMissingCriticalFields(ctx);
-  if (missing.length > 0) {
-    return { ok: false, missing, grounding: ctx, disputeId: dispute.id };
+
+  const kind: LetterKind =
+    input.kind ?? (ctx.priorLetters.length === 0 ? 'initial' : 'chase');
+  const validation = validateGroundingForLetter(ctx, { kind });
+  if (!validation.ok) {
+    return { ok: false, validation, grounding: ctx, disputeId: dispute.id };
   }
 
   // Most-recent supplier reply (if any) is what we're replying TO.
   const latestReply = ctx.supplierReplies[ctx.supplierReplies.length - 1];
   const lastLetter = ctx.priorLetters[ctx.priorLetters.length - 1];
 
-  // Engine call — this internally fires DISPUTE_MODEL (claude-sonnet-4-6)
-  // with a strict, citation-grounded system prompt that pulls verified
-  // rows from legal_references. The conversational AGENT_MODEL is NOT
-  // used here.
+  // Engine call — DISPUTE_MODEL (claude-sonnet-4-6) under the hood.
+  // At this point every required field is populated; the engine's
+  // prompt does NOT need a [MISSING] escape hatch.
   const result = await generateDisputeReply(sb, {
     providerName: ctx.supplierName,
     customerName: ctx.userFullName,
@@ -453,26 +568,11 @@ export async function generateGroundedDisputeLetter(
     surface: 'whatsapp',
   });
 
-  const confirmation = buildConfirmationSummary(ctx, result.letter);
-
   return {
     ok: true,
     letter: result.letter,
-    confirmation,
+    confirmation: buildConfirmationSummary(ctx, result.letter),
     grounding: ctx,
     disputeId: dispute.id,
   };
-}
-
-/**
- * Render a MISSING-fields result as a single chat reply.
- */
-export function renderMissingFieldsReply(missing: MissingField[]): string {
-  if (missing.length === 1) {
-    return `I can't draft this letter — ${missing[0].reason}`;
-  }
-  return [
-    "I can't draft this letter yet — here's what's missing:",
-    ...missing.map((m) => `• ${m.reason}`),
-  ].join('\n');
 }
