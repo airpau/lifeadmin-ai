@@ -124,19 +124,24 @@ export async function dispatchWhatsAppMorningBrief(
   //
   // 2026-05-26: paused. The currently-approved `paybacker_morning_summary`
   // template body is misleading: it advertises an "Overnight we scanned
-  // {{2}} items" line, but there is no overnight email-scanner cron — the
-  // scanner is user-triggered from /dashboard. Combined with the dead
-  // "Tap to open today's brief." CTA (WhatsApp does not turn the static
-  // string into a tappable link), out-of-window users were getting a
-  // demonstrably wrong message every morning. Sending nothing is strictly
-  // better than sending that.
+  // {{2}} items" line, but there was no overnight email-scanner cron at
+  // the time — the scanner was user-triggered from /dashboard. Combined
+  // with the dead "Tap to open today's brief." CTA (WhatsApp does not
+  // turn the static string into a tappable link), out-of-window users
+  // were getting a demonstrably wrong message every morning. Sending
+  // nothing is strictly better than sending that.
   //
-  // A new self-contained body has been staked out in the template
-  // registry (set back to `PENDING_RESUBMISSION`); once the founder
-  // resubmits via /dashboard/admin/whatsapp and Meta approves, re-enable
-  // this branch by replacing the early-return below with the real
-  // template send. The new body must include a plain URL the user can
-  // tap manually (paybacker.co.uk/dashboard) — no "tap to open" copy.
+  // 2026-05-28 UPDATE: the email-scanner cron now exists
+  // (src/app/api/cron/email-scanner/route.ts, 05:30 UTC nightly), so the
+  // "we scanned overnight" framing IS now true. The new template body in
+  // the registry (paybacker_morning_summary) is self-contained — single
+  // {{1}} name + {{2}} multi-line highlights + {{3}} tip + a plain URL
+  // (paybacker.co.uk/dashboard) WhatsApp auto-links on every device.
+  // No more "tap to open" dead text.
+  //
+  // Founder resubmits via /dashboard/admin/whatsapp; Meta approves the
+  // new body; the dispatch branch below is re-enabled by replacing the
+  // early-return with a real template send call.
   if (inWindowTextError) {
     const textMsg =
       inWindowTextError instanceof Error

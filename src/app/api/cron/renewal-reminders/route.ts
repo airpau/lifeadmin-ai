@@ -116,8 +116,8 @@ export async function GET(request: NextRequest) {
         r => `• ${r.provider_name}: £${r.amount.toFixed(2)}/${r.billing_cycle ?? 'month'} on ${new Date(r.next_billing_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`,
       ).join('\n');
       const telegramText = renewals.length === 1
-        ? `🔔 *Renewal coming up in ${days} days*\n\n${tgLines}\n\nOpen Paybacker → Subscriptions to review or cancel.`
-        : `🔔 *${renewals.length} renewals coming up in ${days} days*\n\n${tgLines}\n\nOpen Paybacker → Subscriptions to review.`;
+        ? `🔔 *Renewal coming up in ${days} days*\n\n${tgLines}\n\nReply *CANCEL* to draft a cancellation letter or *SWITCH* to see cheaper alternatives.`
+        : `🔔 *${renewals.length} renewals coming up in ${days} days*\n\n${tgLines}\n\nReply with the provider name (e.g. "cancel Sky") to action one of these.`;
 
       // WhatsApp template only fires for SINGLE-renewal alerts (template
       // has fixed slots for one service). Multi-renewal alerts fall back

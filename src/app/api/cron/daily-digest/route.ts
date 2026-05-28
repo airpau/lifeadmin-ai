@@ -238,7 +238,7 @@ export async function GET(request: NextRequest) {
       if (includeScore && score.topOpportunities.length > 0) {
         lines.push(`🎯 *Opportunity score: ${score.total}* — ${score.topOpportunities[0].provider}: ${score.topOpportunities[0].reason}`);
       }
-      lines.push(`\nOpen Paybacker → Dashboard → Deals to action.`);
+      lines.push(`\nReply with the provider name (e.g. "switch Sky") and I will draft the action.`);
       const telegramText = lines.join('\n');
 
       const result = await sendNotification(supabase, {
