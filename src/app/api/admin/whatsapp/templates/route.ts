@@ -24,7 +24,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       name,
       fallback_sid: t.sid,
       category: t.category,
-      is_pending_resubmission: t.sid === PENDING_RESUBMISSION,
+      is_pending_resubmission: (t.sid as string) === PENDING_RESUBMISSION,
     };
   });
 
