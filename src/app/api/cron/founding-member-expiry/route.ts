@@ -3,6 +3,78 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { canSendEmail } from '@/lib/email-rate-limit';
 
+const STRIPE_BASE = 'https://api.stripe.com/v1';
+
+const PRICE_ID_TO_TIER: Record<string, 'essential' | 'pro'> = {
+  'price_1TDVvS7qw7mEWYpyN80zzAXM': 'essential',
+  'price_1TDVvS7qw7mEWYpynfpI5x9M': 'essential',
+  'price_1TDVvT7qw7mEWYpySmjZJTpG': 'pro',
+  'price_1TDVvT7qw7mEWYpyrLHr6L45': 'pro',
+  'price_1TDPoH8FbRNalJNU4KeEPNs7': 'essential',
+  'price_1TDPoI8FbRNalJNUSVBFOpyA': 'essential',
+  'price_1TDPoI8FbRNalJNUDAepvxYt': 'pro',
+  'price_1TDPoI8FbRNalJNUEVzsBMvB': 'pro',
+  'price_1TEdJN8FbRNalJNUQxTQpM8Y': 'essential',
+  'price_1TEdJN8FbRNalJNUymPQdKvT': 'essential',
+  'price_1TEdJN8FbRNalJNU0o6F4WZZ': 'pro',
+  'price_1TEdJO8FbRNalJNUEb0U09ln': 'pro',
+  'price_1TEsJe7qw7mEWYpyVIt4i2Iy': 'essential',
+  'price_1TEsJf7qw7mEWYpysxw2lnL3': 'essential',
+  'price_1TEsJf7qw7mEWYpy4alOarY6': 'pro',
+  'price_1TEsJf7qw7mEWYpyJmrhcy8b': 'pro',
+};
+
+async function stripeGet(path: string): Promise<any> {
+  if (!process.env.STRIPE_SECRET_KEY) return null;
+  try {
+    const res = await fetch(`${STRIPE_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * On expiry, never blindly write tier='free'. If the user has any
+ * active/trialing Stripe sub we don't know about, backfill the tier
+ * from the price ID instead of wiping it.
+ */
+async function resolveTierAtExpiry(
+  stripeCustomerId: string | null,
+  fallbackSubId: string | null,
+): Promise<{ tier: 'free' | 'essential' | 'pro'; subscriptionId: string | null; status: string }> {
+  // Valid `subscription_status` values are constrained by the
+  // 20260101 initial-schema CHECK: trialing | active | canceled |
+  // past_due | paused. Writing 'expired' silently failed the entire
+  // UPDATE — exactly the founding-member regression this cron exists
+  // to prevent. Use 'canceled' as the post-expiry resting state.
+  if (!stripeCustomerId) {
+    return { tier: 'free', subscriptionId: null, status: 'canceled' };
+  }
+  const [active, trialing] = await Promise.all([
+    stripeGet(`/subscriptions?customer=${stripeCustomerId}&status=active&limit=5`),
+    stripeGet(`/subscriptions?customer=${stripeCustomerId}&status=trialing&limit=5`),
+  ]);
+  const subs = [...(active?.data || []), ...(trialing?.data || [])];
+  if (subs.length === 0) {
+    return { tier: 'free', subscriptionId: null, status: 'canceled' };
+  }
+  const sub = subs[0];
+  const priceId = sub.items?.data?.[0]?.price?.id || '';
+  const mapped = PRICE_ID_TO_TIER[priceId];
+  if (!mapped) {
+    // Unknown price ID — don't silently downgrade. Mark it for founder
+    // review and keep the row on 'free' but with a Stripe sub linked so
+    // it shows up as an exception in the admin billing dashboard.
+    console.warn(`[founding] Stripe sub ${sub.id} has unknown price ${priceId} — leaving tier on free`);
+    return { tier: 'free', subscriptionId: sub.id, status: sub.status || 'active' };
+  }
+  return { tier: mapped, subscriptionId: sub.id, status: sub.status || 'active' };
+}
+
 export const maxDuration = 60;
 
 function getAdmin() {
@@ -204,32 +276,66 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 2. Downgrade expired free trials. Skip rows we've already stamped so
-  // a same-day re-run can't double-email the user.
+  // 2. Downgrade expired founding-member trials. `trial_expired_at IS NULL`
+  // makes this idempotent — a same-day re-run won't double-email or
+  // double-write.
   const now = new Date().toISOString();
   const { data: expired } = await supabase
     .from('profiles')
-    .select('id, email, full_name, subscription_tier, stripe_subscription_id')
+    .select('id, email, full_name, subscription_tier, stripe_subscription_id, stripe_customer_id')
     .eq('founding_member', true)
     .lt('founding_member_expires', now)
     .is('trial_expired_at', null);
 
   for (const user of expired || []) {
-    // Skip if they've already paid for a subscription via Stripe
-    if (user.stripe_subscription_id) {
-      results.push({ email: user.email, action: 'skipped - has active Stripe subscription' });
+    // Re-resolve tier from Stripe at this exact moment. The stored
+    // stripe_subscription_id can be stale (webhook lag, manual
+    // checkout). If Stripe shows any active/trialing sub we backfill
+    // the tier from it; otherwise we set 'free'. Either way we always
+    // flip `founding_member` to false and stamp `trial_expired_at` so
+    // every subsequent path sees the correct state.
+    const resolved = await resolveTierAtExpiry(
+      user.stripe_customer_id ?? null,
+      user.stripe_subscription_id ?? null,
+    );
+
+    const update: Record<string, unknown> = {
+      subscription_tier: resolved.tier,
+      subscription_status: resolved.status,
+      founding_member: false,
+      trial_expired_at: new Date().toISOString(),
+    };
+    if (resolved.subscriptionId) update.stripe_subscription_id = resolved.subscriptionId;
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update(update)
+      .eq('id', user.id);
+
+    if (updateError) {
+      // CRITICAL: do NOT swallow this. The previous version of this
+      // cron wrote `subscription_status='expired'` which silently failed
+      // the entire UPDATE (CHECK constraint allows only trialing |
+      // active | canceled | past_due | paused). That's why 4 users were
+      // found 2026-05-28 with founding_member=true + tier=free + no
+      // trial_expired_at — the cleanup write had been failing every day
+      // for months.
+      console.error(`[founding] DB update failed for ${user.email}:`, updateError.message);
+      results.push({ email: user.email, action: `DB update FAILED: ${updateError.message}` });
       continue;
     }
 
-    // Downgrade to free - ONLY change tier, keep all data
-    await supabase.from('profiles').update({
-      subscription_tier: 'free',
-      subscription_status: 'expired',
-      founding_member: false,
-      trial_expired_at: new Date().toISOString(),
-    }).eq('id', user.id);
+    // Only email expired users moving to 'free'. Backfilled Stripe
+    // sub means they're keeping a paid tier — sending a "your trial
+    // has ended, you're on Free" email would be wrong.
+    if (resolved.tier !== 'free') {
+      results.push({
+        email: user.email,
+        action: `kept on ${resolved.tier} via Stripe sub ${resolved.subscriptionId}`,
+      });
+      continue;
+    }
 
-    // Send expiry notification email
     try {
       await resend.emails.send({
         from: 'Paybacker <noreply@paybacker.co.uk>',

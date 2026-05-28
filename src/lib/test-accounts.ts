@@ -30,6 +30,12 @@ export const TEST_ACCOUNT_EMAILS: ReadonlySet<string> = new Set([
   'ab@123',
   'sdaf@sdaf.com',
   'googletest@paybacker.co.uk',
+  // App Store / Play Store reviewer demo accounts — they exist solely
+  // for store-review walkthroughs, have no Telegram/WhatsApp link, and
+  // were silently inflating the dispute-letter-followup "skippedNoSession"
+  // counter every 30 min (2026-05-28 audit).
+  'apple-reviewer@paybacker.co.uk',
+  'play-reviewer@paybacker.co.uk',
 ]);
 
 /** Returns true when the email belongs to the test/QA allow-list. */
