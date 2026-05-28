@@ -22,7 +22,12 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { TEMPLATES, PENDING_RESUBMISSION, type TemplateName } from './template-registry';
+import {
+  TEMPLATES,
+  PENDING_RESUBMISSION,
+  PENDING_META_APPROVAL,
+  type TemplateName,
+} from './template-registry';
 
 export interface TemplateSidRow {
   template_name: string;
@@ -82,7 +87,13 @@ export async function getTemplateSid(name: string): Promise<string | null> {
   // was introduced (the 4 known-good ones).
   const tpl = (TEMPLATES as Record<string, { sid: string }>)[name as TemplateName];
   if (!tpl) return null;
-  if (tpl.sid && tpl.sid !== PENDING_RESUBMISSION) return tpl.sid;
+  if (
+    tpl.sid &&
+    tpl.sid !== PENDING_RESUBMISSION &&
+    tpl.sid !== PENDING_META_APPROVAL
+  ) {
+    return tpl.sid;
+  }
   return null;
 }
 

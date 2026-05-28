@@ -611,6 +611,32 @@ export const TEMPLATES = {
     proOnly: true,
     body: 'We found a cheaper {{1}} deal — could save you about £{{2}}/year. See it here: {{3}} — switch in a couple of taps.',
   },
+  /**
+   * Pocket Agent free-form reply, wrapped as an approved UTILITY template so
+   * we can deliver outside the 24h customer-service window when needed.
+   *
+   * The body is a single `{{1}}` placeholder wrapped between short static
+   * lead-in and sign-off bookends. Meta rejects bodies that start OR end on
+   * `{{N}}` (subCode 2388299) — see the comment block at the top of this
+   * file. The bookends keep the variable away from either edge while still
+   * letting the Pocket Agent inject any free-form reply text it would
+   * normally have sent via sendWhatsAppText.
+   *
+   * Used by src/lib/whatsapp/pocket-agent.ts when isWithinSessionWindow()
+   * returns false. Inside the window, the wrapper continues to send
+   * free-form via sendWhatsAppText.
+   *
+   * Status: PENDING_META_APPROVAL until the founder submits via Twilio
+   * Console (or scripts/submit-whatsapp-template.ts).
+   */
+  paybacker_pocket_agent_reply: {
+    sid: PENDING_META_APPROVAL,
+    category: 'UTILITY',
+    vars: ['reply'] as const,
+    description: 'Pocket Agent free-form reply (out-of-window fallback)',
+    proOnly: true,
+    body: 'Pocket Agent:\n\n{{1}}\n\n— reply STOP to opt out.',
+  },
 } as const satisfies Record<string, WhatsAppTemplate>;
 
 export type TemplateName = keyof typeof TEMPLATES;
