@@ -121,7 +121,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const allPending: TemplateName[] = (Object.keys(TEMPLATES) as TemplateName[]).filter((n) => {
     const t = TEMPLATES[n];
-    return t.sid === PENDING_RESUBMISSION || t.sid === PENDING_META_APPROVAL;
+    return (t.sid as string) === PENDING_RESUBMISSION || (t.sid as string) === PENDING_META_APPROVAL;
   });
 
   // Auto-pick rejected templates from the DB (added 2026-05-03). When the
