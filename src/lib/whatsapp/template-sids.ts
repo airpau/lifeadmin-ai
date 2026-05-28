@@ -89,8 +89,8 @@ export async function getTemplateSid(name: string): Promise<string | null> {
   if (!tpl) return null;
   if (
     tpl.sid &&
-    tpl.sid !== PENDING_RESUBMISSION &&
-    tpl.sid !== PENDING_META_APPROVAL
+    (tpl.sid as string) !== PENDING_RESUBMISSION &&
+    (tpl.sid as string) !== PENDING_META_APPROVAL
   ) {
     return tpl.sid;
   }
