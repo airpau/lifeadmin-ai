@@ -11,7 +11,12 @@
  */
 
 import crypto from 'node:crypto';
-import { TEMPLATES, PENDING_RESUBMISSION, type TemplateName } from './template-registry';
+import {
+  TEMPLATES,
+  PENDING_RESUBMISSION,
+  PENDING_META_APPROVAL,
+  type TemplateName,
+} from './template-registry';
 import type {
   InboundMediaType,
   InboundMessage,
@@ -104,14 +109,15 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
     // upstream rely on this throwing a clean error rather than skipping
     // pre-emptively, so we never attempt the send when the only candidate
     // SID is the placeholder.
+    const pendingSentinels = new Set<string>([PENDING_RESUBMISSION, PENDING_META_APPROVAL]);
     const registrySid =
-      registry?.sid && registry.sid !== PENDING_RESUBMISSION ? registry.sid : undefined;
+      registry?.sid && !pendingSentinels.has(registry.sid) ? registry.sid : undefined;
     const contentSid = envOverride || dbSid || registrySid;
     const from = requireEnv('TWILIO_WHATSAPP_FROM');
 
-    if (!contentSid && registry?.sid === PENDING_RESUBMISSION) {
+    if (!contentSid && registry?.sid && pendingSentinels.has(registry.sid)) {
       throw new Error(
-        `[whatsapp/twilio] template "${opts.templateName}" is pending Meta resubmission — set TWILIO_TEMPLATE_${opts.templateName.toUpperCase()} or update whatsapp_template_sids to send.`,
+        `[whatsapp/twilio] template "${opts.templateName}" is pending Meta approval (sentinel=${registry.sid}) — set TWILIO_TEMPLATE_${opts.templateName.toUpperCase()} or update whatsapp_template_sids to send.`,
       );
     }
 

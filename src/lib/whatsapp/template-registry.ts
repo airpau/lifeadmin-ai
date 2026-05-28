@@ -148,6 +148,10 @@ export type TemplateCategory = 'UTILITY' | 'AUTHENTICATION' | 'MARKETING';
  *  rather than handing it to Twilio. */
 export const PENDING_RESUBMISSION = 'PENDING_RESUBMISSION' as const;
 
+/** Sentinel for templates submitted to Twilio but not yet approved by Meta.
+ *  Treated identically to PENDING_RESUBMISSION at the send guard. */
+export const PENDING_META_APPROVAL = 'PENDING_META_APPROVAL' as const;
+
 /**
  * Declarative quick-reply button on a template.
  *
@@ -553,6 +557,49 @@ export const TEMPLATES = {
     description: 'WhatsApp opt-out confirmation',
     proOnly: false,
     body: "You've been unsubscribed from Paybacker alerts. Reply SUBSCRIBE to re-enable them at any time.",
+  },
+  /** Salary / refund / transfer-in landed in a connected account.
+   *  Submitted 2026-05-28 via Twilio Content API. */
+  paybacker_payment_received: {
+    sid: PENDING_META_APPROVAL,
+    category: 'UTILITY',
+    vars: ['first_name', 'sender_name', 'amount', 'new_balance'] as const,
+    description: 'Payment received — credit landed in a connected account',
+    proOnly: true,
+    body:
+      '💰 Payment received, {{1}}!\n\n' +
+      '{{2}} has just landed in your account:\n' +
+      'Amount: {{3}}\n' +
+      'Balance now: {{4}}\n\n' +
+      'Your Pocket Agent is watching your money.',
+  },
+  /** Large outgoing payment cleared — heads-up after a £-significant debit.
+   *  Submitted 2026-05-28 via Twilio Content API. */
+  paybacker_payment_outgoing: {
+    sid: PENDING_META_APPROVAL,
+    category: 'UTILITY',
+    vars: ['first_name', 'amount', 'merchant', 'category', 'monthly_total'] as const,
+    description: 'Large outgoing payment cleared (above user threshold)',
+    proOnly: true,
+    body:
+      '💳 Payment sent, {{1}}.\n\n' +
+      '£{{2}} just left your account to {{3}}.\n' +
+      'Your {{4}} spend this month: £{{5}}\n\n' +
+      'Reply DISPUTE if this doesn\'t look right.',
+  },
+  /** Direct debit due in the next 24-72h — pre-debit warning.
+   *  Submitted 2026-05-28 via Twilio Content API. */
+  paybacker_dd_warning: {
+    sid: PENDING_META_APPROVAL,
+    category: 'UTILITY',
+    vars: ['first_name', 'provider', 'amount', 'date', 'balance'] as const,
+    description: 'Upcoming direct debit warning',
+    proOnly: true,
+    body:
+      '⚠️ Direct debit due soon, {{1}}.\n\n' +
+      '{{2}} will take {{3}} from your account on {{4}}.\n' +
+      'Current balance: {{5}}\n\n' +
+      'Reply CANCEL to start a cancellation, or QUERY to raise a question.',
   },
   /** Switchcraft-style cheaper-deal nudge (MARKETING — needs separate opt-in) */
   paybacker_better_deal_found: {

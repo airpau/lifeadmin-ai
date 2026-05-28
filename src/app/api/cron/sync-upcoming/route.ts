@@ -23,6 +23,8 @@ import {
   detectRecurringUpcoming,
   type DetectorTransaction,
 } from '@/lib/upcoming/detect-recurring';
+import { sendNotification } from '@/lib/notifications/dispatch';
+import { isAlertEnabled } from '@/lib/whatsapp/notification-prefs';
 
 export const maxDuration = 300;
 
@@ -407,12 +409,11 @@ export async function GET(request: NextRequest) {
       console.error('[sync-upcoming] notification insert failed:', e);
     }
 
-    // Best-effort Telegram push for Pro users. Look up the session
-    // directly — if the user hasn't linked Telegram, skip.
+    // Best-effort Pocket Agent push for Pro users.
     try {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('subscription_tier')
+        .select('subscription_tier, first_name, full_name')
         .eq('id', row.user_id)
         .single();
 
@@ -420,18 +421,69 @@ export async function GET(request: NextRequest) {
       // Pro: instant. Essential: email only (handled elsewhere). Free: in-app only.
       if (tier !== 'pro') continue;
 
-      // Single-channel dedup (2026-05-23): WhatsApp Pro users must not
-      // also receive Telegram. There's no WhatsApp template for
-      // upcoming-payment alerts yet, so WhatsApp users get nothing
-      // here — preferable to the dupe-on-both-channels behaviour Paul
-      // was hitting elsewhere.
       const { data: waSession } = await supabase
         .from('whatsapp_sessions')
-        .select('user_id')
+        .select('user_id, whatsapp_phone')
         .eq('user_id', row.user_id)
         .eq('is_active', true)
         .is('opted_out_at', null)
         .maybeSingle();
+
+      // Direct debit → use the dedicated paybacker_dd_warning template
+      // (single Pro channel, WhatsApp wins by Pocket Agent mutex).
+      if (waSession && !isIncoming && row.source === 'direct_debit') {
+        const ddAllowed = await isAlertEnabled(
+          supabase,
+          row.user_id,
+          'whatsapp_dd_warning',
+        );
+        if (ddAllowed) {
+          const firstName =
+            (profile?.first_name as string | undefined) ||
+            (profile?.full_name as string | undefined)?.split(' ')[0] ||
+            'there';
+          // Best-effort current balance for the affected account.
+          let balanceLabel = '—';
+          try {
+            const { data: latestBalance } = await supabase
+              .from('bank_accounts')
+              .select('balance')
+              .eq('user_id', row.user_id)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (latestBalance && latestBalance.balance != null) {
+              balanceLabel = `£${Number(latestBalance.balance).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            }
+          } catch {
+            /* leave placeholder */
+          }
+          const niceDate = dueDate.toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+          });
+          await sendNotification(supabase, {
+            userId: row.user_id,
+            event: 'dd_warning',
+            whatsapp: {
+              templateName: 'paybacker_dd_warning',
+              templateParameters: [
+                firstName,
+                who,
+                amountStr,
+                niceDate,
+                balanceLabel,
+              ],
+            },
+          });
+          summary.telegramAlertsDispatched++;
+        }
+        continue;
+      }
+
+      // WhatsApp Pocket Agent user but not a direct debit row — fall
+      // back to the historical "Telegram-or-nothing" gate so we never
+      // dual-fan-out. There's no template for generic upcoming bills.
       if (waSession) continue;
 
       const { data: session } = await supabase

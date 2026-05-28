@@ -259,6 +259,14 @@
     {
       "path": "/api/cron/email-scanner",
       "schedule": "30 5 * * *"
+    },
+    {
+      "path": "/api/cron/whatsapp-weekly-recovery",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/telegram-savings-milestone",
+      "schedule": "0 10 * * *"
     }
   ]
 }

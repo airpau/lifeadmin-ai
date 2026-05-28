@@ -46,6 +46,7 @@ interface AlertCounts {
   unusual_charge: number;
   trial_ending: number;
   outcome_check: number;
+  payment_outgoing: number;
 }
 
 export async function GET(req: NextRequest) {
@@ -60,6 +61,7 @@ export async function GET(req: NextRequest) {
     unusual_charge: 0,
     trial_ending: 0,
     outcome_check: 0,
+    payment_outgoing: 0,
   };
   const errors: string[] = [];
 
@@ -338,6 +340,105 @@ export async function GET(req: NextRequest) {
       const m = err instanceof Error ? err.message : String(err);
       console.error(`[whatsapp-alerts][outcome_check][${userId}] ${m}`);
       errors.push(`outcome:${userId}: ${m}`);
+    }
+
+    // ============================================================
+    // 4) PAYMENT OUTGOING — debit >= user threshold cleared in last 24h
+    //
+    // Uses the new paybacker_payment_outgoing template (PENDING Meta
+    // approval — provider will skip-with-warning until SID lands).
+    // ============================================================
+    try {
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('first_name, full_name, upcoming_bill_threshold')
+        .eq('id', userId)
+        .maybeSingle();
+      const userThreshold = Math.max(
+        50,
+        Number((profile as { upcoming_bill_threshold?: number })?.upcoming_bill_threshold ?? 100),
+      );
+      const firstName =
+        (profile?.first_name as string | undefined) ||
+        (profile?.full_name as string | undefined)?.split(' ')[0] ||
+        'there';
+
+      const { data: outgoing } = await sb
+        .from('bank_transactions')
+        .select('id, merchant_normalized, merchant_name, amount, category, user_category, timestamp')
+        .eq('user_id', userId)
+        .lt('amount', 0)
+        .gte('timestamp', oneDayAgo)
+        .limit(20);
+
+      for (const tx of outgoing ?? []) {
+        const absAmount = Math.abs(Number(tx.amount));
+        if (absAmount < userThreshold) continue;
+
+        const refKey = `payment_outgoing_${tx.id}`;
+        const { data: already } = await sb
+          .from('notification_log')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('notification_type', 'payment_outgoing')
+          .eq('reference_key', refKey)
+          .maybeSingle();
+        if (already) continue;
+
+        const merchant = tx.merchant_name || tx.merchant_normalized || 'a merchant';
+        const category = (tx.user_category || tx.category || 'general') as string;
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const { data: monthCat } = await sb
+          .from('bank_transactions')
+          .select('amount')
+          .eq('user_id', userId)
+          .or(`user_category.eq.${category},category.eq.${category}`)
+          .lt('amount', 0)
+          .gte('timestamp', monthStart);
+        const monthlyTotal = (monthCat ?? []).reduce(
+          (s, r) => s + Math.abs(Number(r.amount)),
+          0,
+        );
+
+        const result = await sendNotification(sb, {
+          userId,
+          event: 'payment_outgoing',
+          telegram: {
+            text:
+              `💳 *£${absAmount.toFixed(2)} just left your account*\n\n` +
+              `To *${merchant}*. ${category} spend this month: £${monthlyTotal.toFixed(0)}.\n\n` +
+              `Reply DISPUTE if this doesn't look right.`,
+          },
+          whatsapp: {
+            templateName: 'paybacker_payment_outgoing',
+            templateParameters: [
+              firstName,
+              absAmount.toFixed(2),
+              merchant,
+              category,
+              monthlyTotal.toFixed(0),
+            ],
+          },
+          push: {
+            title: `£${absAmount.toFixed(2)} sent`,
+            body: `To ${merchant}`,
+          },
+        });
+
+        if (result.delivered.length > 0) {
+          counts.payment_outgoing++;
+          await sb.from('notification_log').insert({
+            user_id: userId,
+            notification_type: 'payment_outgoing',
+            reference_key: refKey,
+          });
+        }
+      }
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      console.error(`[whatsapp-alerts][payment_outgoing][${userId}] ${m}`);
+      errors.push(`payment_out:${userId}: ${m}`);
     }
   }
 
