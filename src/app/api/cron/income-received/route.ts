@@ -37,6 +37,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import { isPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { isAlertEnabled } from '@/lib/whatsapp/notification-prefs';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -193,7 +194,7 @@ async function runCron() {
     const amount = fmtGBP(Number(tx.amount));
 
     const headline = `${emoji} Good news — ${amount} just landed`;
-    const detail = `From *${merchant}*. Tap to see your new balance.`;
+    const detail = `From *${merchant}*. See your new balance at paybacker.co.uk/dashboard/money-hub.`;
 
     try {
       // Always insert into the in-app notification bell so the website
@@ -214,19 +215,64 @@ async function runCron() {
         },
       });
 
+      // Resolve a friendly first name + the running account balance so
+      // the WhatsApp template (paybacker_payment_received) can render
+      // the four vars [first_name, sender, amount, new_balance]. The
+      // template is PENDING_META_APPROVAL at the time of wiring — the
+      // dispatcher skips template sends with a placeholder SID, so this
+      // is safe to include now and will start firing once approved.
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, full_name')
+        .eq('id', tx.user_id)
+        .maybeSingle();
+      const firstName =
+        (profile?.first_name as string | undefined) ||
+        (profile?.full_name as string | undefined)?.split(' ')[0] ||
+        'there';
+
+      // Latest known balance for the account this tx hit.
+      let balanceLabel = '—';
+      try {
+        const { data: latestBalance } = await supabase
+          .from('bank_accounts')
+          .select('balance')
+          .eq('user_id', tx.user_id)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestBalance && latestBalance.balance != null) {
+          balanceLabel = fmtGBP(Number(latestBalance.balance));
+        }
+      } catch {
+        /* leave the em-dash placeholder if balance lookup fails */
+      }
+
+      const whatsAppAllowed = await isAlertEnabled(
+        supabase,
+        tx.user_id,
+        'whatsapp_payment_received',
+      );
+
       const result = await sendNotification(supabase, {
         userId: tx.user_id,
         event: 'income_received',
         telegram: { text: `${headline}\n\n${detail}` },
-        whatsapp: {
-          // Free-form text only — Meta requires an approved utility
-          // template for proactive sends outside the 24h window. The
-          // dispatcher will silently skip if no template + outside
-          // window. Template `paybacker_income_received` to be
-          // submitted via /dashboard/admin/whatsapp; SID will be
-          // wired in a follow-up once Meta approves.
-          text: `${headline}\n\n${detail.replace(/\*/g, '')}`,
-        },
+        whatsapp: whatsAppAllowed
+          ? {
+              templateName: 'paybacker_payment_received',
+              templateParameters: [
+                firstName,
+                merchant,
+                amount,
+                balanceLabel,
+              ],
+              // Fallback for users inside the 24h session window — the
+              // provider prefers `text` only when no template is given,
+              // so this is just here so a debug path stays useful.
+              text: `${headline}\n\n${detail.replace(/\*/g, '')}`,
+            }
+          : undefined,
         push: {
           title: headline.replace(/\*/g, ''),
           body: `From ${merchant}`,

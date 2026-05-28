@@ -50,7 +50,12 @@ export type NotificationEventType =
   | 'complaint_letter_ready' // Complaint letter generated and ready
   | 'outcome_check'          // T+7d follow-up nudge after dispute sent
   | 'welcome'                // First-touch welcome after channel opt-in
-  | 'onboarding';            // Onboarding email sequence
+  | 'onboarding'             // Onboarding email sequence
+  | 'dispute_agent_action'   // Autonomous Dispute Agent recommended action
+  | 'recovery_weekly'        // Weekly £-recovered digest (Mon 09:00 UTC, WA-first)
+  | 'payment_received'       // Pocket Agent buzz when a credit lands
+  | 'payment_outgoing'       // Pocket Agent buzz when a debit clears
+  | 'dd_warning';            // Direct debit due in the next 24-72h
 
 export type NotificationChannel = 'email' | 'telegram' | 'whatsapp' | 'push';
 
@@ -157,7 +162,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     event: 'renewal_reminder',
     label: 'Renewal reminders',
     description: 'Contract or subscription renewing in 30 / 14 / 7 days.',
-    defaultEmail: true, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
+    defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'reminders',
     scheduleKind: 'lead_time',
@@ -177,7 +182,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     event: 'budget_alert',
     label: 'Budget alerts',
     description: "You've hit 80% or 100% of a budget category.",
-    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
     scheduleKind: 'threshold',
@@ -253,7 +258,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     event: 'unusual_charge',
     label: 'Unusual charge',
     description: 'A bank charge that is significantly higher than the merchant\'s usual amount.',
-    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
     scheduleKind: 'system',
@@ -272,7 +277,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     event: 'weekly_digest',
     label: 'Weekly digest',
     description: 'Weekly recap of spending, savings and what you actioned.',
-    defaultEmail: true, defaultTelegram: false, defaultWhatsapp: false, defaultPush: false,
+    defaultEmail: true, defaultTelegram: false, defaultWhatsapp: true, defaultPush: false,
     allowedChannels: ['email', 'telegram', 'whatsapp'],
     group: 'summaries',
     scheduleKind: 'cron',
@@ -323,10 +328,10 @@ export const EVENT_CATALOG: EventMeta[] = [
   },
   {
     event: 'deal_alert',
-    label: 'Deal recommendations',
-    description: 'Hand-picked switching deals that match your spend.',
-    defaultEmail: true, defaultTelegram: false, defaultWhatsapp: false, defaultPush: false,
-    allowedChannels: ['email', 'telegram', 'whatsapp'],
+    label: 'Better deal alerts',
+    description: "We found a cheaper provider for one of your tracked bills.",
+    defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'marketing',
     scheduleKind: 'cron',
     defaultCron: '0 9 * * 1',
@@ -395,6 +400,54 @@ export const EVENT_CATALOG: EventMeta[] = [
     label: 'Outcome check',
     description: 'T+7 day follow-up after a dispute is sent.',
     defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: false,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'reminders',
+    scheduleKind: 'system',
+  },
+  {
+    event: 'dispute_agent_action',
+    label: 'Dispute agent recommended action',
+    description: 'The autonomous Dispute Agent recommends an action on one of your open cases.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'system',
+    critical: true,
+  },
+  {
+    event: 'recovery_weekly',
+    label: 'Weekly recovery total',
+    description: 'Monday morning summary of how much Paybacker recovered for you last week.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: false,
+    allowedChannels: ['email', 'telegram', 'whatsapp'],
+    group: 'summaries',
+    scheduleKind: 'cron',
+    defaultCron: '0 9 * * 1',
+    proOnly: true,
+  },
+  {
+    event: 'payment_received',
+    label: 'Payment received',
+    description: 'A credit (salary, refund, transfer-in) lands in a connected account.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'threshold',
+  },
+  {
+    event: 'payment_outgoing',
+    label: 'Large outgoing payment',
+    description: 'A debit clears that is over your configured "notify me" threshold.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
+    allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
+    group: 'alerts',
+    scheduleKind: 'threshold',
+  },
+  {
+    event: 'dd_warning',
+    label: 'Upcoming direct debit',
+    description: 'A direct debit is about to leave your account in the next 24-72h.',
+    defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'reminders',
     scheduleKind: 'system',

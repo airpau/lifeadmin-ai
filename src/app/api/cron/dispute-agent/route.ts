@@ -222,8 +222,15 @@ async function surfaceDecision(args: {
 }): Promise<boolean> {
   const { sb, dispute, decision, decisionId, sessionByUser } = args;
   const merchant = dispute.provider_name || dispute.merchant_normalised || 'this merchant';
-  const cta = ctaFor(decision.action);
-  const summary = decision.rationale.slice(0, 140);
+  const replyKeyword = ctaFor(decision.action);
+  const telegramRecommendation = telegramCta(decision.action);
+  // Trim to fit the WhatsApp 1024-char body limit after framing. The
+  // template body is ~80 static chars + merchant (≤40) + reply keyword
+  // (≤8) — that leaves 800+ chars but we cap at 220 so the message stays
+  // glanceable in WhatsApp.
+  const summary = decision.rationale.length > 220
+    ? `${decision.rationale.slice(0, 217)}...`
+    : decision.rationale;
   const surfacedVia: string[] = [];
 
   const session = sessionByUser.get(dispute.user_id);
@@ -236,12 +243,15 @@ async function surfaceDecision(args: {
         telegram: {
           title: `Dispute update: ${merchant}`,
           detail: decision.rationale,
-          recommendation: cta,
+          recommendation: telegramRecommendation,
         },
         whatsappVars: {
           merchant,
           action_summary: summary,
-          cta,
+          // Single-word reply keyword for the "Reply {{3}}" frame in the
+          // updated 2026-05-28 template body. The user-bot routes the
+          // keyword to the same handler the imperative phrase used to.
+          cta: replyKeyword,
         },
       });
       if (result.ok) surfacedVia.push(session.channel);
@@ -277,12 +287,56 @@ async function surfaceDecision(args: {
   return surfacedVia.length > 0;
 }
 
+/**
+ * Reply-keyword CTA for the WhatsApp `paybacker_dispute_agent_action`
+ * template. The Pocket Agent user-bot understands every keyword below as
+ * a natural intent (see `src/lib/whatsapp/user-bot.ts` system prompt
+ * sections for SEND / CHASE / ESCALATE / ACCEPT / WON / LBA / CLAIM).
+ *
+ * Keep these SINGLE-WORD, all-caps. The 2026-05-28 template body assumes
+ * the caller hands over a reply keyword, not an imperative phrase ("send
+ * the followup" no longer fits the "Reply {{3}} and I will action it"
+ * frame). The richer phrasing lives in `decision.rationale` which is
+ * passed through `action_summary`.
+ *
+ * `telegramCta()` below preserves the longer imperative phrases for the
+ * Telegram path where the longer form reads fine.
+ */
 function ctaFor(action: AgentDecision['action']): string {
+  switch (action) {
+    case 'send_initial_letter':
+      return 'SEND';
+    case 'send_followup':
+      return 'CHASE';
+    case 'escalate_ombudsman':
+      return 'ESCALATE';
+    case 'accept_partial':
+      return 'ACCEPT';
+    case 'mark_won':
+      return 'WON';
+    case 'manual_review':
+      return 'REVIEW';
+    case 'send_letter_before_action':
+      return 'LBA';
+    case 'small_claims':
+      return 'CLAIM';
+    default:
+      return 'REVIEW';
+  }
+}
+
+/**
+ * Longer-form imperative phrase used in the Telegram `recommendation`
+ * field where the rich Markdown frame can carry it cleanly. Kept
+ * separate so the WhatsApp single-word reply keyword from `ctaFor()`
+ * stays uncluttered.
+ */
+function telegramCta(action: AgentDecision['action']): string {
   switch (action) {
     case 'send_initial_letter':
       return 'review and send';
     case 'send_followup':
-      return 'send the followup';
+      return 'send the follow-up';
     case 'escalate_ombudsman':
       return 'escalate now';
     case 'accept_partial':
@@ -317,7 +371,10 @@ async function sendEmailFallback(args: {
   const firstName = (profile as { first_name?: string } | null)?.first_name?.trim() || 'there';
   const merchant =
     dispute.provider_name || dispute.merchant_normalised || 'your dispute';
-  const recommended = ctaFor(decision.action);
+  // Email fallback is read by the founder in their inbox — use the
+  // longer imperative phrase. The single-word WhatsApp reply keyword
+  // doesn't read well as an email subject "Recommendation: SEND".
+  const recommended = telegramCta(decision.action);
   const dashboardUrl = `https://paybacker.co.uk/dashboard/disputes/${dispute.id}`;
 
   const body = [

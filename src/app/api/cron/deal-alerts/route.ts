@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { findDealOpportunities, sendDealAlertEmail } from '@/lib/email/deal-alerts';
 import { canSendEmail } from '@/lib/email-rate-limit';
+import { sendNotification } from '@/lib/notifications/dispatch';
+import { isAlertEnabled } from '@/lib/whatsapp/notification-prefs';
 
 export const maxDuration = 60;
 
@@ -126,6 +128,51 @@ export async function GET(request: NextRequest) {
         });
         sent++;
         results.push({ email: user.email, alerts: alerts.length, sent: true });
+
+        // Pocket Agent buzz with the headline deal — uses the
+        // already-approved paybacker_better_deal_found WhatsApp
+        // template and the deal_alert event default for Telegram/push.
+        try {
+          const allowed = await isAlertEnabled(supabase, user.id, 'whatsapp_better_deal');
+          const top = alerts[0];
+          // Rough heuristic — assume an average 20% switching saving.
+          // We don't quote a real comparison, so this is the conservative
+          // "save up to" framing already used on the marketing page.
+          const annualSaving = Math.max(
+            0,
+            Math.round((top.currentAmount ?? 0) * 12 * 0.2),
+          );
+          if (annualSaving > 0) {
+            const switchUrl = `https://paybacker.co.uk/dashboard/deals`;
+            await sendNotification(supabase, {
+              userId: user.id,
+              event: 'deal_alert',
+              telegram: {
+                text:
+                  `🪄 *Better deal found*\n\n` +
+                  `${top.category}: switch from ${top.currentProvider} and save ~£${annualSaving}/year.\n\n` +
+                  `${switchUrl}`,
+              },
+              whatsapp: allowed
+                ? {
+                    templateName: 'paybacker_better_deal_found',
+                    templateParameters: [
+                      String(top.category ?? 'a bill'),
+                      String(annualSaving),
+                      switchUrl,
+                    ],
+                  }
+                : undefined,
+              push: {
+                title: 'Better deal found',
+                body: `${top.category}: save ~£${annualSaving}/year`,
+                deepLink: '/dashboard/deals',
+              },
+            });
+          }
+        } catch (err) {
+          console.error(`[deal-alerts][${user.id}] pocket-agent buzz failed:`, err);
+        }
       } else {
         results.push({ email: user.email, alerts: alerts.length, sent: false, reason: 'Send failed' });
       }

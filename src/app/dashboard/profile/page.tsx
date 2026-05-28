@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
 import { NotificationsManager } from '@/components/profile/NotificationsManager';
+import { WhatsAppAlertsCard } from '@/components/profile/WhatsAppAlertsCard';
 import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
 
 interface Profile {
@@ -1323,6 +1324,9 @@ export default function ProfilePage() {
       </>)}
 
       {section === 'notifications' && (<>
+        <div className="mt-6">
+          <WhatsAppAlertsCard />
+        </div>
         <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
           <NotificationsManager />
         </div>
