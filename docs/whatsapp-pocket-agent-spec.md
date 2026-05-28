@@ -8,10 +8,184 @@ do or query on the dashboard — list disputes, draft a complaint letter,
 chase a supplier, recategorise a transaction, cancel a subscription,
 generate a savings goal — they can do here in plain English.
 
-This document describes the architecture, the tool surface, the
-confirmation flow, the 24h-window handling, and how to extend the
-agent. It is the source-of-truth for engineers touching anything under
-`src/lib/whatsapp/` or `src/app/api/whatsapp/webhook/`.
+This document describes the architecture, the **two-tier model
+strategy** (Haiku for conversation, Sonnet for letter generation), the
+**grounding rules** that keep letters free of hallucinated facts, the
+tool surface, the confirmation flow, the 24h-window handling, and how
+to extend the agent. It is the source-of-truth for engineers touching
+anything under `src/lib/whatsapp/` or `src/app/api/whatsapp/webhook/`.
+
+---
+
+## 0. Two-tier model strategy
+
+```
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ AGENT_MODEL = claude-haiku-4-5-20251001                          │
+  │   Conversational layer, read-only tool calls, summarisation.     │
+  │   ~10× cheaper than Sonnet, faster TTFT — critical for WhatsApp  │
+  │   UX where users expect "iMessage-fast" replies, and at scale    │
+  │   where hundreds of daily-active users compound the cost.        │
+  └──────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼ intercepted for letter tool calls
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ DISPUTE_MODEL = claude-sonnet-4-6                                │
+  │   ONLY used when generating a dispute letter or cancellation     │
+  │   email — i.e. text a real human at a supplier / regulator       │
+  │   will read. Letters are too consequential for the cheap model.  │
+  │   Fed a DB-grounded `groundingContext`; never sees free-form     │
+  │   text from the conversational layer.                            │
+  └──────────────────────────────────────────────────────────────────┘
+```
+
+Both constants live at the top of `src/lib/whatsapp/pocket-agent.ts`
+and are easy to upgrade later (flip the string + redeploy).
+
+### Cost rationale
+
+WhatsApp is a high-frequency surface: a single Pro user may send 30–80
+messages per day across price-increase alerts, dispute follow-ups,
+spend queries, and recategorisations. At Sonnet pricing
+(£/M tokens) and full tool-context, a chatty user runs to several
+pounds per month — fine at 5 users, painful at 5,000. Haiku handles
+tool_use, multi-turn synthesis, and the existing system prompt fine,
+and brings the per-message cost down by an order of magnitude.
+
+Letter generation is the opposite — low frequency, high stakes. A
+single misquoted statute citation in a dispute letter to the Energy
+Ombudsman would be a worse outcome than a thousand 20p Sonnet calls.
+Letters always go through Sonnet, never Haiku.
+
+### Where the split is wired
+
+| Layer | File | Model | Trigger |
+|---|---|---|---|
+| Conversation loop | `pocket-agent.ts::runAgent` | `AGENT_MODEL` | Every inbound that's not YES/NO/STOP. |
+| Letter writer | `dispute-letter-writer.ts::generateGroundedDisputeLetter` → `dispute-reply-engine.ts::generateDisputeReply` → `complaints-agent.ts::generateComplaintLetter` | `DISPUTE_MODEL` | When the agent loop emits a `draft_dispute_letter` tool_use block, the interceptor in `pocket-agent.ts::runLetterInterceptor` short-circuits the default executor and calls the writer chain instead. |
+
+---
+
+## 0.5. Anti-hallucination — strict grounding rules
+
+These rules are non-negotiable. They apply to BOTH model tiers but
+are most important on the letter-writer call.
+
+### 1. Fetch before act
+
+Any tool that takes a `dispute_id`, `transaction_id`,
+`subscription_id`, etc. resolves and validates the row against
+`user_id` BEFORE doing anything. If the row doesn't exist or
+doesn't belong to this user, the tool returns an error string. The
+write never fires. Wired in `executeToolCall` for the default
+executor and in `buildGroundingContext` for the letter writer.
+
+### 2. Grounding check before letter generation
+
+Before the Sonnet call fires, `buildGroundingContext` populates a
+`DisputeGroundingContext` whose every field is read from a real
+Supabase row:
+
+```ts
+{
+  supplierName:        dispute.provider_name,
+  amount:              dispute.disputed_amount,
+  transactionDate:     dispute.created_at,
+  accountName:         bank_connection.account_name,    // null when absent
+  disputeReason:       dispute.issue_summary,
+  issueType:           dispute.issue_type,
+  providerType:        dispute.provider_type,
+  priorLetters:        correspondence[entry_type='ai_letter'],
+  supplierReplies:     correspondence[entry_type IN ('company_email','company_letter')],
+  legislation:         legal_references[verification_status IN ('verified','needs_review')]
+                          AND category MATCHES dispute category,
+  userFullName:        profile.full_name,
+  userAddress:         profile.address,
+  userPostcode:        profile.postcode,
+  firstLetterSentAt:   FIRST(priorLetters).sent_at,
+  priorLetterCount:    priorLetters.length,
+  fcaDeadline:         firstLetterSentAt + 8 weeks,
+  fcaDaysRemaining:    fcaDeadline - now()
+}
+```
+
+If a critical field is missing (`userFullName`, `supplierName`,
+`disputeReason`), the writer returns the missing list to the agent.
+The agent then explains the gap to the user in plain English — for
+example, "I can't draft this letter — your full name is missing from
+your profile. Please update it at paybacker.co.uk/dashboard/profile."
+
+### 3. Letter-writer system prompt
+
+The Sonnet call (inside `complaints-agent.ts::generateComplaintLetter`)
+runs with a system prompt that includes:
+
+- "You are a dispute letter writer for Paybacker. You must ONLY use the
+  exact facts provided in the grounding context below. Do not infer
+  dates, amounts, names, or any other details not explicitly given. Do
+  not fabricate legislation references — only cite the legislation
+  items provided in the grounding context."
+- "If a piece of information you need to write the letter is not in
+  the grounding context, state `[MISSING: field_name]` in the letter
+  draft rather than guessing."
+- "Write in formal UK English. Reference specific sections of the
+  legislation provided."
+
+The conversational layer's free-form text never reaches this prompt
+— only the grounding payload does.
+
+### 4. Legislation lookup
+
+Pulled from `legal_references` rows whose `verification_status` is in
+`('verified', 'needs_review')` and whose `category` matches the
+dispute's `issue_type` / `provider_type`. Each row contributes its
+`law_name`, `section`, `summary`, and `source_url` to the grounding
+payload — full text, not just a name. The writer's prompt forbids
+citing any statute not in the payload.
+
+Coverage gaps are logged to `business_log.category =
+'compliance_grounding_gap'` so the founder can extend the table.
+
+### 5. Confirmation before send
+
+Every letter draft is gated behind a structured YES/NO confirmation
+block. The block is built from grounding fields — not the model's
+output — so the user can sanity-check the facts before the letter
+fires:
+
+```
+*Octopus Energy* — letter #3
+Amount: £142.30
+FCA 8-week clock: 31 days remaining (deadline 28/06/2026).
+Cites:
+• Consumer Rights Act 2015, s.49 — services must be performed with reasonable care and skill…
+• Ofgem GSOP — guaranteed standards of performance for electricity and gas suppliers…
+• Energy Ombudsman scheme — binding award process for unresolved energy complaints…
+
+Letter preview (first 200 chars):
+"Dear Octopus Energy Customer Services, I am writing further to my…"
+
+Reply YES to send, NO to cancel, or describe changes ("make it firmer", "add the £85 figure").
+```
+
+The user types YES; the agent calls `record_letter_sent` to persist
+the SAVE state. The user types NO; `discard_letter_draft` clears it.
+
+### 6. Agent system prompt addendum
+
+The Haiku conversation prompt includes this guard verbatim:
+
+> CRITICAL — GROUNDING RULE (non-negotiable): You are grounded
+> entirely in the user's Paybacker account data. Never speculate
+> about transaction amounts, merchant names, dates, or account
+> details. If you don't have data for something, call the relevant
+> tool to fetch it; only after the tool returns do you state numbers.
+> Never say "approximately", "around", or "probably" when referring
+> to financial figures — always fetch and state the exact number.
+
+Combined with the Drafting Rule ("never write a reply in chat prose
+— always call `draft_dispute_letter`"), this routes all
+high-consequence text through the grounded Sonnet call.
 
 ---
 
@@ -33,63 +207,96 @@ agent. It is the source-of-truth for engineers touching anything under
                                                        ▼
                                       ┌────────────────────────────────┐
                                       │  src/lib/whatsapp/pocket-agent │
-                                      │       (orchestration wrapper)  │
+                                      │   handlePocketAgentMessage()   │
                                       └────────────────────────────────┘
                                                        │
-                                            ┌──────────┴──────────┐
-                                            │                     │
-                                            ▼                     ▼
-                                   pending_action slot?      No slot →
-                                       (YES/NO?)             pass through
-                                            │
-                                            ▼
-                                    Inline handle,                │
-                                    short-circuit.                │
-                                                                  ▼
-                                       ┌──────────────────────────────────────┐
-                                       │ src/lib/whatsapp/user-bot            │
-                                       │   ──── the AI brain ────             │
-                                       │                                      │
-                                       │   • rate-limit check                 │
-                                       │   • conversation history (10 msgs)   │
-                                       │   • Claude tool_use loop             │
-                                       │   • 50+ tools from telegramTools     │
-                                       │   • sendChunked → sendWhatsAppText   │
-                                       │   • message_log insert               │
-                                       └──────────────────────────────────────┘
-                                                       │
-                                                       ▼
-                              ┌────────────────────────────────────────────┐
-                              │  Supabase Postgres                         │
-                              │                                            │
-                              │   • whatsapp_sessions                      │
-                              │       ─ pending_action JSONB               │
-                              │       ─ conversation_history JSONB         │
-                              │   • whatsapp_message_log                   │
-                              │   • disputes / subscriptions / profiles /  │
-                              │     bank_transactions / savings_goals /    │
-                              │     legal_references / ...                 │
-                              └────────────────────────────────────────────┘
+                          ┌────────────────────────────┴────────────────────────────┐
+                          │                                                         │
+                          ▼                                                         ▼
+                 pending_action slot?                                    no slot — run agent
+                     (YES/NO?)                                                      │
+                          │                                                         ▼
+                          ▼                                       ┌────────────────────────────┐
+                Inline handle, short-circuit                      │  runAgent — Anthropic call │
+                          │                                       │     model: AGENT_MODEL     │
+                          ▼                                       │  = claude-haiku-4-5-…      │
+              "OK / Cancelled" → log                              │  tools: telegramTools (50+)│
+                                                                  └────────────────────────────┘
+                                                                                    │
+                                                              tool_use? loop until stop_reason!=tool_use
+                                                                                    │
+                                                                ┌───────────────────┴────────────────────┐
+                                                                │                                        │
+                                                                ▼                                        ▼
+                                                     name = draft_dispute_letter?              name = anything else
+                                                                │                                        │
+                                                                ▼                                        ▼
+                                              ┌──────────────────────────────────┐    ┌─────────────────────────────────┐
+                                              │  runLetterInterceptor            │    │  executeToolCall (default       │
+                                              │    1. resolve dispute_id         │    │  dispatcher used by dashboard,  │
+                                              │    2. buildGroundingContext      │    │  Telegram, WhatsApp)             │
+                                              │       from real DB rows          │    └─────────────────────────────────┘
+                                              │    3. detectMissingCriticalFields│
+                                              │       → return MISSING if any    │
+                                              │    4. call generateDisputeReply  │
+                                              │       └ DISPUTE_MODEL =          │
+                                              │         claude-sonnet-4-6        │
+                                              │       └ grounded in              │
+                                              │         legal_references         │
+                                              │    5. build confirmation block   │
+                                              │       (supplier / amount /       │
+                                              │       letter # / FCA deadline /  │
+                                              │       legislation summary)       │
+                                              └──────────────────────────────────┘
+                                                                │
+                                                                ▼
+                                                  queue pending_action slot
+                                                  send confirmation + letter
+                                                  user replies YES / NO / changes
+                                                                │
+                                                                ▼
+                              ┌─────────────────────────────────────────────────────────────────────────┐
+                              │  Supabase Postgres                                                      │
+                              │                                                                         │
+                              │   • whatsapp_sessions                                                   │
+                              │       ─ pending_action JSONB                                            │
+                              │       ─ conversation_history JSONB                                      │
+                              │   • whatsapp_message_log                                                │
+                              │   • disputes / correspondence / profiles / bank_connections /           │
+                              │     subscriptions / savings_goals / legal_references / ...              │
+                              └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Why a wrapper instead of a rewrite
+### Why this architecture
 
-The brain in `user-bot.ts` is already a direct port of the Telegram bot
-and reuses the same 50+ tool registry (`telegramTools`) and dispatcher
-(`executeToolCall`). It has full AI parity by construction — any tool
-added to the Telegram bot becomes available on WhatsApp automatically.
+`pocket-agent.ts` runs its OWN agent loop on Haiku — it does not delegate
+to `user-bot.ts` for new traffic. The legacy `user-bot.ts` remains in
+place (per CLAUDE.md "new agents are additive only"), unmodified and
+fully functional. It is no longer called from the webhook; if you need
+to roll back the two-tier model in a hurry, swap the webhook import
+from `handlePocketAgentMessage` back to `handleWhatsAppInbound` and
+redeploy.
 
-`CLAUDE.md` forbids modifying existing agent files. The wrapper at
-`pocket-agent.ts` therefore _composes_ the brain rather than rewriting
-it. It owns three things the brain doesn't:
+The agent loop in `pocket-agent.ts::runAgent` reuses the same
+`telegramTools` registry and `executeToolCall` dispatcher that
+`user-bot.ts` does, so tool parity with the Telegram bot is preserved
+by construction — any tool added to `telegramTools` becomes available
+on WhatsApp automatically.
 
-1. **24h customer-service window handling** (see §4).
-2. **Generic YES/NO confirmation flow** (see §3).
-3. **`conversation_history` JSONB mirror** for a future history source.
+The only behavioural difference from the legacy bot:
 
-Everything else — the system prompt, the tool list, the streaming-off
-Claude call, the chunked send, the rate limit, the message log — stays
-in `user-bot.ts`.
+1. **AGENT_MODEL = Haiku** instead of Sonnet for the conversational loop.
+2. **Letter tools are intercepted** — `draft_dispute_letter` is routed
+   through the grounded writer (which uses Sonnet) rather than the
+   default executor.
+3. **Structured confirmation summary** is built from DB fields and sent
+   before the letter body, so the user has a grounded checkpoint
+   before the letter goes out.
+4. **24h window awareness** — every reply goes through
+   `sendPocketAgentReply` which falls back to a template outside the
+   window.
+5. **`pending_action` JSONB slot** + **`conversation_history` JSONB
+   mirror** are owned here.
 
 ---
 
@@ -440,14 +647,17 @@ Agent                     [letter body — 450 words, cites CRA 2015 s.49
 
 | Path | Purpose |
 |---|---|
-| `src/lib/whatsapp/pocket-agent.ts` | Orchestration wrapper — window awareness, pending_action gate, history mirror. |
-| `src/lib/whatsapp/user-bot.ts` | The AI brain — Claude tool loop, send, log. Unchanged from the Telegram port. |
+| `src/lib/whatsapp/pocket-agent.ts` | The active agent. Hosts AGENT_MODEL constant, the Haiku tool loop, the letter-tool interceptor, window-aware send, pending_action slot, and history mirror. |
+| `src/lib/whatsapp/dispute-letter-writer.ts` | DB-grounded letter generation. Builds `DisputeGroundingContext`, validates critical fields, delegates the actual writing to the legal_references-grounded engine (Sonnet). |
+| `src/lib/whatsapp/user-bot.ts` | Legacy AI brain — still here unmodified, no longer called from the webhook. Kept as a rollback path. |
 | `src/lib/whatsapp/session-window.ts` | `isWithinSessionWindow()` — reads `whatsapp_message_log` for last inbound. |
 | `src/lib/whatsapp/template-registry.ts` | Compile-time template source-of-truth (incl. `paybacker_pocket_agent_reply`). |
 | `src/lib/whatsapp/template-sids.ts` | Runtime SID resolver (env / DB / registry / null). |
 | `src/lib/whatsapp/index.ts` | Provider-agnostic send / parse / verify entry points. |
 | `src/lib/whatsapp/twilio-provider.ts` | Twilio Content API adapter. |
 | `src/lib/whatsapp/meta-provider.ts` | Meta Cloud API adapter. |
+| `src/lib/agents/dispute-reply-engine.ts` | Letter-grounding engine — pulls from `legal_references`, calls Sonnet. Single source of truth across surfaces. |
+| `src/lib/agents/complaints-agent.ts` | The actual `generateComplaintLetter` Anthropic call (DISPUTE_MODEL = claude-sonnet-4-6). |
 | `src/lib/telegram/tools.ts` | Tool registry — shared between Telegram and WhatsApp. |
 | `src/lib/telegram/tool-handlers.ts` | Tool dispatcher — keyed by name, channel-aware (`'telegram' \| 'whatsapp'`). |
 | `src/app/api/whatsapp/webhook/route.ts` | Inbound webhook. Resolves user, gates, hands off to pocket-agent. |
