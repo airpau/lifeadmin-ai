@@ -296,6 +296,9 @@ interface StalledDispute {
   status: string | null;
   agent_state: string | null;
   updated_at: string;
+  first_letter_sent_at: string | null;
+  fca_8_week_deadline: string | null;
+  dispute_type: string | null;
 }
 
 interface StallSweepResult {
@@ -319,10 +322,16 @@ async function runStallSweep(
   // is applied in JS because Supabase's .or() doesn't compose neatly
   // with a NULL-or-old check. Row count is bounded by the partial
   // index in 20260517110000_disputes_stall_alert_sent_at.sql.
+  //
+  // Also fetch first_letter_sent_at + fca_8_week_deadline so the stall
+  // message can reference how many days the letter has been with the
+  // supplier AND the FCA escalation clock — strictly more specific than
+  // the previous "no movement in N days" copy that Paul flagged
+  // 2026-05-28 as ineffective.
   const { data: rows, error } = await supabase
     .from('disputes')
     .select(
-      'id, user_id, provider_name, merchant_normalised, status, agent_state, updated_at, stall_alert_sent_at, archived_at',
+      'id, user_id, provider_name, merchant_normalised, status, agent_state, updated_at, stall_alert_sent_at, archived_at, first_letter_sent_at, fca_8_week_deadline, dispute_type',
     )
     .or('status.eq.open,agent_state.in.(draft,awaiting_user_input)')
     .lt('updated_at', stalledBefore)
@@ -384,12 +393,74 @@ async function runStallSweep(
       (Date.now() - new Date(d.updated_at).getTime()) / 86_400_000,
     );
     const merchant = d.provider_name || d.merchant_normalised || 'your dispute';
-    const summary =
-      `No movement in ${daysStalled} days — chase the supplier or escalate before it goes cold`;
-    const cta = 'review and act';
-    // Prefer the agent_state label when set (it's more specific —
-    // 'draft' vs 'awaiting_user_input') and fall back to status.
+    // Pick a state-aware action_summary + reply keyword so the message is
+    // specific to where the dispute actually is — not the previous generic
+    // "no movement" copy. Three branches:
+    //   - DRAFT  → letter never went out; user needs to SEND it
+    //   - AWAITING_USER_INPUT → supplier replied; user owes a decision
+    //   - everything else (status='open') → supplier is ignoring;
+    //     either CHASE (if FCA clock has slack) or ESCALATE (≤7 days)
+    let summary: string;
+    let cta: string;
+    let telegramDetail: string;
+    let telegramRecommendation: string;
     const stateLabel = d.agent_state || d.status || 'open';
+
+    if (stateLabel === 'draft') {
+      summary = `Your letter has been drafted for ${daysStalled} days but never sent — every day the clock is paused.`;
+      cta = 'SEND';
+      telegramDetail =
+        `Your ${merchant} letter has been sitting in *draft* for ${daysStalled} days. ` +
+        `The FCA 8-week clock only starts when the supplier actually receives your complaint, so this delay is costing you escalation rights. ` +
+        `Reply SEND to dispatch it now, or VIEW to read it first.`;
+      telegramRecommendation = 'send the draft now';
+    } else if (stateLabel === 'awaiting_user_input') {
+      summary = `${merchant} responded ${daysStalled} days ago but you have not replied — they may close the case as resolved.`;
+      cta = 'REVIEW';
+      telegramDetail =
+        `${merchant} replied to your dispute ${daysStalled} days ago and you have not responded. ` +
+        `Reply REVIEW and I will summarise the offer, then we can ACCEPT, NEGOTIATE, or ESCALATE.`;
+      telegramRecommendation = 'review the supplier reply';
+    } else {
+      // FCA 8-week computation: if we know first_letter_sent_at, derive the
+      // remaining days; otherwise fall back to fca_8_week_deadline if the
+      // column is populated. Energy / broadband / finance disputes share
+      // the 8-week regulator clock under Ofgem / Ofcom / FCA rules.
+      let daysToFca: number | null = null;
+      if (d.fca_8_week_deadline) {
+        daysToFca = Math.floor(
+          (new Date(d.fca_8_week_deadline).getTime() - Date.now()) / 86_400_000,
+        );
+      } else if (d.first_letter_sent_at) {
+        const sentAt = new Date(d.first_letter_sent_at).getTime();
+        const eightWeeksLater = sentAt + 56 * 86_400_000;
+        daysToFca = Math.floor((eightWeeksLater - Date.now()) / 86_400_000);
+      }
+
+      if (daysToFca !== null && daysToFca <= 7) {
+        const deadlineText = daysToFca <= 0
+          ? `the 8-week deadline has passed — you can escalate today`
+          : `the 8-week deadline is in ${daysToFca} day${daysToFca === 1 ? '' : 's'}`;
+        summary = `${merchant} has not responded in ${daysStalled} days — ${deadlineText}.`;
+        cta = 'ESCALATE';
+        telegramDetail =
+          `Your ${merchant} dispute has had no response for ${daysStalled} days and ${deadlineText}. ` +
+          `Suppliers stall right up to the regulator deadline hoping you give up. ` +
+          `Reply ESCALATE and I will draft the regulator referral (Ofgem / Ofcom / FOS as relevant).`;
+        telegramRecommendation = 'escalate to the regulator';
+      } else {
+        const deadlinePhrase = daysToFca !== null
+          ? ` — ${daysToFca} day${daysToFca === 1 ? '' : 's'} until the 8-week regulator deadline`
+          : '';
+        summary = `${merchant} has not responded for ${daysStalled} days${deadlinePhrase}.`;
+        cta = 'CHASE';
+        telegramDetail =
+          `Your ${merchant} dispute has been sitting silent for ${daysStalled} days${deadlinePhrase}. ` +
+          `Suppliers stall hoping you give up. Reply CHASE and I will draft a firm follow-up letter, ` +
+          `or ESCALATE if you would rather skip straight to the regulator.`;
+        telegramRecommendation = 'send a chase letter';
+      }
+    }
 
     try {
       const result = await dispatchPocketAgentAlert({
@@ -398,11 +469,8 @@ async function runStallSweep(
         detectedIssueId: d.id,
         telegram: {
           title: `Stalled dispute: ${merchant}`,
-          detail:
-            `Your ${merchant} dispute has been sitting in *${stateLabel}* for ${daysStalled} days. ` +
-            `Suppliers stall hoping you give up — a chase letter or ombudsman escalation usually unblocks it. ` +
-            `Open Paybacker to review the next step.`,
-          recommendation: cta,
+          detail: telegramDetail,
+          recommendation: telegramRecommendation,
         },
         whatsappVars: {
           merchant,

@@ -3,6 +3,62 @@
  * submitted to Meta on 2026-04-27.
  *
  * ────────────────────────────────────────────────────────────────────────
+ * RESUBMISSION CYCLE (2026-05-28) — DEAD "TAP TO X" CTAs
+ * ────────────────────────────────────────────────────────────────────────
+ * Paul flagged the WhatsApp Pocket Agent as broken because every template
+ * body ended with "Tap to X" copy that does NOT render as tappable in
+ * WhatsApp. The static instruction looked like a button — wasn't one. He
+ * shared a screenshot of three messages (one dispute-agent action + two
+ * outcome-check nudges) all ending with dead "Tap to ..." CTAs.
+ *
+ * Every body below has been rewritten to one of three end-state shapes:
+ *   (1) Reply-keyword prompt — "Reply DISPUTE to challenge it" — which
+ *       the Pocket Agent user-bot already understands as a natural
+ *       intent. Used for price-increase, renewal, unusual-charge,
+ *       trial-ending, outcome-check, dispute-agent-action.
+ *   (2) Plain auto-linked URL — "See the breakdown at
+ *       paybacker.co.uk/dashboard/X." WhatsApp auto-linkifies plain
+ *       URLs on every device. Used for money-recovered, savings-
+ *       milestone, budget-alert, recovery-weekly, dispute-created.
+ *   (3) Self-contained statement — no CTA at all. Used for welcome
+ *       and opted-out where there is nothing for the user to do.
+ *
+ * All previously-`approved` templates whose bodies have CHANGED have
+ * been reset to `PENDING_RESUBMISSION` and need the founder to resubmit
+ * via /dashboard/admin/whatsapp Resubmit panel. Meta typically approves
+ * UTILITY templates inside 24h.
+ *
+ * Templates needing resubmission after this update (2026-05-28):
+ *   - paybacker_alert_price_increase  (reply-keyword body)
+ *   - paybacker_alert_renewal         (reply-keyword body)
+ *   - paybacker_alert_unusual_charge  (reply-keyword body)
+ *   - paybacker_alert_trial_ending    (reply-keyword body)
+ *   - paybacker_dispute_created       (plain URL body)
+ *   - paybacker_money_recovered       (plain URL body)
+ *   - paybacker_outcome_check         (reply-keyword body — also added
+ *                                      PARTIAL + REJECTED buttons)
+ *   - paybacker_savings_goal_milestone (plain URL body)
+ *   - paybacker_budget_alert          (plain URL body)
+ *   - paybacker_recovery_total_weekly (plain URL body)
+ *   - paybacker_dispute_agent_action  (reply-keyword body — callers now
+ *                                      pass a single-word reply keyword
+ *                                      as `cta`, not an imperative phrase)
+ *
+ * Templates that don't need re-approval after this update:
+ *   - paybacker_dispute_reply, paybacker_complaint_letter_ready,
+ *     paybacker_reconnect_required, paybacker_better_deal_found —
+ *     bodies were already URL-anchored, no dead CTA.
+ *   - paybacker_welcome — self-contained.
+ *   - paybacker_morning_summary — already paused pending separate
+ *     resubmission (see the long comment on that entry).
+ *   - paybacker_opted_out, paybacker_login_code — unchanged.
+ *
+ * Variable counts are UNCHANGED on every template — existing callers
+ * keep working with the in-flight (still-approved) bodies until Meta
+ * re-approves, then start serving the new bodies once the founder
+ * pastes the new SIDs back into `whatsapp_template_sids`.
+ *
+ * ────────────────────────────────────────────────────────────────────────
  * LESSON LEARNT (2026-04-29) — VARIABLES AT EITHER END
  * ────────────────────────────────────────────────────────────────────────
  * Meta rejects templates with variables at EITHER start OR end. Always
@@ -179,13 +235,16 @@ export const TEMPLATES = {
   },
   /** Triggered by price-increase-detector.ts when a sub goes up */
   paybacker_alert_price_increase: {
-    // Resubmission required — original body ended on `{{4}}`.
+    // 2026-05-28 BODY UPDATE — dead "Tap to switch or cancel." CTA replaced
+    // with reply-keyword instruction (DISPUTE / SWITCH). The Pocket Agent
+    // user-bot already understands both keywords as natural intents.
+    // Founder must resubmit via /dashboard/admin/whatsapp Resubmit panel.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['merchant', 'old_price', 'new_price', 'effective_date'] as const,
     description: 'Subscription price hike detected',
     proOnly: true,
-    body: 'Heads up — {{1}} is going up from £{{2}} to £{{3}} on {{4}}. Tap to switch or cancel.',
+    body: 'Heads up — {{1}} is going up from £{{2}} to £{{3}} on {{4}}. Reply DISPUTE to challenge it, or SWITCH to see cheaper alternatives.',
     // Button taps land in the webhook with these titles in `text`:
     //   "Dismiss"            → agent calls dismiss_price_alert
     //   "Draft dispute"      → agent calls draft_dispute_letter for this merchant
@@ -198,13 +257,14 @@ export const TEMPLATES = {
   },
   /** Contract end ≤30 days, looks at contract_end_date on subscriptions */
   paybacker_alert_renewal: {
-    // Resubmission required — original body ended on `{{3}}`.
+    // 2026-05-28 BODY UPDATE — dead "Tap to review or cancel." replaced with
+    // reply keywords. Founder resubmits via /dashboard/admin/whatsapp.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['service', 'days_left', 'monthly_cost'] as const,
     description: 'Contract renewal approaching',
     proOnly: true,
-    body: 'Your {{1}} contract renews in {{2}} days at £{{3}}/month. Tap to review or cancel.',
+    body: 'Your {{1}} contract renews in {{2}} days at £{{3}}/month. Reply CANCEL to draft a cancellation letter, or SWITCH to see cheaper alternatives.',
     // "Cancel"             → generate_cancellation_email
     // "Keep it"            → no-op acknowledgement
     // "Find alternatives"  → agent surfaces deals + suggests switch
@@ -216,38 +276,39 @@ export const TEMPLATES = {
   },
   /** Bank scanner spots a charge >20% above the merchant's rolling avg */
   paybacker_alert_unusual_charge: {
-    // Resubmission required — original body ended on `{{4}}`.
+    // 2026-05-28 BODY UPDATE — dead "Tap to dispute." replaced with reply
+    // keyword. Founder resubmits via /dashboard/admin/whatsapp.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['merchant', 'current_amount', 'average_amount', 'percent_higher'] as const,
     description: 'Bill anomaly detected',
     proOnly: true,
-    body: 'Spotted something — {{1}} just charged £{{2}} vs your usual £{{3}} — that is {{4}}% higher. Tap to dispute.',
+    body: 'Spotted something — {{1}} just charged £{{2}} vs your usual £{{3}} — that is {{4}}% higher. Reply DISPUTE to draft a complaint letter.',
   },
   /** Free trial → first auto-charge ≤3 days away */
   paybacker_alert_trial_ending: {
-    // Resubmission required — original body ended on `{{3}}`.
+    // 2026-05-28 BODY UPDATE — dead "Tap to cancel" replaced with reply
+    // keyword. Founder resubmits via /dashboard/admin/whatsapp.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['service', 'days_left', 'auto_charge_amount'] as const,
     description: 'Free trial ending — auto-charge incoming',
     proOnly: true,
-    body: 'Your {{1}} trial ends in {{2}} days — you will be charged £{{3}}. Tap to cancel before then.',
+    body: 'Your {{1}} trial ends in {{2}} days — you will be charged £{{3}}. Reply CANCEL to draft a cancellation email before then.',
   },
   /** A new dispute row was opened — fires immediately on creation,
    *  before the AI letter is ready. paybacker_complaint_letter_ready
    *  fires separately ~20-30s later when Sonnet finishes drafting. */
   paybacker_dispute_created: {
-    // PENDING — needs Meta resubmission via /dashboard/admin/whatsapp.
-    // Body intentionally ends with static text (Meta rejects bodies
-    // that end on a {{var}}, same constraint that bit the original
-    // complaint_letter_ready submission).
+    // 2026-05-28 BODY UPDATE — dead "Tap to follow it" stripped; the URL
+    // {{2}} is auto-linked by WhatsApp on every device, so users tap the
+    // link itself rather than a static instruction.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['merchant', 'dispute_url'] as const,
     description: 'New dispute opened in the disputes centre',
     proOnly: true,
-    body: 'New dispute opened against {{1}}. Tap to follow it: {{2}} — your AI letter will land in this chat once it is drafted.',
+    body: 'New dispute opened against {{1}}: {{2}} — your AI letter will land in this chat once it is drafted.',
   },
   /** Complaint letter generated and ready to download */
   paybacker_complaint_letter_ready: {
@@ -262,13 +323,14 @@ export const TEMPLATES = {
   },
   /** Bank sync detects a refund hitting a Paybacker-tracked dispute */
   paybacker_money_recovered: {
-    // Resubmission required — original body ended on `{{3}}`.
+    // 2026-05-28 BODY UPDATE — dead "Tap to see the breakdown." replaced
+    // with a plain URL WhatsApp auto-links on every device.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['amount', 'merchant', 'lifetime_total'] as const,
     description: 'Refund hit account — money recovered',
     proOnly: true,
-    body: '£{{1}} from {{2}} just landed in your account. Lifetime recovered: £{{3}}. Tap to see the breakdown.',
+    body: '£{{1}} from {{2}} just landed in your account. Lifetime recovered: £{{3}}. See the breakdown at paybacker.co.uk/dashboard/disputes.',
   },
   /** Watchdog email scanner finds a merchant reply to an open dispute */
   paybacker_dispute_reply: {
@@ -282,23 +344,30 @@ export const TEMPLATES = {
   },
   /** T+7d nudge after dispute sent — did it work? */
   paybacker_outcome_check: {
-    // Resubmission required — original body ended on `{{2}}`.
+    // 2026-05-28 BODY UPDATE — replaced the dead "Tap to log the outcome."
+    // copy with an explicit reply-keyword prompt. The Pocket Agent user-bot
+    // already understands WON / PARTIAL / REJECTED / ONGOING (and "lost" /
+    // "still waiting") as natural-language outcome intents — taps from the
+    // quick-reply buttons below surface as title text and route to the same
+    // handlers. Founder resubmits via /dashboard/admin/whatsapp.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['merchant', 'action_type'] as const,
     description: 'Outcome check after dispute / cancellation',
     proOnly: true,
-    body: 'A week ago you sent a {{2}} to {{1}}. Did it work? Tap to log the outcome.',
-    // Taps surface as text — and the 793a345c natural-language outcome
-    // intelligence in tool-handlers.ts already understands "won", "lost"
-    // and "still waiting" against the most recent dispute. So:
+    body: 'Your {{1}} {{2}} hit 7 days. Have they responded? Reply WON, PARTIAL, REJECTED, or ONGOING and I will update your case.',
+    // Taps surface as text — and the natural-language outcome intelligence
+    // in tool-handlers.ts understands every label below against the most
+    // recent dispute. So:
     //   "Won"           → resolved_won + writes recovered_amount_gbp
-    //   "Lost"          → resolved_lost
-    //   "Still waiting" → awaiting_response (and may re-arm the nudge)
+    //   "Partial"       → resolved_partial
+    //   "Rejected"      → resolved_lost
+    //   "Ongoing"       → awaiting_response (and may re-arm the nudge)
     buttons: [
       { id: 'outcome_won', title: 'Won' },
-      { id: 'outcome_lost', title: 'Lost' },
-      { id: 'outcome_waiting', title: 'Still waiting' },
+      { id: 'outcome_partial', title: 'Partial' },
+      { id: 'outcome_rejected', title: 'Rejected' },
+      { id: 'outcome_ongoing', title: 'Ongoing' },
     ] as const,
   },
   /**
@@ -355,23 +424,25 @@ export const TEMPLATES = {
   },
   /** Savings goal milestone (25/50/75/100% bands) */
   paybacker_savings_goal_milestone: {
-    // Resubmission required — original body ended on `{{4}}`.
+    // 2026-05-28 BODY UPDATE — dead "Tap to see your progress." replaced
+    // with a plain auto-linked URL.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['goal_name', 'percent', 'amount_saved', 'target_amount'] as const,
     description: 'Savings goal milestone hit',
     proOnly: true,
-    body: 'Goal "{{1}}" just hit {{2}}% — £{{3}} saved of £{{4}}. Tap to see your progress.',
+    body: 'Goal "{{1}}" just hit {{2}}% — £{{3}} saved of £{{4}}. See your progress at paybacker.co.uk/dashboard/money-hub.',
   },
   /** Budget approaching/over limit per category */
   paybacker_budget_alert: {
-    // Resubmission required — original body ended on `{{4}}`.
+    // 2026-05-28 BODY UPDATE — dead "Tap to review what is driving it."
+    // replaced with a plain auto-linked URL.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['category', 'percent_used', 'amount_left', 'end_date'] as const,
     description: 'Budget threshold reached',
     proOnly: true,
-    body: 'Your {{1}} budget is at {{2}}% — £{{3}} left until {{4}}. Tap to review what is driving it.',
+    body: 'Your {{1}} budget is at {{2}}% — £{{3}} left until {{4}}. See what is driving it at paybacker.co.uk/dashboard/money-hub.',
   },
   /** Bank/email connection token expired — needs user action */
   paybacker_reconnect_required: {
@@ -386,13 +457,14 @@ export const TEMPLATES = {
   /** Saturday 09:00 BST weekly recovery digest. Fired by
    *  /api/cron/telegram-weekly-summary (schedule "0 8 * * 6"). */
   paybacker_recovery_total_weekly: {
-    // Resubmission required — original body ended on `{{2}}`.
+    // 2026-05-28 BODY UPDATE — dead "Tap to see the wins." replaced
+    // with a plain auto-linked URL.
     sid: PENDING_RESUBMISSION,
     category: 'UTILITY',
     vars: ['amount_this_week', 'lifetime_amount'] as const,
     description: 'Weekly recovery digest (Saturday 09:00 BST)',
     proOnly: true,
-    body: 'This week Paybacker recovered £{{1}} for you. Lifetime total: £{{2}}. Tap to see the wins.',
+    body: 'This week Paybacker recovered £{{1}} for you. Lifetime total: £{{2}}. See the breakdown at paybacker.co.uk/dashboard/disputes.',
   },
   /**
    * OTP for sensitive actions (password reset, plan change, etc.)
@@ -432,8 +504,17 @@ export const TEMPLATES = {
     body: 'Your Paybacker login code is {{1}}. It expires in 5 minutes. Do not share it with anyone.',
   },
   /** Dispute Agent recommendation push — added 2026-05-01 with the
-   *  autonomous Dispute Agent state machine. Body skeleton:
-   *  "Update on your {{merchant}} dispute: {{action_summary}}. Tap to {{cta}}."
+   *  autonomous Dispute Agent state machine.
+   *
+   *  2026-05-28 BODY UPDATE — Paul flagged the original "Tap to {{cta}} —
+   *  open Paybacker to review." copy as broken: WhatsApp does not turn
+   *  static text into a tappable link, so the CTA looked dead. Replaced
+   *  with an explicit reply-keyword prompt the Pocket Agent user-bot can
+   *  route on (SEND / CHASE / ESCALATE / OFFER / WON / LBA / CLAIM / REVIEW).
+   *  Callers MUST now pass `cta` as one of those keywords (see
+   *  `ctaFor()` in src/app/api/cron/dispute-agent/route.ts and the
+   *  stall-sweep in src/app/api/cron/dispute-letter-followup/route.ts).
+   *
    *  Submit via /dashboard/admin/whatsapp Resubmit panel, then replace
    *  PENDING_RESUBMISSION with the live SID. */
   paybacker_dispute_agent_action: {
@@ -442,7 +523,7 @@ export const TEMPLATES = {
     vars: ['merchant', 'action_summary', 'cta'] as const,
     description: 'Dispute Agent action recommendation (state machine)',
     proOnly: true,
-    body: 'Update on your {{1}} dispute: {{2}}. Tap to {{3}} — open Paybacker to review.',
+    body: 'Update on your {{1}} dispute: {{2}} Reply {{3}} and I will action it, or open paybacker.co.uk/dashboard.',
   },
   /**
    * Opt-out confirmation — sent after the user replies STOP (or hits

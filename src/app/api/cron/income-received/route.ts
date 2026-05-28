@@ -193,7 +193,7 @@ async function runCron() {
     const amount = fmtGBP(Number(tx.amount));
 
     const headline = `${emoji} Good news — ${amount} just landed`;
-    const detail = `From *${merchant}*. Tap to see your new balance.`;
+    const detail = `From *${merchant}*. See your new balance at paybacker.co.uk/dashboard/money-hub.`;
 
     try {
       // Always insert into the in-app notification bell so the website

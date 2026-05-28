@@ -139,7 +139,7 @@ export async function GET(req: NextRequest) {
             text:
               `⏰ *Trial ending in ${daysLeft} days*\n\n` +
               `*${trial.provider_name}* will auto-charge £${Number(trial.amount).toFixed(2)} on ${new Date(trial.contract_end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.\n\n` +
-              `Reply "cancel ${trial.provider_name}" to draft a cancellation letter, or open Paybacker → Subscriptions.`,
+              `Reply *CANCEL* to draft a cancellation email citing the 14-day cooling-off rule.`,
           },
           whatsapp: {
             templateName: 'paybacker_alert_trial_ending',
@@ -224,7 +224,7 @@ export async function GET(req: NextRequest) {
             text:
               `🚨 *Unusual charge from ${merchantLabel}*\n\n` +
               `*£${currentAmount.toFixed(2)}* — ${percentHigher}% higher than your usual £${avg.toFixed(2)}.\n\n` +
-              `Open Paybacker → Money Hub to investigate or dispute.`,
+              `Reply *DISPUTE* to draft a complaint letter, or *EXPLAIN* if it looks expected.`,
           },
           whatsapp: {
             templateName: 'paybacker_alert_unusual_charge',
@@ -258,11 +258,17 @@ export async function GET(req: NextRequest) {
 
     // ============================================================
     // 3) OUTCOME CHECK — T+7d nudge for disputes still open
+    //
+    // 2026-05-28 fix: the template parameters now carry a friendlier
+    // action label (e.g. "energy dispute" not "energy_dispute") and the
+    // Telegram body uses the structured reply keywords the user-bot
+    // already understands (WON / PARTIAL / REJECTED / ONGOING) instead
+    // of the older "escalate X" / "resolved" free-form copy.
     // ============================================================
     try {
       const { data: opens } = await sb
         .from('disputes')
-        .select('id, provider_name, issue_type, created_at, status')
+        .select('id, provider_name, issue_type, dispute_type, created_at, first_letter_sent_at, money_recovered, status')
         .eq('user_id', userId)
         .gte('created_at', eightDaysAgo)
         .lt('created_at', sevenDaysAgo)
@@ -279,23 +285,43 @@ export async function GET(req: NextRequest) {
           .maybeSingle();
         if (alreadyAlerted) continue;
 
-        const actionType = dispute.issue_type || 'dispute';
+        // Action-type label — strip "_dispute" / "_complaint" suffixes
+        // from the raw issue_type so the template reads "Your Sky energy
+        // dispute" not "Your Sky energy_dispute dispute". We also drop
+        // the trailing "dispute" word because the template already says
+        // "your {{merchant}} {{action_type}}" with the template-side
+        // copy assuming the action_type is the noun phrase.
+        const rawType = dispute.issue_type || dispute.dispute_type || 'dispute';
+        const actionLabel = rawType
+          .replace(/_dispute$|_complaint$/i, '')
+          .replace(/_/g, ' ')
+          .trim() || 'dispute';
+        // Days since the letter was sent (falls back to dispute creation
+        // when the engine never recorded a send timestamp).
+        const sentAt = dispute.first_letter_sent_at || dispute.created_at;
+        const daysSince = Math.floor(
+          (now.getTime() - new Date(sentAt).getTime()) / 86_400_000,
+        );
+
         const result = await sendNotification(sb, {
           userId,
           event: 'outcome_check',
           telegram: {
             text:
-              `📞 *Quick follow-up: ${dispute.provider_name}*\n\n` +
-              `You opened a ${actionType.replace(/_/g, ' ')} 7 days ago. Did they reply, refund, or are they still ignoring you?\n\n` +
-              `Reply with "escalate ${dispute.provider_name}" to draft an escalation letter, or "resolved" to close the case.`,
+              `📞 *${dispute.provider_name} — outcome check*\n\n` +
+              `It's been ${daysSince} day${daysSince === 1 ? '' : 's'} since you sent your ${actionLabel} dispute. ` +
+              `Have they responded?\n\n` +
+              `Reply *WON*, *PARTIAL*, *REJECTED*, or *ONGOING* and I will update your case. ` +
+              `For a follow-up letter, reply CHASE; to refer to the regulator, reply ESCALATE.`,
           },
           whatsapp: {
             templateName: 'paybacker_outcome_check',
-            templateParameters: [dispute.provider_name, actionType.replace(/_/g, ' ')],
+            // {{1}} = merchant, {{2}} = action label (e.g. "energy dispute")
+            templateParameters: [dispute.provider_name, `${actionLabel} dispute`],
           },
           push: {
             title: `${dispute.provider_name} — any reply yet?`,
-            body: '7-day follow-up on your open dispute',
+            body: `${daysSince}-day follow-up on your open dispute`,
           },
         });
 

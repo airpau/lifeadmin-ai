@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
         const headline = newIncreases.length === 1
           ? `💸 *${newIncreases[0].merchantNormalized}* went up £${(newIncreases[0].newAmount - newIncreases[0].oldAmount).toFixed(2)} (+${newIncreases[0].increasePct}%)`
           : `💸 *${newIncreases.length} price increases detected* on your bills`;
-        const telegramText = `${headline}\n\n${newIncreases.map(i => `• ${i.merchantNormalized}: £${i.oldAmount} → £${i.newAmount} (+${i.increasePct}%)`).join('\n')}\n\nOpen Paybacker → Dashboard → Price increase alerts to action.`;
+        const telegramText = `${headline}\n\n${newIncreases.map(i => `• ${i.merchantNormalized}: £${i.oldAmount} → £${i.newAmount} (+${i.increasePct}%)`).join('\n')}\n\nReply *DISPUTE* with the provider name to draft a challenge letter, or *SWITCH* to see cheaper alternatives.`;
 
         // WhatsApp template only fires when there's exactly one merchant
         // (the Meta-approved template has 4 fixed slots for a single
