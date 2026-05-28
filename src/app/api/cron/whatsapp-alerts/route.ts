@@ -266,18 +266,31 @@ export async function GET(req: NextRequest) {
     // Telegram body uses the structured reply keywords the user-bot
     // already understands (WON / PARTIAL / REJECTED / ONGOING) instead
     // of the older "escalate X" / "resolved" free-form copy.
+    //
+    // 2026-05-28 dedup fix: Paul flagged that the same dispute was
+    // getting nudged twice (01:00 + 07:00 BST = two consecutive 6h
+    // cron runs catching the same dispute in their 24h sliding
+    // windows). The notification_log pre-check is racey + any silent
+    // insert failure leaks a second send. We now filter on
+    // disputes.outcome_check_sent_at IS NULL in the query AND stamp
+    // it immediately after the first successful send. See
+    // 20260528190000_disputes_outcome_check_sent_at.sql.
     // ============================================================
     try {
       const { data: opens } = await sb
         .from('disputes')
-        .select('id, provider_name, issue_type, dispute_type, created_at, first_letter_sent_at, money_recovered, status')
+        .select('id, provider_name, issue_type, dispute_type, created_at, first_letter_sent_at, money_recovered, status, outcome_check_sent_at')
         .eq('user_id', userId)
         .gte('created_at', eightDaysAgo)
         .lt('created_at', sevenDaysAgo)
+        .is('outcome_check_sent_at', null)
         .not('status', 'in', '(resolved_won,resolved_lost,resolved_partial,withdrawn,closed,dismissed)')
         .limit(10);
 
       for (const dispute of opens ?? []) {
+        // Belt-and-braces: notification_log check stays in place in
+        // case the column-level filter ever drifts. The canonical
+        // dedup is now the outcome_check_sent_at stamp written below.
         const { data: alreadyAlerted } = await sb
           .from('notification_log')
           .select('id')
@@ -329,6 +342,15 @@ export async function GET(req: NextRequest) {
 
         if (result.delivered.length > 0) {
           counts.outcome_check++;
+          // Canonical dedup: stamp the dispute row first so the very
+          // next cron run filters it out at the query layer, even if
+          // the notification_log insert below silently fails (RLS,
+          // transient network, unique-collision race). Without this
+          // the cron was double-firing T+7d nudges 6h apart.
+          await sb
+            .from('disputes')
+            .update({ outcome_check_sent_at: now.toISOString() })
+            .eq('id', dispute.id);
           await sb.from('notification_log').insert({
             user_id: userId,
             notification_type: 'outcome_check',
