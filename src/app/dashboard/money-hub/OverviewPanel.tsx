@@ -99,19 +99,65 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
   const { monthlyIncome, monthlyOutgoings, savingsRate, incomeBreakdown } = overview;
   const monthlyTrends = spending?.monthlyTrends || [];
 
-  // Income breakdown entries
-  const incomeEntries = Object.entries(incomeBreakdown || {})
+  // Income breakdown entries.
+  //
+  // Multiple raw income_type values can map to the same display label
+  // (rental_airbnb + rental_direct + rental → "Rental Income";
+  //  loan_repayment + credit_loan → "Loan Credit"; any unmapped type
+  //  → "Other"). The pre-merge breakdown therefore renders duplicate
+  // "Rental Income" / "Loan Credit" / "Other" rows. Group entries by
+  // display label, sum the amounts, and keep the largest-amount raw
+  // type as the drill-down anchor so the row's £-figure matches the
+  // headline total.
+  const rawIncomeEntries = Object.entries(incomeBreakdown || {})
     .map(([type, amount]) => ({
       type,
       amount: amount as number,
       ...(INCOME_LABELS[type] || INCOME_LABELS.other),
     }))
-    .filter(e => e.amount > 0)
-    .sort((a, b) => b.amount - a.amount);
+    .filter(e => e.amount > 0);
+
+  const incomeByLabel = new Map<string, { type: string; amount: number; anchorAmount: number; label: string; icon: string; color: string }>();
+  for (const e of rawIncomeEntries) {
+    const cur = incomeByLabel.get(e.label);
+    if (!cur) {
+      incomeByLabel.set(e.label, { ...e, anchorAmount: e.amount });
+    } else {
+      cur.amount += e.amount;
+      if (e.amount > cur.anchorAmount) {
+        cur.type = e.type;
+        cur.anchorAmount = e.amount;
+      }
+    }
+  }
+  const incomeEntries = Array.from(incomeByLabel.values()).sort((a, b) => b.amount - a.amount);
 
   const totalIncomeFromBreakdown = incomeEntries.reduce((s, e) => s + e.amount, 0);
 
-  const spendingCategories = spending?.categories || [];
+  // Spending categories — same label-dedup as income. The DB stores
+  // historical category values like 'loan' / 'loans', 'fee' / 'fees',
+  // 'utility' / 'utilities', 'professional' / 'professional_services'
+  // which all share a display label. Without dedup the user sees the
+  // same label twice in the breakdown.
+  const rawSpendingCategories: { category: string; total: number; transaction_count?: number }[] = spending?.categories || [];
+  const spendingByLabel = new Map<string, { category: string; total: number; anchorTotal: number; transaction_count: number }>();
+  for (const c of rawSpendingCategories) {
+    if (!c || !(c.total > 0)) continue;
+    const label = getSpendMeta(c.category).label;
+    const cur = spendingByLabel.get(label);
+    const txnCount = c.transaction_count || 0;
+    if (!cur) {
+      spendingByLabel.set(label, { category: c.category, total: c.total, anchorTotal: c.total, transaction_count: txnCount });
+    } else {
+      cur.total += c.total;
+      cur.transaction_count += txnCount;
+      if (c.total > cur.anchorTotal) {
+        cur.category = c.category;
+        cur.anchorTotal = c.total;
+      }
+    }
+  }
+  const spendingCategories = Array.from(spendingByLabel.values()).sort((a, b) => b.total - a.total);
   const totalSpentFromBreakdown = spending?.totalSpent || spendingCategories.reduce((s: number, c: any) => s + c.total, 0);
 
   const VISIBLE_ROWS = 6;
