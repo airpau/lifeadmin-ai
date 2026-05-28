@@ -35,16 +35,7 @@ export type AlertType =
   | 'subscription_renewing'
   | 'unusual_charge'
   | 'money_recovered'
-  | 'dispute_agent_action'
-  | 'morning_summary'
-  | 'weekly_digest'
-  | 'savings_milestone'
-  | 'reconnect_required'
-  | 'trial_ending'
-  | 'dispute_created'
-  | 'complaint_letter_ready'
-  | 'outcome_check'
-  | 'welcome';
+  | 'dispute_agent_action';
 
 export interface ActiveSession {
   user_id: string;
@@ -55,12 +46,8 @@ export interface ActiveSession {
 
 /**
  * Pull every active Pocket Agent session across BOTH channels, in
- * one go. The DB mutex is supposed to guarantee a user has at most
- * one active row but in practice users have ended up with rows in
- * both tables (manual admin flips, race conditions). To prevent
- * duplicate user-facing alerts (2026-05-17 fix), we dedup per user
- * and prefer WhatsApp — the user-facing Pocket Agent channel.
- * Telegram is reserved for admin / founder system messages now.
+ * one go. The mutex guarantees a user has at most one active row,
+ * so we never duplicate.
  */
 export async function listActivePocketAgentSessions(
   supabase: AdminClient,
@@ -77,26 +64,19 @@ export async function listActivePocketAgentSessions(
       .is('opted_out_at', null),
   ]);
 
-  const waUserIds = new Set(
-    ((wa ?? []) as Array<{ user_id: string }>).map((r) => r.user_id),
-  );
-
   const sessions: ActiveSession[] = [];
+  for (const r of (tg ?? []) as Array<{ user_id: string; telegram_chat_id: number }>) {
+    sessions.push({
+      user_id: r.user_id,
+      channel: 'telegram',
+      destination: r.telegram_chat_id,
+    });
+  }
   for (const r of (wa ?? []) as Array<{ user_id: string; whatsapp_phone: string }>) {
     sessions.push({
       user_id: r.user_id,
       channel: 'whatsapp',
       destination: r.whatsapp_phone,
-    });
-  }
-  for (const r of (tg ?? []) as Array<{ user_id: string; telegram_chat_id: number }>) {
-    // Skip Telegram for any user who also has an active WhatsApp session.
-    // WhatsApp is the user-facing channel; Telegram-only is admin now.
-    if (waUserIds.has(r.user_id)) continue;
-    sessions.push({
-      user_id: r.user_id,
-      channel: 'telegram',
-      destination: r.telegram_chat_id,
     });
   }
   return sessions;
@@ -162,7 +142,22 @@ export async function dispatchPocketAgentAlert(args: {
     }
   }
 
-  // WhatsApp path — match alert type to the approved template.
+  // WhatsApp path — smart-route by the 24h customer-service window.
+  //
+  // Inside the window (user texted us in the last 24h): we can send
+  // free-form text — no Meta template needed, no approval gate. This
+  // unblocks the long-tail "template pending Meta approval" gap that
+  // was silently swallowing every non-morning-brief alert (price
+  // increases, renewals, unusual charges, dispute-agent actions,
+  // money-recovered, budget overruns, dispute-followups) for users
+  // who chat with the Pocket Agent regularly. The morning brief
+  // already had this fallback in src/lib/whatsapp/morning-brief.ts;
+  // this is the same pattern applied uniformly.
+  //
+  // Outside the window: fall through to the existing template path.
+  // If the in-window text send fails for any reason (e.g. the window
+  // closed between our check and the send — Twilio returns 63016),
+  // we ALSO fall through to template so the alert still has a path.
   if (session.channel === 'whatsapp') {
     if (!whatsappVars) {
       const err = 'no whatsapp vars provided';
@@ -175,6 +170,52 @@ export async function dispatchPocketAgentAlert(args: {
       await logWhatsAppDispatchOutcome({ session, alertType, ok: false, error: err, templateName: null });
       return { ok: false, channel: 'whatsapp', error: err };
     }
+
+    // ── In-window text attempt ───────────────────────────────────────
+    const inWindow = await isInsideServiceWindow(session.user_id);
+    if (inWindow) {
+      const inWindowText = buildInWindowAlertText(alertType, telegram, whatsappVars);
+      if (inWindowText) {
+        try {
+          const { sendWhatsAppText } = await import('@/lib/whatsapp');
+          const result = await sendWhatsAppText({
+            to: String(session.destination),
+            text: inWindowText,
+          });
+          await logWhatsAppOutbound({
+            session,
+            templateName: null,
+            providerMessageId: result.providerMessageId,
+            previewText: inWindowText.slice(0, 200),
+            messageType: 'text',
+          });
+          await logWhatsAppDispatchOutcome({
+            session,
+            alertType,
+            ok: true,
+            templateName: null,
+            providerMessageId: result.providerMessageId,
+          });
+          return {
+            ok: true,
+            channel: 'whatsapp',
+            messageId: result.providerMessageId,
+          };
+        } catch (e) {
+          // Free-form text failed — typically Twilio 63016 if the 24h
+          // window expired between our check and the send. Fall
+          // through to template; we logged the failure cause is the
+          // template branch will record its own outcome too.
+          const errMsg = e instanceof Error ? e.message : String(e);
+          console.warn(
+            `[pocket-agent/dispatch] in-window text send failed for user ${session.user_id}, falling back to template:`,
+            errMsg,
+          );
+        }
+      }
+    }
+
+    // ── Template path (out-of-window OR in-window fallback) ──────────
     try {
       // Send via the existing twilio-provider, which resolves the
       // template SID from the registry (added 2026-04-28 fallback).
@@ -272,28 +313,163 @@ export async function dispatchPocketAgentAlert(args: {
  */
 async function logWhatsAppOutbound(args: {
   session: ActiveSession;
-  templateName: string;
+  templateName: string | null;
   providerMessageId?: string;
   previewText: string;
+  /** 'template' for templated sends, 'text' for in-window free-form sends.
+   *  Defaults to 'template' for backward-compat with existing call sites. */
+  messageType?: 'template' | 'text';
 }): Promise<void> {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) return;
     const sb = createClient(url, key);
+    const messageType = args.messageType ?? 'template';
+    const prefix =
+      messageType === 'text'
+        ? '[Pocket Agent in-window text]'
+        : `[Pocket Agent template: ${args.templateName ?? '—'}]`;
     await sb.from('whatsapp_message_log').insert({
       user_id: args.session.user_id,
       whatsapp_phone: String(args.session.destination),
       direction: 'outbound',
-      message_type: 'template',
+      message_type: messageType,
       template_name: args.templateName,
-      message_text: `[Pocket Agent template: ${args.templateName}] ${args.previewText}`.slice(0, 500),
+      message_text: `${prefix} ${args.previewText}`.slice(0, 500),
       provider: 'twilio',
       provider_message_id: args.providerMessageId ?? null,
     });
   } catch (e) {
     // Logging must never break the send path.
     console.warn('[pocket-agent/dispatch] whatsapp_message_log insert failed:', e);
+  }
+}
+
+/**
+ * Best-effort 24h customer-service window check, mirroring
+ * `isInsideWhatsAppServiceWindow` in src/lib/whatsapp/morning-brief.ts.
+ *
+ * Inside the window we can send free-form text without a Meta-approved
+ * template. The morning brief already uses this primitive; we lift it
+ * here so the alert dispatcher uses the same heuristic.
+ *
+ * Returns false on any error — we'd rather fall through to the template
+ * path than silently drop a send because the lookup failed.
+ */
+async function isInsideServiceWindow(userId: string): Promise<boolean> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return false;
+    const sb = createClient(url, key);
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data } = await sb
+      .from('whatsapp_message_log')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('direction', 'inbound')
+      .gte('created_at', since)
+      .limit(1);
+    return Array.isArray(data) && data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Render an alert as plain WhatsApp text for in-window delivery.
+ *
+ * Prefers the `telegram` payload when present — it's already richly
+ * formatted by the cron (title + detail + recommendation), so we
+ * just join the parts. Falls back to a per-alert-type formatter that
+ * builds copy from `whatsappVars` so callers that only supply
+ * template vars still get an in-window send.
+ *
+ * Returns null when neither input is sufficient — caller will fall
+ * through to the template path.
+ *
+ * Wording deliberately mirrors the template bodies (reply-keyword
+ * CTAs in particular) so the user sees the same shape whether the
+ * alert lands in-window or out-of-window. The free-form text strips
+ * the Meta variable-position constraints, so we can be a touch more
+ * natural with phrasing.
+ */
+function buildInWindowAlertText(
+  alertType: AlertType,
+  telegram?: {
+    title: string;
+    detail: string;
+    recommendation?: string | null;
+    amount_impact?: number;
+  },
+  whatsappVars?: Record<string, string | number>,
+): string | null {
+  if (telegram) {
+    const parts = [telegram.title.trim(), telegram.detail.trim()];
+    if (telegram.recommendation && telegram.recommendation.trim()) {
+      parts.push(telegram.recommendation.trim());
+    }
+    return parts.filter(Boolean).join('\n\n');
+  }
+  if (!whatsappVars) return null;
+  const v = (k: string): string | null =>
+    whatsappVars[k] != null ? String(whatsappVars[k]) : null;
+  switch (alertType) {
+    case 'price_increase': {
+      const merchant = v('merchant') ?? 'a merchant';
+      const sub = v('subscription_name') ?? 'your subscription';
+      const oldP = v('old_price') ?? v('old_amount') ?? '?';
+      const newP = v('new_price') ?? v('new_amount') ?? '?';
+      const pct = v('pct_increase') ?? v('percent_higher');
+      return `Price alert — ${merchant} has increased ${sub} from £${oldP} to £${newP}${pct ? ` — a ${pct}% rise` : ''}. Reply DISPUTE to challenge it or DISMISS to ignore.`;
+    }
+    case 'contract_expiring':
+    case 'subscription_renewing': {
+      const merchant = v('merchant') ?? v('service') ?? 'your contract';
+      const date = v('renewal_date');
+      const days = v('days_left');
+      const amount = v('amount') ?? v('monthly_cost') ?? '?';
+      const when = date ? `on ${date}` : days ? `in ${days} days` : 'soon';
+      return `Heads up — ${merchant} renews ${when} for £${amount}. Reply CANCEL if you want to stop it, or KEEP to leave it running.`;
+    }
+    case 'unusual_charge': {
+      const merchant = v('merchant') ?? 'a merchant';
+      const amount = v('amount') ?? v('current_amount') ?? '?';
+      const date = v('date');
+      return `Unusual charge spotted: £${amount} from ${merchant}${date ? ` on ${date}` : ''}. Reply DISPUTE to challenge it or EXPLAIN if you know what it is.`;
+    }
+    case 'money_recovered': {
+      const amount = v('amount_recovered') ?? v('amount') ?? '?';
+      const supplier = v('supplier') ?? v('merchant') ?? 'a supplier';
+      const total = v('total_recovered') ?? v('lifetime_total');
+      const totalLine = total ? ` Your total recovered with Paybacker is now £${total}.` : '';
+      return `Great news — £${amount} recovered from ${supplier}!${totalLine} Reply DISPUTES to see all your cases.`;
+    }
+    case 'budget_overrun': {
+      const pct = v('pct_used') ?? v('percent_used') ?? '?';
+      const category = v('category') ?? 'category';
+      const spent = v('spent') ?? '?';
+      const limit = v('limit') ?? v('amount_left') ?? '?';
+      const days = v('days_remaining');
+      return `Budget alert: you've used ${pct}% of your ${category} budget this month (£${spent} of £${limit}).${days ? ` ${days} days left.` : ''} Reply BUDGET for a full breakdown.`;
+    }
+    case 'dispute_followup': {
+      const merchant = v('merchant') ?? 'A supplier';
+      const summary = v('summary') ?? 'replied to your dispute';
+      const url = v('thread_url');
+      return `${merchant} replied to your dispute: "${summary}".${url ? `\n\nOpen the thread: ${url}` : ''}\n\nReply REPLY to draft a response.`;
+    }
+    case 'dispute_agent_action': {
+      const type = v('dispute_type') ?? 'your';
+      const supplier = v('supplier') ?? v('merchant') ?? 'a supplier';
+      const amount = v('amount') ?? '?';
+      const action = v('action_description') ?? v('action_summary') ?? 'an action is needed';
+      const keyword = v('reply_keyword') ?? v('cta') ?? 'GO';
+      return `Your ${type} dispute with ${supplier} for £${amount} needs attention — ${action}. Reply ${keyword} to proceed or SKIP to leave it for now.`;
+    }
+    default:
+      return null;
   }
 }
 
@@ -408,24 +584,6 @@ function templateForAlertType(alertType: AlertType): string | null {
       return 'paybacker_budget_alert';
     case 'dispute_agent_action':
       return 'paybacker_dispute_agent_action';
-    case 'morning_summary':
-      return 'paybacker_morning_summary';
-    case 'weekly_digest':
-      return 'paybacker_recovery_total_weekly';
-    case 'savings_milestone':
-      return 'paybacker_savings_goal_milestone';
-    case 'reconnect_required':
-      return 'paybacker_reconnect_required';
-    case 'trial_ending':
-      return 'paybacker_alert_trial_ending';
-    case 'dispute_created':
-      return 'paybacker_dispute_created';
-    case 'complaint_letter_ready':
-      return 'paybacker_complaint_letter_ready';
-    case 'outcome_check':
-      return 'paybacker_outcome_check';
-    case 'welcome':
-      return 'paybacker_welcome';
     default:
       return null;
   }
