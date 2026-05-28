@@ -230,7 +230,7 @@ export const TEMPLATES = {
   /** Sent once after a user opts in / completes their first link */
   paybacker_welcome: {
     // Resubmission required — original body ended on `{{1}}`.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HXe05a11ce45d85f3cc0ddcbadcdb437ec',
     category: 'UTILITY',
     vars: ['name'] as const,
     description: 'First-touch welcome after WhatsApp opt-in',
@@ -243,7 +243,7 @@ export const TEMPLATES = {
     // with reply-keyword instruction (DISPUTE / SWITCH). The Pocket Agent
     // user-bot already understands both keywords as natural intents.
     // Founder must resubmit via /dashboard/admin/whatsapp Resubmit panel.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HX14cb34f7c37d22ff4699d2162b6d584d',
     category: 'UTILITY',
     vars: ['merchant', 'old_price', 'new_price', 'effective_date'] as const,
     description: 'Subscription price hike detected',
@@ -263,7 +263,7 @@ export const TEMPLATES = {
   paybacker_alert_renewal: {
     // 2026-05-28 BODY UPDATE — dead "Tap to review or cancel." replaced with
     // reply keywords. Founder resubmits via /dashboard/admin/whatsapp.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HX8bd39a3c8fb3feab42b1f4794db5bbc5',
     category: 'UTILITY',
     vars: ['service', 'days_left', 'monthly_cost'] as const,
     description: 'Contract renewal approaching',
@@ -282,7 +282,7 @@ export const TEMPLATES = {
   paybacker_alert_unusual_charge: {
     // 2026-05-28 BODY UPDATE — dead "Tap to dispute." replaced with reply
     // keyword. Founder resubmits via /dashboard/admin/whatsapp.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HX0095214585f5c1691621a8929c78ee34',
     category: 'UTILITY',
     vars: ['merchant', 'current_amount', 'average_amount', 'percent_higher'] as const,
     description: 'Bill anomaly detected',
@@ -293,7 +293,7 @@ export const TEMPLATES = {
   paybacker_alert_trial_ending: {
     // 2026-05-28 BODY UPDATE — dead "Tap to cancel" replaced with reply
     // keyword. Founder resubmits via /dashboard/admin/whatsapp.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HX26c5bee32d4689672a750e6144e91450',
     category: 'UTILITY',
     vars: ['service', 'days_left', 'auto_charge_amount'] as const,
     description: 'Free trial ending — auto-charge incoming',
@@ -307,7 +307,7 @@ export const TEMPLATES = {
     // 2026-05-28 BODY UPDATE — dead "Tap to follow it" stripped; the URL
     // {{2}} is auto-linked by WhatsApp on every device, so users tap the
     // link itself rather than a static instruction.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HX57dda75d62442801073385b3db15212f',
     category: 'UTILITY',
     vars: ['merchant', 'dispute_url'] as const,
     description: 'New dispute opened in the disputes centre',
@@ -329,7 +329,7 @@ export const TEMPLATES = {
   paybacker_money_recovered: {
     // 2026-05-28 BODY UPDATE — dead "Tap to see the breakdown." replaced
     // with a plain URL WhatsApp auto-links on every device.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HXd85bccdab21cbe96f58c3e0bc47a888d',
     category: 'UTILITY',
     vars: ['amount', 'merchant', 'lifetime_total'] as const,
     description: 'Refund hit account — money recovered',
@@ -354,7 +354,7 @@ export const TEMPLATES = {
     // "still waiting") as natural-language outcome intents — taps from the
     // quick-reply buttons below surface as title text and route to the same
     // handlers. Founder resubmits via /dashboard/admin/whatsapp.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HXc3812080ae7a62a12cfe13de0896a8dd',
     category: 'UTILITY',
     vars: ['merchant', 'action_type'] as const,
     description: 'Outcome check after dispute / cancellation',
@@ -419,7 +419,7 @@ export const TEMPLATES = {
    *     instruction.
    */
   paybacker_morning_summary: {
-    sid: PENDING_RESUBMISSION,
+    sid: 'HXd674afaf12d348a121a8921d28fa7705',
     category: 'UTILITY',
     vars: ['name', 'highlights', 'tip'] as const,
     description: 'Daily 7:30am morning summary (Pro only) — self-contained body',
@@ -430,7 +430,7 @@ export const TEMPLATES = {
   paybacker_savings_goal_milestone: {
     // 2026-05-28 BODY UPDATE — dead "Tap to see your progress." replaced
     // with a plain auto-linked URL.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HXda7011f7cc3ef0160699499540450ded',
     category: 'UTILITY',
     vars: ['goal_name', 'percent', 'amount_saved', 'target_amount'] as const,
     description: 'Savings goal milestone hit',
@@ -441,7 +441,7 @@ export const TEMPLATES = {
   paybacker_budget_alert: {
     // 2026-05-28 BODY UPDATE — dead "Tap to review what is driving it."
     // replaced with a plain auto-linked URL.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HX8827f520771ace00a8c3e098403f3541',
     category: 'UTILITY',
     vars: ['category', 'percent_used', 'amount_left', 'end_date'] as const,
     description: 'Budget threshold reached',
@@ -463,7 +463,7 @@ export const TEMPLATES = {
   paybacker_recovery_total_weekly: {
     // 2026-05-28 BODY UPDATE — dead "Tap to see the wins." replaced
     // with a plain auto-linked URL.
-    sid: PENDING_RESUBMISSION,
+    sid: 'HXfec20591d7d85e721032a5d66f2e24b0',
     category: 'UTILITY',
     vars: ['amount_this_week', 'lifetime_amount'] as const,
     description: 'Weekly recovery digest (Saturday 09:00 BST)',
@@ -522,7 +522,7 @@ export const TEMPLATES = {
    *  Submit via /dashboard/admin/whatsapp Resubmit panel, then replace
    *  PENDING_RESUBMISSION with the live SID. */
   paybacker_dispute_agent_action: {
-    sid: PENDING_RESUBMISSION,
+    sid: 'HXd648a46b701c08711dc82c745d551f19',
     category: 'UTILITY',
     vars: ['merchant', 'action_summary', 'cta'] as const,
     description: 'Dispute Agent action recommendation (state machine)',
@@ -551,7 +551,7 @@ export const TEMPLATES = {
    * `proOnly: false` — anyone who's connected WhatsApp can opt out of it.
    */
   paybacker_opted_out: {
-    sid: PENDING_RESUBMISSION,
+    sid: 'HXdb70c8ce4f73435c1da60c59a0d67752',
     category: 'UTILITY',
     vars: [] as const,
     description: 'WhatsApp opt-out confirmation',
@@ -561,7 +561,7 @@ export const TEMPLATES = {
   /** Salary / refund / transfer-in landed in a connected account.
    *  Submitted 2026-05-28 via Twilio Content API. */
   paybacker_payment_received: {
-    sid: PENDING_META_APPROVAL,
+    sid: 'HX1e88747e0534793b465831884c4be48c',
     category: 'UTILITY',
     vars: ['first_name', 'sender_name', 'amount', 'new_balance'] as const,
     description: 'Payment received — credit landed in a connected account',
@@ -576,7 +576,7 @@ export const TEMPLATES = {
   /** Large outgoing payment cleared — heads-up after a £-significant debit.
    *  Submitted 2026-05-28 via Twilio Content API. */
   paybacker_payment_outgoing: {
-    sid: PENDING_META_APPROVAL,
+    sid: 'HX383651eaf4afed406ede1531e27a7a28',
     category: 'UTILITY',
     vars: ['first_name', 'amount', 'merchant', 'category', 'monthly_total'] as const,
     description: 'Large outgoing payment cleared (above user threshold)',
@@ -590,7 +590,7 @@ export const TEMPLATES = {
   /** Direct debit due in the next 24-72h — pre-debit warning.
    *  Submitted 2026-05-28 via Twilio Content API. */
   paybacker_dd_warning: {
-    sid: PENDING_META_APPROVAL,
+    sid: 'HXc24454f878442972207c5349fe172509',
     category: 'UTILITY',
     vars: ['first_name', 'provider', 'amount', 'date', 'balance'] as const,
     description: 'Upcoming direct debit warning',
@@ -630,7 +630,7 @@ export const TEMPLATES = {
    * Console (or scripts/submit-whatsapp-template.ts).
    */
   paybacker_pocket_agent_reply: {
-    sid: PENDING_META_APPROVAL,
+    sid: 'HX6a8d8c84caf60022e5bf8584e43c8b6a',
     category: 'UTILITY',
     vars: ['reply'] as const,
     description: 'Pocket Agent free-form reply (out-of-window fallback)',
