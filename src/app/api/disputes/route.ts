@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { sendNotification } from '@/lib/notifications/dispatch';
 
 // GET /api/disputes — list all disputes for the user
 export async function GET() {
@@ -136,33 +134,34 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id);
   }
 
-  // Fire dispute_created across Pocket Agent channels so the user gets a
-  // confirmation buzz on WhatsApp / Telegram / push. Non-blocking — alert
-  // failure must never break the create response. complaint_letter_ready
-  // fires later when /api/complaints/generate finishes (separate event).
-  const disputeUrl = `https://paybacker.co.uk/dashboard/disputes?dispute=${dispute.id}`;
-  const adminBg = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-  sendNotification(adminBg, {
-    userId: user.id,
-    event: 'dispute_created',
-    telegram: {
-      text:
-        `📝 *Dispute opened with ${normalisedName}*\n\n` +
-        `${body.issue_summary}\n\n` +
-        `Follow it here: ${disputeUrl}`,
-    },
-    whatsapp: {
-      templateName: 'paybacker_dispute_created',
-      templateParameters: [normalisedName, disputeUrl],
-    },
-    push: {
-      title: 'Dispute opened',
-      body: `Dispute against ${normalisedName} is live.`,
-    },
-  }).catch((e) => console.error('[disputes.POST] dispute_created alert failed:', e));
+  // Buzz the user's Pocket Agent if they're on WhatsApp. Template:
+  // paybacker_dispute_created — vars [merchant, dispute_url]. Best-effort;
+  // any failure logs but doesn't block the API response.
+  //
+  // We use the merchant name from the request (already on the new dispute
+  // row) and a deep-link to the disputes detail page. No window check —
+  // the template works in OR out of window.
+  try {
+    const { data: session } = await supabase
+      .from('whatsapp_sessions')
+      .select('whatsapp_phone')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .is('opted_out_at', null)
+      .maybeSingle();
+    if (session?.whatsapp_phone) {
+      const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
+      const merchant = (dispute.provider_name as string) || 'a supplier';
+      const url = `paybacker.co.uk/dashboard/disputes/${dispute.id}`;
+      await sendWhatsAppTemplate({
+        to: session.whatsapp_phone,
+        templateName: 'paybacker_dispute_created',
+        parameters: [merchant, url],
+      });
+    }
+  } catch (e) {
+    console.warn('[disputes] paybacker_dispute_created send failed', e);
+  }
 
   return NextResponse.json(dispute, { status: 201 });
 }
