@@ -37,7 +37,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import { isPocketAgentEligible } from '@/lib/telegram/eligibility';
-import { isAlertEnabled } from '@/lib/whatsapp/notification-prefs';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -194,7 +193,7 @@ async function runCron() {
     const amount = fmtGBP(Number(tx.amount));
 
     const headline = `${emoji} Good news — ${amount} just landed`;
-    const detail = `From *${merchant}*. See your new balance at paybacker.co.uk/dashboard/money-hub.`;
+    const detail = `From *${merchant}*. Tap to see your new balance.`;
 
     try {
       // Always insert into the in-app notification bell so the website
@@ -215,64 +214,43 @@ async function runCron() {
         },
       });
 
-      // Resolve a friendly first name + the running account balance so
-      // the WhatsApp template (paybacker_payment_received) can render
-      // the four vars [first_name, sender, amount, new_balance]. The
-      // template is PENDING_META_APPROVAL at the time of wiring — the
-      // dispatcher skips template sends with a placeholder SID, so this
-      // is safe to include now and will start firing once approved.
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('first_name, full_name')
-        .eq('id', tx.user_id)
-        .maybeSingle();
-      const firstName =
-        (profile?.first_name as string | undefined) ||
-        (profile?.full_name as string | undefined)?.split(' ')[0] ||
-        'there';
-
-      // Latest known balance for the account this tx hit.
-      let balanceLabel = '—';
+      // Look up the user's first name so the paybacker_payment_received
+      // template feels personal. Balance lookup is skipped for now —
+      // IncomeTxn doesn't carry account_id and pulling it on every txn
+      // doubles the DB hits. We pass "see Money Hub" as the {{4}} value
+      // so the line still reads cleanly: "Balance now: see Money Hub".
+      let firstName = 'there';
       try {
-        const { data: latestBalance } = await supabase
-          .from('bank_accounts')
-          .select('balance')
-          .eq('user_id', tx.user_id)
-          .order('updated_at', { ascending: false })
-          .limit(1)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('first_name, full_name, email')
+          .eq('id', tx.user_id)
           .maybeSingle();
-        if (latestBalance && latestBalance.balance != null) {
-          balanceLabel = fmtGBP(Number(latestBalance.balance));
+        if (profile) {
+          const raw = (profile.first_name || profile.full_name || profile.email || 'there')
+            .toString()
+            .trim();
+          firstName = raw.split(/\s+/)[0] || 'there';
         }
       } catch {
-        /* leave the em-dash placeholder if balance lookup fails */
+        // Fallback above is fine.
       }
-
-      const whatsAppAllowed = await isAlertEnabled(
-        supabase,
-        tx.user_id,
-        'whatsapp_payment_received',
-      );
+      const balanceLabel = 'see Money Hub';
 
       const result = await sendNotification(supabase, {
         userId: tx.user_id,
         event: 'income_received',
         telegram: { text: `${headline}\n\n${detail}` },
-        whatsapp: whatsAppAllowed
-          ? {
-              templateName: 'paybacker_payment_received',
-              templateParameters: [
-                firstName,
-                merchant,
-                amount,
-                balanceLabel,
-              ],
-              // Fallback for users inside the 24h session window — the
-              // provider prefers `text` only when no template is given,
-              // so this is just here so a debug path stays useful.
-              text: `${headline}\n\n${detail.replace(/\*/g, '')}`,
-            }
-          : undefined,
+        whatsapp: {
+          // Approved utility template (2026-05-29). Works in AND out of
+          // the 24h window. Template vars are short strings only — no
+          // newlines (Twilio 21656). The wider in-window text below
+          // is preserved for any future dispatcher pass that prefers
+          // free-form when available.
+          templateName: 'paybacker_payment_received',
+          templateParameters: [firstName, merchant, amount, balanceLabel],
+          text: `${headline}\n\n${detail.replace(/\*/g, '')}`,
+        },
         push: {
           title: headline.replace(/\*/g, ''),
           body: `From ${merchant}`,
