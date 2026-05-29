@@ -19,7 +19,19 @@
  *     primitives the cron also needs.
  */
 
-import { sendWhatsAppText } from '@/lib/whatsapp';
+import { sendWhatsAppText, sendWhatsAppTemplate } from '@/lib/whatsapp';
+
+/**
+ * Recognise template-send failures that represent an *intentional* skip
+ * (template not yet approved / runtime resolver returned no SID) rather
+ * than an operational outage. The Twilio provider throws errors whose
+ * messages contain "pending Meta resubmission" or "approval_status" when
+ * the registry/DB layer deliberately bypasses the send.
+ */
+function isIntentionalTemplateSkip(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /pending Meta resubmission|approval_status|template not.*approved/i.test(msg);
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AdminClient = any;
@@ -120,48 +132,112 @@ export async function dispatchWhatsAppMorningBrief(
     }
   }
 
-  // Outside the window — template path.
+  // Outside the window (or text fallback) — template path.
   //
-  // 2026-05-26: paused. The currently-approved `paybacker_morning_summary`
-  // template body is misleading: it advertises an "Overnight we scanned
-  // {{2}} items" line, but there was no overnight email-scanner cron at
-  // the time — the scanner was user-triggered from /dashboard. Combined
-  // with the dead "Tap to open today's brief." CTA (WhatsApp does not
-  // turn the static string into a tappable link), out-of-window users
-  // were getting a demonstrably wrong message every morning. Sending
-  // nothing is strictly better than sending that.
+  // 2026-05-29: UN-PAUSED. All 18 Paybacker WhatsApp templates were
+  // approved by Meta earlier today (paybacker_morning_summary at
+  // approval_status='approved' since 2026-05-29 11:00 UTC). The new
+  // template body is self-contained:
+  //   "Morning {{1}}. {{2}} Tip of the day: {{3}} Open
+  //    paybacker.co.uk/dashboard for the full brief."
+  // — 3 vars: name, highlights (multi-line summary), tip.
   //
-  // 2026-05-28 UPDATE: the email-scanner cron now exists
-  // (src/app/api/cron/email-scanner/route.ts, 05:30 UTC nightly), so the
-  // "we scanned overnight" framing IS now true. The new template body in
-  // the registry (paybacker_morning_summary) is self-contained — single
-  // {{1}} name + {{2}} multi-line highlights + {{3}} tip + a plain URL
-  // (paybacker.co.uk/dashboard) WhatsApp auto-links on every device.
-  // No more "tap to open" dead text.
-  //
-  // Founder resubmits via /dashboard/admin/whatsapp; Meta approves the
-  // new body; the dispatch branch below is re-enabled by replacing the
-  // early-return with a real template send call.
-  if (inWindowTextError) {
-    const textMsg =
-      inWindowTextError instanceof Error
-        ? inWindowTextError.message
-        : String(inWindowTextError);
-    console.error(
-      `[whatsapp/morning-brief] WhatsApp delivery failed for user ${userId} (in-window text errored; template path paused pending Meta resubmission):`,
-      textMsg,
-    );
-    return { status: 'error', reason: textMsg, channel: 'in_window' };
+  // Variable budget per Meta's 1024-char body limit minus framing
+  // (≈ 90 static chars): name ≤ 30, highlights ≤ 600, tip ≤ 200.
+
+  // Look up the user's first name for the template.
+  let firstName = 'there';
+  try {
+    const { data } = await supabase
+      .from('profiles')
+      .select('full_name, first_name, email')
+      .eq('id', userId)
+      .maybeSingle();
+    if (data) {
+      const raw = (data.first_name || data.full_name || data.email || 'there')
+        .toString()
+        .trim();
+      firstName = raw.split(/\s+/)[0] || 'there';
+    }
+  } catch {
+    // Name is not load-bearing — fall back to "there".
   }
-  console.warn(
-    `[whatsapp/morning-brief] Out-of-window morning brief skipped for user ${userId} — paybacker_morning_summary template paused pending Meta resubmission of a self-contained body.`,
+
+  // Build the highlights summary from the markdown brief. WhatsApp
+  // template variables can contain newlines — Meta renders them as
+  // literal line breaks — so we keep multi-line structure but strip
+  // the Markdown markers and cap the length.
+  const highlights = (() => {
+    const plain = toWhatsAppPlainText(markdownBody).trim();
+    if (plain.length <= 600) return plain;
+    // Truncate at the last full line within the budget so we don't
+    // cut mid-sentence.
+    const slice = plain.slice(0, 597);
+    const lastNl = slice.lastIndexOf('\n');
+    return (lastNl > 100 ? slice.slice(0, lastNl) : slice) + '…';
+  })();
+
+  // Pick a tip — light rotation by day-of-year so users don't see
+  // the same tip every morning. Tips kept short and Meta-safe (no
+  // promotional language).
+  const TIPS = [
+    'Review your direct debits quarterly — companies often sneak in price rises mid-contract.',
+    'Cancel free trials the day you sign up — set a reminder so you don\'t forget.',
+    'Ask your insurer for a renewal discount. They almost always have one if you ask.',
+    'Challenge your council tax band for free — 1 in 3 homes are in the wrong band.',
+    'Haggle your TV and broadband package at renewal — retention offers are routine.',
+    'Use Section 75 for credit-card purchases over £100 — your card provider is jointly liable.',
+    'Check your credit report for free at ClearScore, Credit Karma or MSE Credit Club.',
+    'Set up a standing order to a savings account on payday. Pay yourself first.',
+    'Switch your energy tariff before the price cap changes — it could save hundreds a year.',
+    'Most people pay for mobile data they never use — review your plan.',
+  ];
+  const dayOfYear = Math.floor(
+    (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000,
   );
-  return {
-    status: 'skipped',
-    reason:
-      'out-of-window template paused pending Meta resubmission (old body was misleading: see src/lib/whatsapp/template-registry.ts)',
-    channel: 'template',
-  };
+  const tip = TIPS[dayOfYear % TIPS.length];
+
+  try {
+    const result = await sendWhatsAppTemplate({
+      to: phone,
+      templateName: 'paybacker_morning_summary',
+      parameters: [firstName, highlights, tip],
+    });
+    return {
+      status: 'sent',
+      channel: 'template',
+      providerMessageId: result.providerMessageId,
+    };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    // The runtime resolver returns null for any non-approved template
+    // and the provider throws an intentional-skip marker — surface that
+    // as 'skipped' rather than 'error' so the dispatcher's stats stay
+    // meaningful. Otherwise it's a real send failure.
+    if (isIntentionalTemplateSkip(err)) {
+      console.warn(
+        `[whatsapp/morning-brief] Out-of-window template skipped for user ${userId} (resolver returned no approved SID):`,
+        errMsg,
+      );
+      return { status: 'skipped', reason: errMsg, channel: 'template' };
+    }
+    if (inWindowTextError) {
+      const textMsg =
+        inWindowTextError instanceof Error
+          ? inWindowTextError.message
+          : String(inWindowTextError);
+      console.error(
+        `[whatsapp/morning-brief] In-window text AND template both failed for user ${userId}:`,
+        { text: textMsg, template: errMsg },
+      );
+      return { status: 'error', reason: errMsg, channel: 'template' };
+    }
+    console.error(
+      `[whatsapp/morning-brief] Template send failed for user ${userId}:`,
+      errMsg,
+    );
+    return { status: 'error', reason: errMsg, channel: 'template' };
+  }
 }
 
 export interface SendMorningBriefOptions {
@@ -267,3 +343,4 @@ export async function sendMorningBriefToUser(
     providerMessageId: outcome.providerMessageId,
   };
 }
+
