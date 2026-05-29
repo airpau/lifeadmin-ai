@@ -11,7 +11,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/encrypt';
-import { supportsFeature } from '@/lib/yapily';
 import {
   getScheduledPayments,
   getPeriodicPayments,
@@ -23,8 +22,6 @@ import {
   detectRecurringUpcoming,
   type DetectorTransaction,
 } from '@/lib/upcoming/detect-recurring';
-import { sendNotification } from '@/lib/notifications/dispatch';
-import { isAlertEnabled } from '@/lib/whatsapp/notification-prefs';
 
 export const maxDuration = 300;
 
@@ -40,10 +37,8 @@ interface BankConnection {
   user_id: string;
   provider: string;
   provider_id: string | null;
-  institution_id: string | null;
   consent_token: string | null;
   consent_expires_at: string | null;
-  upcoming_endpoints_fetched_at: string | null;
   account_ids: string[] | null;
   status: string;
 }
@@ -75,7 +70,7 @@ export async function GET(request: NextRequest) {
   // Pull active Yapily connections with a non-expired consent.
   const { data: connections, error: connErr } = await supabase
     .from('bank_connections')
-    .select('id, user_id, provider, provider_id, institution_id, consent_token, consent_expires_at, upcoming_endpoints_fetched_at, account_ids, status')
+    .select('id, user_id, provider, provider_id, consent_token, consent_expires_at, account_ids, status')
     .eq('provider', 'yapily')
     .eq('status', 'active')
     .is('archived_at', null);
@@ -124,48 +119,16 @@ export async function GET(request: NextRequest) {
       continue;
     }
 
-    // Single-use semantics (Migle, 29 Apr): the deterministic
-    // upcoming-payments endpoints are callable ONCE per consent.
-    // If we've already pulled them on this consent, skip the calls
-    // and rely on the recurrence detector + transaction history (run
-    // unconditionally below) to keep predicted rows fresh.
-    // upcoming_endpoints_fetched_at is reset to NULL on reconnect by
-    // upsertYapilyConnection.
-    const alreadyFetchedDeterministic = !!conn.upcoming_endpoints_fetched_at;
-
-    // Per-institution feature check (Migle's spec: ~70% of UK banks
-    // support these). Looking once per connection — for all accounts
-    // on the same consent the feature flags are identical. Defaults
-    // to true when institution_id is missing (legacy rows pre-migration)
-    // so we don't regress existing behaviour for connections without
-    // metadata.
-    const instId = conn.institution_id ?? '';
-    const [hasScheduled, hasPeriodic, hasDirectDebits] = alreadyFetchedDeterministic
-      ? [false, false, false]
-      : instId
-        ? await Promise.all([
-            supportsFeature(instId, 'ACCOUNT_SCHEDULED_PAYMENTS'),
-            supportsFeature(instId, 'ACCOUNT_PERIODIC_PAYMENTS'),
-            supportsFeature(instId, 'ACCOUNT_DIRECT_DEBITS'),
-          ])
-        : [true, true, true];
-
     for (const accountId of conn.account_ids) {
       const rows: UpsertRow[] = [];
 
-      // Deterministic endpoints — short-circuit when the institution
-      // doesn't expose the feature so we don't burn API quota on a
-      // guaranteed 404. Each call still wrapped in try/catch so a
-      // mid-flight Yapily blip on one source doesn't block the others.
-      const endpoints: Array<[string, () => Promise<UpcomingRow[]>]> = [];
-      if (hasScheduled) endpoints.push(['scheduled-payments', () => getScheduledPayments(accountId, decrypted)]);
-      if (hasPeriodic)  endpoints.push(['periodic-payments',  () => getPeriodicPayments(accountId, decrypted)]);
-      if (hasDirectDebits) endpoints.push(['direct-debits',   () => getDirectDebits(accountId, decrypted)]);
-      if (endpoints.length === 0) {
-        console.log(
-          `[sync-upcoming] institution=${instId || 'unknown'} account=${accountId} — no upcoming-payment features supported, skipping`,
-        );
-      }
+      // Deterministic endpoints — small wrapper so one failing
+      // source doesn't block the others.
+      const endpoints: Array<[string, () => Promise<UpcomingRow[]>]> = [
+        ['scheduled-payments', () => getScheduledPayments(accountId, decrypted)],
+        ['periodic-payments',  () => getPeriodicPayments(accountId, decrypted)],
+        ['direct-debits',      () => getDirectDebits(accountId, decrypted)],
+      ];
 
       for (const [label, fn] of endpoints) {
         try {
@@ -276,23 +239,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Stamp upcoming_endpoints_fetched_at so the next cron tick
-    // skips the deterministic endpoints (single-use semantics). We
-    // only stamp when we actually attempted to call them on this
-    // tick — if alreadyFetchedDeterministic was true we don't need
-    // to re-stamp, the original timestamp stands. We also stamp
-    // even if the calls returned no rows / threw — Yapily counts
-    // the call regardless of outcome.
-    if (!alreadyFetchedDeterministic && (hasScheduled || hasPeriodic || hasDirectDebits)) {
-      const { error: stampErr } = await supabase
-        .from('bank_connections')
-        .update({ upcoming_endpoints_fetched_at: new Date().toISOString() })
-        .eq('id', conn.id);
-      if (stampErr) {
-        console.error(`[sync-upcoming] stamp failed for conn=${conn.id}:`, stampErr.message);
-      }
-    }
-
     summary.connectionsProcessed++;
   }
 
@@ -305,16 +251,13 @@ export async function GET(request: NextRequest) {
     .lt('expected_date', yesterday);
   summary.staleRowsPruned = count || 0;
 
-  // ── Alert the user for newly-inserted confirmed rows arriving in the
-  //    near future. We pull a 14-day window so we can apply user-
-  //    specific thresholds: every row qualifies if it's within 2 days
-  //    OR over the user's "large bill" threshold and within their
-  //    configured days-ahead window (default £100 / 7 days, set on
-  //    profiles.upcoming_bill_threshold / upcoming_bill_days_ahead).
-  //    Upserts on an existing row bump updated_at but not created_at,
-  //    so we use created_at to distinguish genuinely new detections
-  //    from repeats.
-  const twoWeeks = new Date(today.getTime() + 14 * 86_400_000).toISOString().slice(0, 10);
+  // ── Alert the user for newly-inserted confirmed incoming rows
+  //    arriving within the next 2 days. Upserts on an existing row
+  //    bump updated_at but not created_at, so we use created_at to
+  //    distinguish genuinely new detections from repeats.           //
+  //    Fires a user_notifications row + a best-effort Telegram
+  //    proactive alert for Pro users with a linked session.
+  const tomorrow = new Date(today.getTime() + 2 * 86_400_000).toISOString().slice(0, 10);
   const alertCutoff = today.toISOString();
 
   const { data: freshRows } = await supabase
@@ -322,26 +265,9 @@ export async function GET(request: NextRequest) {
     .select('id, user_id, source, direction, counterparty, amount, currency, expected_date, confidence, account_id, yapily_provider_id')
     .gte('created_at', runStartedAt)
     .gte('expected_date', alertCutoff.slice(0, 10))
-    .lte('expected_date', twoWeeks)
+    .lte('expected_date', tomorrow)
     .in('source', ['pending_credit', 'scheduled_payment', 'direct_debit', 'standing_order'])
     .order('expected_date', { ascending: true });
-
-  // Pull user-level thresholds for any user with a fresh row. Default
-  // £100 / 7 days when NULL.
-  const profileThresholds = new Map<string, { threshold: number; daysAhead: number }>();
-  const uniqueUserIds = Array.from(new Set((freshRows || []).map((r) => r.user_id)));
-  if (uniqueUserIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, upcoming_bill_threshold, upcoming_bill_days_ahead')
-      .in('id', uniqueUserIds);
-    for (const p of profiles || []) {
-      profileThresholds.set(p.id, {
-        threshold: Number((p as any).upcoming_bill_threshold ?? 100),
-        daysAhead: Number((p as any).upcoming_bill_days_ahead ?? 7),
-      });
-    }
-  }
 
   summary.alertsDispatched = 0;
   summary.telegramAlertsDispatched = 0;
@@ -349,48 +275,25 @@ export async function GET(request: NextRequest) {
   for (const row of (freshRows || [])) {
     const direction = row.direction as 'incoming' | 'outgoing';
     const isIncoming = direction === 'incoming';
-    const amount = Number(row.amount);
-    const amountStr = `£${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const amountStr = `£${Number(row.amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const who = row.counterparty || 'a counterparty';
     const whenIso = row.expected_date as string;
-    const dueDate = new Date(whenIso + 'T00:00:00Z');
-    const daysOut = Math.round((dueDate.getTime() - today.getTime()) / 86_400_000);
-    const isTomorrow = daysOut === 1;
-    const when = isTomorrow
-      ? 'tomorrow'
-      : `on ${dueDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}`;
-
-    // Eligibility:
-    //   - Any incoming row in the next 2 days → fire (Emma-style "money arriving" alert).
-    //   - Any outgoing row in the next 2 days → fire (existing behaviour).
-    //   - Outgoing AND amount >= user.threshold AND daysOut <= user.daysAhead
-    //     → fire as "large_upcoming_bill" so the user gets a heads-up
-    //     before bigger debits.
-    const thresholds = profileThresholds.get(row.user_id) || { threshold: 100, daysAhead: 7 };
-    const isImminent = daysOut <= 2;
-    const isLargeBill =
-      !isIncoming && amount >= thresholds.threshold && daysOut <= thresholds.daysAhead;
-    if (!isImminent && !isLargeBill) continue;
-    const eventType: 'upcoming_payment' | 'large_upcoming_bill' =
-      isLargeBill && !isImminent ? 'large_upcoming_bill' : 'upcoming_payment';
+    const isTomorrow = new Date(whenIso + 'T00:00:00Z').getTime() === today.getTime() + 86_400_000;
+    const when = isTomorrow ? 'tomorrow' : `on ${new Date(whenIso + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}`;
 
     const title = isIncoming
       ? `${amountStr} arriving ${when} from ${who}`
-      : isLargeBill && !isImminent
-      ? `Heads-up: ${amountStr} bill due ${when} · ${who}`
       : `${amountStr} leaving ${when} · ${who}`;
 
     const body = isIncoming
       ? `Your bank has flagged an incoming payment of ${amountStr} arriving ${when}. We'll update the total on Money Hub.`
-      : isLargeBill && !isImminent
-      ? `A large scheduled payment of ${amountStr} to ${who} is due ${when} (${daysOut} days away). Make sure the account has enough to cover it.`
       : `A scheduled outgoing payment of ${amountStr} to ${who} is due ${when}. Make sure your account has enough to cover it.`;
 
     // In-app notification (free for all tiers).
     try {
       await supabase.from('user_notifications').insert({
         user_id: row.user_id,
-        type: eventType,
+        type: 'upcoming_payment',
         title,
         body,
         link_url: '/dashboard/money-hub/upcoming',
@@ -401,7 +304,6 @@ export async function GET(request: NextRequest) {
           currency: row.currency,
           expected_date: row.expected_date,
           account_id: row.account_id,
-          days_out: daysOut,
         },
       });
       summary.alertsDispatched++;
@@ -409,82 +311,18 @@ export async function GET(request: NextRequest) {
       console.error('[sync-upcoming] notification insert failed:', e);
     }
 
-    // Best-effort Pocket Agent push for Pro users.
+    // Best-effort Telegram push for Pro users. Look up the session
+    // directly — if the user hasn't linked Telegram, skip.
     try {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('subscription_tier, first_name, full_name')
+        .select('subscription_tier')
         .eq('id', row.user_id)
         .single();
 
       const tier = (profile?.subscription_tier || 'free') as 'free' | 'essential' | 'pro';
       // Pro: instant. Essential: email only (handled elsewhere). Free: in-app only.
       if (tier !== 'pro') continue;
-
-      const { data: waSession } = await supabase
-        .from('whatsapp_sessions')
-        .select('user_id, whatsapp_phone')
-        .eq('user_id', row.user_id)
-        .eq('is_active', true)
-        .is('opted_out_at', null)
-        .maybeSingle();
-
-      // Direct debit → use the dedicated paybacker_dd_warning template
-      // (single Pro channel, WhatsApp wins by Pocket Agent mutex).
-      if (waSession && !isIncoming && row.source === 'direct_debit') {
-        const ddAllowed = await isAlertEnabled(
-          supabase,
-          row.user_id,
-          'whatsapp_dd_warning',
-        );
-        if (ddAllowed) {
-          const firstName =
-            (profile?.first_name as string | undefined) ||
-            (profile?.full_name as string | undefined)?.split(' ')[0] ||
-            'there';
-          // Best-effort current balance for the affected account.
-          let balanceLabel = '—';
-          try {
-            const { data: latestBalance } = await supabase
-              .from('bank_accounts')
-              .select('balance')
-              .eq('user_id', row.user_id)
-              .order('updated_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            if (latestBalance && latestBalance.balance != null) {
-              balanceLabel = `£${Number(latestBalance.balance).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            }
-          } catch {
-            /* leave placeholder */
-          }
-          const niceDate = dueDate.toLocaleDateString('en-GB', {
-            day: 'numeric',
-            month: 'short',
-          });
-          await sendNotification(supabase, {
-            userId: row.user_id,
-            event: 'dd_warning',
-            whatsapp: {
-              templateName: 'paybacker_dd_warning',
-              templateParameters: [
-                firstName,
-                who,
-                amountStr,
-                niceDate,
-                balanceLabel,
-              ],
-            },
-          });
-          summary.telegramAlertsDispatched++;
-        }
-        continue;
-      }
-
-      // WhatsApp Pocket Agent user but not a direct debit row — fall
-      // back to the historical "Telegram-or-nothing" gate so we never
-      // dual-fan-out. There's no template for generic upcoming bills.
-      if (waSession) continue;
 
       const { data: session } = await supabase
         .from('telegram_sessions')
@@ -509,6 +347,55 @@ export async function GET(request: NextRequest) {
       summary.telegramAlertsDispatched++;
     } catch (e) {
       console.error('[sync-upcoming] telegram alert failed:', e);
+    }
+
+    // WhatsApp paybacker_dd_warning — fires for OUTGOING direct_debit /
+    // standing_order rows in the next 24-72h. Template vars:
+    // [first_name, provider, amount, date, balance].
+    // Skipped for incoming (paybacker_payment_received handles those
+    // when the credit actually lands) and for the 0-1 day window (the
+    // user can no longer act anyway).
+    if (direction === 'outgoing' && (row.source === 'direct_debit' || row.source === 'standing_order')) {
+      try {
+        const { data: waSession } = await supabase
+          .from('whatsapp_sessions')
+          .select('whatsapp_phone')
+          .eq('user_id', row.user_id)
+          .eq('is_active', true)
+          .is('opted_out_at', null)
+          .maybeSingle();
+        if (waSession?.whatsapp_phone) {
+          const { data: profile2 } = await supabase
+            .from('profiles')
+            .select('first_name, full_name, email')
+            .eq('id', row.user_id)
+            .maybeSingle();
+          const firstName =
+            ((profile2?.first_name as string | null) ||
+              (profile2?.full_name as string | null) ||
+              (profile2?.email as string | null) ||
+              'there')
+              .toString()
+              .trim()
+              .split(/\s+/)[0] || 'there';
+          const friendlyDate = new Date(whenIso + 'T00:00:00Z').toLocaleDateString(
+            'en-GB',
+            { day: 'numeric', month: 'short' },
+          );
+          // Account balance lookup would double DB hits; pass the
+          // "see Money Hub" hint for now. Future: thread balance
+          // through from upcoming_payments via a join.
+          const balanceLabel = 'see Money Hub';
+          const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
+          await sendWhatsAppTemplate({
+            to: waSession.whatsapp_phone,
+            templateName: 'paybacker_dd_warning',
+            parameters: [firstName, who, amountStr, friendlyDate, balanceLabel],
+          });
+        }
+      } catch (e) {
+        console.error('[sync-upcoming] dd_warning send failed:', e);
+      }
     }
   }
 
