@@ -21,7 +21,6 @@ import {
 } from '@/lib/legal-refs-guardrail';
 import { CITATION_PERMISSIVE_STATUSES } from '@/lib/legal-refs-statuses';
 import { loadFreshLegalRefs } from '@/lib/legal-data/freshness-gate';
-import { sendNotification } from '@/lib/notifications/dispatch';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
 // 120s — the engine's worst-case path is two Claude calls (citation
@@ -765,38 +764,32 @@ export async function POST(request: NextRequest) {
       provider: body.companyName,
     }).catch(() => {});
 
-    // Fire complaint_letter_ready alert across Pocket Agent channels so
-    // users on WhatsApp / Telegram see the letter is ready without
-    // needing to refresh the dashboard. Non-blocking — failures are
-    // logged but don't break the response.
-    if (task) {
-      const sbAdmin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      );
-      const letterUrl = body.disputeId
-        ? `https://paybacker.co.uk/dashboard/complaints#dispute-${body.disputeId}`
-        : `https://paybacker.co.uk/dashboard/complaints#task-${task.id}`;
-      sendNotification(sbAdmin, {
-        userId: user.id,
-        event: 'complaint_letter_ready',
-        telegram: {
-          text:
-            `✉️ *Your complaint letter to ${body.companyName} is ready*\n\n` +
-            `Download or send: ${letterUrl}`,
-        },
-        whatsapp: {
+    // Buzz Pocket Agent on WhatsApp if the user has it on.
+    // Template: paybacker_complaint_letter_ready vars [merchant, letter_url].
+    // Best-effort, fire-and-forget — never block the API response.
+    (async () => {
+      try {
+        const { data: session } = await supabase
+          .from('whatsapp_sessions')
+          .select('whatsapp_phone')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .is('opted_out_at', null)
+          .maybeSingle();
+        if (!session?.whatsapp_phone) return;
+        const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
+        const url = body.disputeId
+          ? `paybacker.co.uk/dashboard/disputes/${body.disputeId}`
+          : `paybacker.co.uk/dashboard/complaints`;
+        await sendWhatsAppTemplate({
+          to: session.whatsapp_phone,
           templateName: 'paybacker_complaint_letter_ready',
-          templateParameters: [body.companyName, letterUrl],
-        },
-        push: {
-          title: 'Complaint letter ready',
-          body: `Letter to ${body.companyName} is ready to send`,
-        },
-      }).catch((e) =>
-        console.error('[complaints/generate] complaint_letter_ready alert failed:', e),
-      );
-    }
+          parameters: [body.companyName ?? 'a supplier', url],
+        });
+      } catch (e) {
+        console.warn('[complaints/generate] letter_ready template send failed', e);
+      }
+    })();
 
     return NextResponse.json({ ...result, taskId: task?.id, rightsPills, pendingLegalUpdates });
   } catch (error: any) {
