@@ -19,7 +19,14 @@
     { "path": "/api/cron/telegram-morning-summary",  "schedule": "30 7 * * *" },
     { "path": "/api/cron/telegram-evening-summary",  "schedule": "0 20 * * *" },
     { "path": "/api/cron/telegram-scheduler",        "schedule": "0 5,8,9,10,13,18 * * *" },
-    { "path": "/api/cron/whatsapp-alerts",           "schedule": "0 */6 * * *" },
+    { "path": "/api/cron/whatsapp-intraday?slot=trial",     "schedule": "0 9 * * *" },
+    { "path": "/api/cron/price-increases",                   "schedule": "0 11 * * *" },
+    { "path": "/api/cron/whatsapp-intraday?slot=budget",     "schedule": "0 12 * * *" },
+    { "path": "/api/cron/whatsapp-intraday?slot=outcome",    "schedule": "0 13 * * *" },
+    { "path": "/api/cron/whatsapp-intraday?slot=unusual",    "schedule": "0 14 * * *" },
+    { "path": "/api/cron/whatsapp-intraday?slot=savings",    "schedule": "0 17 * * *" },
+    { "path": "/api/cron/whatsapp-intraday?slot=dd",         "schedule": "45 7,12,18 * * *" },
+    { "path": "/api/cron/whatsapp-weekly-recovery",          "schedule": "0 9 * * 1" },
     { "path": "/api/cron/consent-renewal",           "schedule": "0 7 * * *" },
     { "path": "/api/cron/email-monitor",             "schedule": "0 14 * * *" },
     { "path": "/api/cron/detect-subscriptions",      "schedule": "0 4 * * *" },
@@ -58,7 +65,6 @@
     { "path": "/api/cron/reverify-all-legal-refs",   "schedule": "30 3 * * *" },
     { "path": "/api/cron/consumer-nurture",          "schedule": "0 * * * *" },
     { "path": "/api/cron/whatsapp-template-status",  "schedule": "0 11 * * *" },
-    { "path": "/api/cron/whatsapp-daily-checks",     "schedule": "0 9 * * *" },
     { "path": "/api/cron/large-debit-alert",         "schedule": "45 3,9,13,17,20 * * *" },
     { "path": "/api/cron/weekly-newsletter",         "schedule": "0 11 * * 4" }
   ]
