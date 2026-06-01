@@ -171,6 +171,41 @@ export async function dispatchPocketAgentAlert(args: {
       return { ok: false, channel: 'whatsapp', error: err };
     }
 
+    // ── Intelligence layer: consult before firing ────────────────────
+    // Phase 0 of the closed-loop architecture (see
+    // docs/CLOSED_LOOP_ARCHITECTURE.md). If this alert template has been
+    // emitted ≥ 30 times AND its precision is ≤ 15%, the intelligence
+    // layer tells us to suppress. Critical alert types bypass this
+    // automatically inside the SDK (matches EVENT_CATALOG critical=true).
+    const { recordAction, consultLedger, logAutoSuppression } =
+      await import('@/lib/intelligence');
+    const intelCtx = {
+      userId: session.user_id,
+      actor: 'system' as const,
+      actionKind: 'alert_sent',
+      subjectKind: 'alert_template',
+      subjectId: templateName,
+      predicted: { alertType, detectedIssueId, hasWhatsappVars: !!whatsappVars },
+      metadata: { dispatcher: 'pocket-agent', telegram_payload: !!telegram },
+    };
+    const decision = await consultLedger(intelCtx);
+    if (!decision.emit) {
+      await logAutoSuppression(intelCtx, decision);
+      const err = `suppressed by intelligence layer (${decision.reason}, precision=${decision.precision_pct}%)`;
+      await logWhatsAppDispatchOutcome({
+        session,
+        alertType,
+        ok: false,
+        error: err,
+        templateName,
+      });
+      return { ok: false, channel: 'whatsapp', error: err };
+    }
+    // Phase 0 matches outcomes by (subject_kind, subject_id) so we don't
+    // need to retain the event id here. Phase 2 will likely thread it
+    // through to enable per-send outcome attribution.
+    await recordAction(intelCtx);
+
     // ── In-window text attempt ───────────────────────────────────────
     const inWindow = await isInsideServiceWindow(session.user_id);
     if (inWindow) {
