@@ -243,6 +243,20 @@ export async function GET(request: NextRequest) {
     })
     .catch(() => { /* non-fatal */ });
 
+  // ── PostHog server-side conversion ──
+  // Only fire on a genuinely new connection — a re-auth of an existing
+  // bank (reused=true) isn't a "bank connected" conversion.
+  if (!upsertResult.reused) {
+    import('@/lib/posthog-server')
+      .then(({ captureServer }) => {
+        captureServer('bank_connected', user.id, {
+          provider: 'yapily',
+          bank_name: bankName,
+        });
+      })
+      .catch(() => { /* non-fatal */ });
+  }
+
   // ── Trigger initial 12-month sync in the background ──
   // The body carries the account snapshots so the sync doesn't have
   // to re-fetch /accounts (saves a round-trip + uses identical hashes

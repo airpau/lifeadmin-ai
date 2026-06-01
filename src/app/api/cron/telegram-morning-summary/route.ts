@@ -28,6 +28,8 @@ import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
 import { dispatchWhatsAppMorningBrief } from '@/lib/whatsapp/morning-brief';
+import { getWebAnalytics, type WebAnalytics } from '@/lib/analytics/posthog-insights';
+import { ADMIN_EMAIL } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -122,7 +124,25 @@ type BriefDateContext = {
   yesterdayStart: Date;
   todayStart: Date;
   tipIndex: number;
+  // Founder-only web analytics. Resolved once per cron run and rendered
+  // ONLY in the founder's brief (userId === founderUserId) — site-wide
+  // DAU/signup/funnel numbers must never leak into a consumer's briefing.
+  founderUserId?: string;
+  webAnalytics?: WebAnalytics | null;
 };
+
+/** Render the founder-only PostHog web analytics block. */
+function buildWebAnalyticsSection(wa: WebAnalytics, divider: string): string {
+  let section = `${divider}\n📊 *Website (yesterday)*\nVisitors: *${wa.dau}* | Signups: *${wa.signups}*`;
+  if (wa.funnel && wa.funnel.steps.length > 0) {
+    const path = wa.funnel.steps.map((s) => s.count).join(' → ');
+    section += `\nFunnel: ${path} (${wa.funnel.conversionPct.toFixed(1)}% conversion)`;
+    if (wa.funnel.biggestDrop) {
+      section += `\nBiggest drop: ${wa.funnel.biggestDrop}`;
+    }
+  }
+  return section;
+}
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminClient = any;
 async function buildMorningBrief(
@@ -386,6 +406,13 @@ async function buildMorningBrief(
       budgetSection += `\n  ${emoji} *${prettyCat}* — *${fmt(w.spent)}* / ${fmt(w.limit)} _(${Math.round(w.pct)}%)_`;
     }
     sections.push(budgetSection);
+  }
+
+  // ------ Founder-only: website analytics (after the financial summary,
+  // before disputes). Site-wide DAU / signups / funnel are business data,
+  // not consumer-facing — gated to the founder's own brief. ------
+  if (ctx.founderUserId && userId === ctx.founderUserId && ctx.webAnalytics?.available) {
+    sections.push(buildWebAnalyticsSection(ctx.webAnalytics, DIVIDER));
   }
 
   // ------ Money-saving tip of the day. Pushed BEFORE the disputes
@@ -713,6 +740,35 @@ export async function GET(request: NextRequest) {
   const tipIndex = dayOfYear % MONEY_TIPS.length;
 
   // -------------------------------------------------------
+  // Founder web-analytics — resolve the founder's user_id and fetch
+  // PostHog stats ONCE per run, but only when the founder is actually a
+  // recipient this morning. Skips silently when PostHog isn't configured.
+  // -------------------------------------------------------
+  let founderUserId: string | undefined;
+  let webAnalytics: WebAnalytics | null = null;
+  try {
+    const { data: founderRow } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', ADMIN_EMAIL)
+      .maybeSingle();
+    founderUserId = (founderRow as { id?: string } | null)?.id;
+    if (founderUserId) {
+      const founderIsRecipient =
+        eligibleSessions.some((s) => s.user_id === founderUserId) ||
+        eligibleWhatsappSessions.some((s) => s.user_id === founderUserId);
+      if (founderIsRecipient) {
+        webAnalytics = await getWebAnalytics();
+      }
+    }
+  } catch (err) {
+    console.warn(
+      '[telegram-morning-summary] founder web-analytics resolve failed (non-fatal):',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  // -------------------------------------------------------
   // Process each Pro user
   // -------------------------------------------------------
   const briefCtx: BriefDateContext = {
@@ -723,6 +779,8 @@ export async function GET(request: NextRequest) {
     yesterdayStart,
     todayStart,
     tipIndex,
+    founderUserId,
+    webAnalytics,
   };
   // The Telegram dispatch loop only runs when the bot token is present
   // AND only for users without an active WhatsApp session (dedup above).

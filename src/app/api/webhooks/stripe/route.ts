@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 import { notifyAgents } from '@/lib/agent-notify';
 import { trackSubscription } from '@/lib/meta-conversions';
+import { captureServer } from '@/lib/posthog-server';
 
 export const runtime = 'nodejs';
 
@@ -179,10 +180,12 @@ export async function POST(request: NextRequest) {
         }
 
         let tier = 'essential';
+        let billingInterval: 'month' | 'year' = 'month';
         if (session.subscription) {
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
           const priceId = subscription.items.data[0]?.price.id || '';
           tier = getPlanTier(priceId);
+          billingInterval = subscription.items.data[0]?.price.recurring?.interval === 'year' ? 'year' : 'month';
           console.log(`Webhook: subscription priceId=${priceId} tier=${tier} status=${subscription.status}`);
         }
 
@@ -266,6 +269,22 @@ export async function POST(request: NextRequest) {
         // Notify agents about subscription change
         if (!updateError) {
           notifyAgents('subscription_change', `New ${tier} subscription`, `User ${userId} subscribed to ${tier} plan. Stripe sub: ${session.subscription}`, 'stripe').catch(() => {});
+
+          // PostHog server-side conversion. Annual amounts differ from
+          // monthly (Essential £4.99/mo · £44.99/yr; Pro £9.99/mo · £94.99/yr).
+          const amountGbp =
+            billingInterval === 'year'
+              ? tier === 'pro'
+                ? 94.99
+                : 44.99
+              : tier === 'pro'
+                ? 9.99
+                : 4.99;
+          captureServer('subscription_created', userId, {
+            plan: tier,
+            amount_gbp: amountGbp,
+            interval: billingInterval,
+          });
 
           // Meta Conversions API - server-side Purchase event
           if (userId) {

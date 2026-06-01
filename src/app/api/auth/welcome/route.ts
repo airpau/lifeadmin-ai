@@ -4,6 +4,7 @@ import { sendOnboardingEmail } from '@/lib/email/onboarding-sequence';
 import { resend, FROM_EMAIL } from '@/lib/resend';
 import { notifyAgents } from '@/lib/agent-notify';
 import { trackSignup } from '@/lib/meta-conversions';
+import { captureServer } from '@/lib/posthog-server';
 
 // Founder notification recipient — admin inbox, not the user's email.
 const FOUNDER_NOTIFY_EMAIL = 'hello@paybacker.co.uk';
@@ -85,6 +86,18 @@ export async function POST(request: NextRequest) {
       ip: request.headers.get('x-forwarded-for') || undefined,
       userAgent: request.headers.get('user-agent') || undefined,
     }).catch(() => {});
+
+    // PostHog server-side signup conversion. This route is idempotent
+    // (welcome_sent_at short-circuits above) and every signup path drains
+    // through it, so this fires exactly once per new user. Map Supabase's
+    // app_metadata.provider to the analytics signup_method dimension.
+    const signupMethod =
+      provider === 'google' || provider === 'azure' || provider === 'microsoft'
+        ? provider === 'azure'
+          ? 'microsoft'
+          : provider
+        : 'email';
+    captureServer('user_signed_up', userId, { email, signup_method: signupMethod });
 
     // Stamp idempotency flag so a re-call (e.g. dashboard layout firing
     // on the next render before the user_metadata read settles) becomes

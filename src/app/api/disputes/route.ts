@@ -125,6 +125,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create dispute' }, { status: 500 });
   }
 
+  // PostHog server-side conversion. Only reached when a NEW dispute row
+  // was inserted — the 7-day dedup branch above returns early.
+  import('@/lib/posthog-server')
+    .then(({ captureServer }) => {
+      captureServer('dispute_created', user.id, {
+        supplier: normalisedName,
+        amount_gbp: dispute.disputed_amount ?? null,
+      });
+    })
+    .catch(() => { /* non-fatal */ });
+
   // If this dispute originated from a price increase alert, update the alert status
   if (body.alert_id) {
     await supabase

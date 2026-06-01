@@ -270,6 +270,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: insertErr?.message || 'Failed to create dispute' }, { status: 500 });
   }
 
+  // PostHog server-side conversion. The route's idempotency check above
+  // returns the existing dispute before reaching this insert, so this only
+  // fires for genuinely new disputes.
+  import('@/lib/posthog-server')
+    .then(({ captureServer }) => {
+      captureServer('dispute_created', user.id, {
+        supplier: facts.provider_name,
+        amount_gbp: facts.disputed_amount ?? null,
+        source: 'email',
+      });
+    })
+    .catch(() => { /* non-fatal */ });
+
   // 5. Link the email thread for ongoing Watchdog monitoring + import history.
   //
   // Pick the SUPPLIER side of the conversation. fetchNewMessages already

@@ -34,6 +34,15 @@ const REQUIRED_VARS = [
   "POSTHOG_PROJECT_ID",
   "STRIPE_SECRET_KEY",
 
+  // Web analytics in the Telegram brief + /analytics command (added 2026-06-01)
+  // POSTHOG_PERSONAL_API_KEY (above) is the READ key for insights/funnels.
+  // GA4 is optional — wired only when the property id + a service-account
+  // credential are present (see src/lib/analytics/posthog-insights.ts).
+  "GOOGLE_ANALYTICS_PROPERTY_ID",
+  "GA4_SERVICE_ACCOUNT_JSON",
+  "GA4_CLIENT_EMAIL",
+  "GA4_PRIVATE_KEY",
+
   // Feature env vars referenced by other parts of the app
   "EMAIL_ENCRYPTION_KEY",
   "RESEND_API_KEY",

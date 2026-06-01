@@ -6,6 +6,7 @@ import {
   executeAdminTool,
   loadFounderWhatsAppPhone,
 } from '@/lib/telegram/admin-tools';
+import { getAnalyticsReport, formatAnalyticsReport } from '@/lib/analytics/posthog-insights';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -298,7 +299,7 @@ export async function POST(request: NextRequest) {
 
     // Handle /start
     if (text === '/start') {
-      await sendTelegram(chatId, `Hi ${firstName}! I'm Charlie, your Executive Assistant.\n\nI have full access to business data and can trigger any agent to run immediately.\n\n*Commands:*\n/status - Business snapshot\n/tickets - Open support tickets\n/reports - Latest agent reports\n/users - User stats\n/revenue - Revenue overview\n/agents - List all agents\n/ask [agent] [question] - Run an agent and ask a question\n/run [agent] - Trigger a full agent run\n/dev [task] - Developer agent creates a PR\n/cac [days] - Signup sources & CAC report (default 7 days)\n/clear - Clear conversation history\n\nOr just chat naturally. I remember our conversation.`);
+      await sendTelegram(chatId, `Hi ${firstName}! I'm Charlie, your Executive Assistant.\n\nI have full access to business data and can trigger any agent to run immediately.\n\n*Commands:*\n/status - Business snapshot\n/tickets - Open support tickets\n/reports - Latest agent reports\n/users - User stats\n/revenue - Revenue overview\n/analytics - Web + funnel stats (PostHog/GA4)\n/agents - List all agents\n/ask [agent] [question] - Run an agent and ask a question\n/run [agent] - Trigger a full agent run\n/dev [task] - Developer agent creates a PR\n/cac [days] - Signup sources & CAC report (default 7 days)\n/clear - Clear conversation history\n\nOr just chat naturally. I remember our conversation.`);
       return NextResponse.json({ ok: true });
     }
 
@@ -338,6 +339,21 @@ export async function POST(request: NextRequest) {
         }
       } catch (err: unknown) {
         await sendTelegram(chatId, `Ads check failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Handle /analytics - PostHog web + funnel stats (+ GA4 when wired)
+    if (text === '/analytics') {
+      await sendTelegram(chatId, '_Pulling web analytics..._');
+      try {
+        const report = await getAnalyticsReport();
+        await sendTelegram(chatId, formatAnalyticsReport(report));
+      } catch (err: unknown) {
+        await sendTelegram(
+          chatId,
+          `Analytics fetch failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+        );
       }
       return NextResponse.json({ ok: true });
     }
