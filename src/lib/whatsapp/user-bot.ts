@@ -67,19 +67,11 @@ GENERAL RULES (mirror the dashboard agent):
 - ALWAYS call the relevant tool before answering — never make up numbers or say "I can't access that".
 - draft_dispute_letter is TERMINAL: call once when asked for a complaint letter. Do NOT call search_legal_rights first. Do NOT call anything after it.
 - generate_cancellation_email: call once when user wants to cancel a specific provider.
-- create_support_ticket: only when the user genuinely needs human support. NEVER raise a ticket for a categorisation request — see RECATEGORISING below.
+- create_support_ticket: only when the user genuinely needs human support.
 - DO IT with a tool — never suggest "go to the dashboard" for something you can do here.
-
-RECATEGORISING — NON-NEGOTIABLE:
-- When the user says a transaction (or every transaction from a merchant) is in the wrong category, use recategorise_transaction (single, by ID) or recategorise_transactions (by merchant name) immediately. DO NOT raise a support ticket — that would be a product failure for something the agent can fix instantly.
-- The canonical Tier-1 parents are: mortgage, housing, council_tax, energy, water, broadband, mobile, bills, groceries, eating_out, transport, travel, shopping, entertainment, streaming, software, health, personal_care, insurance, loans, savings, fees, tax, education, family, pets, charity, gambling, income, transfers, other. Anything outside this list must be expressed as a CUSTOM SUBCATEGORY under one of these parents.
-- "income" is for any money coming IN from outside the user (salary, freelance, rent received, membership / subscription income, ad revenue, refunds, dividends). "transfers" is ONLY for the user moving money between their OWN accounts — never for third-party payments to the user.
-- When the user wants to tag a transaction with a specific source they haven't named before (e.g. "Energie Fitness membership", "Stripe / Glofox payouts", "School fees"), call upsert_user_subcategory(parent_category=…, name=…) FIRST to register the subcategory, then call recategorise_transaction (or recategorise_transactions) with new_category=<parent> AND user_subcategory=<the same name>. If they've used the label before, call list_user_subcategories first to re-use the exact spelling.
-- Confirm in one short line what was changed and how many transactions were updated.
 - Always show data the tool returns — never withhold results.
 - Be specific about financial impact: "that's £276/year" not "your bill went up".
 - For dispute follow-ups: always mention the FCA 8-week deadline.
-- DISPUTE OUTCOME — before asking "have you heard back?", "did you win?", or "what happened with X?", call get_disputes (no status filter) first. If the dispute is already resolved_won / resolved_lost / resolved_partial / closed / withdrawn / dismissed, DO NOT ask the user to confirm — acknowledge it's already on file, e.g. "I've got your E.ON Next dispute marked as won — just checking you hadn't heard anything new since." Only ask "have you heard back?" when the dispute is still open / awaiting_response / escalated. If the user reports an outcome that matches what's already recorded, confirm you have it; don't act surprised.
 
 REPLYING TO A SUPPLIER — same as dashboard agent: if the user asks you to draft / send / reply / chase / follow up with a named supplier, call get_disputes FIRST with status="open" to find the matching dispute (fuzzy-compare provider names), then get_dispute_detail, then draft_dispute_letter with supplier_latest_message verbatim and user_reply_brief in the user's words. Don't embellish.
 
@@ -131,17 +123,6 @@ OFFER ASSESSMENT — when the supplier has put a settlement amount on the table 
 Always include the FCA 8-week clock remaining when escalation is on the table. THEN ask whether to accept, negotiate, or escalate, and only on that answer call update_dispute_status / draft_dispute_letter.
 
 - GIVE ME THEIR LAST UPDATE / WHAT DID THEY SAY / SHOW ME THE REPLY / WHAT'S THEIR LATEST: the user wants the actual supplier reply. Call get_dispute_detail for the recently-alerted dispute, find the most recent company_email entry, and quote the supplier's content verbatim (truncate only if >1000 chars). Add the FCA 8-week clock if relevant.
-
-DISPUTE OUTCOMES — RECORDING WINS/LOSSES (critical):
-- Map natural language BEFORE asking anything:
-  · "won" / "settled" / "they paid" / "got my refund" / "resolved in our favour" → resolved_won
-  · "lost" / "rejected" / "no refund" / "refused" → resolved_lost
-  · "partial" / "offered half" / "settled for £X" / "goodwill of £X" → resolved_partial
-- For money: an explicit number → money_recovered. "full amount" / "full dispute amount" / "the full thing" / "all of it" → use_disputed_amount = true (tool reads disputes.disputed_amount).
-- ONE dispute → update_dispute_status. MULTIPLE in one message → record_dispute_outcomes with an array.
-- NUMBERED LIST REPLIES — when you listed disputes ("1. Nuki  2. ACI") and the user replies positionally ("1. £69, 2. full amount", "Both won — 1. … 2. …"), map each number back to the provider from your previous message and call record_dispute_outcomes. Do NOT ask "which one?" — the numbering is unambiguous.
-- DO NOT ask redundant follow-ups. Provider + status + (amount OR use_disputed_amount) is enough — record and confirm. Only ask when genuinely ambiguous.
-- CONFIRMATION: report per-dispute outcome + recovered amount + the running cumulative total the tool returns. Lead with ✅; end with the total. No "next steps" in the same message.
 
 If you can't tell which dispute the keyword refers to (no recent alert in history), call get_disputes with status="open" and ask the user to confirm which one they meant. Don't guess.`;
 
@@ -416,6 +397,115 @@ async function sendChunked(phone: string, text: string): Promise<void> {
  * Non-Pro users hit the upgrade-nudge branch in the webhook route and
  * never reach this function. Tier check is done upstream.
  */
+/**
+ * Map a single inbound reply-keyword to an outcome for the most recent
+ * alert template sent to this user. Returns null when the reply doesn't
+ * look like a single-keyword alert reply (the AI agent handles
+ * everything else normally — we just record the engagement signal).
+ *
+ * Each keyword's mapping mirrors the reply CTA in the template body:
+ *   paybacker_alert_price_increase  → DISPUTE / DISMISS
+ *   paybacker_alert_renewal         → CANCEL / KEEP
+ *   paybacker_alert_unusual_charge  → DISPUTE / EXPLAIN
+ *   paybacker_alert_trial_ending    → CANCEL / KEEP
+ *   paybacker_outcome_check         → WON / LOST / PENDING
+ *   paybacker_dispute_agent_action  → <custom verb> / SKIP
+ *   paybacker_money_recovered       → SHARE / DISPUTES
+ *   paybacker_payment_received      → SUMMARY
+ *   paybacker_payment_outgoing      → DISPUTE / SUMMARY
+ *   paybacker_dd_warning            → BUDGET
+ *   paybacker_budget_alert          → BUDGET
+ *   paybacker_savings_goal_milestone→ GOALS
+ *   paybacker_recovery_total_weekly → DISPUTES
+ *
+ * Keywords that imply taking action map to outcome_kind = 'action_taken'.
+ * DISMISS, SKIP, KEEP, EXPLAIN, NO map to 'dismissed'. WON / LOST /
+ * PENDING come from outcome_check and are recorded as themselves.
+ */
+function classifyAlertReply(
+  text: string,
+): { outcomeKind: 'action_taken' | 'dismissed' | 'won' | 'lost' | 'ignored' } | null {
+  const t = text.trim().toUpperCase();
+  // Only short single-word-ish replies count — keep the AI agent's
+  // surface area intact for everything richer.
+  if (t.length > 20) return null;
+  const word = t.replace(/[^A-Z]/g, '');
+  if (!word) return null;
+  switch (word) {
+    case 'DISPUTE':
+    case 'CANCEL':
+    case 'BUDGET':
+    case 'SUMMARY':
+    case 'GOALS':
+    case 'DISPUTES':
+    case 'SHARE':
+    case 'STATUS':
+    case 'REPLY':
+      return { outcomeKind: 'action_taken' };
+    case 'DISMISS':
+    case 'KEEP':
+    case 'SKIP':
+    case 'EXPLAIN':
+    case 'NO':
+      return { outcomeKind: 'dismissed' };
+    case 'WON':
+      return { outcomeKind: 'won' };
+    case 'LOST':
+    case 'REJECTED':
+      return { outcomeKind: 'lost' };
+    case 'PENDING':
+    case 'ONGOING':
+      return { outcomeKind: 'ignored' };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Phase 0 closed-loop hook. When the user's reply looks like a single
+ * keyword response to a recent alert template, attach the outcome to
+ * the most recent matching intelligence_events row for this user.
+ *
+ * We use the user's most-recent alert_template subject_id rather than
+ * thread the event id through Twilio (which would require a webhook
+ * round-trip per send). Phase 2 may revisit this if we need
+ * per-message attribution.
+ *
+ * Best-effort: any failure logs and returns.
+ */
+async function recordAlertEngagement(userId: string, text: string): Promise<void> {
+  const cls = classifyAlertReply(text);
+  if (!cls) return;
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return;
+    const sb = createClient(url, key, { auth: { persistSession: false } });
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data } = await sb
+      .from('intelligence_events')
+      .select('id, subject_id')
+      .eq('user_id', userId)
+      .eq('action_kind', 'alert_sent')
+      .eq('subject_kind', 'alert_template')
+      .is('outcome_kind', null)
+      .gte('emitted_at', since)
+      .order('emitted_at', { ascending: false })
+      .limit(1);
+    const evt = data?.[0];
+    if (!evt) return;
+    const { recordOutcome } = await import('@/lib/intelligence');
+    await recordOutcome({
+      eventId: evt.id,
+      outcomeKind: cls.outcomeKind,
+      outcome: { reply_text: text.slice(0, 80) },
+    });
+  } catch (e) {
+    console.warn('[whatsapp/user-bot] recordAlertEngagement failed:', e);
+  }
+}
+
 export async function handleWhatsAppInbound(opts: {
   phone: string;
   text: string;
@@ -435,6 +525,13 @@ export async function handleWhatsAppInbound(opts: {
     );
     return { ok: false, reason: 'rate_limited' };
   }
+
+  // Phase 0 closed-loop hook — fire-and-forget. Detects short keyword
+  // replies (DISPUTE / DISMISS / CANCEL / WON / etc.) and attaches the
+  // engagement signal to the most recent alert this user received.
+  // Runs BEFORE the AI brain so the AI's own response doesn't muddy the
+  // attribution window.
+  void recordAlertEngagement(userId, text);
 
   try {
     const result = await callClaudeWithTools(userId, text, phone);
