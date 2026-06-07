@@ -11,14 +11,27 @@
  */
 
 import crypto from 'node:crypto';
-import { TEMPLATES, PENDING_RESUBMISSION, type TemplateName } from './template-registry';
+import {
+  TEMPLATES,
+  PENDING_RESUBMISSION,
+  PENDING_META_APPROVAL,
+  type TemplateName,
+} from './template-registry';
 import type {
+  InboundMediaType,
   InboundMessage,
+  InboundMessageKind,
+  SendInteractiveOptions,
   SendTemplateOptions,
   SendTextOptions,
   WhatsAppMessageResult,
   WhatsAppProvider,
 } from './types';
+
+// Twilio's quick-reply Content type caps button titles at 25 chars; we
+// clip below this so we never bounce the create-content API.
+const TWILIO_BUTTON_TITLE_MAX = 24;
+const TWILIO_MAX_BUTTONS = 3;
 
 const TWILIO_API_BASE = 'https://api.twilio.com/2010-04-01';
 
@@ -51,27 +64,16 @@ function fromWhatsAppAddress(addr: string): string {
  * provider boundary so every caller — including the 13 cron paths that
  * pass merchant / provider / description strings straight from the bank
  * feed — is protected without having to remember to sanitise upstream.
- *
- * Length cap is intentionally generous (1024 chars per var) because
- * Meta's body-length limit is 1024 chars total including framing, not
- * per variable — callers can still over-pack the body, but at least the
- * 21656 rejection path is closed.
  */
 function sanitiseTemplateVar(raw: string): string {
   if (typeof raw !== 'string') return String(raw);
   return raw
-    // Flatten any newline run (CR, LF, CRLF, repeated) to a single space.
     .replace(/[\r\n]+/g, ' ')
-    // Drop tabs.
     .replace(/\t+/g, ' ')
-    // Strip everything < 0x20 EXCEPT we've already handled \n \r \t.
     // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '')
-    // Collapse runs of whitespace ( ≥ 2 spaces ) to a single space.
     .replace(/[ ]{2,}/g, ' ')
-    // Trim leading / trailing whitespace.
     .trim()
-    // Hard length cap.
     .slice(0, 1024);
 }
 
@@ -134,14 +136,15 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
     // upstream rely on this throwing a clean error rather than skipping
     // pre-emptively, so we never attempt the send when the only candidate
     // SID is the placeholder.
+    const pendingSentinels = new Set<string>([PENDING_RESUBMISSION, PENDING_META_APPROVAL]);
     const registrySid =
-      registry?.sid && registry.sid !== PENDING_RESUBMISSION ? registry.sid : undefined;
+      registry?.sid && !pendingSentinels.has(registry.sid) ? registry.sid : undefined;
     const contentSid = envOverride || dbSid || registrySid;
     const from = requireEnv('TWILIO_WHATSAPP_FROM');
 
-    if (!contentSid && registry?.sid === PENDING_RESUBMISSION) {
+    if (!contentSid && registry?.sid && pendingSentinels.has(registry.sid)) {
       throw new Error(
-        `[whatsapp/twilio] template "${opts.templateName}" is pending Meta resubmission — set TWILIO_TEMPLATE_${opts.templateName.toUpperCase()} or update whatsapp_template_sids to send.`,
+        `[whatsapp/twilio] template "${opts.templateName}" is pending Meta approval (sentinel=${registry.sid}) — set TWILIO_TEMPLATE_${opts.templateName.toUpperCase()} or update whatsapp_template_sids to send.`,
       );
     }
 
@@ -152,18 +155,11 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
         ContentSid: contentSid,
         ContentVariables: JSON.stringify(
           opts.parameters.reduce<Record<string, string>>((acc, val, i) => {
-            // Twilio rejects template variables that contain newlines,
-            // tabs, 4+ consecutive spaces, or 5+ consecutive newlines —
-            // surfaced as error 21656 "Content Variables parameter is
-            // invalid". Sanitise at the provider boundary so EVERY
-            // caller is protected regardless of how dirty the source
-            // data is (bank merchant names, user-typed input, AI output
-            // etc). Verified 2026-06-07 — paybacker_alert_trial_ending
-            // was silently failing for Paul's "Lisagroom New     Ef
-            // Hoddesdon" sub because of the 5-space gap in the
-            // provider_name. Per-callsite sanitisation is too easy to
-            // miss; doing it here means new callers never have to
-            // remember.
+            // Twilio's WhatsApp template path rejects (21656) on newlines,
+            // tabs, 4+ consecutive spaces, or control chars in any var.
+            // Verified 2026-06-07 with Paul's "Lisagroom New     Ef
+            // Hoddesdon" sub provider name. Sanitised at the boundary so
+            // every cron caller is protected.
             acc[String(i + 1)] = sanitiseTemplateVar(val);
             return acc;
           }, {}),
@@ -188,6 +184,76 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
       body = body.replace(new RegExp(`\\{\\{${i + 1}\\}\\}`, 'g'), val);
     });
     return this.sendText({ to: opts.to, text: body, idempotencyKey: opts.idempotencyKey });
+  }
+
+  async sendInteractive(
+    opts: SendInteractiveOptions,
+  ): Promise<WhatsAppMessageResult> {
+    // Twilio doesn't let us send arbitrary inline buttons — every quick-
+    // reply set lives behind a pre-created Content SID (`twilio/quick-reply`
+    // type). SID resolution order:
+    //   1. Explicit opts.interactiveContentSid (caller supplied)
+    //   2. Env override TWILIO_INTERACTIVE_<NAME> (lets ops swap SIDs
+    //      without a deploy, e.g. when a button label changes)
+    //   3. Numbered-text fallback (no SID configured yet)
+    //
+    // The fallback is what makes this useful in practice: the cron alerts
+    // that *should* carry buttons (price-increase, outcome-check) often
+    // run before ops has created the matching Content SID. Numbered text
+    // still gets the choices in front of the user, and the agent's
+    // numbered-reply intelligence (793a345c on master) maps "1" / "2" /
+    // "3" back to the right action.
+    const buttons = opts.buttons.slice(0, TWILIO_MAX_BUTTONS);
+    if (buttons.length === 0) {
+      throw new Error('[whatsapp/twilio] sendInteractive requires at least one button');
+    }
+    const envOverride = opts.interactiveName
+      ? process.env[`TWILIO_INTERACTIVE_${opts.interactiveName.toUpperCase()}`]
+      : undefined;
+    const contentSid = opts.interactiveContentSid || envOverride;
+    const from = requireEnv('TWILIO_WHATSAPP_FROM');
+
+    if (contentSid) {
+      // Content variables shape: {{1}} = body, {{2..N+1}} = button titles
+      // in declaration order. This must match the Content shape ops
+      // configured at content.twilio.com.
+      const vars: Record<string, string> = { '1': opts.text };
+      buttons.forEach((b, i) => {
+        vars[String(i + 2)] = b.title.slice(0, TWILIO_BUTTON_TITLE_MAX);
+      });
+      const params: Record<string, string> = {
+        From: toWhatsAppAddress(from),
+        To: toWhatsAppAddress(opts.to),
+        ContentSid: contentSid,
+        ContentVariables: JSON.stringify(vars),
+      };
+      const res = await postForm('/Messages.json', params);
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(
+          `[whatsapp/twilio] sendInteractive failed ${res.status}: ${body}`,
+        );
+      }
+      const data = (await res.json()) as { sid: string; date_created: string };
+      return {
+        provider: 'twilio',
+        providerMessageId: data.sid,
+        acceptedAt: new Date(data.date_created || Date.now()),
+      };
+    }
+
+    // Numbered-text fallback. Inbound parser tags `text` taps as kind='text',
+    // so the agent's existing brain handles "1" / "2" naturally.
+    const numbered = buttons
+      .map(
+        (b, i) => `${i + 1}. ${b.title.slice(0, TWILIO_BUTTON_TITLE_MAX)}`,
+      )
+      .join('\n');
+    return this.sendText({
+      to: opts.to,
+      text: `${opts.text}\n\n${numbered}\n\nReply with the number.`,
+      idempotencyKey: opts.idempotencyKey,
+    });
   }
 
   verifyWebhookSignature(rawBody: string, headers: Record<string, string>): boolean {
@@ -221,21 +287,87 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
   }
 
   parseWebhook(rawBody: string): InboundMessage[] {
-    // Twilio inbound is form-encoded. One message per request.
+    // Twilio inbound is form-encoded. One message per request. The shape varies
+    // by content type:
+    //   - Plain text:           Body
+    //   - Media (image/audio):  Body (caption, may be empty) + NumMedia=N +
+    //                           MediaUrl0..N-1 + MediaContentType0..N-1
+    //   - Quick reply button:   Body=<button label> + ButtonText=<same> +
+    //                           OriginalRepliedMessageSid (the template msg
+    //                           the button was attached to). Twilio collapses
+    //                           the tap into a normal text inbound — we still
+    //                           tag it as 'interactive' so the webhook can log
+    //                           it accurately and we have a hook for future
+    //                           payload-aware routing.
     const params = new URLSearchParams(rawBody);
     const from = params.get('From');
-    const text = params.get('Body');
     const sid = params.get('MessageSid');
     if (!from || !sid) return [];
+
+    const text = params.get('Body') ?? '';
+    const numMedia = parseInt(params.get('NumMedia') ?? '0', 10);
+    const buttonText = params.get('ButtonText');
+    const originalReplied = params.get('OriginalRepliedMessageSid');
+
+    const base = {
+      from: fromWhatsAppAddress(from),
+      displayName: params.get('ProfileName') ?? undefined,
+      providerMessageId: sid,
+      sentAt: new Date(),
+      provider: 'twilio' as const,
+    };
+
+    if (numMedia > 0) {
+      // We only inspect the first media item — Twilio supports up to 10
+      // per message but the agent can't process any of them yet, so the
+      // count doesn't matter; we just need enough metadata to log it and
+      // tell the user.
+      const mediaUrl = params.get('MediaUrl0') ?? undefined;
+      const mime = params.get('MediaContentType0') ?? undefined;
+      const mediaType = mediaTypeFromMime(mime);
+      return [
+        {
+          ...base,
+          text, // caption, may be empty
+          kind: 'media' as InboundMessageKind,
+          mediaType,
+          mediaUrl,
+          mediaMimeType: mime,
+        },
+      ];
+    }
+
+    // Interactive: Twilio sets ButtonText when a quick-reply was tapped, and
+    // OriginalRepliedMessageSid when the user replied to a specific message.
+    // Either signal is enough to mark this as interactive — we still pass the
+    // label through `text` so the Claude brain sees what the user "said".
+    if (buttonText || originalReplied) {
+      return [
+        {
+          ...base,
+          text: text || buttonText || '',
+          kind: 'interactive' as InboundMessageKind,
+          interactivePayload: buttonText ?? undefined,
+        },
+      ];
+    }
+
     return [
       {
-        from: fromWhatsAppAddress(from),
-        displayName: params.get('ProfileName') ?? undefined,
-        text: text ?? '',
-        providerMessageId: sid,
-        sentAt: new Date(),
-        provider: 'twilio',
+        ...base,
+        text,
+        kind: 'text' as InboundMessageKind,
       },
     ];
   }
 }
+
+function mediaTypeFromMime(mime?: string | null): InboundMediaType | undefined {
+  if (!mime) return undefined;
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  // application/pdf, application/msword, text/plain, etc.
+  return 'document';
+}
+
