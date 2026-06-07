@@ -45,39 +45,139 @@ export interface ActiveSession {
 }
 
 /**
- * Pull every active Pocket Agent session across BOTH channels, in
- * one go. The mutex guarantees a user has at most one active row,
- * so we never duplicate.
+ * Pull every active Pocket Agent session, deduped to exactly ONE channel
+ * per user — the user's preferred `notification_preferences.pocket_agent_channel`.
+ *
+ * The mutex RPC (`set_pocket_agent_channel`) is supposed to enforce that
+ * only one of telegram_sessions / whatsapp_sessions has `is_active=true`
+ * at a time, but historically that wasn't always the case (and there
+ * are still code paths — opt-in flows pre-2026-04-27, manual SQL fixes
+ * — that can leave both rows active). Defence-in-depth: if both happen
+ * to be flagged active, we pick the user's preferred channel and silently
+ * drop the other. Telegram + WhatsApp never both buzz a user.
+ *
+ * Resolution order per user:
+ *   1. notification_preferences.pocket_agent_channel ('telegram'|'whatsapp'|'none')
+ *      — if it says 'none', user gets nothing.
+ *   2. Whichever single session is active (covers users who haven't
+ *      ever touched the preference UI).
+ *   3. If both are active and there's no preference row, prefer the
+ *      most recently active channel (last_message_at) so we don't
+ *      blast a long-dormant Telegram chat.
+ *
+ * Paul's report on 2026-06-07 ("alert came through to both telegram and
+ * whatsapp") was the original motivating bug for this dedup.
  */
 export async function listActivePocketAgentSessions(
   supabase: AdminClient,
 ): Promise<ActiveSession[]> {
-  const [{ data: tg }, { data: wa }] = await Promise.all([
+  const [{ data: tg }, { data: wa }, { data: prefs }] = await Promise.all([
     supabase
       .from('telegram_sessions')
-      .select('user_id, telegram_chat_id')
+      .select('user_id, telegram_chat_id, last_message_at')
       .eq('is_active', true),
     supabase
       .from('whatsapp_sessions')
-      .select('user_id, whatsapp_phone')
+      .select('user_id, whatsapp_phone, last_message_at')
       .eq('is_active', true)
       .is('opted_out_at', null),
+    supabase
+      .from('notification_preferences')
+      .select('user_id, pocket_agent_channel'),
   ]);
 
-  const sessions: ActiveSession[] = [];
-  for (const r of (tg ?? []) as Array<{ user_id: string; telegram_chat_id: number }>) {
-    sessions.push({
-      user_id: r.user_id,
-      channel: 'telegram',
-      destination: r.telegram_chat_id,
-    });
+  const prefByUser = new Map<string, 'telegram' | 'whatsapp' | 'none'>();
+  for (const r of (prefs ?? []) as Array<{
+    user_id: string;
+    pocket_agent_channel: 'telegram' | 'whatsapp' | 'none' | null;
+  }>) {
+    if (r.pocket_agent_channel) prefByUser.set(r.user_id, r.pocket_agent_channel);
   }
-  for (const r of (wa ?? []) as Array<{ user_id: string; whatsapp_phone: string }>) {
-    sessions.push({
-      user_id: r.user_id,
-      channel: 'whatsapp',
-      destination: r.whatsapp_phone,
-    });
+
+  const tgByUser = new Map<
+    string,
+    { user_id: string; telegram_chat_id: number; last_message_at: string | null }
+  >();
+  for (const r of (tg ?? []) as Array<{
+    user_id: string;
+    telegram_chat_id: number;
+    last_message_at: string | null;
+  }>) {
+    tgByUser.set(r.user_id, r);
+  }
+  const waByUser = new Map<
+    string,
+    { user_id: string; whatsapp_phone: string; last_message_at: string | null }
+  >();
+  for (const r of (wa ?? []) as Array<{
+    user_id: string;
+    whatsapp_phone: string;
+    last_message_at: string | null;
+  }>) {
+    waByUser.set(r.user_id, r);
+  }
+
+  const allUserIds = new Set<string>([...tgByUser.keys(), ...waByUser.keys()]);
+  const sessions: ActiveSession[] = [];
+  for (const userId of allUserIds) {
+    const pref = prefByUser.get(userId);
+    if (pref === 'none') continue;
+
+    const tgRow = tgByUser.get(userId);
+    const waRow = waByUser.get(userId);
+
+    // Explicit preference wins.
+    if (pref === 'telegram' && tgRow) {
+      sessions.push({
+        user_id: userId,
+        channel: 'telegram',
+        destination: tgRow.telegram_chat_id,
+      });
+      continue;
+    }
+    if (pref === 'whatsapp' && waRow) {
+      sessions.push({
+        user_id: userId,
+        channel: 'whatsapp',
+        destination: waRow.whatsapp_phone,
+      });
+      continue;
+    }
+
+    // No preference (or preference points at a channel that isn't
+    // actually active). Pick whichever channel is active — and if
+    // somehow both are, pick the one with the most recent
+    // last_message_at. Defence-in-depth: a stale active=true on the
+    // long-dormant channel will lose to the live one.
+    if (tgRow && !waRow) {
+      sessions.push({
+        user_id: userId,
+        channel: 'telegram',
+        destination: tgRow.telegram_chat_id,
+      });
+    } else if (waRow && !tgRow) {
+      sessions.push({
+        user_id: userId,
+        channel: 'whatsapp',
+        destination: waRow.whatsapp_phone,
+      });
+    } else if (tgRow && waRow) {
+      const tgLast = tgRow.last_message_at ? new Date(tgRow.last_message_at).getTime() : 0;
+      const waLast = waRow.last_message_at ? new Date(waRow.last_message_at).getTime() : 0;
+      if (waLast >= tgLast) {
+        sessions.push({
+          user_id: userId,
+          channel: 'whatsapp',
+          destination: waRow.whatsapp_phone,
+        });
+      } else {
+        sessions.push({
+          user_id: userId,
+          channel: 'telegram',
+          destination: tgRow.telegram_chat_id,
+        });
+      }
+    }
   }
   return sessions;
 }
