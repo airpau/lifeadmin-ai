@@ -3,7 +3,9 @@
  *
  * Closed-loop step 1: DETECT and NOTIFY
  *
- * Runs every 6 hours. For each linked Pro user, checks for:
+ * Runs daily at 08:00 UTC (09:00 BST) — a sensible UK daytime hour so
+ * renewal alerts never land in the middle of the night. For each linked
+ * Pro user, checks for:
  * 1. Active price increase alerts not yet actioned
  * 2. Contracts expiring within 30 days
  * 3. Budget overruns (category > 100% of monthly limit)
@@ -27,6 +29,7 @@ import {
   dispatchPocketAgentAlert,
   listActivePocketAgentSessions,
 } from '@/lib/pocket-agent/dispatch';
+import { isPayrollLike } from '@/lib/subscriptions/payroll-filter';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -397,7 +400,7 @@ export async function GET(request: NextRequest) {
 
     const { data: renewingSoon } = await supabase
       .from('subscriptions')
-      .select('id, provider_name, amount, billing_cycle, next_billing_date, auto_renews')
+      .select('id, provider_name, category, notes, amount, billing_cycle, next_billing_date, auto_renews')
       .eq('user_id', userId)
       .eq('status', 'active')
       .gte('next_billing_date', today)
@@ -407,6 +410,10 @@ export async function GET(request: NextRequest) {
     for (const sub of renewingSoon ?? []) {
       const key = `renewal_imminent:${sub.id}`;
       if (recentTypes.has(key)) continue;
+      // Payroll / salary / wages outgoings get mis-detected as subscriptions
+      // by the bank-scan importer. They are not cancellable subscriptions, so
+      // never fire a renewal alert for them.
+      if (isPayrollLike(sub)) continue;
 
       const daysLeft = Math.ceil(
         (new Date(sub.next_billing_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24),

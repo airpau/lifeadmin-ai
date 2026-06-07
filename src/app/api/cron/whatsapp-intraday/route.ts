@@ -62,6 +62,7 @@ import {
   isAlertEnabled,
   type WhatsAppAlertKey,
 } from '@/lib/whatsapp/notification-prefs';
+import { isPayrollLike } from '@/lib/subscriptions/payroll-filter';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -270,15 +271,17 @@ async function runRenewal(sb: SupabaseClient, users: ProUser[]): Promise<SlotRes
     try {
       const { data: subs } = await sb
         .from('subscriptions')
-        .select('id, provider_name, amount, billing_cycle, next_billing_date')
+        .select('id, provider_name, category, notes, amount, billing_cycle, next_billing_date')
         .eq('user_id', u.userId)
         .eq('status', 'active')
         .not('next_billing_date', 'is', null)
         .gte('next_billing_date', todayIso)
         .lte('next_billing_date', horizonIso)
         .order('next_billing_date', { ascending: true })
-        .limit(1);
-      const sub = (subs ?? [])[0] as Row | undefined;
+        .limit(5);
+      // Skip payroll / salary / wages rows mis-detected as subscriptions —
+      // they are not cancellable renewals.
+      const sub = ((subs ?? []) as Row[]).find((s) => !isPayrollLike(s));
       if (!sub) continue;
       r.candidates++;
 

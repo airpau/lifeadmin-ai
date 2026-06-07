@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { buildContractEndEmail } from '@/lib/email/contract-end-alerts';
 import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
+import { isPayrollLike } from '@/lib/subscriptions/payroll-filter';
 
 export const maxDuration = 60;
 
@@ -73,6 +74,8 @@ export async function GET(request: NextRequest) {
 
   for (const ext of (extractions || [])) {
     if (!ext.provider_name || !ext.contract_end_date) continue;
+    // Skip payroll / salary / wages rows mis-detected as contracts.
+    if (isPayrollLike({ provider_name: ext.provider_name, category: ext.contract_type })) continue;
     sources.push({
       userId: ext.user_id,
       providerName: ext.provider_name,
@@ -87,6 +90,8 @@ export async function GET(request: NextRequest) {
 
   for (const sub of (linkedSubs || [])) {
     if (!sub.provider_name || !sub.contract_end_date) continue;
+    // Skip payroll / salary / wages rows mis-detected as subscriptions.
+    if (isPayrollLike(sub)) continue;
     // Skip if already captured from contract_extractions for this subscription
     if (sources.some(s => s.subscriptionId === sub.id)) continue;
 

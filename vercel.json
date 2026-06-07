@@ -15,7 +15,7 @@
     { "path": "/api/cron/contract-expiry-alerts",    "schedule": "0 8 * * *" },
     { "path": "/api/cron/dispute-reminders",         "schedule": "0 9 * * *" },
     { "path": "/api/cron/google-sheets-sync",        "schedule": "0 6 * * *" },
-    { "path": "/api/cron/telegram-alerts",           "schedule": "0 */6 * * *" },
+    { "path": "/api/cron/telegram-alerts",           "schedule": "0 8 * * *" },
     { "path": "/api/cron/telegram-morning-summary",  "schedule": "30 7 * * *" },
     { "path": "/api/cron/telegram-evening-summary",  "schedule": "0 20 * * *" },
     { "path": "/api/cron/telegram-scheduler",        "schedule": "0 5,8,9,10,13,18 * * *" },

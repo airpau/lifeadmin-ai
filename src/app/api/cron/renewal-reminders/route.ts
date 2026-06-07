@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { buildRenewalEmail } from '@/lib/email/renewal-reminders';
 import { canSendEmail } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
+import { isPayrollLike } from '@/lib/subscriptions/payroll-filter';
 
 export const maxDuration = 60;
 
@@ -51,9 +52,14 @@ export async function GET(request: NextRequest) {
 
     if (!renewingSubs || renewingSubs.length === 0) continue;
 
+    // Drop payroll / salary / wages rows that the bank-scan importer
+    // mis-detected as subscriptions — they are not cancellable renewals.
+    const cancellableSubs = renewingSubs.filter((s) => !isPayrollLike(s));
+    if (cancellableSubs.length === 0) continue;
+
     // Group by user
-    const userRenewals = new Map<string, typeof renewingSubs>();
-    for (const sub of renewingSubs) {
+    const userRenewals = new Map<string, typeof cancellableSubs>();
+    for (const sub of cancellableSubs) {
       if (!userRenewals.has(sub.user_id)) userRenewals.set(sub.user_id, []);
       userRenewals.get(sub.user_id)!.push(sub);
     }
