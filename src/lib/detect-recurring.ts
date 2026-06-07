@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { deriveRecurringGroup } from './subscription-key';
+import { isPayrollLike } from './subscriptions/payroll-filter';
 
 const STRIP_SUFFIXES = /\b(ltd|limited|plc|llp|inc|corp|group|uk|co\.uk)\b/gi;
 const AMOUNT_VARIANCE = 0.10; // 10%
@@ -203,6 +204,15 @@ export async function detectRecurring(
       .in('id', ids);
 
     const displayName = txs[0].extracted_name;
+
+    // Never auto-create a subscription from a payroll / salary / wages outgoing.
+    // A staff payment ("Lisagroom", £808.71/mo) was mis-detected here as a
+    // recurring subscription and triggered a "trial ends in 3 days — reply
+    // CANCEL" alert via the Pocket Agent. Payroll is a legitimate business cost,
+    // not a cancellable subscription. See src/lib/subscriptions/payroll-filter.ts.
+    if (isPayrollLike({ provider_name: displayName, description: txs[0].description })) {
+      continue;
+    }
 
     // Check if subscription already exists (any status) — aggressive dedup
     const { data: allUserSubs } = await supabase
