@@ -26,10 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
-import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
 import { dispatchWhatsAppMorningBrief } from '@/lib/whatsapp/morning-brief';
-import { getWebAnalytics, type WebAnalytics } from '@/lib/analytics/posthog-insights';
-import { ADMIN_EMAIL } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -124,25 +121,7 @@ type BriefDateContext = {
   yesterdayStart: Date;
   todayStart: Date;
   tipIndex: number;
-  // Founder-only web analytics. Resolved once per cron run and rendered
-  // ONLY in the founder's brief (userId === founderUserId) — site-wide
-  // DAU/signup/funnel numbers must never leak into a consumer's briefing.
-  founderUserId?: string;
-  webAnalytics?: WebAnalytics | null;
 };
-
-/** Render the founder-only PostHog web analytics block. */
-function buildWebAnalyticsSection(wa: WebAnalytics, divider: string): string {
-  let section = `${divider}\n📊 *Website (yesterday)*\nVisitors: *${wa.dau}* | Signups: *${wa.signups}*`;
-  if (wa.funnel && wa.funnel.steps.length > 0) {
-    const path = wa.funnel.steps.map((s) => s.count).join(' → ');
-    section += `\nFunnel: ${path} (${wa.funnel.conversionPct.toFixed(1)}% conversion)`;
-    if (wa.funnel.biggestDrop) {
-      section += `\nBiggest drop: ${wa.funnel.biggestDrop}`;
-    }
-  }
-  return section;
-}
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminClient = any;
 async function buildMorningBrief(
@@ -159,57 +138,31 @@ async function buildMorningBrief(
   if (!txCount || txCount === 0) return null;
 
   const sections: string[] = [];
-  // Divider used between major sections — a thin rule that renders the
-  // same in both Telegram and WhatsApp (no emoji-specific glyphs).
-  const DIVIDER = '\n\n────────';
-  sections.push("☀️ *Good morning!*\n_Your daily money briefing:_");
+  sections.push("*Good morning! Here's your daily money briefing:*");
 
-  // ------ 1. Yesterday's spending (with fallback to most recent day) ------
+  // ------ 1. Yesterday's spending ------
   const EXCLUDE_CATS = new Set([
     'transfer', 'transfers', 'internal_transfer', 'self_transfer',
     'credit_card_payment', 'credit_card',
     'investment', 'investments', 'savings', 'pension',
     'income', 'fee_refund',
   ]);
-  // Fetch every debit in the window across all of the user's connected
-  // banks. We deliberately do NOT filter by connection_id / account_id —
-  // every row in bank_transactions belongs to the user via user_id and
-  // is already de-duped by the sync's enrichment RPCs. deleted_at IS NULL
-  // keeps soft-deleted disconnect history out. Pending transactions stay
-  // in because a £2,000+ direct debit is a real cash outflow either way.
-  //
-  // Returns null when there are no non-excluded debits in the window —
-  // callers use that to chain a fallback lookup over the last 30 days
-  // when the literal "yesterday" window is empty (2026-05-17 fix).
-  type SpendTxRow = {
-    user_category: string | null;
-    amount: number | string;
-    merchant_name: string | null;
-    description: string | null;
-  };
-  const buildSpendingBlock = async (
-    startISO: string,
-    endISO: string,
-    headingEmoji: string,
-    headingLabel: string,
-  ): Promise<string | null> => {
-    const { data: raw } = await supabase
-      .from('bank_transactions')
-      .select('user_category, amount, merchant_name, description')
-      .eq('user_id', userId)
-      .is('deleted_at', null)
-      .lt('amount', 0)
-      .gte('timestamp', startISO)
-      .lt('timestamp', endISO);
-    const rows = ((raw ?? []) as SpendTxRow[]).filter(
-      (t) => !EXCLUDE_CATS.has(t.user_category ?? ''),
-    );
-    if (rows.length === 0) return null;
+  const { data: yesterdayTxRaw } = await supabase
+    .from('bank_transactions')
+    .select('user_category, amount')
+    .eq('user_id', userId)
+    .lt('amount', 0)
+    .gte('timestamp', yesterdayStart.toISOString())
+    .lt('timestamp', todayStart.toISOString());
 
-    const total = rows.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
+  const yesterdayTx = ((yesterdayTxRaw ?? []) as Array<{ user_category: string | null; amount: number | string }>).filter(
+    (t) => !EXCLUDE_CATS.has(t.user_category ?? ''),
+  );
 
+  if (yesterdayTx.length > 0) {
+    const total = yesterdayTx.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
     const byCategory: Record<string, number> = {};
-    for (const t of rows) {
+    for (const t of yesterdayTx) {
       const cat = t.user_category ?? 'Other';
       byCategory[cat] = (byCategory[cat] ?? 0) + Math.abs(Number(t.amount));
     }
@@ -217,121 +170,16 @@ async function buildMorningBrief(
       .sort(([, a], [, b]) => b - a)
       .slice(0, 3);
 
-    let block = `${DIVIDER}\n${headingEmoji} *${headingLabel}*\nTotal: *${fmt(total)}*`;
+    let spendingSection = `\n\n*Yesterday's Spending*\nTotal: *${fmt(total)}*`;
     if (topCategories.length > 0) {
-      block += '\n_Top categories:_';
+      spendingSection += '\nTop categories:';
       for (const [cat, amount] of topCategories) {
-        const prettyCat = cat
-          .replace(/_/g, ' ')
-          .replace(/\b\w/g, (c) => c.toUpperCase());
-        block += `\n  •  ${prettyCat} — *${fmt(amount)}*`;
+        spendingSection += `\n  - ${cat}: ${fmt(amount)}`;
       }
     }
-
-    // Surface the largest individual debit by merchant so big one-off
-    // payments (e.g. a £2,200 British Gas direct debit) are not buried
-    // inside an aggregated category total.
-    const byMerchant: Record<string, number> = {};
-    for (const t of rows) {
-      const label = (t.merchant_name || t.description || 'Other').trim();
-      if (!label) continue;
-      byMerchant[label] = (byMerchant[label] ?? 0) + Math.abs(Number(t.amount));
-    }
-    const topMerchants = Object.entries(byMerchant)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 3)
-      .filter(([, amt]) => amt >= 25); // skip noise
-    if (topMerchants.length > 0) {
-      block += '\n_Largest payments:_';
-      for (const [m, amt] of topMerchants) {
-        const cleanLabel = m.length > 40 ? `${m.slice(0, 37)}...` : m;
-        block += `\n  •  ${cleanLabel} — *${fmt(amt)}*`;
-      }
-    }
-    return block;
-  };
-
-  let spendingBlock = await buildSpendingBlock(
-    yesterdayStart.toISOString(),
-    todayStart.toISOString(),
-    '💷',
-    "Yesterday's Spending",
-  );
-
-  if (!spendingBlock) {
-    // Fall back to the most recent debit day within the last 30 days so
-    // the section never just reads "No spending recorded yesterday" when
-    // the user genuinely spent something three days ago (2026-05-17 fix).
-    const lookbackStart = new Date(now);
-    lookbackStart.setDate(lookbackStart.getDate() - 30);
-    const { data: lastTx } = await supabase
-      .from('bank_transactions')
-      .select('timestamp')
-      .eq('user_id', userId)
-      .is('deleted_at', null)
-      .lt('amount', 0)
-      .gte('timestamp', lookbackStart.toISOString())
-      .lt('timestamp', yesterdayStart.toISOString())
-      .order('timestamp', { ascending: false })
-      .limit(1);
-    const lastTs = (lastTx ?? [])[0]?.timestamp as string | undefined;
-    if (lastTs) {
-      const dayStart = new Date(lastTs);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1);
-      const niceDate = dayStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-      spendingBlock = await buildSpendingBlock(
-        dayStart.toISOString(),
-        dayEnd.toISOString(),
-        '💷',
-        `Last recorded spending (${niceDate})`,
-      );
-    }
-  }
-
-  sections.push(
-    spendingBlock ?? `${DIVIDER}\n💷 *Yesterday's Spending*\n_No spending recorded in the last 30 days._`,
-  );
-
-  // ------ 1b. Yesterday's income ------
-  const { data: yesterdayIncomeRaw } = await supabase
-    .from('bank_transactions')
-    .select('merchant_name, description, amount, user_category')
-    .eq('user_id', userId)
-    .gte('timestamp', yesterdayStart.toISOString())
-    .lt('timestamp', todayStart.toISOString());
-
-  const yesterdayIncome = ((yesterdayIncomeRaw ?? []) as Array<{
-    merchant_name: string | null;
-    description: string | null;
-    amount: number | string;
-    user_category: string | null;
-  }>).filter((t) => {
-    const amt = Number(t.amount);
-    if (amt <= 0) return false;
-    const cat = (t.user_category ?? '').toLowerCase();
-    // Treat positive transactions tagged 'income' as definite income.
-    // Also include uncategorised positive entries so payroll/refunds
-    // we haven't classified yet still surface.
-    if (cat === 'income') return true;
-    if (cat === '' || cat === 'other' || cat === 'uncategorised' || cat === 'uncategorized') return true;
-    return false;
-  });
-
-  if (yesterdayIncome.length > 0) {
-    const incomeTotal = yesterdayIncome.reduce((sum, t) => sum + Number(t.amount), 0);
-    const merchants = yesterdayIncome
-      .map((t) => (t.merchant_name || t.description || 'Unknown').trim())
-      .filter((s, i, arr) => arr.indexOf(s) === i)
-      .slice(0, 5);
-    let incomeSection = `${DIVIDER}\n💰 *Yesterday's Income*\nTotal: *${fmt(incomeTotal)}*`;
-    if (merchants.length > 0) {
-      incomeSection += `\n${merchants.join(' · ')}`;
-    }
-    sections.push(incomeSection);
+    sections.push(spendingSection);
   } else {
-    sections.push(`${DIVIDER}\n💰 *Yesterday's Income*\n_No income recorded yesterday._`);
+    sections.push("\n\n*Yesterday's Spending*\nNo spending recorded yesterday.");
   }
 
   // ------ 2. Subscriptions renewing today or tomorrow ------
@@ -344,10 +192,10 @@ async function buildMorningBrief(
     .lte('next_billing_date', tomorrowStr);
 
   if (renewals && renewals.length > 0) {
-    let renewalSection = `${DIVIDER}\n🔁 *Upcoming Renewals*`;
+    let renewalSection = '\n\n*Upcoming Renewals*';
     for (const sub of renewals as Array<{ provider_name: string; amount: number | string; billing_cycle: string | null; next_billing_date: string }>) {
       const when = sub.next_billing_date === todayStr ? 'Today' : 'Tomorrow';
-      renewalSection += `\n  •  *${sub.provider_name}* — *${fmt(Number(sub.amount))}* / ${sub.billing_cycle ?? 'month'} _(${when})_`;
+      renewalSection += `\n  - ${sub.provider_name}: ${fmt(Number(sub.amount))}/${sub.billing_cycle ?? 'month'} (${when})`;
     }
     sections.push(renewalSection);
   }
@@ -363,9 +211,9 @@ async function buildMorningBrief(
     .lte('contract_end_date', in7DaysStr);
 
   if (expiringContracts && expiringContracts.length > 0) {
-    let contractSection = `${DIVIDER}\n📄 *Contracts Expiring This Week*`;
+    let contractSection = '\n\n*Contracts Expiring This Week*';
     for (const c of expiringContracts as Array<{ provider_name: string; contract_end_date: string }>) {
-      contractSection += `\n  •  *${c.provider_name}* — ends _${fmtDate(c.contract_end_date)}_`;
+      contractSection += `\n  - ${c.provider_name}: ends ${fmtDate(c.contract_end_date)}`;
     }
     sections.push(contractSection);
   }
@@ -397,135 +245,34 @@ async function buildMorningBrief(
 
   if (budgetWarnings.length > 0) {
     budgetWarnings.sort((a, b) => b.pct - a.pct);
-    let budgetSection = `${DIVIDER}\n⚠️ *Budget Warnings*`;
+    let budgetSection = '\n\n*Budget Warnings*';
     for (const w of budgetWarnings) {
-      const emoji = w.pct >= 100 ? '🔴' : '🟡';
-      const prettyCat = w.category
-        .replace(/_/g, ' ')
-        .replace(/\b\w/g, (c) => c.toUpperCase());
-      budgetSection += `\n  ${emoji} *${prettyCat}* — *${fmt(w.spent)}* / ${fmt(w.limit)} _(${Math.round(w.pct)}%)_`;
+      const emoji = w.pct >= 100 ? '⚠️' : '⏳';
+      budgetSection += `\n  ${emoji} ${w.category}: ${fmt(w.spent)} / ${fmt(w.limit)} (${Math.round(w.pct)}%)`;
     }
     sections.push(budgetSection);
   }
 
-  // ------ Founder-only: website analytics (after the financial summary,
-  // before disputes). Site-wide DAU / signups / funnel are business data,
-  // not consumer-facing — gated to the founder's own brief. ------
-  if (ctx.founderUserId && userId === ctx.founderUserId && ctx.webAnalytics?.available) {
-    sections.push(buildWebAnalyticsSection(ctx.webAnalytics, DIVIDER));
-  }
-
-  // ------ Money-saving tip of the day. Pushed BEFORE the disputes
-  // section so it survives the 3900-char WhatsApp truncation even when
-  // a user has many open disputes (2026-05-17 fix — was rendering as a
-  // header with no body when the brief overflowed). ------
-  const safeTipIndex = Number.isFinite(tipIndex) && tipIndex >= 0 ? tipIndex % MONEY_TIPS.length : 0;
-  const tipText = MONEY_TIPS[safeTipIndex] ?? MONEY_TIPS[0];
-  sections.push(`${DIVIDER}\n💡 *Tip of the Day*\n_${tipText}_`);
-
-  // ------ 5. Unresolved disputes — show ALL, no truncation.
-  // Filter out every terminal status. Earlier code only excluded
-  // 'resolved' / 'dismissed', which let resolved_won / resolved_partial /
-  // resolved_lost / closed / withdrawn rows through. The outcome column
-  // is also checked: a row with status='open' but outcome IN
-  // ('won','partial','lost','withdrawn') is concluded. ------
-  const TERMINAL_DISPUTE_STATUSES = [
-    'resolved_won',
-    'resolved_partial',
-    'resolved_lost',
-    'closed',
-    'withdrawn',
-    'dismissed',
-    'dropped',
-    'won',
-    'partial',
-    'lost',
-  ];
-  const { data: openDisputesRaw } = await supabase
+  // ------ 5. Unresolved disputes ------
+  const { data: openDisputes } = await supabase
     .from('disputes')
-    .select('id, provider_name, issue_type, status, outcome, updated_at, created_at')
+    .select('id, provider_name, issue_type, status')
     .eq('user_id', userId)
-    .not('status', 'in', `(${TERMINAL_DISPUTE_STATUSES.join(',')})`)
-    .order('updated_at', { ascending: false, nullsFirst: false });
+    .not('status', 'in', '(resolved,dismissed)');
 
-  const openDisputes = (openDisputesRaw ?? []).filter(
-    (d: { outcome: string | null }) =>
-      d.outcome == null || !['won', 'partial', 'lost', 'withdrawn'].includes(d.outcome),
-  ) as Array<{
-    provider_name: string;
-    issue_type: string;
-    status: string;
-    updated_at: string | null;
-    created_at: string | null;
-  }>;
-
-  if (openDisputes.length > 0) {
-    let disputeSection = `${DIVIDER}\n⚖️ *Open Disputes (${openDisputes.length})*`;
-    for (const d of openDisputes) {
-      const lastTs = d.updated_at ?? d.created_at;
-      let ageSuffix = '';
-      if (lastTs) {
-        const days = Math.max(
-          0,
-          Math.floor((now.getTime() - new Date(lastTs).getTime()) / (1000 * 60 * 60 * 24)),
-        );
-        ageSuffix = days === 0
-          ? ' — updated today'
-          : ` — ${days} day${days === 1 ? '' : 's'} since last update`;
-      }
-      const prettyIssue = d.issue_type.replace(/_/g, ' ');
-      const prettyStatus = d.status.replace(/_/g, ' ');
-      disputeSection += `\n  •  *${d.provider_name}* — _${prettyIssue}_ (${prettyStatus})${ageSuffix}`;
+  if (openDisputes && openDisputes.length > 0) {
+    let disputeSection = `\n\n*Open Disputes (${openDisputes.length})*`;
+    for (const d of (openDisputes as Array<{ provider_name: string; issue_type: string; status: string }>).slice(0, 3)) {
+      disputeSection += `\n  - ${d.provider_name}: ${d.issue_type} (${d.status})`;
+    }
+    if (openDisputes.length > 3) {
+      disputeSection += `\n  _...and ${openDisputes.length - 3} more_`;
     }
     sections.push(disputeSection);
   }
 
-  // ------ Inbox findings (unactioned email-scan opportunities) ------
-  // Surface anything the email scanner has flagged that the user hasn't
-  // actioned yet — price increases, bills, contract renewals, dispute
-  // responses, etc. We filter by `status='new'` (unactioned) and cap at
-  // 10 — there is no overnight scanner cron today (the email scanner
-  // is user-triggered via the dashboard), so a 48h "since" window was
-  // returning 0 rows for users who hadn't recently clicked Scan, even
-  // when they had a backlog of unactioned findings sitting in the
-  // queue (2026-05-26 fix — was reporting "0 items / 0 opportunities"
-  // when in fact 9 findings were open).
-  const { data: recentFindings } = await supabase
-    .from('email_scan_findings')
-    .select('finding_type, provider, title, urgency, amount, created_at')
-    .eq('user_id', userId)
-    .eq('status', 'new')
-    .order('created_at', { ascending: false })
-    .limit(10);
-
-  if (recentFindings && recentFindings.length > 0) {
-    const URGENCY_RANK: Record<string, number> = { immediate: 0, soon: 1, routine: 2 };
-    const sorted = [
-      ...(recentFindings as Array<{
-        finding_type: string;
-        provider: string | null;
-        title: string;
-        urgency: string | null;
-        amount: number | string | null;
-      }>),
-    ].sort(
-      (a, b) =>
-        (URGENCY_RANK[a.urgency ?? 'routine'] ?? 9) -
-        (URGENCY_RANK[b.urgency ?? 'routine'] ?? 9),
-    );
-    let inboxSection = `${DIVIDER}\n📨 *Inbox Findings (${recentFindings.length} open)*`;
-    for (const f of sorted) {
-      const tag = f.urgency === 'immediate' ? '🚨 ' : f.urgency === 'soon' ? '⏰ ' : '•  ';
-      const amountStr = f.amount != null ? ` — *${fmt(Number(f.amount))}*` : '';
-      const provider = f.provider ?? f.finding_type;
-      inboxSection += `\n  ${tag}*${provider}*: ${f.title}${amountStr}`;
-    }
-    sections.push(inboxSection);
-  } else {
-    sections.push(
-      `${DIVIDER}\n📨 *Inbox Findings*\n_Nothing new in your inbox queue. Run a fresh scan from paybacker.co.uk/dashboard if you want us to look again._`,
-    );
-  }
+  // ------ 6. Money-saving tip of the day ------
+  sections.push(`\n\n💡 *Tip of the Day*\n${MONEY_TIPS[tipIndex]}`);
 
   return sections.join('');
 }
@@ -612,16 +359,7 @@ export async function GET(request: NextRequest) {
       .map((p) => p.id),
   );
 
-  // Dedup policy (2026-05-17): WhatsApp is the only user-facing Pocket
-  // Agent channel. If a user has BOTH a Telegram and a WhatsApp session
-  // active, drop the Telegram side — Telegram is reserved for admin /
-  // founder system messages now (signups, audit digests, cron health).
-  // Source the WhatsApp user set via the canonical helper so all crons
-  // share the same opt-in / opt-out filter.
-  const waUserIds = await loadUsersWithActiveWhatsApp(supabase);
-  const proSessions = tgSessions
-    .filter((s) => proUserIds.has(s.user_id))
-    .filter((s) => !waUserIds.has(s.user_id));
+  const proSessions = tgSessions.filter((s) => proUserIds.has(s.user_id));
   const proWhatsappSessions = wapSessions.filter((s) => proUserIds.has(s.user_id));
 
   // Check alert preferences — skip users who disabled morning summary.
@@ -644,10 +382,52 @@ export async function GET(request: NextRequest) {
     const pref = prefMap.get(userId);
     return !pref || pref.morning_summary !== false; // default to on
   };
-  const eligibleSessions = proSessions.filter((s) => morningSummaryOn(s.user_id));
-  const eligibleWhatsappSessions = proWhatsappSessions.filter((s) =>
+  let eligibleSessions = proSessions.filter((s) => morningSummaryOn(s.user_id));
+  let eligibleWhatsappSessions = proWhatsappSessions.filter((s) =>
     morningSummaryOn(s.user_id),
   );
+
+  // Mutex enforcement — only ONE channel per user, ever. Paul reported
+  // 2026-06-07 that the same alert came through on both Telegram and
+  // WhatsApp because this cron historically treated the two channels
+  // as independent (see header comment at line 11-13). The DB mutex
+  // RPC is supposed to keep at most one is_active=true row per user
+  // but old data + manual flips can leave both active. Resolve per
+  // user via notification_preferences.pocket_agent_channel; fall back
+  // to whichever single channel is active; if both still tie, prefer
+  // whatsapp since that's the channel the user is most likely paying
+  // for (Pro-only) and last_message_at activity skews recent on it.
+  if (eligibleSessions.length > 0 && eligibleWhatsappSessions.length > 0) {
+    const dualUserIds = new Set(
+      eligibleSessions
+        .map((s) => s.user_id)
+        .filter((id) => eligibleWhatsappSessions.some((w) => w.user_id === id)),
+    );
+    if (dualUserIds.size > 0) {
+      const { data: prefRows } = await supabase
+        .from('notification_preferences')
+        .select('user_id, pocket_agent_channel')
+        .in('user_id', Array.from(dualUserIds));
+      const prefByUser = new Map(
+        ((prefRows ?? []) as Array<{
+          user_id: string;
+          pocket_agent_channel: 'telegram' | 'whatsapp' | 'none' | null;
+        }>)
+          .filter((p) => p.pocket_agent_channel != null)
+          .map((p) => [p.user_id, p.pocket_agent_channel!]),
+      );
+      eligibleSessions = eligibleSessions.filter((s) => {
+        if (!dualUserIds.has(s.user_id)) return true;
+        const pref = prefByUser.get(s.user_id) ?? 'whatsapp';
+        return pref === 'telegram';
+      });
+      eligibleWhatsappSessions = eligibleWhatsappSessions.filter((s) => {
+        if (!dualUserIds.has(s.user_id)) return true;
+        const pref = prefByUser.get(s.user_id) ?? 'whatsapp';
+        return pref === 'whatsapp';
+      });
+    }
+  }
 
   // POST-SESSION-LOAD Telegram gate (P2 fix): only treat the missing
   // bot token as a problem when there are actually Telegram recipients
@@ -662,72 +442,40 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Post-dedup, eligibleSessions only contains users WITHOUT an active
-  // WhatsApp session — so the Telegram loop never needs to fan out to
-  // WhatsApp. The standalone WhatsApp loop below handles every
-  // WhatsApp user (including those who would previously have been
-  // dispatched twice).
+  // Index whatsapp sessions by user_id so the per-user loop can find
+  // the matching phone in O(1). Map<user_id, whatsapp_phone>.
+  const whatsappByUserId = new Map<string, string>(
+    eligibleWhatsappSessions.map((s) => [s.user_id, s.whatsapp_phone]),
+  );
+
+  // Track which users got a WhatsApp send via the Telegram loop so the
+  // standalone WhatsApp loop (for users with NO Telegram session) doesn't
+  // double-dispatch. The DB mutex is supposed to guarantee at most one
+  // active row per user, but this cron treats them as independent so
+  // belt-and-braces here.
+  const whatsappDispatchedUserIds = new Set<string>();
 
   // -------------------------------------------------------
-  // Date helpers — compute "yesterday" in Europe/London, not UTC.
-  // Vercel runs in UTC; setHours(0,0,0,0) on a UTC Date gives UTC
-  // midnight, which mis-aligns by 1 hour during BST. Before this fix,
-  // a UK debit at 23:30 on 14 May (= 22:30 UTC) was excluded from the
-  // 16 May briefing's "yesterday" window because that started at
-  // 15 May 00:00 UTC. Paul's ~£2,200 British Gas payment fell into
-  // this gap on 2026-05-16.
+  // Date helpers
   // -------------------------------------------------------
   const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
 
-  // Resolve "today" / "yesterday" in Europe/London by formatting the
-  // current instant in that timezone. The YYYY-MM-DD parts then feed
-  // into a Date constructed via the local Vercel TZ (UTC) so the
-  // boundaries are UTC instants representing the UK midnight transition.
-  const fmtUk = (d: Date) =>
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/London',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(d); // en-CA → YYYY-MM-DD
+  // Yesterday boundaries (UTC-based, but data is stored consistently)
+  const yesterdayStart = new Date(now);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  yesterdayStart.setHours(0, 0, 0, 0);
 
-  // Determine the UK timezone offset (e.g. +01:00 in BST, +00:00 in GMT)
-  // at the current instant. Used to pin midnight in that timezone.
-  const ukOffsetMinutes = (() => {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      timeZoneName: 'shortOffset',
-    })
-      .formatToParts(now)
-      .find((p) => p.type === 'timeZoneName')?.value;
-    // parts looks like "GMT+1" / "GMT" / "GMT+0"
-    const match = parts?.match(/GMT(?:([+-])(\d{1,2})(?::?(\d{2}))?)?/);
-    if (!match) return 0;
-    const sign = match[1] === '-' ? -1 : 1;
-    const hours = Number(match[2] ?? '0');
-    const mins = Number(match[3] ?? '0');
-    return sign * (hours * 60 + mins);
-  })();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
 
-  // Construct an ISO instant that represents 00:00 in Europe/London
-  // for a given UK calendar date.
-  const ukMidnight = (ukDateStr: string): Date => {
-    const offsetSign = ukOffsetMinutes >= 0 ? '+' : '-';
-    const absMin = Math.abs(ukOffsetMinutes);
-    const oh = String(Math.floor(absMin / 60)).padStart(2, '0');
-    const om = String(absMin % 60).padStart(2, '0');
-    return new Date(`${ukDateStr}T00:00:00${offsetSign}${oh}:${om}`);
-  };
+  const tomorrowStr = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0];
 
-  const ukTodayStr = fmtUk(now);
-  const ukYesterdayDate = new Date(ukMidnight(ukTodayStr).getTime() - 24 * 60 * 60 * 1000);
-  const ukYesterdayStr = fmtUk(ukYesterdayDate);
-  const todayStr = ukTodayStr;
-  const yesterdayStart = ukMidnight(ukYesterdayStr);
-  const todayStart = ukMidnight(ukTodayStr);
-
-  const tomorrowStr = fmtUk(new Date(ukMidnight(ukTodayStr).getTime() + 24 * 60 * 60 * 1000));
-  const in7DaysStr = fmtUk(new Date(ukMidnight(ukTodayStr).getTime() + 7 * 24 * 60 * 60 * 1000));
+  const in7DaysStr = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0];
 
   // Current month boundaries
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -740,35 +488,6 @@ export async function GET(request: NextRequest) {
   const tipIndex = dayOfYear % MONEY_TIPS.length;
 
   // -------------------------------------------------------
-  // Founder web-analytics — resolve the founder's user_id and fetch
-  // PostHog stats ONCE per run, but only when the founder is actually a
-  // recipient this morning. Skips silently when PostHog isn't configured.
-  // -------------------------------------------------------
-  let founderUserId: string | undefined;
-  let webAnalytics: WebAnalytics | null = null;
-  try {
-    const { data: founderRow } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', ADMIN_EMAIL)
-      .maybeSingle();
-    founderUserId = (founderRow as { id?: string } | null)?.id;
-    if (founderUserId) {
-      const founderIsRecipient =
-        eligibleSessions.some((s) => s.user_id === founderUserId) ||
-        eligibleWhatsappSessions.some((s) => s.user_id === founderUserId);
-      if (founderIsRecipient) {
-        webAnalytics = await getWebAnalytics();
-      }
-    }
-  } catch (err) {
-    console.warn(
-      '[telegram-morning-summary] founder web-analytics resolve failed (non-fatal):',
-      err instanceof Error ? err.message : String(err),
-    );
-  }
-
-  // -------------------------------------------------------
   // Process each Pro user
   // -------------------------------------------------------
   const briefCtx: BriefDateContext = {
@@ -779,11 +498,11 @@ export async function GET(request: NextRequest) {
     yesterdayStart,
     todayStart,
     tipIndex,
-    founderUserId,
-    webAnalytics,
   };
-  // The Telegram dispatch loop only runs when the bot token is present
-  // AND only for users without an active WhatsApp session (dedup above).
+  // The Telegram dispatch loop only runs when the bot token is present.
+  // When telegramEnabled is false, users with both Telegram and WhatsApp
+  // sessions get picked up by the WhatsApp-only loop below (the
+  // whatsappDispatchedUserIds Set stays empty so no user is skipped).
   if (telegramEnabled && token) {
     for (const session of eligibleSessions) {
       const { user_id: userId, telegram_chat_id: chatId } = session;
@@ -796,14 +515,50 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        // ------ Send via Telegram only — WhatsApp users were excluded
-        // upstream so this user is single-channel. ------
+        // ------ Send via Telegram ------
         const ok = await sendTelegramMessage(token, Number(chatId), message);
 
         if (ok) {
           sent++;
         } else {
           errors.push(`Failed to send to user ${userId}`);
+        }
+
+        // ------ WhatsApp dispatch (independent channel) ------
+        // If this user also has an active WhatsApp Pocket Agent session,
+        // fan the same body out there too. Wrapped in its own try/catch
+        // so a bad number / unapproved template / Twilio outage can't
+        // kill the Telegram run for the rest of the user list.
+        const waPhone = whatsappByUserId.get(userId);
+        if (waPhone) {
+          try {
+            const waOutcome = await dispatchWhatsAppMorningBrief(
+              supabase,
+              userId,
+              waPhone,
+              message,
+            );
+            if (waOutcome.status === 'sent') {
+              whatsappSent++;
+            } else if (waOutcome.status === 'skipped') {
+              whatsappSkipped++;
+            } else {
+              // 'error' — operational failure (Twilio HTTP, network,
+              // auth, bad phone format, etc). Surface to on-call.
+              whatsappErrors.push(`${userId}: ${waOutcome.reason ?? 'unknown'}`);
+            }
+          } catch (waErr) {
+            // Defensive: dispatchWhatsAppMorningBrief no longer throws,
+            // but if anything in the surrounding code (Supabase lookups,
+            // etc) does, treat that as an error rather than a skip.
+            const errMsg = waErr instanceof Error ? waErr.message : String(waErr);
+            console.error(
+              `[telegram-morning-summary] WhatsApp dispatch failed for user ${userId}:`,
+              errMsg,
+            );
+            whatsappErrors.push(`${userId}: ${errMsg}`);
+          }
+          whatsappDispatchedUserIds.add(userId);
         }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -814,10 +569,14 @@ export async function GET(request: NextRequest) {
   }
 
   // -------------------------------------------------------
-  // WhatsApp users — every Pro WhatsApp opt-in receives the brief
-  // here. The Telegram loop above never sends to these users.
+  // WhatsApp-only users (no active Telegram session) — build the
+  // brief and dispatch via WhatsApp. Reuses the same Supabase
+  // queries from the Telegram loop via buildMorningBrief().
   // -------------------------------------------------------
-  for (const session of eligibleWhatsappSessions) {
+  const waOnlyUsers = eligibleWhatsappSessions.filter(
+    (s) => !whatsappDispatchedUserIds.has(s.user_id),
+  );
+  for (const session of waOnlyUsers) {
     const { user_id: userId, whatsapp_phone: waPhone } = session;
     try {
       const message = await buildMorningBrief(supabase, userId, briefCtx);
