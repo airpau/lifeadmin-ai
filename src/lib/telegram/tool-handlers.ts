@@ -26,6 +26,7 @@ import { generateAnnualReportData, generateOnDemandReportData } from '@/lib/repo
 import { predictMonthlyIncome } from '@/lib/income-prediction';
 import { resolveAndStoreMapping } from '@/lib/subcategory-engine';
 import { isValidCategory, type Category } from '@/lib/categories';
+import { isPayrollLike } from '@/lib/subscriptions/payroll-filter';
 import { logAlertInteraction } from '@/lib/alert-interactions';
 import {
   bumpUserIntelligence,
@@ -1821,7 +1822,20 @@ async function recategoriseTransactions(
 
   const count = data?.length ?? 0;
   if (count === 0) {
-    return { text: `No transactions found matching "${merchantName}". Check the spelling or try a shorter name.` };
+    // The user may be referring to something we told them about via an alert —
+    // a renewal/price-increase notification fires from the `subscriptions` and
+    // `price_increase_alerts` tables, NOT `bank_transactions`. (This is exactly
+    // how the Lisa Groom payroll case failed: the agent generated a renewal
+    // alert from a mis-detected subscription, then "couldn't find" the
+    // transaction when asked to recategorise it.) Fall back to those tables so
+    // the agent can actually action what it just surfaced.
+    return recategoriseFromSubscriptionOrAlert(
+      supabase,
+      userId,
+      merchantName,
+      parentCategory,
+      subcategoryLabel,
+    );
   }
 
   // Push to learning engine so it autonomously remembers for future syncs!
@@ -1850,6 +1864,100 @@ async function recategoriseTransactions(
     ? `"${subcategoryLabel}" (mapped to ${parentCategory})`
     : `"${parentCategory}"`;
   return { text: `Recategorised ${count} transaction${count !== 1 ? 's' : ''} matching "${merchantName}" to ${displayLabel}. Future transactions from this merchant will also be categorised as "${parentCategory}".` };
+}
+
+/**
+ * Fallback for recategoriseTransactions when no `bank_transactions` match the
+ * name. Alerts (renewals, price increases) fire from `subscriptions` and
+ * `price_increase_alerts`, so the thing the user is asking us to recategorise
+ * may only exist there. Update the category on whichever row matches, and — if
+ * the target category is payroll/wages/salary, or the name itself looks like a
+ * staff payment — dismiss the subscription/alert so it stops nagging the user.
+ */
+async function recategoriseFromSubscriptionOrAlert(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  merchantName: string,
+  parentCategory: Category,
+  subcategoryLabel: string | null,
+): Promise<ToolResult> {
+  // Treat as a staff payment when either the destination category or the name
+  // looks payroll-like — in that case the row should leave the subscription
+  // surface entirely, not just get re-tagged.
+  const looksPayroll =
+    isPayrollLike({ category: parentCategory }) || isPayrollLike({ provider_name: merchantName });
+
+  // 1. subscriptions (provider_name)
+  const { data: subs } = await supabase
+    .from('subscriptions')
+    .select('id, provider_name, status')
+    .eq('user_id', userId)
+    .ilike('provider_name', `%${merchantName}%`)
+    .neq('status', 'cancelled');
+
+  // 2. price_increase_alerts (merchant_name / merchant_normalized)
+  const { data: alerts } = await supabase
+    .from('price_increase_alerts')
+    .select('id, merchant_name, status')
+    .eq('user_id', userId)
+    .or(`merchant_name.ilike.%${merchantName}%,merchant_normalized.ilike.%${merchantName}%`)
+    .neq('status', 'dismissed');
+
+  const subCount = subs?.length ?? 0;
+  const alertCount = alerts?.length ?? 0;
+
+  if (subCount === 0 && alertCount === 0) {
+    return { text: `No transactions, subscriptions, or alerts found matching "${merchantName}". Check the spelling or try a shorter name.` };
+  }
+
+  const parts: string[] = [];
+
+  if (subCount > 0) {
+    const subUpdate: Record<string, string | null> = { category: parentCategory };
+    if (looksPayroll) {
+      subUpdate.status = 'dismissed';
+      subUpdate.dismissed_at = new Date().toISOString();
+    }
+    const { error } = await supabase
+      .from('subscriptions')
+      .update(subUpdate)
+      .in('id', subs!.map((s) => s.id));
+    if (!error) {
+      parts.push(
+        looksPayroll
+          ? `recategorised ${subCount} subscription${subCount === 1 ? '' : 's'} to "${parentCategory}" and removed ${subCount === 1 ? 'it' : 'them'} from your subscriptions (staff payments aren't subscriptions, so no more renewal alerts)`
+          : `recategorised ${subCount} subscription${subCount === 1 ? '' : 's'} to "${parentCategory}"`,
+      );
+    }
+  }
+
+  if (alertCount > 0) {
+    const alertUpdate: Record<string, string> = { category: parentCategory };
+    if (looksPayroll) alertUpdate.status = 'dismissed';
+    const { error } = await supabase
+      .from('price_increase_alerts')
+      .update(alertUpdate)
+      .in('id', alerts!.map((a) => a.id));
+    if (!error) {
+      parts.push(
+        looksPayroll
+          ? `dismissed ${alertCount} price alert${alertCount === 1 ? '' : 's'}`
+          : `retagged ${alertCount} price alert${alertCount === 1 ? '' : 's'} to "${parentCategory}"`,
+      );
+    }
+  }
+
+  if (parts.length === 0) {
+    return { text: `Found "${merchantName}" but couldn't update it — please try again.` };
+  }
+
+  // Learn the mapping so future detections categorise it correctly too.
+  void voteMerchantCategoryWisdom(supabase, merchantName, parentCategory);
+
+  const label = subcategoryLabel ? `"${subcategoryLabel}" (${parentCategory})` : `"${parentCategory}"`;
+  return {
+    text: `Done — ${parts.join(', and ')}. ${looksPayroll ? 'Tagged as ' + label + '.' : ''}`.trim(),
+  };
 }
 
 async function setBudget(
