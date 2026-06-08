@@ -391,7 +391,7 @@ async function callClaudeWithTools(
   userId: string,
   userMessage: string,
   chatId: number,
-): Promise<{ text: string; pendingAction?: PendingAction }> {
+): Promise<{ text: string; pendingAction?: PendingAction; toolIterations?: number }> {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const supabase = getAdmin();
 
@@ -456,7 +456,7 @@ async function callClaudeWithTools(
           // TERMINAL: a pending action (e.g. draft letter) must stop everything immediately.
           // Do NOT feed this result back to Claude — that causes it to re-invoke the tool
           // and generate duplicate letters. Return directly, bypassing both loops.
-          return { text: result.text, pendingAction: result.pendingAction };
+          return { text: result.text, pendingAction: result.pendingAction, toolIterations: iterations };
         }
 
         toolResults.push({
@@ -488,7 +488,7 @@ async function callClaudeWithTools(
     finalText = "I'm having trouble retrieving that information right now. Could you please specify exactly what you need in a different way?";
   }
 
-  return { text: finalText };
+  return { text: finalText, toolIterations: iterations };
 }
 
 // ============================================================
@@ -2208,6 +2208,26 @@ Return JSON: { "subject": "...", "body": "..." }`;
       .eq('telegram_chat_id', chatId)
       .then(() => {});
 
+    // Phase 2 closed-loop — thumbs feedback hook. Fire-and-forget
+    // detection of 👍 / 👎 / "good" / "bad" / etc. replies, attaching
+    // the outcome to the most recent chat_reply_sent event for this
+    // user (within 60 min). Runs BEFORE the AI brain so the AI's
+    // response doesn't muddy the attribution window.
+    void (async () => {
+      try {
+        const { classifyChatFeedback } = await import(
+          '@/lib/intelligence/feedback-classifier'
+        );
+        const { recordChatFeedback } = await import(
+          '@/lib/intelligence/chat-feedback'
+        );
+        const fb = classifyChatFeedback(userMessage);
+        if (fb) await recordChatFeedback(session.user_id, fb, userMessage);
+      } catch (e) {
+        console.warn('[telegram/user-bot] chat-feedback hook failed:', e);
+      }
+    })();
+
     if (earlyLog?.id) {
       supabase
         .from('telegram_message_log')
@@ -2368,7 +2388,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('TIMEOUT: Claude processing exceeded 250s')), CLAUDE_TIMEOUT_MS)
       );
-      const { text, pendingAction } = await Promise.race([claudePromise, timeoutPromise]);
+      const { text, pendingAction, toolIterations } = await Promise.race([claudePromise, timeoutPromise]);
 
       // Log outbound
       supabase
@@ -2418,7 +2438,33 @@ Return JSON: { "subject": "...", "body": "..." }`;
           }
         }
       } else {
-        await sendChunked(ctx, text);
+        // Phase 2 closed-loop — annotate significant replies with a
+        // thumbs CTA and emit a chat_reply_sent event so the inbound
+        // classifier can match the user's next short reply back to
+        // this turn. Letter-flow replies (pendingAction branch) skip
+        // this — the Approve/Cancel keyboard already IS the action
+        // prompt, no need for a second CTA.
+        const { appendThumbsCta } = await import('@/lib/intelligence/significance');
+        const { recordAction } = await import('@/lib/intelligence');
+        const annotated = appendThumbsCta(text, toolIterations ?? 0);
+        if (annotated.significant) {
+          void recordAction({
+            userId: session.user_id,
+            actor: 'ai',
+            actionKind: 'chat_reply_sent',
+            subjectKind: 'prompt_template',
+            subjectId: 'telegram_pocket_agent_v1',
+            predicted: {
+              channel: 'telegram',
+              model: 'claude-sonnet-4-6',
+              tool_iterations: toolIterations ?? 0,
+              significance_reason: annotated.reason,
+              user_question_excerpt: userMessage.slice(0, 200),
+            },
+            metadata: { reply_excerpt: text.slice(0, 200) },
+          }).catch((err) => console.warn('[telegram/chat_reply_sent] non-fatal:', err));
+        }
+        await sendChunked(ctx, annotated.text);
       }
     } catch (error: any) {
       console.error('[UserBot] Error processing message:', error);
@@ -2627,3 +2673,4 @@ export async function sendProactiveAlert(params: {
 
   return { ok: true, messageId: data.result?.message_id };
 }
+
