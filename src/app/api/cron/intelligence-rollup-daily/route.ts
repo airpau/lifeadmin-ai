@@ -83,6 +83,7 @@ interface EventRow {
   subject_id: string | null;
   outcome_kind: string | null;
   outcome: { recovered_gbp?: number } | null;
+  metadata: { variant?: string; experiment?: string } | null;
 }
 
 function fold(agg: AggRow, ev: EventRow): void {
@@ -152,7 +153,7 @@ async function rollupWindow(
   while (true) {
     const { data: events, error } = await sb
       .from('intelligence_events')
-      .select('subject_kind, subject_id, outcome_kind, outcome')
+      .select('subject_kind, subject_id, outcome_kind, outcome, metadata')
       .gte('emitted_at', since)
       .lt('emitted_at', until)
       .not('subject_kind', 'is', null)
@@ -165,6 +166,7 @@ async function rollupWindow(
     if (!events || events.length === 0) break;
     for (const ev of events as EventRow[]) {
       if (!ev.subject_kind || !ev.subject_id) continue;
+      // Base rollup — always emitted at scope (subject_kind, subject_id).
       const key = `${ev.subject_kind}::${ev.subject_id}`;
       let agg = byScope.get(key);
       if (!agg) {
@@ -172,6 +174,23 @@ async function rollupWindow(
         byScope.set(key, agg);
       }
       fold(agg, ev);
+
+      // P5-6 — per-variant rollup. When metadata.variant is set, also
+      // accumulate at scope (`${subject_kind}__variant`,
+      // `${subject_id}::${variant}`). The dashboard reads this slice
+      // independently — no impact on existing scopes.
+      const variant = ev.metadata?.variant;
+      if (variant) {
+        const vKind = `${ev.subject_kind}__variant`;
+        const vValue = `${ev.subject_id}::${variant}`;
+        const vKey = `${vKind}::${vValue}`;
+        let vAgg = byScope.get(vKey);
+        if (!vAgg) {
+          vAgg = emptyAgg(vKind, vValue, windowKind, windowStart);
+          byScope.set(vKey, vAgg);
+        }
+        fold(vAgg, ev);
+      }
     }
     if (events.length < PAGE) break;
     offset += PAGE;
@@ -338,6 +357,35 @@ export async function GET(request: NextRequest) {
           founder_review_required: true,
         },
       });
+
+      // P5-2 — also write a runtime override so the agent loops skip
+      // this tool immediately. 14-day expiry; the next rollup re-flags
+      // if the issue persists. Founder can clear early from the admin
+      // dashboard (sets reactivated_at). Dedup: any existing active
+      // row for this tool is left in place.
+      const expiresAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: existingOverride } = await sb
+        .from('tool_registry_overrides')
+        .select('id')
+        .eq('tool_name', t.scope_value)
+        .is('reactivated_at', null)
+        .gt('expires_at', now.toISOString())
+        .limit(1);
+      if (!existingOverride || existingOverride.length === 0) {
+        await sb.from('tool_registry_overrides').insert({
+          tool_name: t.scope_value,
+          expires_at: expiresAt,
+          reason: 'auto_downrank_high_fail_rate',
+          metadata: {
+            emitted: t.emitted,
+            precision_pct: t.precision_pct,
+            fail_rate_pct:
+              t.precision_pct == null ? null : 100 - Number(t.precision_pct),
+            rule: 'emitted>20 AND fail_rate>30%',
+            source: 'cron/intelligence-rollup-daily',
+          },
+        });
+      }
       flagged++;
     }
     summary.tools_failing_flagged = flagged;
@@ -468,6 +516,264 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.warn('[intelligence-rollup] threshold auto-tune failed:', err);
     summary.thresholds_raised = -1;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // P5-1 — two-way auto-tune (lower step).
+  //
+  // Symmetric with the raise step. If a (kind, merchant) had a raise
+  // in the past AND no scan_finding_emitted / alert fires for that
+  // merchant in the last 14 days AT the current threshold OR ABOVE,
+  // the bumped-up threshold is now stale — lower it.
+  //
+  // Conservative rules:
+  //   - Only act on (kind, merchant) pairs with at least one prior
+  //     threshold_raised event.
+  //   - "No fires" means: zero alert_template events scoped to that
+  //     template+merchant in the last 14 days regardless of outcome.
+  //   - Multiply current threshold by 0.8 (undo two raises at most via
+  //     repeated runs over weeks).
+  //   - Floor: never below the default (5 for price_increase, 20 for
+  //     unusual_charge). Below-default would weaken the engine vs day-1.
+  //   - 14-day dedup mirror of the raise step (don't ping-pong).
+  // ─────────────────────────────────────────────────────────────────
+  try {
+    const LOWER_KINDS: Array<{
+      kind: 'unusual_charge' | 'price_increase';
+      template: string;
+      defaultValue: number;
+    }> = [
+      { kind: 'unusual_charge', template: 'paybacker_alert_unusual_charge', defaultValue: 20 },
+      { kind: 'price_increase', template: 'paybacker_alert_price_increase', defaultValue: 5 },
+    ];
+
+    let lowered = 0;
+    let lowerSkippedRecent = 0;
+    let lowerCandidates = 0;
+
+    const since14 = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const { getEffectiveThreshold, recordThresholdRaise } = await import(
+      '@/lib/intelligence/detection-thresholds'
+    );
+
+    for (const cfg of LOWER_KINDS) {
+      // All (kind, merchant) pairs that have ANY raise event ever.
+      // Limit 500 — we don't expect more than a few dozen in production.
+      const { data: raisedRefs } = await sb
+        .from('intelligence_events')
+        .select('subject_id')
+        .eq('action_kind', 'threshold_raised')
+        .eq('subject_kind', 'detection_threshold')
+        .like('subject_id', `${cfg.kind}:%`)
+        .limit(500);
+      const seen = new Set<string>();
+      const merchants: string[] = [];
+      for (const r of (raisedRefs ?? []) as Array<{ subject_id: string }>) {
+        const m = r.subject_id?.startsWith(`${cfg.kind}:`)
+          ? r.subject_id.slice(cfg.kind.length + 1)
+          : null;
+        if (!m || seen.has(m)) continue;
+        seen.add(m);
+        merchants.push(m);
+      }
+
+      for (const merchant of merchants) {
+        lowerCandidates++;
+
+        // 14-day dedup on the LAST tune action for this pair (raise OR
+        // lower). Don't ping-pong.
+        const { data: recentTune } = await sb
+          .from('intelligence_events')
+          .select('id')
+          .in('action_kind', ['threshold_raised', 'threshold_reset'])
+          .eq('subject_kind', 'detection_threshold')
+          .eq('subject_id', `${cfg.kind}:${merchant}`)
+          .gte('emitted_at', since14)
+          .limit(1);
+        if (recentTune && recentTune.length > 0) {
+          lowerSkippedRecent++;
+          continue;
+        }
+
+        // Look for ANY alert fires for this template scoped to the
+        // merchant in the last 14 days (via metadata.merchant_normalised).
+        const { data: recentFires } = await sb
+          .from('intelligence_events')
+          .select('id')
+          .eq('subject_kind', 'alert_template')
+          .eq('subject_id', cfg.template)
+          .gte('emitted_at', since14)
+          .filter('metadata->>merchant_normalised', 'eq', merchant)
+          .limit(1);
+        if (recentFires && recentFires.length > 0) continue;
+
+        // No fires in 14 days → safe to lower.
+        const currentValue = await getEffectiveThreshold(
+          cfg.kind,
+          merchant,
+          cfg.defaultValue,
+        );
+        if (currentValue <= cfg.defaultValue) continue; // already at floor
+        const newValue = Math.max(
+          cfg.defaultValue,
+          Math.round(currentValue * 0.8 * 100) / 100,
+        );
+        if (newValue >= currentValue) continue;
+
+        await recordThresholdRaise({
+          kind: cfg.kind,
+          merchantNormalised: merchant,
+          oldValue: currentValue,
+          newValue,
+          reason: 'auto_lower_no_fires_14d',
+          metadata: {
+            window_days: 14,
+            direction: 'lower',
+            floored_at_default: newValue === cfg.defaultValue,
+          },
+        });
+        lowered++;
+      }
+    }
+    summary.thresholds_lowered = lowered;
+    summary.thresholds_lower_candidates = lowerCandidates;
+    summary.thresholds_lower_skipped_recent = lowerSkippedRecent;
+  } catch (err) {
+    console.warn('[intelligence-rollup] threshold lower step failed:', err);
+    summary.thresholds_lowered = -1;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // P5-3 — exploration tier review.
+  //
+  // When consultLedger fires the exploration tier (5% of would-be
+  // suppressed sends), the resulting event carries metadata.exploration=true.
+  // Compare the engagement rate on those exploration sends vs the measured
+  // baseline precision for the same scope. If exploration engagement is
+  // materially HIGHER than the baseline, the suppression policy was wrong
+  // and we surface that to the founder via the digest.
+  //
+  // Flag rule: ≥10 exploration sends in the last 30 days AND exploration
+  // engagement rate ≥ baseline precision + 15 percentage points. Below
+  // 10 samples the comparison is meaningless.
+  // ─────────────────────────────────────────────────────────────────
+  try {
+    const since30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: explorationEvents } = await sb
+      .from('intelligence_events')
+      .select('subject_kind, subject_id, outcome_kind, metadata')
+      .gte('emitted_at', since30)
+      .filter('metadata->>exploration', 'eq', 'true')
+      .limit(5000);
+
+    // Group: per (subject_kind, subject_id), count emitted + acted_on.
+    interface ExplAgg {
+      kind: string;
+      value: string;
+      emitted: number;
+      acted_on: number;
+      baseline_precision: number | null;
+    }
+    const byScope = new Map<string, ExplAgg>();
+    for (const ev of (explorationEvents ?? []) as Array<{
+      subject_kind: string | null;
+      subject_id: string | null;
+      outcome_kind: string | null;
+    }>) {
+      if (!ev.subject_kind || !ev.subject_id) continue;
+      const k = `${ev.subject_kind}::${ev.subject_id}`;
+      const agg = byScope.get(k) ?? {
+        kind: ev.subject_kind,
+        value: ev.subject_id,
+        emitted: 0,
+        acted_on: 0,
+        baseline_precision: null,
+      };
+      agg.emitted += 1;
+      if (
+        ev.outcome_kind === 'action_taken' ||
+        ev.outcome_kind === 'won' ||
+        ev.outcome_kind === 'switched' ||
+        ev.outcome_kind === 'cancelled' ||
+        ev.outcome_kind === 'escalated' ||
+        ev.outcome_kind === 'positive' ||
+        ev.outcome_kind === 'tool_success'
+      ) {
+        agg.acted_on += 1;
+      }
+      byScope.set(k, agg);
+    }
+
+    // Join baseline precision from intelligence_stats.
+    let suppressedAndWrong = 0;
+    let flagged = 0;
+    const flagDetails: Array<{
+      scope: string;
+      explorationRate: number;
+      baseline: number;
+      sample: number;
+    }> = [];
+    for (const agg of byScope.values()) {
+      if (agg.emitted < 10) continue;
+      const { data: stats } = await sb
+        .from('intelligence_stats')
+        .select('precision_pct')
+        .eq('scope_kind', agg.kind)
+        .eq('scope_value', agg.value)
+        .eq('window_kind', 'all_time')
+        .maybeSingle();
+      const baseline =
+        stats?.precision_pct == null ? null : Number(stats.precision_pct);
+      agg.baseline_precision = baseline;
+      const explorationRate = Math.round((agg.acted_on / agg.emitted) * 10_000) / 100;
+      if (baseline != null && explorationRate >= baseline + 15) {
+        suppressedAndWrong++;
+        // Dedup: only flag once per 14 days.
+        const since14 = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: existingFlag } = await sb
+          .from('intelligence_events')
+          .select('id')
+          .eq('action_kind', 'suppression_false_negative_flagged')
+          .eq('subject_kind', agg.kind)
+          .eq('subject_id', agg.value)
+          .gte('emitted_at', since14)
+          .limit(1);
+        if (!existingFlag || existingFlag.length === 0) {
+          await sb.from('intelligence_events').insert({
+            user_id: null,
+            actor: 'system',
+            action_kind: 'suppression_false_negative_flagged',
+            subject_kind: agg.kind,
+            subject_id: agg.value,
+            predicted: {
+              exploration_emitted: agg.emitted,
+              exploration_acted_on: agg.acted_on,
+              exploration_rate_pct: explorationRate,
+              baseline_precision_pct: baseline,
+              gap_pct: Math.round((explorationRate - baseline) * 100) / 100,
+              rule: 'exploration>=10 AND exploration_rate>=baseline+15pp',
+            },
+            metadata: {
+              source: 'cron/intelligence-rollup-daily',
+              founder_review_required: true,
+            },
+          });
+          flagged++;
+          flagDetails.push({
+            scope: `${agg.kind}:${agg.value}`,
+            explorationRate,
+            baseline,
+            sample: agg.emitted,
+          });
+        }
+      }
+    }
+    summary.exploration_scopes_compared = byScope.size;
+    summary.exploration_false_negatives_total = suppressedAndWrong;
+    summary.exploration_false_negatives_flagged = flagged;
+  } catch (err) {
+    console.warn('[intelligence-rollup] exploration review step failed:', err);
+    summary.exploration_false_negatives_flagged = -1;
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -603,5 +909,6 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ ok: true, summary });
 }
+
 
 
