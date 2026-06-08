@@ -242,6 +242,20 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
         awin_mid: deal.awinMid,
       }),
     }).catch(() => {});
+    // P5-5 — emit affiliate_click event for the intelligence layer
+    // so the Awin postback can attach the conversion outcome. Fire-
+    // and-forget; existing analytics path stays untouched.
+    fetch('/api/affiliate/awin/click', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deal_id: deal.id,
+        merchant: deal.provider,
+        category: deal.category,
+        awin_advertiser_id: Number(deal.awinMid) || null,
+        target_url: deal.awinUrl || buildAwinUrl(deal.awinMid, deal.providerUrl),
+      }),
+    }).catch(() => {});
     capture('deal_clicked', { provider: deal.provider, category: deal.category });
   };
 
@@ -356,6 +370,18 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider: deal.provider, category: deal.category, deal_id: deal.id, plan_name: deal.plan_name }),
+    }).catch(() => {});
+    // P5-5 — emit affiliate_click event for the intelligence layer so
+    // the Awin postback can attach the conversion outcome.
+    fetch('/api/affiliate/awin/click', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deal_id: deal.id,
+        merchant: deal.provider,
+        category: deal.category,
+        target_url: deal.affiliate_url,
+      }),
     }).catch(() => {});
     capture('deal_clicked', { provider: deal.provider, plan: deal.plan_name });
   };
@@ -968,3 +994,4 @@ export default function DealsPage() {
     </div>
   );
 }
+
