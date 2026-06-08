@@ -406,9 +406,15 @@ async function callClaudeWithTools(
     messages.push({ role: 'user', content: userMessage });
   }
 
+  // P5-2 — runtime tool downrank. Strip any tool currently in
+  // tool_registry_overrides (active, non-expired) so the LLM never
+  // sees it. Fail-open: lookup errors return the full toolbox.
+  const { filterDownrankedTools } = await import('@/lib/intelligence/tool-overrides');
+  const filteredTools = await filterDownrankedTools(telegramTools);
+
   // Enable prompt caching on system prompt and tools
-  const cachedTools = telegramTools.map((tool, idx) => {
-    if (idx === telegramTools.length - 1) {
+  const cachedTools = filteredTools.map((tool, idx) => {
+    if (idx === filteredTools.length - 1) {
       return { ...tool, cache_control: { type: 'ephemeral' as const } };
     }
     return tool;
@@ -2689,5 +2695,6 @@ export async function sendProactiveAlert(params: {
 
   return { ok: true, messageId: data.result?.message_id };
 }
+
 
 
