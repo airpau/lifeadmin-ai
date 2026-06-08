@@ -81,7 +81,13 @@ export type OutcomeKind =
   | 'switched'
   | 'cancelled'
   | 'auto_suppressed'
-  | 'escalated';
+  | 'escalated'
+  // Phase 2 — chat-reply thumbs feedback (migration 20260608120000)
+  | 'positive'
+  | 'negative'
+  // Phase 2 — tool-call telemetry (migration 20260608120000)
+  | 'tool_success'
+  | 'tool_failed';
 
 export interface IntelligenceContext {
   /** Affected user, when known. NULL for system-wide events. */
