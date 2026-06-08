@@ -19,6 +19,12 @@
  *   9. Onboarding funnel (Phase 4) — per-step entries + drop-off rate.
  *  10. Letter recipient engagement (Phase 4) — per-letter-kind supplier
  *      response rate.
+ *  11. Suppression false-negatives (P5) — flags from the 5% exploration
+ *      tier when exploration engagement exceeds baseline by ≥15pp.
+ *  12. Runtime tool overrides (P5) — currently active tool downranks
+ *      (suppressed at agent-selection time, 14-day expiry).
+ *  13. A/B test arms (P5) — per-variant precision side-by-side for
+ *      experiments with ≥2 arms.
  *
  * All cards read from intelligence_stats (rolled up daily by
  * /api/cron/intelligence-rollup-daily at 02:15 UTC) plus
@@ -349,6 +355,74 @@ export default async function IntelligenceAdminPage() {
     letterByKind.set(ev.subject_id, agg);
   }
   const letterRows = Array.from(letterByKind.entries()).sort((a, b) => b[1].sent - a[1].sent);
+
+  // ── P5-3: false-negative flags from exploration tier (last 30d) ────
+  const fnSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: fnRows } = await supabase
+    .from('intelligence_events')
+    .select('id, emitted_at, subject_kind, subject_id, predicted')
+    .eq('action_kind', 'suppression_false_negative_flagged')
+    .gte('emitted_at', fnSince)
+    .order('emitted_at', { ascending: false })
+    .limit(50);
+  const fnFlags = (fnRows ?? []) as Array<{
+    id: string;
+    emitted_at: string;
+    subject_kind: string | null;
+    subject_id: string | null;
+    predicted: Record<string, unknown> | null;
+  }>;
+
+  // ── P5-2: active runtime tool overrides ────────────────────────────
+  const { data: activeOverrides } = await supabase
+    .from('tool_registry_overrides')
+    .select('id, tool_name, suppressed_at, expires_at, reason, metadata, reactivated_at')
+    .is('reactivated_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .order('suppressed_at', { ascending: false })
+    .limit(50);
+  const runtimeOverrides = (activeOverrides ?? []) as Array<{
+    id: string;
+    tool_name: string;
+    suppressed_at: string;
+    expires_at: string;
+    reason: string;
+    metadata: Record<string, unknown> | null;
+    reactivated_at: string | null;
+  }>;
+
+  // ── P5-6: per-variant A/B test arms (all_time) ─────────────────────
+  const { data: variantStatsRows } = await supabase
+    .from('intelligence_stats')
+    .select('*')
+    .like('scope_kind', '%__variant')
+    .eq('window_kind', 'all_time')
+    .gte('emitted', 5)
+    .order('emitted', { ascending: false })
+    .limit(100);
+  const variantStats = (variantStatsRows ?? []) as StatsRow[];
+  // Group by (base scope, base value) so the dashboard shows variants
+  // for the same experiment side-by-side.
+  type VariantRow = { variant: string; row: StatsRow };
+  const variantsByScope = new Map<string, VariantRow[]>();
+  for (const r of variantStats) {
+    const baseKind = r.scope_kind.replace(/__variant$/, '');
+    const sep = r.scope_value.lastIndexOf('::');
+    if (sep < 0) continue;
+    const baseValue = r.scope_value.slice(0, sep);
+    const variant = r.scope_value.slice(sep + 2);
+    const key = `${baseKind}::${baseValue}`;
+    const list = variantsByScope.get(key) ?? [];
+    list.push({ variant, row: r });
+    variantsByScope.set(key, list);
+  }
+  // Only experiments with ≥2 arms are worth surfacing.
+  const variantExperiments = Array.from(variantsByScope.entries())
+    .filter(([, arms]) => arms.length >= 2)
+    .map(([scope, arms]) => ({
+      scope,
+      arms: arms.sort((a, b) => Number(b.row.precision_pct ?? 0) - Number(a.row.precision_pct ?? 0)),
+    }));
 
   return (
     <AdminPage
@@ -991,9 +1065,168 @@ export default async function IntelligenceAdminPage() {
           </div>
         )}
       </section>
+
+      {/* ───────── Card 11: Suppression false-negatives (P5-3) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            Suppression false-negatives (last 30 days)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Flagged when the 5% exploration tier's engagement exceeds baseline by ≥15pp — suppression was wrong.
+          </span>
+        </header>
+        {fnFlags.length === 0 && (
+          <div className="px-4 py-6 text-sm text-slate-500">
+            No false-negative flags. Either suppression policy is correct or no scope has crossed the 10-exploration-sample floor yet.
+          </div>
+        )}
+        {fnFlags.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">When</th>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Scope</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Exploration rate</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Baseline</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Gap</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fnFlags.map((f) => {
+                  const p = (f.predicted ?? {}) as Record<string, unknown>;
+                  return (
+                    <tr key={f.id} className="border-t border-slate-100 bg-rose-50/30">
+                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                        {new Date(f.emitted_at).toISOString().replace('T', ' ').slice(0, 16)}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-800">
+                        {f.subject_kind}:{f.subject_id}
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-700">{String(p.exploration_rate_pct ?? '—')}%</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{String(p.baseline_precision_pct ?? '—')}%</td>
+                      <td className="px-4 py-3 text-right">
+                        <Tone tone="red">+{String(p.gap_pct ?? '—')}pp</Tone>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ───────── Card 12: Runtime tool overrides (P5-2) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            Runtime tool overrides (active now)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Tools currently stripped from the Pocket Agent toolbox. 14-day expiry; clear early via the reactivate endpoint.
+          </span>
+        </header>
+        {runtimeOverrides.length === 0 && (
+          <div className="px-4 py-6 text-sm text-slate-500">
+            No active runtime tool overrides. The daily rollup inserts a row when a tool's fail rate stays above 30% at ≥20 invocations.
+          </div>
+        )}
+        {runtimeOverrides.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Tool</th>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Suppressed</th>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Expires</th>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Reason</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Fail rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runtimeOverrides.map((o) => {
+                  const m = (o.metadata ?? {}) as Record<string, unknown>;
+                  return (
+                    <tr key={o.id} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-800">{o.tool_name}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                        {new Date(o.suppressed_at).toISOString().replace('T', ' ').slice(0, 16)}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                        {new Date(o.expires_at).toISOString().slice(0, 10)}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-700">{o.reason}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">
+                        {m.fail_rate_pct == null ? '—' : `${Number(m.fail_rate_pct).toFixed(0)}%`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ───────── Card 13: A/B test arms (P5-6) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            A/B test arms (per experiment)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Variant precision side-by-side. Winner = ≥5pp gap and ≥100 emits per arm.
+          </span>
+        </header>
+        {variantExperiments.length === 0 && (
+          <div className="px-4 py-6 text-sm text-slate-500">
+            No active experiments. Wrap any consequential emit in pickVariant() + withVariant() to start collecting per-arm precision.
+          </div>
+        )}
+        {variantExperiments.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Scope</th>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Variant</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Emitted</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Acted</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Precision</th>
+                </tr>
+              </thead>
+              <tbody>
+                {variantExperiments.flatMap((exp) =>
+                  exp.arms.map((arm, i) => {
+                    const prec = arm.row.precision_pct != null ? Number(arm.row.precision_pct) : null;
+                    const winner = i === 0 && exp.arms.length >= 2;
+                    return (
+                      <tr key={`${exp.scope}::${arm.variant}`} className="border-t border-slate-100">
+                        <td className="px-4 py-3 font-mono text-xs text-slate-800">{i === 0 ? exp.scope : ''}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-800">
+                          {arm.variant}
+                          {winner && <span className="ml-1 text-emerald-600">★</span>}
+                        </td>
+                        <td className="px-4 py-3 text-right text-slate-700">{arm.row.emitted}</td>
+                        <td className="px-4 py-3 text-right text-slate-700">{arm.row.acted_on}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Tone tone={precisionTone(prec, arm.row.emitted)}>{fmtPct(prec)}</Tone>
+                        </td>
+                      </tr>
+                    );
+                  }),
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </AdminPage>
   );
 }
+
 
 
 
