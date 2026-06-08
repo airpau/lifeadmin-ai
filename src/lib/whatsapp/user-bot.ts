@@ -533,6 +533,26 @@ export async function handleWhatsAppInbound(opts: {
   // attribution window.
   void recordAlertEngagement(userId, text);
 
+  // Phase 2 closed-loop hook — same fire-and-forget pattern but for
+  // chat-reply thumbs feedback. Attaches the outcome to the most recent
+  // chat_reply_sent event (within the 60-min window). If both classifiers
+  // match, both events get tagged — they're scoped to different
+  // subject_kinds so there's no conflict.
+  void (async () => {
+    try {
+      const { classifyChatFeedback } = await import(
+        '@/lib/intelligence/feedback-classifier'
+      );
+      const { recordChatFeedback } = await import(
+        '@/lib/intelligence/chat-feedback'
+      );
+      const fb = classifyChatFeedback(text);
+      if (fb) await recordChatFeedback(userId, fb, text);
+    } catch (e) {
+      console.warn('[whatsapp/user-bot] chat-feedback hook failed:', e);
+    }
+  })();
+
   try {
     const result = await callClaudeWithTools(userId, text, phone);
     await sendChunked(phone, result.text);
@@ -555,3 +575,4 @@ export async function handleWhatsAppInbound(opts: {
     return { ok: false, reason: 'agent_error' };
   }
 }
+
