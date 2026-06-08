@@ -553,6 +553,21 @@ export async function handleWhatsAppInbound(opts: {
     }
   })();
 
+  // Phase 3 closed-loop hook — churn-reason classifier. Detects
+  // one-word PRICE/FEATURE/COMPETITOR/OTHER replies and attributes
+  // them to the most recent churn_prompted event (48-hour window).
+  void (async () => {
+    try {
+      const { classifyChurnReason, recordChurnReason } = await import(
+        '@/lib/intelligence/churn-reply-classifier'
+      );
+      const reason = classifyChurnReason(text);
+      if (reason) await recordChurnReason(userId, reason, text);
+    } catch (e) {
+      console.warn('[whatsapp/user-bot] churn-reason hook failed:', e);
+    }
+  })();
+
   try {
     const result = await callClaudeWithTools(userId, text, phone);
     await sendChunked(phone, result.text);
