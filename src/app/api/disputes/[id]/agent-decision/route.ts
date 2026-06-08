@@ -128,7 +128,44 @@ export async function POST(
         notes: `User approved agent recommendation: ${updatedDecision.recommended_action}`,
       }).then(() => undefined, () => undefined);
     }
+
+    // Phase 4 — letter recipient engagement loop. When the user approves
+    // a letter-shaped recommendation, emit a letter_sent event scoped to
+    // the letter kind. The supplier_response_received trigger (from
+    // migration 20260608140000) fires on inbound replies; the aggregator
+    // joins by dispute_id (via predicted->>dispute_id) to compute per-
+    // letter-kind reply rate + response time. Feeds the dispute-agent's
+    // escalation timing in future runs.
+    const LETTER_ACTIONS = new Set([
+      'send_initial_letter',
+      'send_followup',
+      'send_letter_before_action',
+      'escalate_ombudsman',
+      'small_claims',
+    ]);
+    const recommendedAction = updatedDecision.recommended_action as string | null;
+    if (recommendedAction && LETTER_ACTIONS.has(recommendedAction)) {
+      try {
+        const { recordAction } = await import('@/lib/intelligence');
+        await recordAction({
+          userId: user.id,
+          actor: 'ai',
+          actionKind: 'letter_sent',
+          subjectKind: 'letter_kind',
+          subjectId: recommendedAction,
+          predicted: {
+            dispute_id: disputeId,
+            decision_id: body.decision_id,
+            to_state: updatedDecision.to_state,
+            approved_via: 'agent_decision_endpoint',
+          },
+        });
+      } catch (e) {
+        console.warn('[agent-decision] letter_sent emit failed:', e);
+      }
+    }
   }
 
   return NextResponse.json({ ok: true });
 }
+
