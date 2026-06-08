@@ -42,6 +42,20 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 export const SAMPLE_FLOOR = 30;
 /** At or below this precision, we suppress (once SAMPLE_FLOOR is met). */
 export const SUPPRESSION_FLOOR_PCT = 15;
+/**
+ * P5-3 — exploration tier. When consultLedger decides to suppress, we
+ * STILL fire ~5% of the time with `emit=true, reason='exploration'`.
+ * Callers tag the resulting emit as exploration=true so the aggregator
+ * can compare engagement on exploration vs measured baseline. If
+ * exploration sends keep getting engagement, the suppression decision
+ * was wrong — surface that to the founder via the digest.
+ *
+ * Set via env so we can tune up (more exploration) or down (less
+ * exploration) without a deploy.
+ */
+export const EXPLORATION_RATE_PCT = Number(
+  process.env.INTELLIGENCE_EXPLORATION_RATE_PCT ?? 5,
+);
 
 /**
  * Alert subject_ids that are NEVER auto-suppressed. Mirrors the
@@ -122,11 +136,19 @@ export interface ConsultDecision {
     | 'above_floor'
     | 'low_precision_suppressed'
     | 'lookup_failed'
-    | 'no_subject';
+    | 'no_subject'
+    | 'exploration';
   /** How many comparable events we used to decide. */
   sample: number;
   /** Observed precision over the lookback window (NULL when sample = 0). */
   precision_pct: number | null;
+  /**
+   * P5-3 — true when the emit happened because the exploration tier
+   * fired despite a would-have-suppressed decision. Callers MUST tag
+   * the resulting event metadata.exploration=true so the aggregator can
+   * compare exploration engagement vs measured baseline.
+   */
+  exploration?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -309,6 +331,19 @@ export async function consultLedger(
       };
     }
     if (precision != null && precision <= SUPPRESSION_FLOOR_PCT) {
+      // P5-3 — exploration tier. 5% of the time we fire anyway to
+      // sanity-check that the suppression decision is correct. Caller
+      // must tag the emit with metadata.exploration=true.
+      const explorationRoll = Math.random() * 100;
+      if (explorationRoll < EXPLORATION_RATE_PCT) {
+        return {
+          emit: true,
+          reason: 'exploration',
+          sample,
+          precision_pct: precision,
+          exploration: true,
+        };
+      }
       return {
         emit: false,
         reason: 'low_precision_suppressed',
@@ -354,3 +389,4 @@ export async function logAutoSuppression(
     },
   });
 }
+
