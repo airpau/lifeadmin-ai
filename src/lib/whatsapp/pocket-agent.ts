@@ -92,6 +92,8 @@ import {
 import { appendThumbsCta } from '@/lib/intelligence/significance';
 import { recordAction } from '@/lib/intelligence';
 import { instrumentToolCall } from '@/lib/intelligence/tool-telemetry';
+// P5-2 runtime tool downrank.
+import { filterDownrankedTools } from '@/lib/intelligence/tool-overrides';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Two-tier model strategy.
@@ -988,7 +990,11 @@ async function runAgent(
     messages.push({ role: 'user', content: userMessage });
   }
 
-  const cachedTools = buildToolList();
+  // P5-2 — runtime tool downrank. Strip any tool currently in
+  // tool_registry_overrides (active row, expires_at > now) so the LLM
+  // never sees it and can't pick it. Filter is fail-open: if the lookup
+  // errors, the full toolbox is returned.
+  const cachedTools = await filterDownrankedTools(buildToolList());
   const systemBlocks: Anthropic.TextBlockParam[] = [
     {
       type: 'text',
@@ -1418,4 +1424,5 @@ export async function handlePocketAgentMessage(opts: {
     return { ok: false, reason: 'agent_error' };
   }
 }
+
 
