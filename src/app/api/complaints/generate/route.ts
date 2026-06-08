@@ -455,6 +455,43 @@ export async function POST(request: NextRequest) {
       console.warn('[freshness-gate] B2C audit failed (non-fatal):', (err as Error).message);
     }
 
+    // Phase 1 intelligence — pull per-ref historical performance so Sonnet
+    // sees prior win rate before it picks which refs to cite. Refs with a
+    // strong track record get surfaced explicitly; refs with <5 prior
+    // uses get flagged "exploratory" so Sonnet knows the signal is weak.
+    // This is read-only steering; the engine's selection logic is unchanged.
+    const refStatsByValue = new Map<
+      string,
+      { emitted: number; won: number; precision_pct: number | null }
+    >();
+    try {
+      const refIdsForStats = relevantRefs.map((r) => r.id).filter(Boolean);
+      if (refIdsForStats.length > 0) {
+        const { data: refStats } = await supabase
+          .from('intelligence_stats')
+          .select('scope_value, emitted, won, precision_pct')
+          .eq('scope_kind', 'legal_ref')
+          .eq('window_kind', 'all_time')
+          .in('scope_value', refIdsForStats);
+        for (const s of (refStats ?? []) as Array<{
+          scope_value: string;
+          emitted: number;
+          won: number;
+          precision_pct: number | string | null;
+        }>) {
+          refStatsByValue.set(s.scope_value, {
+            emitted: s.emitted,
+            won: s.won,
+            precision_pct:
+              s.precision_pct == null ? null : Number(s.precision_pct),
+          });
+        }
+      }
+    } catch (statsErr) {
+      // Non-fatal — Sonnet just won't see the historical hint.
+      console.warn('[intelligence/legal_ref_stats] read failed (non-fatal):', statsErr);
+    }
+
     let verifiedLegalRefs = '';
     if (relevantRefs.length > 0) {
       verifiedLegalRefs = relevantRefs.map((r) => {
@@ -469,7 +506,19 @@ export async function POST(request: NextRequest) {
         const reviewFlag = r.verification_status === 'needs_review'
           ? ' [UNDER REVIEW — quantitative values may be slightly out-of-date; cite the rule and use directional language for specific figures]'
           : '';
-        return `- ${r.law_name}${r.section ? `, ${r.section}` : ''}: ${r.summary}${r.escalation_body ? ` (Escalate to: ${r.escalation_body})` : ''}${reviewFlag} [Source: ${r.source_url}]`;
+
+        // Phase 1 historical hint — added 2026-06-07.
+        const hist = refStatsByValue.get(r.id);
+        let histHint = '';
+        if (hist && hist.emitted > 0) {
+          if (hist.emitted < 5) {
+            histHint = ` [Historical: only ${hist.emitted} prior use${hist.emitted === 1 ? '' : 's'} — exploratory]`;
+          } else if (hist.precision_pct != null) {
+            histHint = ` [Historical: ${hist.emitted} cited, ${hist.won} won (${hist.precision_pct.toFixed(0)}%)]`;
+          }
+        }
+
+        return `- ${r.law_name}${r.section ? `, ${r.section}` : ''}: ${r.summary}${r.escalation_body ? ` (Escalate to: ${r.escalation_body})` : ''}${reviewFlag}${histHint} [Source: ${r.source_url}]`;
       }).join('\n');
     }
 
@@ -708,8 +757,9 @@ export async function POST(request: NextRequest) {
     try {
       if (relevantRefs.length > 0 && result.legalReferences && result.legalReferences.length > 0) {
         const citedLower = result.legalReferences.map((r: string) => r.toLowerCase());
-        const usageRows = relevantRefs
-          .filter((r: any) => citedLower.some((c: string) => c.includes(r.law_name.toLowerCase()) || r.law_name.toLowerCase().includes(c.split(',')[0].trim())))
+        const matchedRefs = relevantRefs
+          .filter((r: any) => citedLower.some((c: string) => c.includes(r.law_name.toLowerCase()) || r.law_name.toLowerCase().includes(c.split(',')[0].trim())));
+        const usageRows = matchedRefs
           .map((r: any) => ({
             ref_id: r.id,
             product: 'b2c-complaint',
@@ -724,6 +774,44 @@ export async function POST(request: NextRequest) {
             process.env.SUPABASE_SERVICE_ROLE_KEY!,
           );
           void adminSb.from('legal_ref_usages').insert(usageRows);
+
+          // Phase 1 of the closed-loop architecture (see
+          // docs/CLOSED_LOOP_ARCHITECTURE.md). One intelligence_events
+          // row per cited legal_ref so when the dispute outcome is
+          // logged later we can attribute it equally across every ref
+          // that was in the letter, and consultLedger can read per-ref
+          // historical performance before Sonnet picks refs next time.
+          try {
+            const { recordAction } = await import('@/lib/intelligence');
+            await Promise.all(
+              matchedRefs.map((r: any) =>
+                recordAction({
+                  userId: user.id,
+                  actor: 'ai',
+                  actionKind: 'legal_ref_cited',
+                  subjectKind: 'legal_ref',
+                  // Stable UUID — never the law_name string, which can be
+                  // re-titled by the compliance verifier.
+                  subjectId: r.id,
+                  predicted: {
+                    dispute_id: body.disputeId ?? null,
+                    merchant: body.companyName,
+                    model: 'claude-sonnet-4-6',
+                    law_name: r.law_name,
+                    section: r.section ?? null,
+                    strength: r.strength ?? null,
+                  },
+                  metadata: {
+                    artefact_id: task?.id ?? null,
+                    artefact_kind: 'complaint_letter',
+                    cited_text: usageRows.find((u: any) => u.ref_id === r.id)?.cited_text ?? null,
+                  },
+                }),
+              ),
+            );
+          } catch (intelErr) {
+            console.warn('[intelligence/legal_ref_cited] failed (non-fatal):', intelErr);
+          }
         }
       }
     } catch (e) {
@@ -800,3 +888,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
