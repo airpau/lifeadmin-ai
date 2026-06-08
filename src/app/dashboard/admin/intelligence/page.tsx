@@ -3,13 +3,17 @@
  *
  * Closed-loop architecture (see docs/CLOSED_LOOP_ARCHITECTURE.md).
  *
- * Five cards:
+ * Seven cards:
  *   1. Alert engagement (Phase 0) — per WhatsApp template precision.
  *   2. Auto-suppressions (Phase 0) — alerts the layer chose not to fire.
  *   3. Legal ref performance (Phase 1) — per-ref win rate, top + bottom 10.
  *   4. Chat reply quality (Phase 2) — per prompt template thumb rate.
  *   5. Tool reliability (Phase 2) — per tool success rate, with auto-
  *      downrank flag for >30% fail at >20 invocations.
+ *   6. Detection thresholds (Phase 3) — per-(kind, merchant) overrides
+ *      raised by the auto-tune step in the last 30 days.
+ *   7. Churn + affiliate funnel (Phase 3) — cancellation reason
+ *      distribution + per-category click→switch conversion.
  *
  * All cards read from intelligence_stats (rolled up daily by
  * /api/cron/intelligence-rollup-daily at 02:15 UTC) plus
@@ -205,6 +209,65 @@ export default async function IntelligenceAdminPage() {
     predicted: Record<string, unknown> | null;
   }>;
   const flaggedTools = new Set(downrankFlags.map((d) => d.subject_id ?? ''));
+
+  // ── Phase 3: detection threshold overrides (last 30d raises) ──────
+  const thresholdSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: thresholdRows } = await supabase
+    .from('intelligence_events')
+    .select('id, emitted_at, subject_id, predicted')
+    .eq('subject_kind', 'detection_threshold')
+    .in('action_kind', ['threshold_raised', 'threshold_reset'])
+    .gte('emitted_at', thresholdSince)
+    .order('emitted_at', { ascending: false })
+    .limit(50);
+  const thresholdEvents = (thresholdRows ?? []) as Array<{
+    id: string;
+    emitted_at: string;
+    subject_id: string | null;
+    predicted: Record<string, unknown> | null;
+  }>;
+
+  // ── Phase 3: churn reason distribution (last 30d) ─────────────────
+  const { data: churnRows } = await supabase
+    .from('intelligence_events')
+    .select('id, emitted_at, outcome')
+    .eq('action_kind', 'churn_recorded')
+    .gte('emitted_at', thresholdSince)
+    .order('emitted_at', { ascending: false })
+    .limit(500);
+  const churnDist = new Map<string, number>();
+  for (const c of (churnRows ?? []) as Array<{ outcome: { reason?: string } | null }>) {
+    const reason = c.outcome?.reason ?? 'unknown';
+    churnDist.set(reason, (churnDist.get(reason) ?? 0) + 1);
+  }
+  const churnTotal = Array.from(churnDist.values()).reduce((s, n) => s + n, 0);
+  const churnDistSorted = Array.from(churnDist.entries()).sort((a, b) => b[1] - a[1]);
+
+  // ── Phase 3: affiliate funnel (clicks vs conversions, last 30d) ───
+  const { data: affRows } = await supabase
+    .from('intelligence_events')
+    .select('predicted, outcome_kind, outcome')
+    .eq('action_kind', 'affiliate_click')
+    .gte('emitted_at', thresholdSince);
+  type AffAgg = { clicks: number; conversions: number; commission_gbp: number };
+  const affByCategory = new Map<string, AffAgg>();
+  for (const a of (affRows ?? []) as Array<{
+    predicted: Record<string, unknown> | null;
+    outcome_kind: string | null;
+    outcome: Record<string, unknown> | null;
+  }>) {
+    const cat = ((a.predicted?.category as string) ?? 'unknown').toLowerCase();
+    const agg = affByCategory.get(cat) ?? { clicks: 0, conversions: 0, commission_gbp: 0 };
+    agg.clicks += 1;
+    if (a.outcome_kind === 'switched') {
+      agg.conversions += 1;
+      const commission = a.outcome?.commission_gbp;
+      if (typeof commission === 'number') agg.commission_gbp += commission;
+    }
+    affByCategory.set(cat, agg);
+  }
+  const affRowsSorted = Array.from(affByCategory.entries())
+    .sort((a, b) => b[1].clicks - a[1].clicks);
 
   return (
     <AdminPage
@@ -572,8 +635,138 @@ export default async function IntelligenceAdminPage() {
           </div>
         )}
       </section>
+
+      {/* ───────── Card 6: Detection thresholds (Phase 3) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            Detection thresholds — auto-tune (last 30 days)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Raised when 5 of last 6 alerts for the same (kind, merchant) were dismissed. Multiplier × 1.25.
+          </span>
+        </header>
+        {thresholdEvents.length === 0 && (
+          <div className="px-4 py-6 text-sm text-slate-500">
+            No thresholds auto-tuned yet. The daily rollup raises a threshold once a (kind, merchant) pair has 6 measured outcomes with ≥5 dismissals; defaults are 20% (unusual_charge) and 5% (price_increase).
+          </div>
+        )}
+        {thresholdEvents.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">When</th>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Kind:Merchant</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Old</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">New</th>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {thresholdEvents.map((t) => {
+                  const p = (t.predicted ?? {}) as Record<string, unknown>;
+                  return (
+                    <tr key={t.id} className="border-t border-slate-100">
+                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                        {new Date(t.emitted_at).toISOString().replace('T', ' ').slice(0, 16)}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-800">{t.subject_id}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{String(p.old_value ?? '—')}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{String(p.new_value ?? '—')}</td>
+                      <td className="px-4 py-3 text-xs text-slate-700">{String(p.reason ?? '—')}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ───────── Card 7: Churn + affiliate funnel (Phase 3) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            Churn reasons + affiliate funnel (last 30 days)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Cancellation distribution (Stripe + Pocket Agent reply) plus per-category Awin click→switch rate.
+          </span>
+        </header>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+          <div>
+            <h3 className="font-semibold text-sm text-slate-800 mb-2">Cancellation reasons</h3>
+            {churnTotal === 0 && (
+              <p className="text-xs text-slate-500">
+                No churn captures yet. Every Stripe <code>customer.subscription.deleted</code> sends a 4-button email + Pocket Agent prompt; replies land as <code>churn_recorded</code> events.
+              </p>
+            )}
+            {churnTotal > 0 && (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-xs font-medium uppercase tracking-wide">Reason</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium uppercase tracking-wide">Count</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium uppercase tracking-wide">Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {churnDistSorted.map(([reason, count]) => (
+                    <tr key={reason} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-mono text-xs text-slate-800">{reason}</td>
+                      <td className="px-3 py-2 text-right text-slate-700">{count}</td>
+                      <td className="px-3 py-2 text-right text-slate-700">{Math.round((count / churnTotal) * 100)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm text-slate-800 mb-2">Affiliate funnel per category</h3>
+            {affRowsSorted.length === 0 && (
+              <p className="text-xs text-slate-500">
+                No affiliate clicks recorded. /api/affiliate/awin/click is the click capture endpoint; /api/affiliate/awin/conversion handles the Awin postback.
+              </p>
+            )}
+            {affRowsSorted.length > 0 && (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-xs font-medium uppercase tracking-wide">Category</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium uppercase tracking-wide">Clicks</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium uppercase tracking-wide">Switches</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium uppercase tracking-wide">Rate</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium uppercase tracking-wide">£ commission</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {affRowsSorted.map(([cat, agg]) => {
+                    const rate = agg.clicks === 0 ? null : Math.round((agg.conversions / agg.clicks) * 100);
+                    return (
+                      <tr key={cat} className="border-t border-slate-100">
+                        <td className="px-3 py-2 font-mono text-xs text-slate-800">{cat}</td>
+                        <td className="px-3 py-2 text-right text-slate-700">{agg.clicks}</td>
+                        <td className="px-3 py-2 text-right text-slate-700">{agg.conversions}</td>
+                        <td className="px-3 py-2 text-right">
+                          <Tone tone={rate == null ? 'slate' : rate >= 30 ? 'green' : rate >= 10 ? 'amber' : 'red'}>
+                            {rate == null ? '—' : `${rate}%`}
+                          </Tone>
+                        </td>
+                        <td className="px-3 py-2 text-right text-slate-700">£{agg.commission_gbp.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </section>
     </AdminPage>
   );
 }
+
 
 
