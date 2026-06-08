@@ -30,6 +30,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { canUseWhatsApp } from '@/lib/plan-limits';
 import { sendNotification } from '@/lib/notifications/dispatch';
+import { getEffectiveThreshold } from '@/lib/intelligence/detection-thresholds';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -207,7 +208,14 @@ export async function GET(req: NextRequest) {
         const avg = history.reduce((s, r) => s + Math.abs(Number(r.amount)), 0) / history.length;
         if (avg === 0) continue;
         const percentHigher = Math.round(((currentAmount - avg) / avg) * 100);
-        if (percentHigher < 20) continue;
+        // Phase 3 — threshold is per-merchant. Default 20%; auto-tune
+        // raises it for merchants where the user dismisses repeatedly.
+        const threshold = await getEffectiveThreshold(
+          'unusual_charge',
+          charge.merchant_normalized,
+          20,
+        );
+        if (percentHigher < threshold) continue;
 
         const { data: alreadyAlerted } = await sb
           .from('notification_log')
@@ -453,3 +461,4 @@ export async function GET(req: NextRequest) {
     errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
   });
 }
+
