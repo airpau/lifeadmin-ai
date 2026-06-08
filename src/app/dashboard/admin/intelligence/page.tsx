@@ -3,7 +3,7 @@
  *
  * Closed-loop architecture (see docs/CLOSED_LOOP_ARCHITECTURE.md).
  *
- * Seven cards:
+ * Ten cards:
  *   1. Alert engagement (Phase 0) — per WhatsApp template precision.
  *   2. Auto-suppressions (Phase 0) — alerts the layer chose not to fire.
  *   3. Legal ref performance (Phase 1) — per-ref win rate, top + bottom 10.
@@ -14,6 +14,11 @@
  *      raised by the auto-tune step in the last 30 days.
  *   7. Churn + affiliate funnel (Phase 3) — cancellation reason
  *      distribution + per-category click→switch conversion.
+ *   8. Email scan conversion (Phase 4) — per-finding-kind action rate
+ *      (Add / Letter / Claim vs Dismiss).
+ *   9. Onboarding funnel (Phase 4) — per-step entries + drop-off rate.
+ *  10. Letter recipient engagement (Phase 4) — per-letter-kind supplier
+ *      response rate.
  *
  * All cards read from intelligence_stats (rolled up daily by
  * /api/cron/intelligence-rollup-daily at 02:15 UTC) plus
@@ -268,6 +273,82 @@ export default async function IntelligenceAdminPage() {
   }
   const affRowsSorted = Array.from(affByCategory.entries())
     .sort((a, b) => b[1].clicks - a[1].clicks);
+
+  // ── Phase 4: email scan finding conversion ───────────────────────
+  const { data: scanStatsRows } = await supabase
+    .from('intelligence_stats')
+    .select('*')
+    .eq('scope_kind', 'scan_finding_kind')
+    .eq('window_kind', 'all_time')
+    .order('emitted', { ascending: false });
+  const scanStats = (scanStatsRows ?? []) as StatsRow[];
+
+  // ── Phase 4: onboarding funnel ────────────────────────────────────
+  // Order matches the wizard's STEPS array. emitted count = entries.
+  const ONBOARDING_ORDER = ['Account', 'Connect', 'Complete set-up', 'First win'];
+  const { data: onbStatsRows } = await supabase
+    .from('intelligence_stats')
+    .select('*')
+    .eq('scope_kind', 'onboarding_step_name')
+    .eq('window_kind', 'all_time');
+  const onbByStep = new Map<string, StatsRow>();
+  for (const r of (onbStatsRows ?? []) as StatsRow[]) {
+    onbByStep.set(r.scope_value, r);
+  }
+  const onbFunnel = ONBOARDING_ORDER.map((step, i) => {
+    const cur = onbByStep.get(step);
+    const next = onbByStep.get(ONBOARDING_ORDER[i + 1] ?? '');
+    const entries = cur?.emitted ?? 0;
+    const nextEntries = next?.emitted ?? 0;
+    const dropOff =
+      entries > 0 && next ? Math.max(0, Math.round(((entries - nextEntries) / entries) * 100)) : null;
+    return { step, entries, dropOff, isLast: i === ONBOARDING_ORDER.length - 1 };
+  });
+
+  // ── Phase 4: letter recipient engagement (per letter_kind) ───────
+  // emitted = letters sent; we compute reply rate by joining to
+  // supplier_response_received events that share dispute_id. Done in
+  // memory because the aggregator scope is per-kind, not per-dispute.
+  const { data: letterEvents } = await supabase
+    .from('intelligence_events')
+    .select('id, subject_id, predicted, emitted_at')
+    .eq('action_kind', 'letter_sent')
+    .eq('subject_kind', 'letter_kind')
+    .gte('emitted_at', thresholdSince) // last 30d
+    .limit(500);
+  const letterDisputeIds = ((letterEvents ?? []) as Array<{
+    predicted: Record<string, unknown> | null;
+  }>)
+    .map((e) => (e.predicted?.dispute_id as string | undefined) ?? null)
+    .filter((x): x is string => !!x);
+  let responsesByDispute = new Set<string>();
+  if (letterDisputeIds.length > 0) {
+    const { data: responses } = await supabase
+      .from('intelligence_events')
+      .select('predicted')
+      .eq('action_kind', 'supplier_response_received')
+      .gte('emitted_at', thresholdSince)
+      .limit(500);
+    responsesByDispute = new Set(
+      ((responses ?? []) as Array<{ predicted: Record<string, unknown> | null }>)
+        .map((r) => (r.predicted?.dispute_id as string | undefined) ?? null)
+        .filter((x): x is string => !!x),
+    );
+  }
+  type LetterAgg = { sent: number; replied: number };
+  const letterByKind = new Map<string, LetterAgg>();
+  for (const ev of (letterEvents ?? []) as Array<{
+    subject_id: string | null;
+    predicted: Record<string, unknown> | null;
+  }>) {
+    if (!ev.subject_id) continue;
+    const agg = letterByKind.get(ev.subject_id) ?? { sent: 0, replied: 0 };
+    agg.sent += 1;
+    const did = ev.predicted?.dispute_id as string | undefined;
+    if (did && responsesByDispute.has(did)) agg.replied += 1;
+    letterByKind.set(ev.subject_id, agg);
+  }
+  const letterRows = Array.from(letterByKind.entries()).sort((a, b) => b[1].sent - a[1].sent);
 
   return (
     <AdminPage
@@ -764,9 +845,156 @@ export default async function IntelligenceAdminPage() {
           </div>
         </div>
       </section>
+
+      {/* ───────── Card 8: Email scan conversion (Phase 4) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            Email scan conversion (per finding kind)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Action rate = (actioned + claimed) / emitted. Per-kind via the email_scan_findings trigger.
+          </span>
+        </header>
+        {scanStats.length === 0 && (
+          <div className="px-4 py-6 text-sm text-slate-500">
+            No scan findings telemetry yet. The DB trigger started emitting on 2026-06-08; rows appear once the next inbox scan completes.
+          </div>
+        )}
+        {scanStats.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Finding kind</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Emitted</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Actioned</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Dismissed</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Action rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scanStats.map((r) => {
+                  const prec = r.precision_pct != null ? Number(r.precision_pct) : null;
+                  return (
+                    <tr key={r.scope_value} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-800">{r.scope_value}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{r.emitted}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{r.acted_on}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{r.dismissed}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Tone tone={precisionTone(prec, r.emitted)}>{fmtPct(prec)}</Tone>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ───────── Card 9: Onboarding funnel (Phase 4) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            Onboarding funnel (per wizard step)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Drop-off ≥ 40% to next step gets an amber flag — that's where the copy review threshold lives.
+          </span>
+        </header>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-600">
+              <tr>
+                <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Step</th>
+                <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Entries (all time)</th>
+                <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Drop to next</th>
+                <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {onbFunnel.map((s) => {
+                const flag =
+                  s.dropOff == null ? 'slate' : s.dropOff >= 40 ? 'red' : s.dropOff >= 20 ? 'amber' : 'green';
+                return (
+                  <tr key={s.step} className="border-t border-slate-100">
+                    <td className="px-4 py-3 font-mono text-xs text-slate-800">{s.step}</td>
+                    <td className="px-4 py-3 text-right text-slate-700">{s.entries}</td>
+                    <td className="px-4 py-3 text-right text-slate-700">
+                      {s.isLast ? '—' : s.dropOff == null ? '—' : `${s.dropOff}%`}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {s.isLast ? (
+                        <Tone tone="slate">Final step</Tone>
+                      ) : s.entries === 0 ? (
+                        <Tone tone="slate">Watching</Tone>
+                      ) : s.dropOff != null && s.dropOff >= 40 ? (
+                        <Tone tone="red">⚠ Copy review</Tone>
+                      ) : (
+                        <Tone tone={flag === 'red' ? 'red' : flag === 'amber' ? 'amber' : 'green'}>OK</Tone>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* ───────── Card 10: Letter recipient engagement (Phase 4) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            Letter recipient engagement (per letter kind, last 30 days)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Reply rate = letters that received ≥ 1 supplier_response within 30d. Feeds dispute-agent escalation timing.
+          </span>
+        </header>
+        {letterRows.length === 0 && (
+          <div className="px-4 py-6 text-sm text-slate-500">
+            No letter sends recorded yet. The dispute-agent emits letter_sent events when the user approves an "approve" decision on a letter-shaped recommendation (initial / followup / LBA / ombudsman / small_claims).
+          </div>
+        )}
+        {letterRows.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Letter kind</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Sent</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Got reply</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Reply rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {letterRows.map(([kind, agg]) => {
+                  const rate = agg.sent === 0 ? null : Math.round((agg.replied / agg.sent) * 100);
+                  return (
+                    <tr key={kind} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-800">{kind}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{agg.sent}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{agg.replied}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Tone tone={rate == null ? 'slate' : rate >= 50 ? 'green' : rate >= 20 ? 'amber' : 'red'}>
+                          {rate == null ? '—' : `${rate}%`}
+                        </Tone>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </AdminPage>
   );
 }
+
 
 
 
