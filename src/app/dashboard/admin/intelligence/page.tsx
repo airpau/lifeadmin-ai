@@ -141,6 +141,37 @@ export default async function IntelligenceAdminPage() {
     .limit(50);
   const suppressions = (suppressionRows ?? []) as SuppressionRow[];
 
+  // ── Phase 1: legal_ref performance ─────────────────────────────────
+  const { data: refStatsRows } = await supabase
+    .from('intelligence_stats')
+    .select('*')
+    .eq('scope_kind', 'legal_ref')
+    .eq('window_kind', 'all_time')
+    .gte('emitted', 5) // founder rec: don't show refs with <5 prior uses
+    .order('precision_pct', { ascending: false });
+  const refStats = (refStatsRows ?? []) as StatsRow[];
+
+  // Join to legal_references for the human-readable law_name. Tiny table
+  // (≤ 200 rows) so a single fetch is cheap; map by UUID for the render.
+  const refIds = refStats.map((r) => r.scope_value);
+  let refNamesById = new Map<string, { law_name: string; section: string | null }>();
+  if (refIds.length > 0) {
+    const { data: legalRows } = await supabase
+      .from('legal_references')
+      .select('id, law_name, section')
+      .in('id', refIds);
+    refNamesById = new Map(
+      ((legalRows ?? []) as Array<{
+        id: string;
+        law_name: string;
+        section: string | null;
+      }>).map((r) => [r.id, { law_name: r.law_name, section: r.section }]),
+    );
+  }
+
+  const topRefs = refStats.slice(0, 10);
+  const bottomRefs = refStats.slice(-10).reverse();
+
   return (
     <AdminPage
       title="Intelligence layer"
@@ -301,6 +332,103 @@ export default async function IntelligenceAdminPage() {
           </div>
         )}
       </section>
+
+      {/* ───────── Card 3: Legal ref performance (Phase 1) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            Legal ref performance (all time)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Win rate per legal_ref across every cited letter. Equal attribution across refs in multi-citation letters. Min sample 5.
+          </span>
+        </header>
+        {refStats.length === 0 && (
+          <div className="px-4 py-6 text-sm text-slate-500">
+            No legal_ref data yet. Phase 1 started emitting on 2026-06-07.
+            Rows appear once any cited legal_ref has been used 5+ times AND
+            at least one of those disputes has been resolved. Under-sample
+            refs are hidden — they're still being learned.
+          </div>
+        )}
+        {refStats.length > 0 && (
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+              <div>
+                <h3 className="font-semibold text-sm text-emerald-700 mb-2">
+                  Top 10 by win rate
+                </h3>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="text-left px-2 py-1 font-medium">Law</th>
+                      <th className="text-right px-2 py-1 font-medium">Cited</th>
+                      <th className="text-right px-2 py-1 font-medium">Won</th>
+                      <th className="text-right px-2 py-1 font-medium">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topRefs.map((r) => {
+                      const name = refNamesById.get(r.scope_value);
+                      const label = name
+                        ? `${name.law_name}${name.section ? ` ${name.section}` : ''}`
+                        : r.scope_value.slice(0, 8) + '…';
+                      const prec =
+                        r.precision_pct != null ? Number(r.precision_pct) : null;
+                      return (
+                        <tr key={r.scope_value} className="border-t border-slate-100">
+                          <td className="px-2 py-1 text-slate-800">{label}</td>
+                          <td className="px-2 py-1 text-right text-slate-700">{r.emitted}</td>
+                          <td className="px-2 py-1 text-right text-slate-700">{r.won}</td>
+                          <td className="px-2 py-1 text-right">
+                            <Tone tone={precisionTone(prec, r.emitted)}>{fmtPct(prec)}</Tone>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm text-rose-700 mb-2">
+                  Bottom 10 by win rate
+                </h3>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="text-left px-2 py-1 font-medium">Law</th>
+                      <th className="text-right px-2 py-1 font-medium">Cited</th>
+                      <th className="text-right px-2 py-1 font-medium">Won</th>
+                      <th className="text-right px-2 py-1 font-medium">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bottomRefs.map((r) => {
+                      const name = refNamesById.get(r.scope_value);
+                      const label = name
+                        ? `${name.law_name}${name.section ? ` ${name.section}` : ''}`
+                        : r.scope_value.slice(0, 8) + '…';
+                      const prec =
+                        r.precision_pct != null ? Number(r.precision_pct) : null;
+                      return (
+                        <tr key={r.scope_value} className="border-t border-slate-100">
+                          <td className="px-2 py-1 text-slate-800">{label}</td>
+                          <td className="px-2 py-1 text-right text-slate-700">{r.emitted}</td>
+                          <td className="px-2 py-1 text-right text-slate-700">{r.won}</td>
+                          <td className="px-2 py-1 text-right">
+                            <Tone tone={precisionTone(prec, r.emitted)}>{fmtPct(prec)}</Tone>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
     </AdminPage>
   );
 }
+
