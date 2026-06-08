@@ -88,6 +88,9 @@ import {
   type GroundingValidationFail,
   type WriteTarget,
 } from '@/lib/whatsapp/dispute-letter-writer';
+// Phase 2 closed-loop — significance + thumbs feedback wiring.
+import { appendThumbsCta } from '@/lib/intelligence/significance';
+import { recordAction } from '@/lib/intelligence';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Two-tier model strategy.
@@ -385,6 +388,65 @@ async function sendChunked(
     }
   }
 }
+
+/**
+ * Phase 2 — send an agent-generated reply with closed-loop instrumentation.
+ *
+ * On significant turns (tool calls used, >50 words, or contains a letter
+ * artefact) this:
+ *   1. Emits an `chat_reply_sent` event for the WhatsApp prompt template,
+ *      so the feedback classifier can match the next inbound 👍/👎 reply
+ *      back to this turn.
+ *   2. Appends a one-line thumbs CTA to the user-visible text.
+ *
+ * Non-significant turns (short conversational ack, no tools, no letter) go
+ * through unchanged — we don't want to train users to ignore the prompt.
+ *
+ * Falls back silently to plain `sendChunked` if intelligence emit fails;
+ * the user reply is never blocked on telemetry.
+ */
+async function sendAgentReply(
+  phone: string,
+  userId: string,
+  text: string,
+  toolIterations: number,
+  context: {
+    userMessage: string;
+    promptTemplateId: string; // e.g. 'whatsapp_pocket_agent_v1'
+  },
+): Promise<void> {
+  const { text: finalText, significant, reason } = appendThumbsCta(
+    text,
+    toolIterations,
+  );
+
+  if (significant) {
+    // Fire-and-forget the emit — never block the reply.
+    void recordAction({
+      userId,
+      actor: 'ai',
+      actionKind: 'chat_reply_sent',
+      subjectKind: 'prompt_template',
+      subjectId: context.promptTemplateId,
+      predicted: {
+        channel: 'whatsapp',
+        model: AGENT_MODEL,
+        tool_iterations: toolIterations,
+        significance_reason: reason,
+        // First 200 chars of user message — keeps payload bounded but lets
+        // the founder dashboard show which kinds of questions get downvoted.
+        user_question_excerpt: context.userMessage.slice(0, 200),
+      },
+      metadata: { reply_excerpt: text.slice(0, 200) },
+    }).catch((err) => {
+      console.warn('[intelligence/chat_reply_sent] non-fatal:', err);
+    });
+  }
+
+  await sendChunked(phone, userId, finalText);
+}
+
+const WHATSAPP_PROMPT_TEMPLATE_ID = 'whatsapp_pocket_agent_v1';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversation history — reads canonical from whatsapp_message_log AND
@@ -878,6 +940,13 @@ interface AgentRunResult {
   blockedBy?: GroundingValidationFail;
   /** Original args for the blocked action, so we can replay after fix. */
   blockedOriginalArgs?: Record<string, unknown>;
+  /**
+   * Phase 2 closed-loop signal — number of agent-loop iterations that
+   * required tool_use (i.e. how many tool-calling turns happened).
+   * Used by handlePocketAgentMessage to decide whether the reply is
+   * "significant" enough to ask for thumbs feedback.
+   */
+  toolIterations: number;
 }
 
 /** Build the full tools array — telegram registry + WhatsApp-only write-backs. */
@@ -1065,6 +1134,7 @@ async function runAgent(
         return {
           text: result.text,
           letter: result.pendingAction.letter_text,
+          toolIterations: iterations,
         };
       }
 
@@ -1104,6 +1174,7 @@ async function runAgent(
     disputeId: interceptedDisputeId,
     blockedBy: interceptedBlockedBy,
     blockedOriginalArgs: interceptedBlockedArgs,
+    toolIterations: iterations,
   };
 }
 
@@ -1182,9 +1253,15 @@ export async function handlePocketAgentMessage(opts: {
         systemAddendum: addendum,
       });
       if (result.text) {
-        await sendChunked(phone, userId, result.text);
+        await sendAgentReply(phone, userId, result.text, result.toolIterations, {
+          userMessage: text,
+          promptTemplateId: WHATSAPP_PROMPT_TEMPLATE_ID,
+        });
       }
       if (result.confirmation && result.letter) {
+        // Letter artefacts are inherently significant — emit the
+        // chat_reply_sent event but skip the CTA on the confirmation
+        // (the YES/NO confirmation slot is already the action prompt).
         await sendChunked(phone, userId, result.confirmation);
         await sendChunked(phone, userId, result.letter);
         if (result.disputeId) {
@@ -1243,7 +1320,16 @@ export async function handlePocketAgentMessage(opts: {
         `(System: the user has confirmed the pending action — ${slot.summary}. Persist it now via the appropriate tool.)`,
       );
       if (followup.text) {
-        await sendChunked(phone, userId, followup.text);
+        await sendAgentReply(
+          phone,
+          userId,
+          followup.text,
+          followup.toolIterations,
+          {
+            userMessage: text,
+            promptTemplateId: WHATSAPP_PROMPT_TEMPLATE_ID,
+          },
+        );
       }
       return { ok: true, reason: 'pending_action_confirmed' };
     }
@@ -1264,7 +1350,10 @@ export async function handlePocketAgentMessage(opts: {
 
     // 3a. Conversational reply (always present).
     if (result.text) {
-      await sendChunked(phone, userId, result.text);
+      await sendAgentReply(phone, userId, result.text, result.toolIterations, {
+        userMessage: text,
+        promptTemplateId: WHATSAPP_PROMPT_TEMPLATE_ID,
+      });
     }
 
     // 3b. Letter pre-flight blocked — queue an awaiting_field slot so
@@ -1315,3 +1404,4 @@ export async function handlePocketAgentMessage(opts: {
     return { ok: false, reason: 'agent_error' };
   }
 }
+
