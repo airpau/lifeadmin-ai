@@ -1621,20 +1621,56 @@ export default function DashboardPage() {
                           {opp.provider} · {(opp.type || 'opportunity').replace(/_/g, ' ')}
                         </div>
                       </div>
-                      <button
-                        onClick={async () => {
-                          setEmailOpportunities((prev) => prev.filter((o: any) => o.id !== opp.id));
-                          setEmailScanResults((prev) => (prev !== null ? prev - 1 : null));
-                          try {
-                            await supabase.from('email_scan_findings').update({ status: 'dismissed' }).eq('id', opp.id);
-                            await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id);
-                          } catch {}
-                        }}
-                        style={{ background: 'transparent', border: 0, color: 'var(--text-3)', cursor: 'pointer', fontSize: 12 }}
-                        title="Dismiss"
-                      >
-                        Dismiss
-                      </button>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={async () => {
+                            // P5-4 — route through /api/email-scan-findings/[id]/action so
+                            // the DB trigger fires the outcome with action_type metadata.
+                            setEmailOpportunities((prev) => prev.filter((o: any) => o.id !== opp.id));
+                            setEmailScanResults((prev) => (prev !== null ? prev - 1 : null));
+                            try {
+                              await fetch(`/api/email-scan-findings/${opp.id}/action`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  action: 'actioned',
+                                  action_type: 'add_to_subscriptions',
+                                }),
+                              });
+                            } catch {}
+                          }}
+                          style={{
+                            background: 'var(--mint-wash)',
+                            border: '1px solid var(--mint-deep)',
+                            color: 'var(--mint-deep)',
+                            cursor: 'pointer',
+                            fontSize: 12,
+                            padding: '4px 8px',
+                            borderRadius: 6,
+                          }}
+                          title="Add to subscriptions"
+                        >
+                          Add
+                        </button>
+                        <button
+                          onClick={async () => {
+                            setEmailOpportunities((prev) => prev.filter((o: any) => o.id !== opp.id));
+                            setEmailScanResults((prev) => (prev !== null ? prev - 1 : null));
+                            try {
+                              await fetch(`/api/email-scan-findings/${opp.id}/action`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ action: 'dismissed' }),
+                              });
+                              await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id);
+                            } catch {}
+                          }}
+                          style={{ background: 'transparent', border: 0, color: 'var(--text-3)', cursor: 'pointer', fontSize: 12 }}
+                          title="Dismiss"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {emailOpportunities.length > 5 && (
@@ -2176,3 +2212,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
