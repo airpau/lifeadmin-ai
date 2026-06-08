@@ -1,23 +1,21 @@
 /**
  * /dashboard/admin/intelligence
  *
- * Phase 0 of the closed-loop architecture (see docs/CLOSED_LOOP_ARCHITECTURE.md).
+ * Closed-loop architecture (see docs/CLOSED_LOOP_ARCHITECTURE.md).
  *
- * Two cards today:
- *   1. Alert engagement — per WhatsApp template precision (acted_on /
- *      emitted) over the last 7 days, the all-time baseline, and a
- *      visual flag when precision is below the 15% auto-suppression
- *      floor. Templates in the critical-bypass list are marked so the
- *      founder knows they can't be auto-suppressed.
+ * Five cards:
+ *   1. Alert engagement (Phase 0) — per WhatsApp template precision.
+ *   2. Auto-suppressions (Phase 0) — alerts the layer chose not to fire.
+ *   3. Legal ref performance (Phase 1) — per-ref win rate, top + bottom 10.
+ *   4. Chat reply quality (Phase 2) — per prompt template thumb rate.
+ *   5. Tool reliability (Phase 2) — per tool success rate, with auto-
+ *      downrank flag for >30% fail at >20 invocations.
  *
- *   2. Auto-suppressions (last 7d) — every alert the intelligence
- *      layer chose not to fire, with the reason + sample size +
- *      precision that triggered the call.
- *
- * Both read from intelligence_stats (rolled up daily by
- * /api/cron/intelligence-rollup-daily). Empty-state messaging shows
- * the warmup math so the founder knows when the first numbers will
- * appear.
+ * All cards read from intelligence_stats (rolled up daily by
+ * /api/cron/intelligence-rollup-daily at 02:15 UTC) plus
+ * intelligence_events for ambient context (suppressions, downrank flags).
+ * Empty-state messaging shows the warmup math so the founder knows when
+ * the first numbers will appear.
  */
 
 import { redirect } from 'next/navigation';
@@ -171,6 +169,42 @@ export default async function IntelligenceAdminPage() {
 
   const topRefs = refStats.slice(0, 10);
   const bottomRefs = refStats.slice(-10).reverse();
+
+  // ── Phase 2: chat reply quality (per prompt_template) ─────────────
+  const { data: promptStatsRows } = await supabase
+    .from('intelligence_stats')
+    .select('*')
+    .eq('scope_kind', 'prompt_template')
+    .eq('window_kind', 'all_time')
+    .gte('emitted', 5)
+    .order('precision_pct', { ascending: false });
+  const promptStats = (promptStatsRows ?? []) as StatsRow[];
+
+  // ── Phase 2: tool reliability (per tool) ──────────────────────────
+  const { data: toolStatsRows } = await supabase
+    .from('intelligence_stats')
+    .select('*')
+    .eq('scope_kind', 'tool')
+    .eq('window_kind', 'all_time')
+    .order('emitted', { ascending: false });
+  const toolStats = (toolStatsRows ?? []) as StatsRow[];
+
+  // ── Phase 2: auto-downrank flags (last 30 days) ───────────────────
+  const downrankSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: downrankRows } = await supabase
+    .from('intelligence_events')
+    .select('id, emitted_at, subject_id, predicted')
+    .eq('action_kind', 'tool_downrank_flagged')
+    .gte('emitted_at', downrankSince)
+    .order('emitted_at', { ascending: false })
+    .limit(20);
+  const downrankFlags = (downrankRows ?? []) as Array<{
+    id: string;
+    emitted_at: string;
+    subject_id: string | null;
+    predicted: Record<string, unknown> | null;
+  }>;
+  const flaggedTools = new Set(downrankFlags.map((d) => d.subject_id ?? ''));
 
   return (
     <AdminPage
@@ -428,7 +462,118 @@ export default async function IntelligenceAdminPage() {
           </div>
         )}
       </section>
+
+      {/* ───────── Card 4: Chat reply quality (Phase 2) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            Chat reply quality (per prompt template)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Thumb rate = 👍 / (👍 + 👎). Significant replies only. Min sample 5.
+          </span>
+        </header>
+        {promptStats.length === 0 && (
+          <div className="px-4 py-6 text-sm text-slate-500">
+            No chat reply feedback yet. The Pocket Agent started asking for
+            thumbs on 2026-06-08. Rows appear once any prompt template has
+            received 5+ rated replies.
+          </div>
+        )}
+        {promptStats.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Prompt template</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Rated</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">👍</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">👎</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Thumb rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {promptStats.map((r) => {
+                  const prec = r.precision_pct != null ? Number(r.precision_pct) : null;
+                  return (
+                    <tr key={r.scope_value} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-800">{r.scope_value}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{r.emitted}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{r.acted_on}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{r.dismissed}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Tone tone={precisionTone(prec, r.emitted)}>{fmtPct(prec)}</Tone>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ───────── Card 5: Tool reliability (Phase 2) ───────── */}
+      <section className="bg-white border border-slate-200 rounded-xl">
+        <header className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-900 text-sm">
+            Tool reliability (Pocket Agent dispatch)
+          </h2>
+          <span className="text-xs text-slate-500">
+            Success rate per tool. Auto-flagged for downrank when invocations &gt; 20 AND fail rate &gt; 30%.
+          </span>
+        </header>
+        {toolStats.length === 0 && (
+          <div className="px-4 py-6 text-sm text-slate-500">
+            No tool telemetry yet. The Pocket Agent started emitting tool-call
+            events on 2026-06-08. Rows appear once the daily rollup runs.
+          </div>
+        )}
+        {toolStats.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Tool</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Calls</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Succeeded</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Failed</th>
+                  <th className="text-right px-4 py-3 font-medium uppercase tracking-wide text-xs">Success rate</th>
+                  <th className="text-left px-4 py-3 font-medium uppercase tracking-wide text-xs">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {toolStats.map((r) => {
+                  const prec = r.precision_pct != null ? Number(r.precision_pct) : null;
+                  const flagged = flaggedTools.has(r.scope_value);
+                  return (
+                    <tr key={r.scope_value} className={`border-t border-slate-100 ${flagged ? 'bg-rose-50/40' : ''}`}>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-800">{r.scope_value}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{r.emitted}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{r.acted_on}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{r.dismissed}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Tone tone={precisionTone(prec, r.emitted)}>{fmtPct(prec)}</Tone>
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {flagged ? (
+                          <Tone tone="red">⚠ Auto-downrank flagged</Tone>
+                        ) : r.emitted >= 30 && prec != null && prec >= 70 ? (
+                          <Tone tone="green">Healthy</Tone>
+                        ) : (
+                          <Tone tone="slate">Watching</Tone>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </AdminPage>
   );
 }
+
 
