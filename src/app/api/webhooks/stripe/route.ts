@@ -428,6 +428,31 @@ export async function POST(request: NextRequest) {
           } catch (e) {
             console.error('Webhook: openDowngradeEvent failed:', e);
           }
+
+          // Phase 3 — churn capture. Emit a churn_prompted event so we
+          // can attribute the user's reply (one-tap reason via
+          // /api/churn-reason). Also fire-and-forget an email + WhatsApp
+          // prompt asking why they cancelled. Each path is wrapped in
+          // try/catch — webhook completion always wins over telemetry.
+          try {
+            const { recordAction } = await import('@/lib/intelligence');
+            const { dispatchChurnPrompt } = await import('@/lib/intelligence/churn-prompt');
+            await recordAction({
+              userId: existing.id,
+              actor: 'system',
+              actionKind: 'churn_prompted',
+              subjectKind: 'churn',
+              subjectId: existing.id,
+              predicted: {
+                from_tier: existing.subscription_tier,
+                stripe_customer_id: customerId,
+                stripe_subscription_id: (subscription as Stripe.Subscription).id,
+              },
+            });
+            void dispatchChurnPrompt(supabase as any, existing.id);
+          } catch (e) {
+            console.warn('[stripe webhook] churn-capture step failed:', e);
+          }
         }
         break;
       }
@@ -468,3 +493,4 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ received: true });
 }
+
