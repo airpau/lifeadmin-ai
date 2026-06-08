@@ -153,5 +153,60 @@ export async function POST(
     },
   });
 
+  // Phase 1 closed loop (docs/CLOSED_LOOP_ARCHITECTURE.md): fan the
+  // outcome out to every legal_ref that was cited in any letter for
+  // this dispute. Equal attribution per founder decision — every ref
+  // cited gets credit/blame for the outcome; recovered_gbp splits
+  // equally across them so per-ref aggregates compose cleanly.
+  //
+  // Only fires on terminal outcomes (won / partial / lost).
+  // still_open / no_response leaves the legal_ref events unmeasured
+  // so they stay in the cold-start pool until a real resolution.
+  if (isTerminal) {
+    try {
+      const intelOutcomeKind: 'won' | 'lost' =
+        outcome === 'lost' ? 'lost' : 'won'; // partial counts as a win for steering purposes
+
+      const { data: citedEvents } = await supabase
+        .from('intelligence_events')
+        .select('id')
+        .eq('action_kind', 'legal_ref_cited')
+        .is('outcome_kind', null)
+        .filter('predicted->>dispute_id', 'eq', id);
+
+      const events = (citedEvents ?? []) as Array<{ id: string }>;
+      if (events.length > 0) {
+        const perRefRecovered =
+          recovered != null
+            ? Math.round((Number(recovered) / events.length) * 100) / 100
+            : null;
+
+        const { recordOutcome } = await import('@/lib/intelligence');
+        await Promise.all(
+          events.map((e) =>
+            recordOutcome({
+              eventId: e.id,
+              outcomeKind: intelOutcomeKind,
+              outcome: {
+                // Raw outcome label (won/partial/lost) preserved in the
+                // jsonb so aggregators can distinguish full-win from
+                // partial later without losing the equal-split logic.
+                dispute_outcome: outcome,
+                recovered_gbp: perRefRecovered,
+                attribution: 'equal_split',
+                cohort_size: events.length,
+                dispute_id: id,
+                source,
+              },
+            }),
+          ),
+        );
+      }
+    } catch (intelErr) {
+      console.warn('[intelligence/dispute_outcome_fanout] failed (non-fatal):', intelErr);
+    }
+  }
+
   return NextResponse.json({ ok: true, outcome, recovered_amount_gbp: recovered });
 }
+
