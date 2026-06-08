@@ -91,6 +91,7 @@ import {
 // Phase 2 closed-loop — significance + thumbs feedback wiring.
 import { appendThumbsCta } from '@/lib/intelligence/significance';
 import { recordAction } from '@/lib/intelligence';
+import { instrumentToolCall } from '@/lib/intelligence/tool-telemetry';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Two-tier model strategy.
@@ -1106,13 +1107,26 @@ async function runAgent(
       }
 
       // Default executor — same dispatcher the dashboard + Telegram use.
+      // Wrapped in instrumentToolCall so every dispatch emits an
+      // intelligence_events row (tool_call → tool_success | tool_failed).
+      // The aggregator rolls this up at scope_kind='tool' for the
+      // auto-downrank cron.
       let result: { text: string; pendingAction?: LegacyPendingAction };
       try {
-        result = await executeToolCall(
-          block.name,
-          block.input as Record<string, unknown>,
-          userId,
-          'whatsapp',
+        result = await instrumentToolCall(
+          {
+            userId,
+            channel: 'whatsapp',
+            toolName: block.name,
+            argsPreview: block.input,
+          },
+          () =>
+            executeToolCall(
+              block.name,
+              block.input as Record<string, unknown>,
+              userId,
+              'whatsapp',
+            ),
         );
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : 'Unknown error';
