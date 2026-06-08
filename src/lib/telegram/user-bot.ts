@@ -2228,6 +2228,22 @@ Return JSON: { "subject": "...", "body": "..." }`;
       }
     })();
 
+    // Phase 3 closed-loop — churn-reason classifier. Same fire-and-
+    // forget pattern; attributes one-word PRICE/FEATURE/COMPETITOR/
+    // OTHER replies to the most recent churn_prompted event (48h
+    // window).
+    void (async () => {
+      try {
+        const { classifyChurnReason, recordChurnReason } = await import(
+          '@/lib/intelligence/churn-reply-classifier'
+        );
+        const reason = classifyChurnReason(userMessage);
+        if (reason) await recordChurnReason(session.user_id, reason, userMessage);
+      } catch (e) {
+        console.warn('[telegram/user-bot] churn-reason hook failed:', e);
+      }
+    })();
+
     if (earlyLog?.id) {
       supabase
         .from('telegram_message_log')
@@ -2673,4 +2689,5 @@ export async function sendProactiveAlert(params: {
 
   return { ok: true, messageId: data.result?.message_id };
 }
+
 
