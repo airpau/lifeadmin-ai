@@ -279,7 +279,15 @@ export async function dispatchPocketAgentAlert(args: {
     // automatically inside the SDK (matches EVENT_CATALOG critical=true).
     const { recordAction, consultLedger, logAutoSuppression } =
       await import('@/lib/intelligence');
-    const intelCtx = {
+    const intelCtx: {
+      userId: string | null;
+      actor: 'system';
+      actionKind: string;
+      subjectKind: string;
+      subjectId: string;
+      predicted: Record<string, unknown>;
+      metadata: Record<string, unknown>;
+    } = {
       userId: session.user_id,
       actor: 'system' as const,
       actionKind: 'alert_sent',
@@ -301,9 +309,19 @@ export async function dispatchPocketAgentAlert(args: {
       });
       return { ok: false, channel: 'whatsapp', error: err };
     }
-    // Phase 0 matches outcomes by (subject_kind, subject_id) so we don't
-    // need to retain the event id here. Phase 2 will likely thread it
-    // through to enable per-send outcome attribution.
+    // P5-3 — when the decision came from the exploration tier (would
+    // have been suppressed otherwise) tag the emit so the aggregator
+    // can compare exploration engagement vs measured baseline. Phase 0
+    // matches outcomes by (subject_kind, subject_id) so the tag flows
+    // through naturally on the recordOutcome side.
+    if (decision.exploration) {
+      intelCtx.metadata = {
+        ...intelCtx.metadata,
+        exploration: true,
+        exploration_precision_pct: decision.precision_pct,
+        exploration_sample: decision.sample,
+      };
+    }
     await recordAction(intelCtx);
 
     // ── In-window text attempt ───────────────────────────────────────
@@ -723,3 +741,4 @@ function templateForAlertType(alertType: AlertType): string | null {
       return null;
   }
 }
+
