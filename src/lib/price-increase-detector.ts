@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { hasMeaningfulPriceSignal, bucketFor } from '@/lib/category-taxonomy';
+import { getEffectiveThreshold } from '@/lib/intelligence/detection-thresholds';
 
 function getAdmin() {
   return createClient(
@@ -205,8 +206,16 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
     // Calculate increase
     const increasePct = ((latest.amount - avgPrevious) / avgPrevious) * 100;
 
-    // Require ≥5% increase (old 2% was catching rounding noise)
-    if (increasePct < 5) continue;
+    // Phase 3 — threshold is per-merchant. Default 5%; auto-tune raises
+    // it for merchants where the user dismisses repeatedly so we stop
+    // generating noise for that merchant. ≥5% baseline kept (old 2%
+    // was catching rounding noise; the override never goes below 5%).
+    const threshold = await getEffectiveThreshold(
+      'price_increase',
+      merchant,
+      5,
+    );
+    if (increasePct < threshold) continue;
 
     const annualImpact = (latest.amount - avgPrevious) * 12;
 
@@ -228,3 +237,4 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
 
   return increases;
 }
+
