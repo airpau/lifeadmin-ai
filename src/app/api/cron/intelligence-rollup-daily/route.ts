@@ -349,11 +349,136 @@ export async function GET(request: NextRequest) {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // Phase 3 — auto-tune detection thresholds.
+  //
+  // Spec (CLOSED_LOOP_ARCHITECTURE.md → Phase 3):
+  //   "If 5 out of last 6 alerts of a kind for a merchant were
+  //    dismissed, raise the threshold automatically + log the change."
+  //
+  // We scan the recent alert_template events grouped by (template,
+  // merchant_normalised in metadata). Two templates feed this loop:
+  //   - paybacker_alert_unusual_charge  → kind='unusual_charge', default 20
+  //   - paybacker_alert_price_increase  → kind='price_increase',  default 5
+  //
+  // When ≥5 of the last 6 outcomes for a given (kind, merchant) were
+  // dismissed/negative/no_response, multiply the threshold by 1.25 and
+  // write one threshold_raised event. Existing override (if any) is the
+  // new baseline. Idempotent: skip if a raise already exists in the
+  // last 14 days for this (kind, merchant) — gives the user time to
+  // engage with the new floor before we touch it again.
+  // ─────────────────────────────────────────────────────────────────
+  try {
+    const TUNE_KINDS: Array<{
+      kind: 'unusual_charge' | 'price_increase';
+      template: string;
+      defaultValue: number;
+    }> = [
+      { kind: 'unusual_charge', template: 'paybacker_alert_unusual_charge', defaultValue: 20 },
+      { kind: 'price_increase', template: 'paybacker_alert_price_increase', defaultValue: 5 },
+    ];
+
+    let raised = 0;
+    let skippedRecent = 0;
+    let candidatesChecked = 0;
+
+    for (const cfg of TUNE_KINDS) {
+      // Pull recent events for this template that have a merchant in metadata.
+      // Look back 90 days; we need at least 6 measured events per merchant.
+      const lookback = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: events } = await sb
+        .from('intelligence_events')
+        .select('id, subject_id, outcome_kind, metadata, emitted_at')
+        .eq('subject_kind', 'alert_template')
+        .eq('subject_id', cfg.template)
+        .not('outcome_kind', 'is', null)
+        .gte('emitted_at', lookback)
+        .order('emitted_at', { ascending: false })
+        .limit(2000);
+
+      // Group last-6-per-merchant.
+      const byMerchant = new Map<string, Array<{ outcome: string; ts: string }>>();
+      for (const ev of (events ?? []) as Array<{
+        outcome_kind: string;
+        metadata: Record<string, unknown> | null;
+        emitted_at: string;
+      }>) {
+        const merchant =
+          (ev.metadata && (ev.metadata.merchant_normalised as string)) ??
+          (ev.metadata && (ev.metadata.merchant as string)) ??
+          null;
+        if (!merchant) continue;
+        const list = byMerchant.get(merchant) ?? [];
+        if (list.length < 6) {
+          list.push({ outcome: ev.outcome_kind, ts: ev.emitted_at });
+          byMerchant.set(merchant, list);
+        }
+      }
+
+      const since14 = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
+      const { getEffectiveThreshold, recordThresholdRaise } = await import(
+        '@/lib/intelligence/detection-thresholds'
+      );
+
+      for (const [merchant, outcomes] of byMerchant.entries()) {
+        candidatesChecked++;
+        if (outcomes.length < 6) continue;
+        const dismissals = outcomes.filter(
+          (o) => o.outcome === 'dismissed' || o.outcome === 'negative' || o.outcome === 'no_response',
+        ).length;
+        if (dismissals < 5) continue;
+
+        // 14-day dedup on raises.
+        const { data: recent } = await sb
+          .from('intelligence_events')
+          .select('id')
+          .eq('action_kind', 'threshold_raised')
+          .eq('subject_kind', 'detection_threshold')
+          .eq('subject_id', `${cfg.kind}:${merchant}`)
+          .gte('emitted_at', since14)
+          .limit(1);
+        if (recent && recent.length > 0) {
+          skippedRecent++;
+          continue;
+        }
+
+        const currentValue = await getEffectiveThreshold(
+          cfg.kind,
+          merchant,
+          cfg.defaultValue,
+        );
+        const newValue = Math.round(currentValue * 1.25 * 100) / 100;
+        await recordThresholdRaise({
+          kind: cfg.kind,
+          merchantNormalised: merchant,
+          oldValue: currentValue,
+          newValue,
+          reason: `5_of_last_6_dismissed`,
+          metadata: {
+            sample: outcomes.length,
+            dismissals,
+            window_days: 90,
+          },
+        });
+        raised++;
+      }
+    }
+    summary.thresholds_raised = raised;
+    summary.thresholds_candidates = candidatesChecked;
+    summary.thresholds_skipped_recent = skippedRecent;
+  } catch (err) {
+    console.warn('[intelligence-rollup] threshold auto-tune failed:', err);
+    summary.thresholds_raised = -1;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // Phase 2 sprint 2 — weekly founder digest of low-rated chat
   // prompt templates. Runs only on Mondays so the founder gets one
   // weekly mail, not seven. Surfaces the bottom-5 prompt_template
   // scopes with thumb rate < 50% AND emitted ≥ 10 — these are the
   // patterns Sonnet is producing that users actively dislike.
+  //
+  // Phase 3 — also includes: threshold raises in last 7d AND churn
+  // reason distribution from last 30d (churn_recorded events).
   // ─────────────────────────────────────────────────────────────────
   try {
     if (now.getUTCDay() === 1) {
@@ -378,12 +503,39 @@ export async function GET(request: NextRequest) {
         .order('precision_pct', { ascending: true })
         .limit(10);
 
+      // Phase 3 — threshold auto-tune raises in last 7d.
+      const since7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: thresholdRaises } = await sb
+        .from('intelligence_events')
+        .select('subject_id, predicted, emitted_at')
+        .eq('action_kind', 'threshold_raised')
+        .eq('subject_kind', 'detection_threshold')
+        .gte('emitted_at', since7)
+        .order('emitted_at', { ascending: false })
+        .limit(20);
+
+      // Phase 3 — churn reason distribution in last 30d.
+      const since30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: churnEvents } = await sb
+        .from('intelligence_events')
+        .select('outcome')
+        .eq('action_kind', 'churn_recorded')
+        .gte('emitted_at', since30);
+      const churnDist = new Map<string, number>();
+      for (const c of (churnEvents ?? []) as Array<{ outcome: { reason?: string } | null }>) {
+        const reason = c.outcome?.reason ?? 'unknown';
+        churnDist.set(reason, (churnDist.get(reason) ?? 0) + 1);
+      }
+      const churnTotal = Array.from(churnDist.values()).reduce((s, n) => s + n, 0);
+
       const FOUNDER_EMAIL =
         process.env.FOUNDER_EMAIL ?? 'aireypaul@googlemail.com';
       if (
         process.env.RESEND_API_KEY &&
         ((badPrompts?.length ?? 0) > 0 ||
-          (failingTools.data?.length ?? 0) > 0)
+          (failingTools.data?.length ?? 0) > 0 ||
+          (thresholdRaises?.length ?? 0) > 0 ||
+          churnTotal > 0)
       ) {
         const rows = [
           (badPrompts?.length ?? 0) > 0
@@ -399,6 +551,25 @@ export async function GET(request: NextRequest) {
                 .map(
                   (r) =>
                     `<li><code>${r.scope_value}</code> — ${r.precision_pct}% success (${r.emitted} calls)</li>`,
+                )
+                .join('')}</ul>`
+            : '',
+          (thresholdRaises?.length ?? 0) > 0
+            ? `<h3>Detection thresholds auto-raised (last 7d)</h3><ul>${thresholdRaises!
+                .map((r) => {
+                  const p = (r.predicted ?? {}) as Record<string, unknown>;
+                  return `<li><code>${r.subject_id}</code>: ${p.old_value} → ${p.new_value} (reason: ${p.reason})</li>`;
+                })
+                .join('')}</ul>`
+            : '',
+          churnTotal > 0
+            ? `<h3>Churn reasons (last 30d, n=${churnTotal})</h3><ul>${Array.from(
+                churnDist.entries(),
+              )
+                .sort((a, b) => b[1] - a[1])
+                .map(
+                  ([reason, count]) =>
+                    `<li><b>${reason}</b> — ${count} (${Math.round((count / churnTotal) * 100)}%)</li>`,
                 )
                 .join('')}</ul>`
             : '',
@@ -432,4 +603,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ ok: true, summary });
 }
+
 
