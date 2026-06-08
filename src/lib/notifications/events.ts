@@ -55,7 +55,8 @@ export type NotificationEventType =
   | 'recovery_weekly'        // Weekly £-recovered digest (Mon 09:00 UTC, WA-first)
   | 'payment_received'       // Pocket Agent buzz when a credit lands
   | 'payment_outgoing'       // Pocket Agent buzz when a debit clears
-  | 'dd_warning';            // Direct debit due in the next 24-72h
+  | 'dd_warning'             // Direct debit due in the next 24-72h
+  | 'churn_prompted';        // Asked user why they cancelled (Phase 3 churn capture)
 
 export type NotificationChannel = 'email' | 'telegram' | 'whatsapp' | 'push';
 
@@ -470,6 +471,15 @@ export const EVENT_CATALOG: EventMeta[] = [
     group: 'service',
     scheduleKind: 'none',
   },
+  {
+    event: 'churn_prompted',
+    label: 'Why did you cancel?',
+    description: 'One-time prompt after a subscription cancellation asking for the reason. Users can opt out — they already cancelled.',
+    defaultEmail: true, defaultTelegram: true, defaultWhatsapp: false, defaultPush: false,
+    allowedChannels: ['email', 'telegram'],
+    group: 'service',
+    scheduleKind: 'none',
+  },
 ];
 
 export const EVENT_GROUPS: Record<EventMeta['group'], string> = {
@@ -483,3 +493,4 @@ export const EVENT_GROUPS: Record<EventMeta['group'], string> = {
 export function getEventMeta(event: NotificationEventType): EventMeta | undefined {
   return EVENT_CATALOG.find((e) => e.event === event);
 }
+
