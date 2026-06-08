@@ -82,6 +82,31 @@ function OnboardingInner() {
     ? requestedStep
     : derivedStep;
 
+  // Phase 4 — onboarding funnel telemetry. Fire a one-line RPC each time
+  // the user lands on a step (including refresh / direct nav). The RPC
+  // is a no-op if not authenticated, so the worst case is the founder
+  // navigating /onboarding pre-signup produces no rows.
+  //
+  // Aggregator (intelligence-rollup-daily) groups by subject_id =
+  // step name, so per-step drop-off computes for free. Bottom-of-funnel
+  // drop is visible in the admin dashboard.
+  useEffect(() => {
+    if (!state?.hasAccount) return;
+    const stepName = STEPS[activeStep] ?? 'unknown';
+    supabase
+      .rpc('fn_emit_onboarding_step', {
+        p_step: stepName,
+        p_metadata: {
+          derived_step: derivedStep,
+          requested_step: Number.isInteger(requestedStep) ? requestedStep : null,
+          has_bank: state.hasBank,
+          has_email: state.hasEmail,
+          has_scan: state.hasScan,
+        },
+      })
+      .then(() => {});
+  }, [activeStep, state, derivedStep, requestedStep, supabase]);
+
   const gotoStep = (n: number) => {
     const qs = n > 0 ? `?step=${n}` : '';
     router.replace(`/onboarding${qs}`);
@@ -985,3 +1010,4 @@ export default function OnboardingPage() {
     </Suspense>
   );
 }
+
