@@ -8,6 +8,13 @@
  * Phase 0 scopes:
  *   - subject_kind = 'alert_template'     (per WhatsApp template name)
  *
+ * Phase 1 scopes (additive — same code path):
+ *   - subject_kind = 'legal_ref'           (per legal_references UUID)
+ *
+ * Phase 2 scopes (additive — outcome_kind extensions only):
+ *   - subject_kind = 'prompt_template'    (chat reply thumb rate)
+ *   - subject_kind = 'tool'                (tool-call success rate)
+ *
  * Windows rolled:
  *   - day      (yesterday in UTC)
  *   - week     (this Monday → today)
@@ -101,6 +108,23 @@ function fold(agg: AggRow, ev: EventRow): void {
       break;
     case 'auto_suppressed':
       agg.auto_suppressed += 1;
+      break;
+    // Phase 2 — chat reply thumbs feedback. precision_pct on
+    // prompt_template scope = thumb-up rate.
+    case 'positive':
+      agg.acted_on += 1;
+      break;
+    case 'negative':
+      agg.dismissed += 1;
+      break;
+    // Phase 2 — tool-call telemetry. precision_pct on tool scope =
+    // tool success rate. The auto-downrank cron reads (100 - precision)
+    // to find consistently failing tools.
+    case 'tool_success':
+      agg.acted_on += 1;
+      break;
+    case 'tool_failed':
+      agg.dismissed += 1;
       break;
     default:
       // null outcome → still unmeasured; counts as emitted but not actioned
@@ -240,5 +264,172 @@ export async function GET(request: NextRequest) {
     .lt('window_start', pruneCutoff.toISOString().slice(0, 10));
   summary.pruned_daily_rows = pruned ?? 0;
 
+  // ─────────────────────────────────────────────────────────────────
+  // Phase 2 sprint 2 — auto-downrank failing tools.
+  //
+  // Spec (CLOSED_LOOP_ARCHITECTURE.md → Phase 2):
+  //   "if a tool call fails > 30% of the time AND has > 20 invocations,
+  //    automatically downrank it in the tool registry (with founder
+  //    notification)"
+  //
+  // Conservative implementation:
+  //   - Query all-time stats at scope_kind='tool'.
+  //   - Filter: emitted > 20 AND fail rate > 30% (precision_pct < 70%).
+  //   - Write one `tool_downrank_flagged` intelligence_events row per
+  //     candidate (idempotent — only writes if no flag exists for the
+  //     same tool in the last 7 days, so the founder isn't paged daily).
+  //   - Founder reviews via the admin dashboard; actual runtime
+  //     downranking is deferred to sprint 3 once we have ≥20 tools with
+  //     enough signal to be sure the threshold isn't catching noise.
+  //
+  // The flag IS the auto-downrank — runtime suppression at the tool-
+  // selection layer would risk the agent silently regressing if a
+  // legitimately useful tool tripped the floor on a low-sample week.
+  // Founder-in-loop is the right policy until we trust the signal.
+  // ─────────────────────────────────────────────────────────────────
+  try {
+    const { data: toolStats } = await sb
+      .from('intelligence_stats')
+      .select('scope_value, emitted, acted_on, dismissed, precision_pct')
+      .eq('scope_kind', 'tool')
+      .eq('window_kind', 'all_time')
+      .gt('emitted', 20);
+
+    const failingTools = (toolStats ?? []).filter((r) => {
+      const prec = r.precision_pct == null ? null : Number(r.precision_pct);
+      return prec != null && prec < 70; // fail rate > 30%
+    });
+
+    let flagged = 0;
+    let skippedRecent = 0;
+    const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    for (const t of failingTools) {
+      // Dedup: skip if flagged in the last 7 days.
+      const { data: recent } = await sb
+        .from('intelligence_events')
+        .select('id')
+        .eq('action_kind', 'tool_downrank_flagged')
+        .eq('subject_kind', 'tool')
+        .eq('subject_id', t.scope_value)
+        .gte('emitted_at', since)
+        .limit(1);
+      if (recent && recent.length > 0) {
+        skippedRecent++;
+        continue;
+      }
+      await sb.from('intelligence_events').insert({
+        user_id: null,
+        actor: 'system',
+        action_kind: 'tool_downrank_flagged',
+        subject_kind: 'tool',
+        subject_id: t.scope_value,
+        predicted: {
+          emitted: t.emitted,
+          acted_on: t.acted_on,
+          dismissed: t.dismissed,
+          precision_pct: t.precision_pct,
+          fail_rate_pct:
+            t.precision_pct == null ? null : 100 - Number(t.precision_pct),
+          rule: 'emitted>20 AND fail_rate>30%',
+        },
+        metadata: {
+          source: 'cron/intelligence-rollup-daily',
+          founder_review_required: true,
+        },
+      });
+      flagged++;
+    }
+    summary.tools_failing_flagged = flagged;
+    summary.tools_failing_skipped_recent = skippedRecent;
+    summary.tools_failing_candidates = failingTools.length;
+  } catch (err) {
+    console.warn('[intelligence-rollup] auto-downrank step failed:', err);
+    summary.tools_failing_flagged = -1;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Phase 2 sprint 2 — weekly founder digest of low-rated chat
+  // prompt templates. Runs only on Mondays so the founder gets one
+  // weekly mail, not seven. Surfaces the bottom-5 prompt_template
+  // scopes with thumb rate < 50% AND emitted ≥ 10 — these are the
+  // patterns Sonnet is producing that users actively dislike.
+  // ─────────────────────────────────────────────────────────────────
+  try {
+    if (now.getUTCDay() === 1) {
+      // Monday
+      const { data: badPrompts } = await sb
+        .from('intelligence_stats')
+        .select('scope_value, emitted, acted_on, dismissed, precision_pct')
+        .eq('scope_kind', 'prompt_template')
+        .eq('window_kind', 'all_time')
+        .gte('emitted', 10)
+        .lt('precision_pct', 50)
+        .order('precision_pct', { ascending: true })
+        .limit(5);
+
+      const failingTools = await sb
+        .from('intelligence_stats')
+        .select('scope_value, emitted, precision_pct')
+        .eq('scope_kind', 'tool')
+        .eq('window_kind', 'all_time')
+        .gt('emitted', 20)
+        .lt('precision_pct', 70)
+        .order('precision_pct', { ascending: true })
+        .limit(10);
+
+      const FOUNDER_EMAIL =
+        process.env.FOUNDER_EMAIL ?? 'aireypaul@googlemail.com';
+      if (
+        process.env.RESEND_API_KEY &&
+        ((badPrompts?.length ?? 0) > 0 ||
+          (failingTools.data?.length ?? 0) > 0)
+      ) {
+        const rows = [
+          (badPrompts?.length ?? 0) > 0
+            ? `<h3>Low-rated chat prompts (this week)</h3><ul>${badPrompts!
+                .map(
+                  (r) =>
+                    `<li><code>${r.scope_value}</code> — ${r.precision_pct}% positive (${r.emitted} replies)</li>`,
+                )
+                .join('')}</ul>`
+            : '',
+          (failingTools.data?.length ?? 0) > 0
+            ? `<h3>Failing tools (auto-downrank flagged)</h3><ul>${failingTools.data!
+                .map(
+                  (r) =>
+                    `<li><code>${r.scope_value}</code> — ${r.precision_pct}% success (${r.emitted} calls)</li>`,
+                )
+                .join('')}</ul>`
+            : '',
+          `<p>Review at <a href="https://paybacker.co.uk/dashboard/admin/intelligence">/dashboard/admin/intelligence</a>.</p>`,
+        ]
+          .filter(Boolean)
+          .join('');
+
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: 'Paybacker Intelligence <noreply@paybacker.co.uk>',
+            to: FOUNDER_EMAIL,
+            subject: 'Weekly intelligence digest — Pocket Agent quality',
+            html: rows,
+          }),
+        });
+        summary.weekly_digest_sent = 1;
+      } else {
+        summary.weekly_digest_sent = 0;
+      }
+    }
+  } catch (err) {
+    console.warn('[intelligence-rollup] weekly digest step failed:', err);
+    summary.weekly_digest_sent = -1;
+  }
+
   return NextResponse.json({ ok: true, summary });
 }
+
