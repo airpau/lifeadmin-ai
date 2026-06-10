@@ -1,4 +1,11 @@
-# Handoff Notes — Last Updated 17 Apr 2026
+# Handoff Notes — Last Updated 10 Jun 2026
+
+## Session: Cowork Desktop — Social Bundle 3 loaded + posting resumed (10 Jun 2026)
+
+1. **Bundle 3 loaded** (Claude Design "Late June + July" export, posts 21–43, 23 posts). Assets + `posts.json` saved to `docs/social-images/bundle3-july/` in the repo.
+2. **Post 21 (summer-eu261) published manually 10 Jun** — FB `1056645287525328_122114061098985435`, IG `17891259072518002`. Posted via direct Graph API (paybacker MCP not available in session): META_ACCESS_TOKEN from `.env.local` → page token via `/me/accounts` → unpublished-photo fbcdn URL for IG (9004 workaround still required and working).
+3. **`daily-social-media-post` scheduled task re-enabled** with new prompt: posts 22–43 daily at 09:05 London, 11 Jun → 2 Jul 2026, then disables itself. Per Paul's instruction it posts DAILY (bundle's internal `scheduled_day` fields suggested every 2–3 days through 31 Jul — ignored). Captions come from `posts.json` `full_caption` with em dashes stripped at post time (Paul's 8 Jun rule). Per-run outcomes logged to `docs/social-images/bundle3-july/posting-log.md`.
+4. **After 2 Jul:** new content bundle needed (bundle 3 exhausted).
 
 ## Session: Cowork Desktop — Agent Reality Audit + CLAUDE.md Correction (17 Apr 2026)
 
