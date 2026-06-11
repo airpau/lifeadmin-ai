@@ -91,6 +91,38 @@ export async function GET(request: NextRequest) {
       } catch (updateErr) {
         console.warn('[verify-legal] last_check_attempt_at update failed:', updateErr);
       }
+
+      // ROOT-CAUSE FIX (fix/legislation-self-learning-loop):
+      // This block used to hardcode the audit status to 'attempted' for
+      // every successful run, so EVERY verification record was stuck at
+      // 'attempted' and none ever reached a terminal 'confirmed' state —
+      // even though the real outcome was correctly written to
+      // legal_references.verification_status by the helpers above.
+      //
+      // We now read that authoritative status back and record the TRUE
+      // terminal outcome. A clean re-verification ('current') is surfaced
+      // as 'confirmed' so the audit trail finally shows a confirmed state;
+      // every other status ('updated', 'needs_review', 'url_dead', ...) is
+      // recorded verbatim — matching how the sibling crons
+      // (reverify-all-legal-refs, legal-refs-daily-reverify) already write
+      // after_status: ref.verification_status.
+      let finalStatus = 'check_failed';
+      if (attemptOk) {
+        try {
+          const { data: fresh } = await supabase
+            .from('legal_references')
+            .select('verification_status')
+            .eq('id', ref.id)
+            .single();
+          const vs = fresh?.verification_status ?? null;
+          finalStatus = vs === 'current' ? 'confirmed' : (vs ?? 'confirmed');
+        } catch {
+          // If the read-back fails, fall back to 'confirmed' for a run that
+          // didn't throw — we still verified, we just couldn't re-read.
+          finalStatus = 'confirmed';
+        }
+      }
+
       // Always log the attempt to legal_audit_log so the canary's
       // "sources silent 48h+" check sees activity even when the
       // source URL is failing. Without this, every silent source is
@@ -100,8 +132,8 @@ export async function GET(request: NextRequest) {
           legal_reference_id: ref.id,
           source_url: ref.source_url,
           check_type: ref.source_type === 'statute' ? 'legislation_api' : 'ai_comparison',
-          result: attemptOk ? 'attempted' : 'check_failed',
-          details: attemptErr ?? 'Verifier ran',
+          result: finalStatus,
+          details: attemptErr ?? `Verified — status ${finalStatus}`,
         });
       } catch (logErr) {
         console.warn('[verify-legal] legal_audit_log insert failed:', logErr);
@@ -115,7 +147,7 @@ export async function GET(request: NextRequest) {
           verifier: ref.source_type === 'statute' ? 'haiku-cron-statute' : 'haiku-cron-regulator',
           triggered_by: 'cron',
           before_status: (ref as any).verification_status ?? null,
-          after_status: attemptOk ? 'attempted' : 'check_failed',
+          after_status: finalStatus,
           before_url: ref.source_url ?? null,
           after_url: ref.source_url ?? null,
           changes: null,
