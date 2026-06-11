@@ -14,6 +14,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { EVENT_CATALOG, type NotificationEventType } from './events';
+import { isUkQuietHours } from './quiet-hours';
 
 export type Channel = 'email' | 'telegram' | 'whatsapp' | 'push';
 
@@ -358,7 +359,11 @@ export async function sendNotification(
 
   const channels = resolveChannels(routing, input.event, hasPayload);
 
-  const quiet = !input.bypassQuietHours && inQuietHours(routing);
+  // Quiet = the user's own configured window OR the absolute UK floor
+  // (21:00–08:00 BST). The floor applies even when the user has set no
+  // quiet hours of their own, so no buzzing channel ever fires overnight.
+  const quiet =
+    !input.bypassQuietHours && (inQuietHours(routing) || isUkQuietHours());
   const delivered: Channel[] = [];
   const skipped: Array<{ channel: Channel; reason: string }> = [];
 

@@ -20,6 +20,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { isUkQuietHours } from '@/lib/notifications/quiet-hours';
 
 // Loose typing — the cron passes a Supabase client with a different
 // generic instantiation than this lib's createClient inference would
@@ -116,8 +117,25 @@ export async function dispatchPocketAgentAlert(args: {
   /** WhatsApp template variables — keyed by var name in the
    * template registry. Missing vars throw on send. */
   whatsappVars?: Record<string, string | number>;
+  /**
+   * Bypass the absolute 21:00–08:00 BST quiet-hours guard. Default false.
+   * ONLY set for genuinely time-critical, user-initiated flows — never
+   * for routine cron-driven proactive alerts. No current cron sets this.
+   */
+  bypassQuietHours?: boolean;
 }): Promise<DispatchResult> {
-  const { session, alertType, detectedIssueId, telegram, whatsappVars } = args;
+  const { session, alertType, detectedIssueId, telegram, whatsappVars, bypassQuietHours } = args;
+
+  // ── Absolute quiet-hours guard (21:00–08:00 UK civil time) ──────────
+  // No proactive Pocket Agent alert reaches the user overnight, on any
+  // channel, for any alert type. This is the structural backstop behind
+  // the per-cron schedules: even if a cron fires at the wrong minute (the
+  // dispute watchdog runs every 30 min), nothing sends in quiet hours.
+  // User-initiated bot replies don't pass through here, so they're
+  // unaffected.
+  if (!bypassQuietHours && isUkQuietHours()) {
+    return { ok: false, channel: session.channel, error: 'quiet hours (21:00-08:00 BST)' };
+  }
 
   if (session.channel === 'telegram') {
     if (!telegram) {

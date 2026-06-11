@@ -25,6 +25,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendWhatsAppTemplate } from '@/lib/whatsapp';
 import { isPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { isUkQuietHours } from '@/lib/notifications/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -66,6 +67,16 @@ export async function GET(request: NextRequest) {
   if (!isAuthorised(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  // Absolute quiet-hours guard (21:00–08:00 BST). This route sends the
+  // payment-outgoing WhatsApp template directly (not via the guarded
+  // dispatcher), so without this an overnight bank-sync delta would buzz
+  // the user. Returning early (before any notification_log stamp) means
+  // the debit is picked up again on the next in-window run.
+  if (isUkQuietHours()) {
+    return NextResponse.json({ ok: true, skipped: true, reason: 'quiet hours (21:00-08:00 BST)' });
+  }
+
   const supabase = getAdmin();
   const since = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
 

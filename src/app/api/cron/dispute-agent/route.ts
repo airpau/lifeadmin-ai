@@ -27,6 +27,7 @@ import {
   type ActiveSession,
 } from '@/lib/pocket-agent/dispatch';
 import type { ScopeStats, MerchantLegalRefStat } from '@/lib/dispute-outcome/stats';
+import { isDisputeAlertWindow } from '@/lib/notifications/quiet-hours';
 import { sendPaybackerEmail } from '@/lib/email/send';
 import { card, paragraph } from '@/lib/email/PaybackerEmailLayout';
 
@@ -233,8 +234,14 @@ async function surfaceDecision(args: {
     : decision.rationale;
   const surfacedVia: string[] = [];
 
+  // Dispute-agent recommendations are dispute status updates → the
+  // buzzing channels (WhatsApp/Telegram) may only push inside the
+  // afternoon window (16:00–18:00 BST). Outside it we fall through to the
+  // email fallback below, which lives in an inbox and never buzzes
+  // overnight. (dispatchPocketAgentAlert also enforces the absolute
+  // 21:00–08:00 quiet-hours floor as a second backstop.)
   const session = sessionByUser.get(dispute.user_id);
-  if (session) {
+  if (session && isDisputeAlertWindow()) {
     try {
       const result = await dispatchPocketAgentAlert({
         session,

@@ -34,6 +34,7 @@ import {
   type ActiveSession,
 } from '@/lib/pocket-agent/dispatch';
 import { isTestAccount } from '@/lib/test-accounts';
+import { isUkQuietHours, isDisputeAlertWindow } from '@/lib/notifications/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -306,12 +307,29 @@ interface StallSweepResult {
   alerted: number;
   skippedTest: number;
   skippedNoSession: number;
+  skippedWindow?: boolean;
   errors: number;
 }
 
 async function runStallSweep(
   supabase: ReturnType<typeof getAdmin>,
 ): Promise<StallSweepResult> {
+  // Stale-letter nudges are dispute status alerts — they may ONLY send in
+  // the afternoon window (16:00–18:00 BST). This cron runs every 30 min,
+  // so outside the window we skip the send entirely (the 22:30 / 01:01
+  // BST messages Paul flagged 2026-06-11 came from this sweep firing
+  // round the clock). Detection still resumes next afternoon tick.
+  if (!isDisputeAlertWindow()) {
+    return {
+      considered: 0,
+      alerted: 0,
+      skippedTest: 0,
+      skippedNoSession: 0,
+      skippedWindow: true,
+      errors: 0,
+    };
+  }
+
   const now = new Date();
   const stalledBefore = new Date(now.getTime() - STALL_THRESHOLD_DAYS * 86_400_000).toISOString();
   const reAlertBefore = new Date(now.getTime() - STALL_REALERT_DAYS * 86_400_000).toISOString();
@@ -509,6 +527,12 @@ async function dispatchToUser(
   channel: string,
   text: string,
 ): Promise<boolean> {
+  // Absolute quiet-hours guard (21:00–08:00 BST). The expire-note and
+  // 1-hour "did you send it?" nudges are dispute messages — never deliver
+  // them overnight. The row's followup_sent_at is only stamped on a
+  // truthy return, so a skipped send is retried on the next in-window tick.
+  if (isUkQuietHours()) return false;
+
   if (channel === 'telegram') {
     const { data: session } = await supabase
       .from('telegram_sessions')

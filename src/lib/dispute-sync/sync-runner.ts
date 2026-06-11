@@ -25,6 +25,7 @@ import {
   CLASSIFIER_VERSION,
   type ReplyClassification,
 } from './reply-classifier';
+import { isUkQuietHours } from '@/lib/notifications/quiet-hours';
 
 function admin() {
   return createClient(
@@ -539,7 +540,17 @@ export async function syncLinkedThread(
       // go (e.g. auto-reply + human reply + closure), we only send the
       // push notification for the FINAL message in this batch.
       const isLastMessageInBatch = (m === messages[messages.length - 1]);
-      if (isLastMessageInBatch) {
+      // Absolute quiet-hours guard (21:00–08:00 BST). This watchdog runs
+      // every 30 min; without this it pushed "supplier replied" alerts at
+      // 22:30 / 01:01 BST (Paul flagged 2026-06-11). Overnight we skip the
+      // proactive push — the reply is still imported to the timeline and
+      // surfaces in-app + in the morning summary. Daytime replies still
+      // ping in real time (Paul confirmed the 13:01 alert was fine).
+      if (isLastMessageInBatch && isUkQuietHours()) {
+        console.log(
+          `[watchdog] quiet hours — suppressing dispute-reply push for ${link.dispute_id} (imported, not pushed)`,
+        );
+      } else if (isLastMessageInBatch) {
       // Channel routing: each helper independently checks whether its
       // channel is active for this user (telegram_sessions.is_active
       // / whatsapp_sessions.is_active). The Pocket Agent mutex

@@ -18,6 +18,7 @@ import { createClient } from '@supabase/supabase-js';
 import { sendBatchedDigest } from '@/lib/telegram/queue';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
+import { isUkQuietHours } from '@/lib/notifications/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -92,6 +93,13 @@ export async function GET(request: NextRequest) {
   const secret = request.headers.get('authorization')?.replace('Bearer ', '');
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Defensive quiet-hours guard (21:00–08:00 BST). The cron is scheduled
+  // for 19:00 BST, but this backstops any future schedule drift so the
+  // evening wrap-up can never buzz a user overnight.
+  if (isUkQuietHours()) {
+    return NextResponse.json({ ok: true, skipped: true, reason: 'quiet hours (21:00-08:00 BST)' });
   }
 
   const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
