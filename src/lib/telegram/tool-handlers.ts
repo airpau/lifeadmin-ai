@@ -6722,18 +6722,18 @@ async function dismissPriceAlert(
 ): Promise<ToolResult> {
   const { data: alerts } = await supabase
     .from('price_increase_alerts')
-    .select('id, provider_name, new_amount, old_amount')
+    .select('id, merchant_name, new_amount, old_amount')
     .eq('user_id', userId)
     .eq('status', 'active')
-    .ilike('provider_name', `%${provider}%`);
+    .ilike('merchant_name', `%${provider}%`);
   if (!alerts || alerts.length === 0) {
     return { text: `No active price alerts found for "${provider}". Run detect_price_increases if you want me to check for new ones.` };
   }
   await supabase
     .from('price_increase_alerts')
-    .update({ status: 'dismissed', dismissed_at: new Date().toISOString() })
+    .update({ status: 'dismissed' })
     .in('id', alerts.map((a) => a.id));
-  return { text: `✓ Dismissed ${alerts.length} price alert${alerts.length === 1 ? '' : 's'} for ${alerts[0].provider_name}.` };
+  return { text: `✓ Dismissed ${alerts.length} price alert${alerts.length === 1 ? '' : 's'} for ${alerts[0].merchant_name}.` };
 }
 
 async function updateProfile(
