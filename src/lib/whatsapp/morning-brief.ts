@@ -382,7 +382,15 @@ export async function sendMorningBriefToUser(
           .from('disputes')
           .select('id')
           .eq('user_id', userId)
-          .in('status', ['active', 'sent', 'awaiting_response']),
+          // Count genuinely-open disputes only. Exclude every terminal
+          // state (mirrors isResolved in src/lib/dispute-helpers.ts) rather
+          // than whitelisting a few active labels — a whitelist silently
+          // dropped 'open' / 'escalated' rows and undercounted.
+          .not(
+            'status',
+            'in',
+            '(resolved,dismissed,resolved_won,resolved_lost,resolved_partial,won,lost,partial,closed,withdrawn,timeout)',
+          ),
       ]);
 
       const subList = (subs ?? []) as Array<{ amount: number | string; billing_cycle: string | null }>;

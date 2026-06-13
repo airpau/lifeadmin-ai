@@ -27,6 +27,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { dispatchWhatsAppMorningBrief } from '@/lib/whatsapp/morning-brief';
+import { formatRenewalAmount } from '@/lib/subscriptions/renewal-digest';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -195,7 +196,11 @@ async function buildMorningBrief(
     let renewalSection = '\n\n*Upcoming Renewals*';
     for (const sub of renewals as Array<{ provider_name: string; amount: number | string; billing_cycle: string | null; next_billing_date: string }>) {
       const when = sub.next_billing_date === todayStr ? 'Today' : 'Tomorrow';
-      renewalSection += `\n  - ${sub.provider_name}: ${fmt(Number(sub.amount))}/${sub.billing_cycle ?? 'month'} (${when})`;
+      // Render with the real billing cycle — never fabricate "/month" for an
+      // amount stored with a null/unknown cycle (an annual council-tax or
+      // loan balance otherwise reads as a monthly charge).
+      const { display } = formatRenewalAmount(Number(sub.amount), sub.billing_cycle);
+      renewalSection += `\n  - ${sub.provider_name}: ${display} (${when})`;
     }
     sections.push(renewalSection);
   }
@@ -254,11 +259,30 @@ async function buildMorningBrief(
   }
 
   // ------ 5. Unresolved disputes ------
+  // Exclude EVERY terminal/resolved state, not just the legacy
+  // 'resolved'/'dismissed' pair. The disputes table uses the granular
+  // vocabulary resolved_won / resolved_lost / resolved_partial / closed /
+  // withdrawn / timeout (see src/lib/dispute-helpers.ts isResolved), so the
+  // old two-value filter let won/closed disputes leak into "Open Disputes"
+  // — e.g. a council_tax_band marked resolved_won still showed as open.
+  const RESOLVED_DISPUTE_STATES = [
+    'resolved',
+    'dismissed',
+    'resolved_won',
+    'resolved_lost',
+    'resolved_partial',
+    'won',
+    'lost',
+    'partial',
+    'closed',
+    'withdrawn',
+    'timeout',
+  ];
   const { data: openDisputes } = await supabase
     .from('disputes')
     .select('id, provider_name, issue_type, status')
     .eq('user_id', userId)
-    .not('status', 'in', '(resolved,dismissed)');
+    .not('status', 'in', `(${RESOLVED_DISPUTE_STATES.join(',')})`);
 
   if (openDisputes && openDisputes.length > 0) {
     let disputeSection = `\n\n*Open Disputes (${openDisputes.length})*`;

@@ -4,6 +4,7 @@ import { buildRenewalEmail } from '@/lib/email/renewal-reminders';
 import { canSendEmail } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import { isPayrollLike } from '@/lib/subscriptions/payroll-filter';
+import { buildRenewalDigest, formatRenewalAmount } from '@/lib/subscriptions/renewal-digest';
 
 export const maxDuration = 60;
 
@@ -117,39 +118,58 @@ export async function GET(request: NextRequest) {
 
       const { subject, html } = buildRenewalEmail(userName, renewals, days);
 
-      // Build telegram text — one-line summary per renewal.
-      const tgLines = renewals.map(
-        r => `• ${r.provider_name}: £${r.amount.toFixed(2)}/${r.billing_cycle ?? 'month'} on ${new Date(r.next_billing_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`,
-      ).join('\n');
-      const telegramText = renewals.length === 1
-        ? `🔔 *Renewal coming up in ${days} days*\n\n${tgLines}\n\nReply *CANCEL* to draft a cancellation letter or *SWITCH* to see cheaper alternatives.`
-        : `🔔 *${renewals.length} renewals coming up in ${days} days*\n\n${tgLines}\n\nReply with the provider name (e.g. "cancel Sky") to action one of these.`;
+      // Build the WhatsApp + Telegram digest from the shared helper so the
+      // amount is rendered with its REAL billing cycle (no fabricated
+      // "/month" on annual / balance figures) and ALL of this window's
+      // renewals land in a SINGLE numbered message — not one per sub.
+      const digest = buildRenewalDigest(
+        renewals.map((r) => ({
+          providerName: r.provider_name,
+          amountDisplay: formatRenewalAmount(r.amount, r.billing_cycle).display,
+          daysLeft: days,
+        })),
+      );
 
-      // WhatsApp template only fires for SINGLE-renewal alerts (template
-      // has fixed slots for one service). Multi-renewal alerts fall back
-      // to email + telegram + push.
-      const single = renewals.length === 1 ? renewals[0] : null;
-      const whatsappPayload = single
-        ? {
-            templateName: 'paybacker_alert_renewal',
-            templateParameters: [
-              single.provider_name,
-              String(days),
-              `£${single.amount.toFixed(2)}`,
-            ],
-          }
-        : undefined;
-
+      // WhatsApp goes out via the approved single-var pocket_agent_reply
+      // wrapper (Twilio template vars reject newlines, so we send the
+      // flattened single-line copy). This replaces the old
+      // paybacker_alert_renewal template whose body hard-coded
+      // "£{{3}}/month" — the source of the wrong "/month" amounts — and it
+      // now covers multi-renewal alerts too (previously WhatsApp-silent).
       const dispatchResult = await sendNotification(supabase, {
         userId,
         event: 'renewal_reminder',
         email: { subject, html },
-        telegram: { text: telegramText },
-        whatsapp: whatsappPayload,
-        push: { title: `${renewals.length} renewal${renewals.length === 1 ? '' : 's'} coming up`, body: `£${renewals.reduce((s, r) => s + r.amount, 0).toFixed(2)} renewing in ${days} days` },
+        telegram: { text: digest.telegram },
+        whatsapp: {
+          templateName: 'paybacker_pocket_agent_reply',
+          templateParameters: [digest.whatsapp],
+        },
+        push: { title: `${renewals.length} renewal${renewals.length === 1 ? '' : 's'} coming up`, body: `${renewals.length} renewing in ${days} days — tap to review` },
       });
 
       const sent = dispatchResult.delivered.length > 0;
+
+      // Log the digest as an outbound WhatsApp turn so the Pocket Agent can
+      // resolve "CANCEL 1" / "CANCEL <provider>" against it in history.
+      if (dispatchResult.delivered.includes('whatsapp')) {
+        const { data: waSession } = await supabase
+          .from('whatsapp_sessions')
+          .select('whatsapp_phone')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (waSession?.whatsapp_phone) {
+          await supabase.from('whatsapp_message_log').insert({
+            user_id: userId,
+            whatsapp_phone: waSession.whatsapp_phone,
+            direction: 'outbound',
+            message_type: 'template',
+            template_name: 'paybacker_pocket_agent_reply',
+            message_text: digest.telegram,
+          }).then(undefined, (e) => console.warn('[renewal-reminders] digest log failed', e));
+        }
+      }
 
       if (sent) {
         await supabase.from('tasks').insert({
