@@ -315,8 +315,16 @@ export default function DashboardPage() {
           supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at').eq('id', user.id).maybeSingle(),
           supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
+          // "Disputes — Filed" KPI = disputes that are NOT in a terminal
+          // status. The previous filter only excluded the legacy literal
+          // 'resolved' (and 'dismissed'), so granular terminal states from
+          // the dispute state machine — resolved_won/resolved_partial/
+          // resolved_lost/closed/withdrawn/timeout — leaked in and inflated
+          // the count. Mirror the Profile page's terminal-state exclusion so
+          // both surfaces agree.
           supabase.from('disputes').select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),
+            .eq('user_id', user.id)
+            .not('status', 'in', '("resolved","resolved_won","resolved_partial","resolved_lost","closed","dismissed","withdrawn","timeout")'),
           supabase.from('bank_connections').select('id, bank_name, account_display_names, status')
             .eq('user_id', user.id).neq('status', 'disconnected'),
           supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority, snooze_until')
