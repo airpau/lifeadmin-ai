@@ -380,6 +380,24 @@ export async function POST(request: NextRequest) {
           } catch (e) {
             console.error('Webhook: openDowngradeEvent failed:', e);
           }
+
+          // PostHog server-side funnel — distinguish an upgrade from a
+          // downgrade by comparing tier rank (free < essential < pro).
+          // Only emit when the tier actually changed.
+          const tierRank: Record<string, number> = { free: 0, essential: 1, pro: 2 };
+          const oldRank = tierRank[existing.subscription_tier] ?? 0;
+          const newRank = tierRank[newTier] ?? 0;
+          if (newRank > oldRank) {
+            captureServer('plan_upgraded', existing.id, {
+              from_plan: existing.subscription_tier,
+              to_plan: newTier,
+            });
+          } else if (newRank < oldRank) {
+            captureServer('plan_downgraded', existing.id, {
+              from_plan: existing.subscription_tier,
+              to_plan: newTier,
+            });
+          }
         }
         break;
       }
@@ -427,6 +445,16 @@ export async function POST(request: NextRequest) {
             await openDowngradeEvent(supabase as any, existing.id, existing.subscription_tier as any, 'free' as any);
           } catch (e) {
             console.error('Webhook: openDowngradeEvent failed:', e);
+          }
+
+          // PostHog server-side funnel — a full cancellation is a downgrade
+          // to free. Only emit when the user was actually on a paid tier.
+          if (existing.subscription_tier !== 'free') {
+            captureServer('plan_downgraded', existing.id, {
+              from_plan: existing.subscription_tier,
+              to_plan: 'free',
+              reason: 'subscription_deleted',
+            });
           }
 
           // Phase 3 — churn capture. Emit a churn_prompted event so we

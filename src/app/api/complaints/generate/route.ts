@@ -852,6 +852,20 @@ export async function POST(request: NextRequest) {
       provider: body.companyName,
     }).catch(() => {});
 
+    // PostHog server-side funnel event — every generated AI letter, whether
+    // standalone or part of a dispute thread. Reliable (not consent-gated /
+    // ad-blockable like the client capture()).
+    import('@/lib/posthog-server')
+      .then(({ captureServer }) => {
+        captureServer('letter_generated', user.id, {
+          provider: body.companyName,
+          letter_type: body.letterType || 'complaint',
+          dispute_id: body.disputeId || null,
+          tier: usageCheck.tier,
+        });
+      })
+      .catch(() => { /* non-fatal */ });
+
     // Buzz Pocket Agent on WhatsApp if the user has it on.
     // Template: paybacker_complaint_letter_ready vars [merchant, letter_url].
     // Best-effort, fire-and-forget — never block the API response.
