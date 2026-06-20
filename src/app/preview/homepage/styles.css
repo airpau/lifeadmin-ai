@@ -136,6 +136,14 @@
 
 .m-v2-root .reveal.in { opacity: 1; transform: translateY(0); }
 
+/* Fallback: if JavaScript never runs (disabled, blocked, or a hydration
+ * failure), the IntersectionObserver that adds `.in` never fires and the
+ * scroll-reveal content would stay permanently invisible. Force every reveal
+ * visible when scripting is unavailable so content is never lost. */
+@media (scripting: none) {
+  .m-v2-root .reveal { opacity: 1; transform: none; transition: none; }
+}
+
 .m-v2-root section { position: relative; }
 
 .m-v2-root .section-light { background: var(--surface-base); }
@@ -248,14 +256,32 @@
 }
 
 .m-v2-root .trust-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
   text-align: center;
   padding: 84px 32px 0;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  letter-spacing: 0.02em;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary, #4B5563);
+  letter-spacing: 0.01em;
 }
 
-.m-v2-root .trust-bar .dot { margin: 0 10px; opacity: 0.5; }
+.m-v2-root .trust-bar__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.m-v2-root .trust-bar__icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--accent-mint-deep, #059669);
+}
+
+.m-v2-root .trust-bar .dot { margin: 0 10px; opacity: 0.45; }
 
 /* =========================================================================
  * Hero
@@ -1327,6 +1353,16 @@
   color: var(--text-secondary, #4B5563);
   margin: 0;
 }
+/* Multi-line body copy reads better left-aligned. The big title + single-line
+ * tagline stay centred; the body paragraph (everything except the inline
+ * freshness-chip) forms a left-aligned 560px column that lines up with the
+ * `.feature-bullets` list below it. */
+.m-v2-root .feature-copy > p:not(.freshness-chip) {
+  text-align: left;
+  align-self: center;
+  max-width: 560px;
+  width: 100%;
+}
 .m-v2-root .feature-section--ink .feature-copy > p { color: rgba(255,255,255,.72); }
 .m-v2-root .feature-section--ink .eyebrow,
 .m-v2-root .feature-section--ink .eyebrow.on-ink {
@@ -1983,8 +2019,9 @@
   .m-v2-root .fc-btn-row .btn { width: 100%; justify-content: center; }
 
   /* Trust bar */
-  .m-v2-root .trust-bar { padding-top: 72px; font-size: 11px; }
+  .m-v2-root .trust-bar { padding-top: 72px; font-size: 12px; gap: 2px 0; }
   .m-v2-root .trust-bar .dot { margin: 0 6px; }
+  .m-v2-root .trust-bar__icon { width: 13px; height: 13px; }
   .m-v2-root .trust-row { grid-template-columns: 1fr; gap: 12px; }
 
   /* Nav — drop sign-in link to reclaim space for Start Free button */
@@ -2417,13 +2454,16 @@
   margin: 4px 0 18px;
   line-height: 1.5;
 }
+/* Rendered as a checkmark badge (not a plain dot) so the green marker on
+ * this "verified today" line matches the green checkmark bullets directly
+ * below it in the Disputes section — consistent marker style throughout. */
 .m-v2-root .freshness-chip__dot {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: var(--accent-mint);
   flex-shrink: 0;
+  background: #D1FAE5 url("data:image/svg+xml;utf8,<svg viewBox='0 0 16 16' xmlns='http://www.w3.org/2000/svg'><path d='M4 8.5L7 11.5L12 5.5' stroke='%23065F46' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") center/72% no-repeat;
 }
 .m-v2-root .freshness-chip__link {
   color: var(--accent-mint-deep);

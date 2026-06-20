@@ -772,7 +772,18 @@ export function PocketAgentDemo() {
                 fontWeight: 600,
               }}
             >
-              this month · text Paybacker to find out
+              this month
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: '#CBD5E1',
+                marginTop: 14,
+                maxWidth: 320,
+                lineHeight: 1.45,
+              }}
+            >
+              Ask Paybacker: &ldquo;How much did I spend on food this month?&rdquo;
             </div>
           </div>
         </div>
