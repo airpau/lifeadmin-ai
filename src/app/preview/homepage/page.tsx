@@ -111,6 +111,12 @@ type CounterProps = {
   prefix?: string;
   suffix?: string;
   fractionDigits?: number;
+  /**
+   * Skip the count-up and render the final value immediately. Used for the
+   * "100% of your refund you keep" stat — counting 0 → 100 there flashes
+   * misleading intermediate numbers (e.g. "43%") that read as "you keep 43%".
+   */
+  instant?: boolean;
 };
 function Counter({
   to,
@@ -118,12 +124,14 @@ function Counter({
   prefix = '',
   suffix = '',
   fractionDigits = 0,
+  instant = false,
 }: CounterProps) {
   const ref = useRef<HTMLSpanElement | null>(null);
-  const [value, setValue] = useState(0);
+  const [value, setValue] = useState(instant ? to : 0);
   const started = useRef(false);
 
   useEffect(() => {
+    if (instant) return;
     const node = ref.current;
     if (!node || started.current) return;
     const prefersReduced =
@@ -156,7 +164,7 @@ function Counter({
     );
     io.observe(node);
     return () => io.disconnect();
-  }, [to, duration]);
+  }, [to, duration, instant]);
 
   const formatted = value.toLocaleString('en-GB', {
     minimumFractionDigits: fractionDigits,
@@ -827,10 +835,31 @@ export default function HomepageV3PreviewPage() {
         style={{ ['--glow-opacity' as string]: '0.22' } as CSSVarProperties}
       >
         <div className="trust-bar">
-          ICO registered <span className="dot">·</span>
-          FCA-authorised via Yapily <span className="dot">·</span>
-          GDPR compliant <span className="dot">·</span>
-          UK company · Paybacker LTD
+          <span className="trust-bar__item">
+            <svg className="trust-bar__icon" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 1.5 13.5 3.5 V8 C13.5 11.3 11 13.7 8 14.5 5 13.7 2.5 11.3 2.5 8 V3.5 Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+              <path d="M5.5 8 L7.2 9.7 L10.6 6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            FCA-authorised via Yapily
+          </span>
+          <span className="dot">·</span>
+          <span className="trust-bar__item">
+            <svg className="trust-bar__icon" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M5.3 8 L7 9.7 L10.7 6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            ICO-registered
+          </span>
+          <span className="dot">·</span>
+          <span className="trust-bar__item">
+            <svg className="trust-bar__icon" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M5.3 8 L7 9.7 L10.7 6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            GDPR-compliant
+          </span>
+          <span className="dot">·</span>
+          <span className="trust-bar__item">UK company · Paybacker LTD</span>
         </div>
 
         <div className="wrap">
@@ -843,18 +872,17 @@ export default function HomepageV3PreviewPage() {
                 <span className="l3">You keep 100% of what we recover.</span>
               </h1>
               <p className="hero-sub">
-                Paybacker reads your bank and inbox, drafts complaint letters
-                citing the exact UK statute, and runs every dispute end-to-end —
-                through provider escalation and Ombudsman if needed. Solicitors
-                charge £250/hour. Claims firms take 30%. We charge £4.99/month
-                and you keep every penny we win back.
+                Reads your bank and inbox. Drafts the legal letter. Disputes it
+                end-to-end.
+                <br />
+                You keep every penny we win back.
               </p>
               <div className="hero-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
                   Start free — keep 100% of your wins →
                 </Link>
                 <a className="btn btn-ghost" href="#vs-claims-firms">
-                  Why not a solicitor?
+                  See how we compare →
                 </a>
               </div>
               <div className="hero-ticker">
@@ -929,7 +957,7 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="stat-card" delay={160}>
               <div className="label">Of your refund you keep</div>
               <div className="num">
-                <Counter to={100} />
+                <Counter to={100} instant />
                 <span className="unit">%</span>
               </div>
               <div className="underline" />
@@ -1063,7 +1091,6 @@ export default function HomepageV3PreviewPage() {
                 <li>Energy, broadband, parking, flight delays, council tax</li>
                 <li>Pre-send freshness gate blocks any letter citing stale law</li>
                 <li>3 free letters / month. Unlimited on Essential and Pro.</li>
-                <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan).</li>
               </ul>
               <div className="feature-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fcomplaints">
@@ -1083,7 +1110,7 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <h2 className="feature-title">Your personal caseworker — on WhatsApp</h2>
+              <h2 className="feature-title">Your personal caseworker on WhatsApp</h2>
               <p className="feature-tagline">
                 A solicitor takes a week to reply to email. Your Paybacker
                 caseworker is on WhatsApp 24/7.
@@ -1193,7 +1220,6 @@ export default function HomepageV3PreviewPage() {
                 <li>Transactions auto-categorised across 20+ spend buckets</li>
                 <li>Budgets, savings goals, income tracking, net worth</li>
                 <li>Daily sync on Essential. Unlimited accounts on Pro.</li>
-                <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan) — ask &ldquo;did I get paid?&rdquo;, check balances, see recent transactions.</li>
               </ul>
               <div className="feature-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fmoney-hub">
@@ -1231,7 +1257,6 @@ export default function HomepageV3PreviewPage() {
                 <li>Auto-reply tracking — Watchdog picks up the provider&apos;s response from your inbox and progresses the dispute without you chasing</li>
                 <li>Renewal reminders 30, 14 and 7 days before charge</li>
                 <li>Contract end-date tracking for broadband, energy &amp; mobile</li>
-                <li>Manage on the web at paybacker.co.uk or on the move via WhatsApp Pocket Agent (Pro) and Telegram Pocket Agent (free on every plan).</li>
               </ul>
               <div className="feature-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup?redirect=%2Fdashboard%2Fsubscriptions">
