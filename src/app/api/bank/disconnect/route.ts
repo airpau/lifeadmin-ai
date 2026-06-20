@@ -114,6 +114,14 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .in('status', ['active', 'expired', 'token_expired', 'expired_legacy', 'expiring_soon']);
     if (error) return NextResponse.json({ error: 'Failed to disconnect' }, { status: 500 });
+    import('@/lib/posthog-server')
+      .then(({ captureServer }) => {
+        captureServer('bank_disconnected', user.id, {
+          mode: 'keep_history',
+          scope: 'all_connections',
+        });
+      })
+      .catch(() => { /* non-fatal */ });
     return NextResponse.json({ ok: true, mode: 'keep_history' });
   }
 
@@ -306,6 +314,22 @@ export async function POST(request: NextRequest) {
     account_id: accountId ?? null,
     account_display_name: accountDisplayName,
   });
+
+  // PostHog server-side funnel event — a user removed a bank (or trimmed
+  // one account off a multi-account consent). Captures the churn signal
+  // and which disconnect mode they chose. Fire-and-forget.
+  import('@/lib/posthog-server')
+    .then(({ captureServer }) => {
+      captureServer('bank_disconnected', user.id, {
+        mode,
+        provider: conn.provider || 'yapily',
+        bank_name: conn.bank_name || null,
+        connection_revoked: willRevokeConnection,
+        account_scoped: isAccountScoped,
+        transactions_affected: transactionsAffected,
+      });
+    })
+    .catch(() => { /* non-fatal */ });
 
   return NextResponse.json({
     ok: true,

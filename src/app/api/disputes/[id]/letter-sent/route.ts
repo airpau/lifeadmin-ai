@@ -155,6 +155,20 @@ export async function POST(
     }
   }
 
+  // PostHog server-side funnel event — the user has actually sent the
+  // dispute letter (the conversion that matters downstream of
+  // dispute_created + letter_generated). Fire-and-forget.
+  import('@/lib/posthog-server')
+    .then(({ captureServer }) => {
+      captureServer('dispute_submitted', user.id, {
+        dispute_id: disputeId,
+        provider: dispute.provider_name || null,
+        edited: edited,
+        watchdog_linked: watchdogLinked,
+      });
+    })
+    .catch(() => { /* non-fatal */ });
+
   return NextResponse.json({
     ok: true,
     dispute_id: disputeId,
