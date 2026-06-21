@@ -24,6 +24,11 @@ import type {
   WhatsAppProvider,
   WhatsAppProviderName,
 } from './types';
+import {
+  recordAlertSent,
+  recordAlertSuppressed,
+  shouldSuppressAlert,
+} from './alert-loop';
 
 let cached: WhatsAppProvider | null = null;
 
@@ -43,10 +48,70 @@ export function sendWhatsAppText(opts: SendTextOptions): Promise<WhatsAppMessage
   return getWhatsAppProvider().sendText(opts);
 }
 
-export function sendWhatsAppTemplate(
+/**
+ * Optional self-learning context for a template send. When omitted,
+ * sendWhatsAppTemplate behaves EXACTLY as before (no suppression, no extra
+ * writes) — existing callers (Pocket Agent welcome/opt-out, link flow) are
+ * unaffected. The unified dispatcher passes it for proactive alerts so the
+ * send is measured and low-value non-critical alerts can be suppressed.
+ */
+export interface AlertContext {
+  userId?: string | null;
+  /** EVENT_CATALOG event name that triggered the send. */
+  eventType?: string;
+  /** true → consult the intelligence ledger and skip low-value non-critical
+   *  alerts before paying for the send. Critical/cold-start never suppress. */
+  suppressible?: boolean;
+  /** true → the caller does NOT log its own whatsapp_message_log row (the
+   *  unified dispatcher), so record one here for receipts + attribution. */
+  logMessage?: boolean;
+}
+
+export async function sendWhatsAppTemplate(
   opts: SendTemplateOptions,
+  ctx?: AlertContext,
 ): Promise<WhatsAppMessageResult> {
-  return getWhatsAppProvider().sendTemplate(opts);
+  // Self-learning suppression: skip a non-critical alert the ledger has
+  // learned is low-value for this template, before we pay Meta for it.
+  // consultLedger is conservative — cold-start (<30 sends) and critical
+  // templates never suppress. Fail-open inside shouldSuppressAlert.
+  if (ctx?.suppressible && ctx.userId) {
+    const decision = await shouldSuppressAlert({
+      userId: ctx.userId,
+      templateName: opts.templateName,
+      eventType: ctx.eventType,
+    });
+    if (decision.suppress) {
+      void recordAlertSuppressed({
+        userId: ctx.userId,
+        templateName: opts.templateName,
+        eventType: ctx.eventType,
+        reason: decision.reason,
+        sample: decision.sample,
+        precision: decision.precision,
+      });
+      return {
+        provider: (process.env.WHATSAPP_PROVIDER ?? 'twilio') as WhatsAppProviderName,
+        providerMessageId: `suppressed:${decision.reason}`,
+        acceptedAt: new Date(),
+      };
+    }
+  }
+
+  const result = await getWhatsAppProvider().sendTemplate(opts);
+
+  // Measure the send (fire-and-forget; never blocks or throws). Non-alert
+  // templates (welcome/opt-out/OTP/agent-reply) are ignored inside the helper.
+  void recordAlertSent({
+    userId: ctx?.userId ?? null,
+    eventType: ctx?.eventType,
+    providerMessageId: result.providerMessageId,
+    phone: opts.to,
+    templateName: opts.templateName,
+    logMessage: ctx?.logMessage ?? false,
+  });
+
+  return result;
 }
 
 /**

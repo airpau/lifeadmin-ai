@@ -24,6 +24,10 @@ import {
 import { verifyMetaWebhookChallenge } from '@/lib/whatsapp/meta-provider';
 import { canUseWhatsApp } from '@/lib/plan-limits';
 import { handleWhatsAppInbound } from '@/lib/whatsapp/user-bot';
+import {
+  attributeInboundEngagement,
+  recordAlertDismissed,
+} from '@/lib/whatsapp/alert-loop';
 
 const NON_PRO_UPGRADE_NUDGE =
   "Hi! 👋 The WhatsApp Pocket Agent is part of Paybacker Pro (£9.99/mo).\n\n" +
@@ -336,6 +340,9 @@ export async function POST(req: NextRequest) {
           opted_out_at: new Date().toISOString(),
         })
         .eq('whatsapp_phone', msg.from);
+      // Self-learning: count the user's most recent alert as 'dismissed' so
+      // the ledger learns which alert types push people to opt out.
+      void recordAlertDismissed({ phone: msg.from, userId, client: sb });
       // Confirm via the Meta-approved opted_out template — gives us a
       // formal record of the confirmation. Zero variables (template
       // body is fully static).
@@ -370,6 +377,10 @@ export async function POST(req: NextRequest) {
     if (!agentResult.ok) {
       console.warn('[whatsapp/webhook] agent reported issue', agentResult.reason);
     }
+
+    // Self-learning: a Pro user replying is engagement — credit their most
+    // recent alert (within the 72h attribution window). Fire-and-forget.
+    void attributeInboundEngagement({ phone: msg.from, userId, client: sb });
 
     processed += 1;
   }

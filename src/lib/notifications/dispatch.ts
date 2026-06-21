@@ -263,15 +263,28 @@ async function sendEmail(email: string, payload: EmailPayload): Promise<boolean>
 async function sendWhatsApp(
   phone: string,
   payload: WhatsAppPayload,
+  ctx?: { userId?: string | null; eventType?: string; suppressible?: boolean },
 ): Promise<boolean> {
   try {
     if (payload.templateName) {
       const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
-      await sendWhatsAppTemplate({
-        to: phone,
-        templateName: payload.templateName,
-        parameters: payload.templateParameters ?? [],
-      });
+      await sendWhatsAppTemplate(
+        {
+          to: phone,
+          templateName: payload.templateName,
+          parameters: payload.templateParameters ?? [],
+        },
+        ctx
+          ? {
+              userId: ctx.userId ?? null,
+              eventType: ctx.eventType,
+              suppressible: ctx.suppressible,
+              // The dispatcher logs no whatsapp_message_log row of its own,
+              // so the loop records one here for receipts + attribution.
+              logMessage: true,
+            }
+          : undefined,
+      );
       return true;
     }
     if (payload.text) {
@@ -381,7 +394,16 @@ export async function sendNotification(
       if (await sendTelegram(routing.telegramChatId, input.telegram)) delivered.push('telegram');
       else skipped.push({ channel: 'telegram', reason: 'send failed' });
     } else if (channel === 'whatsapp' && input.whatsapp && routing.whatsappPhone) {
-      if (await sendWhatsApp(routing.whatsappPhone, input.whatsapp)) delivered.push('whatsapp');
+      const evMeta = EVENT_CATALOG.find((e) => e.event === input.event);
+      const waCtx = {
+        userId: input.userId,
+        eventType: input.event,
+        // Critical events (refunds, dispute replies, price hikes, reconnect…)
+        // are never suppressed; everything else becomes eligible once the
+        // intelligence ledger has ≥30 sends of signal at ≤15% precision.
+        suppressible: !(evMeta?.critical ?? false),
+      };
+      if (await sendWhatsApp(routing.whatsappPhone, input.whatsapp, waCtx)) delivered.push('whatsapp');
       else skipped.push({ channel: 'whatsapp', reason: 'send failed' });
     } else if (channel === 'push' && input.push) {
       if (await sendPush(supabase, input.userId, input.push)) delivered.push('push');

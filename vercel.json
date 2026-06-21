@@ -63,7 +63,8 @@
     { "path": "/api/cron/large-debit-alert",         "schedule": "45 3,9,13,17,20 * * *" },
     { "path": "/api/cron/intelligence-rollup-daily", "schedule": "15 2 * * *" },
     { "path": "/api/cron/cancellation-verification", "schedule": "0 4 * * *" },
-    { "path": "/api/cron/weekly-newsletter",         "schedule": "0 11 * * 4" }
+    { "path": "/api/cron/weekly-newsletter",         "schedule": "0 11 * * 4" },
+    { "path": "/api/cron/whatsapp-alert-coach",      "schedule": "0 9 * * 1" }
   ]
 }
 

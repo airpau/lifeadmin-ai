@@ -102,6 +102,10 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
       To: toWhatsAppAddress(opts.to),
       Body: opts.text,
     };
+    // Delivery/read receipts → /api/whatsapp/status (self-learning loop).
+    if (process.env.TWILIO_STATUS_CALLBACK_URL) {
+      params.StatusCallback = process.env.TWILIO_STATUS_CALLBACK_URL;
+    }
     const res = await postForm('/Messages.json', params);
     if (!res.ok) {
       const body = await res.text();
@@ -165,6 +169,10 @@ export class TwilioWhatsAppProvider implements WhatsAppProvider {
           }, {}),
         ),
       };
+      // Delivery/read receipts → /api/whatsapp/status (self-learning loop).
+      if (process.env.TWILIO_STATUS_CALLBACK_URL) {
+        params.StatusCallback = process.env.TWILIO_STATUS_CALLBACK_URL;
+      }
       const res = await postForm('/Messages.json', params);
       if (!res.ok) {
         const body = await res.text();

@@ -105,19 +105,16 @@ export function logAlertInteraction(params: LogAlertInteractionParams): Promise<
     return Promise.resolve();
   }
 
-  // Master's alert_interactions table (migration 20260516000000) only has:
-  //   user_id, alert_type, alert_key, action, response_time_seconds, created_at
-  // The `surface` and `metadata` parameters are still accepted by this
-  // helper (so call sites stay expressive), but we don't try to write
-  // them — they'd be dropped by the schema. Once the table gains those
-  // columns we can start persisting them.
-  void surface;
-  void metadata;
+  // surface + metadata persisted as of migration
+  // 20260621120000_whatsapp_alert_loop. They let the intelligence loop
+  // attribute alert engagement per channel (web vs whatsapp vs telegram).
   const row: Record<string, unknown> = {
     user_id: userId,
     alert_type: alertType,
     alert_key: alertKey ? String(alertKey).slice(0, 200) : null,
     action,
+    surface,
+    metadata: metadata ?? null,
   };
   if (responseTimeSeconds != null && Number.isFinite(responseTimeSeconds)) {
     row.response_time_seconds = Math.max(0, Math.floor(responseTimeSeconds));
