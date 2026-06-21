@@ -25,7 +25,8 @@ import { EVENT_CATALOG } from '@/lib/notifications/events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// Sonnet analysis x up to 6 templates, sequential — give it headroom.
+export const maxDuration = 300;
 
 const MIN_SAMPLE = Number(process.env.WHATSAPP_COACH_MIN_SAMPLE ?? 20);
 const PRECISION_CEILING = Number(process.env.WHATSAPP_COACH_PRECISION_PCT ?? 40);
