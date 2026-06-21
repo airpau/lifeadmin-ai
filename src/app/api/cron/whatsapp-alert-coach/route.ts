@@ -3,8 +3,9 @@
  *
  * Weekly. Reads the EXISTING intelligence_stats (scope_kind='alert_template'),
  * finds templates that are being sent enough but earning little engagement,
- * and asks Claude Haiku WHY + how to improve (copy / timing / frequency /
- * targeting). Each proposal is written to intelligence_events
+ * and asks Claude (Sonnet 4.6 by default — see COACH_MODEL) WHY + how to
+ * improve (copy / timing / frequency / targeting). Each proposal is written to
+ * intelligence_events
  * (action_kind='alert_improvement_proposed') so it's auditable in the existing
  * admin intelligence view, and the founder gets an email digest.
  *
@@ -30,6 +31,11 @@ const MIN_SAMPLE = Number(process.env.WHATSAPP_COACH_MIN_SAMPLE ?? 20);
 const PRECISION_CEILING = Number(process.env.WHATSAPP_COACH_PRECISION_PCT ?? 40);
 const MAX_TEMPLATES = Number(process.env.WHATSAPP_COACH_MAX ?? 6);
 const COACH_EMAIL = process.env.WHATSAPP_COACH_EMAIL || 'hello@paybacker.co.uk';
+// Model for the weekly improvement analysis. Sonnet 4.6 by default — strong
+// reasoning + copywriting for this low-volume weekly task. Override via env:
+//   claude-opus-4-8           → maximum quality
+//   claude-haiku-4-5-20251001 → cheapest
+const COACH_MODEL = process.env.WHATSAPP_COACH_MODEL || 'claude-sonnet-4-6';
 
 function admin() {
   return createClient(
@@ -60,15 +66,19 @@ async function proposeImprovement(row: UnderperformerRow): Promise<string | null
   const key = process.env.ANTHROPIC_AGENTS_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
   const prompt =
-    `You are optimising a UK consumer fintech's WhatsApp alert.\n\n` +
+    `You are a senior lifecycle/CRM strategist optimising a UK consumer fintech's ` +
+    `WhatsApp alerts (Paybacker — helps people fight unfair bills and track spending).\n\n` +
     `Template: ${row.scope_value}\n` +
     `Purpose: ${describeTemplate(row.scope_value)}\n` +
     `Last period: sent ${row.emitted ?? 0}, engaged ${row.acted_on ?? 0}, ` +
     `dismissed/opted-out ${row.dismissed ?? 0}, engagement rate ${row.precision_pct ?? 0}%.\n\n` +
-    `Engagement is low. In under 120 words give: (1) the single most likely reason, ` +
-    `and (2) two or three concrete, testable changes — covering copy, timing-of-day, ` +
-    `frequency, or who it's sent to. Be specific and practical. UK English. ` +
-    `Remember WhatsApp template copy needs Meta re-approval, so flag if a copy change is needed.`;
+    `Engagement is low. First weigh whether the root problem is relevance, copy, timing or ` +
+    `frequency — a high dismissal/opt-out count points to fatigue or the wrong audience, not ` +
+    `just weak wording. Then, in under 150 words, give: (1) the single most likely root cause, ` +
+    `and (2) the two or three highest-impact, testable changes ordered by expected lift, across ` +
+    `copy, time-of-day, frequency or targeting. Be specific — propose actual wording when copy ` +
+    `is the issue. UK English. WhatsApp template copy needs Meta re-approval, so flag clearly ` +
+    `when a change requires resubmission.`;
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -78,8 +88,8 @@ async function proposeImprovement(row: UnderperformerRow): Promise<string | null
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 600,
+        model: COACH_MODEL,
+        max_tokens: 900,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
