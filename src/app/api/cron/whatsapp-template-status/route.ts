@@ -132,12 +132,104 @@ async function run(): Promise<{ checked: number; updated: { name: string; from: 
   return { checked: list.length, updated, errors };
 }
 
+/**
+ * Zero-downtime promotion pass. For templates with a staged change
+ * (pending_status='pending'), poll the pending_sid; when Meta approves it,
+ * promote it to the live sid and clear pending_*. A rejection leaves the live
+ * template untouched. See /api/admin/whatsapp/stage-template.
+ */
+async function runStaged(): Promise<{
+  promoted: string[];
+  stagedRejected: string[];
+  stagedErrors: { name: string; error: string }[];
+}> {
+  const sb = adminClient();
+  const authHeader = basicAuth();
+  const { data: rows } = await sb
+    .from('whatsapp_template_sids')
+    .select('template_name, pending_sid, pending_status')
+    .eq('pending_status', 'pending')
+    .not('pending_sid', 'is', null);
+
+  const promoted: string[] = [];
+  const stagedRejected: string[] = [];
+  const stagedErrors: { name: string; error: string }[] = [];
+
+  for (const row of rows ?? []) {
+    const pendingSid = (row as { pending_sid: string }).pending_sid;
+    try {
+      const res = await fetch(
+        `${TWILIO_BASE}/Content/${encodeURIComponent(pendingSid)}/ApprovalRequests`,
+        { headers: { Authorization: authHeader } },
+      );
+      if (!res.ok) throw new Error(`status ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      const data = (await res.json()) as ApprovalResponse;
+      const waStatus = normaliseStatus(data.whatsapp?.status ?? data.status);
+      const now = new Date().toISOString();
+
+      if (waStatus === 'approved') {
+        // Promote: the new body is approved — switch the live SID to it and
+        // clear the staging columns.
+        await sb
+          .from('whatsapp_template_sids')
+          .update({
+            sid: pendingSid,
+            approval_status: 'approved',
+            approved_at: now,
+            last_error: null,
+            pending_sid: null,
+            pending_status: null,
+            pending_submitted_at: null,
+            pending_body: null,
+            last_status_check_at: now,
+            updated_at: now,
+          })
+          .eq('template_name', row.template_name);
+        promoted.push(row.template_name);
+        await logBusiness(
+          'whatsapp_template_promoted',
+          `WhatsApp template promoted (zero-downtime): ${row.template_name}`,
+          { template_name: row.template_name, new_sid: pendingSid },
+        );
+      } else if (waStatus === 'rejected') {
+        // Live SID is left exactly as-is; only the staged attempt is flagged.
+        const rejectionReason = data.whatsapp?.rejection_reason ?? data.rejection_reason ?? null;
+        await sb
+          .from('whatsapp_template_sids')
+          .update({
+            pending_status: 'rejected',
+            last_error: rejectionReason,
+            last_status_check_at: now,
+            updated_at: now,
+          })
+          .eq('template_name', row.template_name);
+        stagedRejected.push(row.template_name);
+        await logBusiness(
+          'whatsapp_template_staged_rejected',
+          `Staged WhatsApp template rejected (live unchanged): ${row.template_name}`,
+          { template_name: row.template_name, pending_sid: pendingSid, rejection_reason: rejectionReason },
+        );
+      } else {
+        await sb
+          .from('whatsapp_template_sids')
+          .update({ last_status_check_at: now, updated_at: now })
+          .eq('template_name', row.template_name);
+      }
+    } catch (e) {
+      stagedErrors.push({ name: row.template_name, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  return { promoted, stagedRejected, stagedErrors };
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await authorizeAdminOrCron(request);
   if (!auth.ok) return NextResponse.json({ error: auth.reason ?? 'Unauthorized' }, { status: auth.status });
   try {
     const out = await run();
-    return NextResponse.json(out);
+    const staged = await runStaged();
+    return NextResponse.json({ ...out, staged });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });
