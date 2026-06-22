@@ -64,6 +64,8 @@ export interface DispatchInput {
   rateLimited?: boolean;
   /** Bypass quiet hours (only use for genuine urgencies) */
   bypassQuietHours?: boolean;
+  /** Set by the send-time release cron so released alerts aren't re-deferred. */
+  bypassDefer?: boolean;
 }
 
 export interface DispatchResult {
@@ -394,6 +396,21 @@ export async function sendNotification(
       if (await sendTelegram(routing.telegramChatId, input.telegram)) delivered.push('telegram');
       else skipped.push({ channel: 'telegram', reason: 'send failed' });
     } else if (channel === 'whatsapp' && input.whatsapp && routing.whatsappPhone) {
+      // Phase 2 — send-time optimisation: hold non-urgent, non-critical alerts
+      // for the user's learned best hour. The release cron re-dispatches with
+      // bypassDefer:true. Deferral only ever holds FORWARD within the same day.
+      if (!input.bypassDefer) {
+        const { maybeDeferAlert } = await import('@/lib/whatsapp/send-time');
+        const deferred = await maybeDeferAlert(supabase, {
+          userId: input.userId,
+          eventType: input.event,
+          whatsapp: input.whatsapp,
+        });
+        if (deferred) {
+          skipped.push({ channel: 'whatsapp', reason: 'deferred to preferred hour' });
+          continue;
+        }
+      }
       const evMeta = EVENT_CATALOG.find((e) => e.event === input.event);
       const waCtx = {
         userId: input.userId,
