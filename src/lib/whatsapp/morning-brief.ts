@@ -462,7 +462,7 @@ export async function sendMorningBriefToUser(
         `${renewalsBlurb}\n` +
         `${disputesBlurb}\n` +
         `Active subs ${subList.length} · monthly spend £${totalMonthly.toFixed(2)}.\n\n` +
-        `Open paybacker.co.uk/dashboard/brief for the full brief.`;
+        `See your full brief at paybacker.co.uk/brief`;
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
       body = `*Test morning brief*\n\nThis is a smoke-test send from /dashboard/admin/whatsapp.\n(brief data unavailable: ${errMsg})`;

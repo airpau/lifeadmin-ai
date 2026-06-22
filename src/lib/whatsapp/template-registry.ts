@@ -424,11 +424,11 @@ export const TEMPLATES = {
     vars: ['name', 'highlights', 'tip'] as const,
     description: 'Daily 7:30am morning summary (Pro only) — self-contained body',
     proOnly: true,
-    // Body points at the focused /dashboard/brief page. NOTE: the live Twilio
-    // Content (sid above) still carries the old /dashboard URL until this body
-    // is RE-SUBMITTED to Meta via /dashboard/admin/whatsapp — Meta approval is
-    // async, so the WhatsApp link only changes once that re-approval lands.
-    body: 'Morning {{1}}. {{2}} Tip of the day: {{3}} Open paybacker.co.uk/dashboard/brief for the full brief.',
+    // Body points at the clean vanity URL paybacker.co.uk/brief (redirects to
+    // /dashboard/brief). Body changes go live via the zero-downtime
+    // stage-template flow: a new Content is approved by Meta, then promoted by
+    // the daily whatsapp-template-status cron — the live SID is never paused.
+    body: 'Morning {{1}}. {{2}} Tip of the day: {{3}} See your full brief at paybacker.co.uk/brief',
   },
   /** Savings goal milestone (25/50/75/100% bands) */
   paybacker_savings_goal_milestone: {
