@@ -149,6 +149,24 @@ export async function dispatchWhatsAppMorningBrief(
   phone: string,
   markdownBody: string,
 ): Promise<DispatchOutcome> {
+  // Persist the exact brief so the /dashboard/brief page can show "the full
+  // brief" the summary's link points at. Fire-and-forget — never blocks send.
+  try {
+    await supabase
+      .from('daily_brief_log')
+      .upsert(
+        {
+          user_id: userId,
+          brief_date: new Date().toISOString().slice(0, 10),
+          body_markdown: markdownBody,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,brief_date' },
+      );
+  } catch (e) {
+    console.warn('[morning-brief] persist daily_brief_log failed', (e as Error)?.message ?? e);
+  }
+
   const inWindow = await isInsideWhatsAppServiceWindow(supabase, userId);
 
   let inWindowTextError: unknown | undefined;
@@ -444,7 +462,7 @@ export async function sendMorningBriefToUser(
         `${renewalsBlurb}\n` +
         `${disputesBlurb}\n` +
         `Active subs ${subList.length} · monthly spend £${totalMonthly.toFixed(2)}.\n\n` +
-        `Open paybacker.co.uk/dashboard for the full picture.`;
+        `Open paybacker.co.uk/dashboard/brief for the full brief.`;
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
       body = `*Test morning brief*\n\nThis is a smoke-test send from /dashboard/admin/whatsapp.\n(brief data unavailable: ${errMsg})`;
