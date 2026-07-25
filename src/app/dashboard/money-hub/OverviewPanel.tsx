@@ -123,6 +123,13 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
     ? Math.max(...monthlyTrends.flatMap((t: any) => [t.income, t.outgoings]), 1)
     : 1;
 
+  // The trends window is a rolling 6 months, so it can straddle a year
+  // boundary (e.g. Oct-Mar). A bare "Jan" next to "Dec" is ambiguous, so
+  // add the year to the axis labels only when the window actually spans one.
+  const trendsSpanYears = new Set(
+    monthlyTrends.map((t: any) => String(t.month).slice(0, 4))
+  ).size > 1;
+
   return (
     <div className="space-y-4">
       {/* Summary Cards */}
@@ -356,7 +363,12 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
           </h3>
           <div className="flex items-end gap-2 h-32">
             {monthlyTrends.map((t: any, i: number) => {
-              const monthLabel = new Date(t.month + '-15').toLocaleDateString('en-GB', { month: 'short' });
+              // Mid-month date so timezone offsets can never roll the label
+              // into an adjacent month.
+              const monthDate = new Date(t.month + '-15');
+              const monthLabel = monthDate.toLocaleDateString('en-GB',
+                trendsSpanYears ? { month: 'short', year: '2-digit' } : { month: 'short' });
+              const tooltipMonth = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
               const incomeH = (t.income / trendsMax) * 100;
               const outH = (t.outgoings / trendsMax) * 100;
               return (
@@ -367,7 +379,8 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
                   </div>
                   <span className="text-[10px] text-slate-500">{monthLabel}</span>
                   {/* Hover tooltip */}
-                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg p-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap pointer-events-none">
+                  <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg p-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap pointer-events-none">
+                    <p className="text-slate-900 font-semibold mb-0.5">{tooltipMonth}</p>
                     <p className="text-green-400">In: £{fmtNum(t.income)}</p>
                     <p className="text-amber-400">Out: £{fmtNum(t.outgoings)}</p>
                     <p className="text-slate-700">Net: £{fmtNum(t.income - t.outgoings)}</p>
