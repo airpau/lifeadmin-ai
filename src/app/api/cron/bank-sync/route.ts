@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAccounts, getAllTransactions, isYapilyConsentExpiryError } from '@/lib/yapily';
+import { getAccounts, getAllTransactions, triageConsentFailure } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { recordConsentFailure, clearConsentFailures } from '@/lib/yapily/consent-failure-tracker';
@@ -23,6 +23,10 @@ interface BankConnection {
   provider: string;
   consent_token: string | null;
   consent_expires_at: string | null;
+  /** Yapily's underlying consent identifier. Needed so a 401/403 can be
+   *  verified via GET /consents/{id} instead of guessed from the error
+   *  message (build review step 6). Null on legacy pre-hosted-pages rows. */
+  yapily_consent_id: string | null;
   access_token: string | null;
   refresh_token: string | null;
   token_expires_at: string | null;
@@ -393,13 +397,31 @@ export async function GET(request: NextRequest) {
           } catch (err: any) {
             const errorMsg = `account ${accountId}: ${err?.message || err}`;
             const status = (err as Error & { status?: number })?.status;
-            if (isYapilyConsentExpiryError(err)) {
+            // Build review step 6: on 401/403 ask Yapily what state the
+            // consent is actually in (GET /consents/{id}) rather than
+            // pattern-matching the error text. triageConsentFailure also
+            // extends a renewable consent in place, so a bank that only
+            // needs re-authorisation self-heals instead of counting
+            // toward the disconnect threshold.
+            const verdict = await triageConsentFailure(
+              err,
+              connection.yapily_consent_id,
+              `[bank-sync] conn=${connection.id}`,
+            );
+            if (verdict === 'fatal') {
               // True consent/token expiry — flag so we flip status='expired'
               // after the loop and bail without hammering Yapily for the
               // remaining accounts on this same dead consent.
               consentExpiryDetected = true;
               console.error(`Bank sync: consent expiry on ${errorMsg}`);
               accountErrors.push(errorMsg);
+              break;
+            }
+            if (verdict === 'recovered') {
+              // Consent was extended just now. Don't record a failure —
+              // the next scheduled run picks this account up cleanly.
+              console.log(`Bank sync: consent extended mid-run for ${errorMsg} — will retry next run`);
+              accountErrors.push(`${errorMsg} (consent extended, retry next run)`);
               break;
             }
             // Generic Yapily error (including 403 insufficient_rights and

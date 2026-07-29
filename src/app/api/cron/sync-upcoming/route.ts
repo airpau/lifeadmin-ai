@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/encrypt';
+import { getInstitutionFeatures } from '@/lib/yapily';
 import {
   getScheduledPayments,
   getPeriodicPayments,
@@ -37,11 +38,23 @@ interface BankConnection {
   user_id: string;
   provider: string;
   provider_id: string | null;
+  /** Needed to look up what this bank actually supports before calling
+   *  its endpoints — Yapily build review step 10. */
+  institution_id: string | null;
   consent_token: string | null;
   consent_expires_at: string | null;
   account_ids: string[] | null;
   status: string;
 }
+
+/**
+ * Yapily feature names gating each upcoming-payments endpoint.
+ * Source: institution metadata on GET /institutions (`features` array).
+ */
+const FEATURE_SCHEDULED_PAYMENTS = 'ACCOUNT_SCHEDULED_PAYMENTS';
+const FEATURE_PERIODIC_PAYMENTS = 'ACCOUNT_PERIODIC_PAYMENTS';
+const FEATURE_DIRECT_DEBITS = 'ACCOUNT_DIRECT_DEBITS';
+const FEATURE_TRANSACTIONS = 'ACCOUNT_TRANSACTIONS';
 
 interface UpsertRow {
   user_id: string;
@@ -70,7 +83,7 @@ export async function GET(request: NextRequest) {
   // Pull active Yapily connections with a non-expired consent.
   const { data: connections, error: connErr } = await supabase
     .from('bank_connections')
-    .select('id, user_id, provider, provider_id, consent_token, consent_expires_at, account_ids, status')
+    .select('id, user_id, provider, provider_id, institution_id, consent_token, consent_expires_at, account_ids, status')
     .eq('provider', 'yapily')
     .eq('status', 'active')
     .is('archived_at', null);
@@ -87,6 +100,7 @@ export async function GET(request: NextRequest) {
     staleRowsPruned: number;
     pendingEndpointsFailed: number;
     otherFailures: number;
+    endpointsSkippedUnsupported: number;
     alertsDispatched: number;
     telegramAlertsDispatched: number;
     startedAt: string;
@@ -97,6 +111,7 @@ export async function GET(request: NextRequest) {
     staleRowsPruned: 0,
     pendingEndpointsFailed: 0,
     otherFailures: 0,
+    endpointsSkippedUnsupported: 0,
     alertsDispatched: 0,
     telegramAlertsDispatched: 0,
     startedAt: runStartedAt,
@@ -119,16 +134,58 @@ export async function GET(request: NextRequest) {
       continue;
     }
 
+    // ── Endpoint capability verification (build review step 10) ──
+    //
+    // Not every UK bank exposes every endpoint. Yapily publishes what
+    // each institution supports in the `features` array on
+    // GET /institutions, and asks integrators to check it BEFORE
+    // invoking an endpoint. Previously this loop called all four
+    // endpoints for every bank and swallowed the failures — which meant
+    // we generated avoidable failed requests against Yapily's platform
+    // every night, for every unsupported endpoint, forever.
+    //
+    // getInstitutions() is cached for an hour at module level, so this
+    // gate costs no additional API calls.
+    //
+    // Fail-open: if institution_id is missing (legacy rows) or the
+    // feature list comes back empty (lookup failed), we fall back to
+    // attempting the endpoints as before. A degraded lookup must not
+    // silently stop collecting a user's direct debits.
+    const features = conn.institution_id
+      ? await getInstitutionFeatures(conn.institution_id)
+      : [];
+    const featuresKnown = features.length > 0;
+    const supports = (feature: string) => !featuresKnown || features.includes(feature);
+
+    if (!featuresKnown) {
+      console.warn(
+        `[sync-upcoming] no feature list for conn=${conn.id} institution=${conn.institution_id ?? 'null'} — attempting all endpoints (fail-open)`,
+      );
+    }
+
     for (const accountId of conn.account_ids) {
       const rows: UpsertRow[] = [];
 
       // Deterministic endpoints — small wrapper so one failing
-      // source doesn't block the others.
-      const endpoints: Array<[string, () => Promise<UpcomingRow[]>]> = [
-        ['scheduled-payments', () => getScheduledPayments(accountId, decrypted)],
-        ['periodic-payments',  () => getPeriodicPayments(accountId, decrypted)],
-        ['direct-debits',      () => getDirectDebits(accountId, decrypted)],
+      // source doesn't block the others. Each is gated on the feature
+      // the institution actually advertises.
+      const candidateEndpoints: Array<[string, string, () => Promise<UpcomingRow[]>]> = [
+        [FEATURE_SCHEDULED_PAYMENTS, 'scheduled-payments', () => getScheduledPayments(accountId, decrypted)],
+        [FEATURE_PERIODIC_PAYMENTS,  'periodic-payments',  () => getPeriodicPayments(accountId, decrypted)],
+        [FEATURE_DIRECT_DEBITS,      'direct-debits',      () => getDirectDebits(accountId, decrypted)],
       ];
+
+      const endpoints: Array<[string, () => Promise<UpcomingRow[]>]> = [];
+      for (const [feature, label, fn] of candidateEndpoints) {
+        if (supports(feature)) {
+          endpoints.push([label, fn]);
+        } else {
+          summary.endpointsSkippedUnsupported++;
+          console.log(
+            `[sync-upcoming] skipping ${label} for account=${accountId} — institution=${conn.institution_id} does not advertise ${feature}`,
+          );
+        }
+      }
 
       for (const [label, fn] of endpoints) {
         try {
@@ -142,16 +199,25 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Optional pending transactions — graceful degradation.
-      try {
-        const pending = await getPendingTransactions(accountId, decrypted);
-        for (const r of pending) rows.push(toUpsertRow(r, conn, accountId));
-      } catch (err) {
+      // Optional pending transactions — gated on ACCOUNT_TRANSACTIONS,
+      // then still wrapped in try/catch because `bookingStatus=pending`
+      // support varies WITHIN banks that advertise transactions.
+      if (supports(FEATURE_TRANSACTIONS)) {
+        try {
+          const pending = await getPendingTransactions(accountId, decrypted);
+          for (const r of pending) rows.push(toUpsertRow(r, conn, accountId));
+        } catch (err) {
+          console.log(
+            `[sync-upcoming] pending transactions unavailable for account=${accountId}:`,
+            err instanceof Error ? err.message : err,
+          );
+          summary.pendingEndpointsFailed++;
+        }
+      } else {
+        summary.endpointsSkippedUnsupported++;
         console.log(
-          `[sync-upcoming] pending transactions unavailable for account=${accountId}:`,
-          err instanceof Error ? err.message : err,
+          `[sync-upcoming] skipping pending transactions for account=${accountId} — institution=${conn.institution_id} does not advertise ${FEATURE_TRANSACTIONS}`,
         );
-        summary.pendingEndpointsFailed++;
       }
 
       // Recurrence detector over 180 days of history.

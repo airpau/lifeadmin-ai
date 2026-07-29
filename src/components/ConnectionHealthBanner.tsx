@@ -17,6 +17,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, X } from 'lucide-react';
+import ConsentRenewalBanner from '@/components/ConsentRenewalBanner';
 
 interface UnhealthyEmail {
   id: string;
@@ -31,6 +32,20 @@ interface UnhealthyBank {
   bank_name: string;
   provider: string;
   status: string;
+}
+
+/**
+ * A bank connection inside the 7-day window before the UK 90-day
+ * consent limit. Distinct from UnhealthyBank: sync is still WORKING, so
+ * the right action is renewal (extend the existing consent), not a full
+ * reconnect. Yapily build review step 9.
+ */
+interface ExpiringBank {
+  id: string;
+  bank_name: string;
+  status: string;
+  consent_expires_at: string | null;
+  days_left: number;
 }
 
 const DISMISS_KEY = 'connection-health-banner-dismissed';
@@ -55,6 +70,8 @@ function readableStatus(status: string, lastError: string): string {
 export default function ConnectionHealthBanner() {
   const [email, setEmail] = useState<UnhealthyEmail[]>([]);
   const [bank, setBank] = useState<UnhealthyBank[]>([]);
+  const [expiring, setExpiring] = useState<ExpiringBank[]>([]);
+  const [renewed, setRenewed] = useState<Set<string>>(new Set());
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
@@ -70,6 +87,7 @@ export default function ConnectionHealthBanner() {
         if (cancelled || !d) return;
         setEmail(d.unhealthy_email ?? []);
         setBank(d.unhealthy_bank ?? []);
+        setExpiring(d.expiring_bank ?? []);
       })
       .catch(() => { /* silent — banner just won't render */ });
 
@@ -77,7 +95,29 @@ export default function ConnectionHealthBanner() {
   }, []);
 
   const total = email.length + bank.length;
-  if (dismissed || total === 0) return null;
+  const pendingRenewal = expiring.filter((c) => !renewed.has(c.id));
+
+  // ── Advance renewal warning (build review step 9) ──
+  // Rendered ABOVE the broken-connection banner and independently of the
+  // dismiss flag: this one is time-critical (consent dies in ≤7 days)
+  // and offers a one-click extend rather than a full re-consent.
+  const renewalBanners = pendingRenewal.length > 0 ? (
+    <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 space-y-2">
+      <div className="max-w-7xl mx-auto space-y-2">
+        {pendingRenewal.slice(0, 3).map((c) => (
+          <ConsentRenewalBanner
+            key={c.id}
+            connectionId={c.id}
+            bankName={c.bank_name}
+            daysLeft={c.days_left}
+            onRenew={() => setRenewed((prev) => new Set(prev).add(c.id))}
+          />
+        ))}
+      </div>
+    </div>
+  ) : null;
+
+  if (dismissed || total === 0) return renewalBanners;
 
   const handleDismiss = () => {
     setDismissed(true);
@@ -107,6 +147,8 @@ export default function ConnectionHealthBanner() {
     : "Email + bank sync is paused — alerts, replies and transactions won't update until each connection is reconnected.";
 
   return (
+    <>
+    {renewalBanners}
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
       <div className="max-w-7xl mx-auto flex items-start gap-3">
         <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -151,5 +193,6 @@ export default function ConnectionHealthBanner() {
         </button>
       </div>
     </div>
+    </>
   );
 }

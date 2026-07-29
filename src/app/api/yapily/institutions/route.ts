@@ -5,7 +5,9 @@ import { getInstitutions } from '@/lib/yapily';
  * In-memory cache for UK institution list.
  * Refreshes every 24 hours to avoid hammering the Yapily API.
  */
-let cachedInstitutions: { id: string; name: string; logoUrl: string | null }[] | null = null;
+let cachedInstitutions:
+  | { id: string; name: string; logoUrl: string | null; features: string[] }[]
+  | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -42,6 +44,12 @@ export async function GET() {
         id: inst.id,
         name: inst.fullName || inst.name,
         logoUrl,
+        // Yapily build review step 10: the institution's advertised
+        // capability list. Surfaced so the bank picker can tell the user
+        // what a given bank supports BEFORE they consent, and so the
+        // capability gating in the sync crons is visible in the product
+        // rather than only in server logs.
+        features: inst.features ?? [],
       };
     });
 

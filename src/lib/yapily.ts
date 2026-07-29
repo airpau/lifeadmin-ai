@@ -33,6 +33,88 @@ function getAuthHeader(): string {
   return `Basic ${credentials}`;
 }
 
+// ── Error classification (Yapily build review, step 7) ──
+//
+// Migle's build review asks for "at least one simulated example per
+// error class" and "coverage of all HTTP response codes". Before this
+// existed, every non-2xx funnelled into one generic throw: excellent
+// diagnostics (we captured tracingId from both body and header) but no
+// differentiated BEHAVIOUR. In particular a 429 was treated the same as
+// a 400 — no backoff, no Retry-After — which is exactly the pattern
+// Yapily rate-limits applications for.
+//
+// The classes map to what the caller should DO, not to the raw code:
+//
+//   bad_request  400/422 — our request is malformed. Fix it; never retry.
+//   auth         401     — credential problem (unless it's consent-shaped,
+//                          which isYapilyConsentExpiryError separates out).
+//   consent      403     — consent/permission. Resolve via GET /consents/{id}.
+//   not_found    404     — resource gone. Usually idempotent success on DELETE.
+//   conflict     409     — concurrent modification. Re-read, then retry once.
+//   rate_limit   429     — back off, honour Retry-After, then retry.
+//   server       5xx     — transient on Yapily's side. Retry with backoff.
+//   unknown      anything else.
+
+export type YapilyErrorClass =
+  | 'bad_request'
+  | 'auth'
+  | 'consent'
+  | 'not_found'
+  | 'conflict'
+  | 'rate_limit'
+  | 'server'
+  | 'unknown';
+
+export function classifyYapilyError(err: unknown): YapilyErrorClass {
+  const status = (err as { status?: number } | null)?.status;
+  if (typeof status !== 'number') return 'unknown';
+  if (status === 400 || status === 422) return 'bad_request';
+  if (status === 401) return 'auth';
+  if (status === 403) return 'consent';
+  if (status === 404) return 'not_found';
+  if (status === 409) return 'conflict';
+  if (status === 429) return 'rate_limit';
+  if (status >= 500) return 'server';
+  return 'unknown';
+}
+
+/** Error classes worth retrying. 4xx (other than 429) never is — the
+ * request itself is the problem, so retrying just burns quota. */
+export function isRetryableYapilyStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+/** Max automatic retries for a retryable status. Kept deliberately low:
+ * these run inside Vercel functions with a hard maxDuration, and the
+ * sync crons already re-run on their own schedule. */
+const MAX_RETRIES = 2;
+/** Base for exponential backoff, doubled per attempt (500ms, 1000ms). */
+const RETRY_BASE_MS = 500;
+/** Ceiling so a hostile Retry-After can't park a function until timeout. */
+const MAX_RETRY_DELAY_MS = 8_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Parses Yapily's Retry-After header. Per RFC 7231 it is either a
+ * delay in seconds or an HTTP-date; handle both, and clamp so a bad
+ * value can't stall the function.
+ */
+function parseRetryAfter(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, MAX_RETRY_DELAY_MS);
+  }
+  const asDate = Date.parse(header);
+  if (!Number.isNaN(asDate)) {
+    return Math.min(Math.max(asDate - Date.now(), 0), MAX_RETRY_DELAY_MS);
+  }
+  return null;
+}
+
 // ── Generic Request Helper ──
 
 async function yapilyRequest<T>(
@@ -46,10 +128,26 @@ async function yapilyRequest<T>(
     ...(options.headers as Record<string, string> | undefined),
   };
 
-  const res = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let res: Response = await fetch(url, { ...options, headers });
+
+  // ── Retry loop for 429 / 5xx (build review step 7) ──
+  // Everything else falls straight through to the error handler below:
+  // a 400 means our request is wrong, and retrying an identical wrong
+  // request is pure waste.
+  for (
+    let attempt = 0;
+    attempt < MAX_RETRIES && !res.ok && isRetryableYapilyStatus(res.status);
+    attempt++
+  ) {
+    const retryAfterMs = parseRetryAfter(res.headers.get('Retry-After'));
+    const backoffMs = retryAfterMs ?? RETRY_BASE_MS * Math.pow(2, attempt);
+    console.warn(
+      `[yapily] ${res.status} on ${path} — retry ${attempt + 1}/${MAX_RETRIES} in ${backoffMs}ms` +
+        (retryAfterMs !== null ? ' (honouring Retry-After)' : ''),
+    );
+    await sleep(backoffMs);
+    res = await fetch(url, { ...options, headers });
+  }
 
   if (!res.ok) {
     // Tracing-Id capture (Vitally Support requirement). Yapily surfaces
@@ -74,9 +172,16 @@ async function yapilyRequest<T>(
       tracingId = res.headers.get('Tracing-Id') || res.headers.get('tracing-id') || undefined;
     }
     if (tracingId) errorMessage += ` [tracingId=${tracingId}]`;
-    const err = new Error(errorMessage) as Error & { status?: number; tracingId?: string };
+    const err = new Error(errorMessage) as Error & {
+      status?: number;
+      tracingId?: string;
+      errorClass?: YapilyErrorClass;
+    };
     err.status = res.status;
     err.tracingId = tracingId;
+    // Attach the class at throw-time so every catch site can branch on
+    // it without re-deriving the mapping.
+    err.errorClass = classifyYapilyError(err);
     throw err;
   }
 
@@ -342,8 +447,13 @@ export async function getAllTransactions(
   const collected: YapilyTransaction[] = [];
   let before: string | undefined = opts.before ?? opts.to;
 
+  // `from` is compared numerically, not lexicographically. The old
+  // string compare was only correct while every institution returned
+  // Z-normalised timestamps; a single `+01:00` offset made it wrong.
+  const fromMs = opts.from ? Date.parse(opts.from) : null;
+
   for (let page = 0; page < MAX_PAGES; page++) {
-    const { data } = await getTransactionsPage(accountId, consentToken, {
+    const { data, meta } = await getTransactionsPage(accountId, consentToken, {
       from: opts.from,
       before,
       limit: pageLimit,
@@ -351,11 +461,27 @@ export async function getAllTransactions(
 
     if (data.length === 0) break;
 
+    // Build review step 11: trust Yapily's own pagination metadata over
+    // our inference. `self.limit` is the page size the API ACTUALLY
+    // applied, which can be lower than the limit we asked for — the old
+    // `data.length < pageLimit` stop condition silently defeated
+    // pagination on any institution that clamps, reproducing the
+    // 2026-05-15 outage this walk exists to prevent. `next` is Yapily's
+    // authoritative "there is more" signal.
+    const effectiveLimit = meta?.pagination?.self?.limit ?? pageLimit;
+    const hasNext = meta?.pagination?.next != null;
+
     let earliest: string | null = null;
+    let sameTimestampCount = 0;
     for (const tx of data) {
       const dt = tx.bookingDateTime || tx.date;
       if (!dt) continue;
-      if (!earliest || dt < earliest) earliest = dt;
+      if (!earliest || dt < earliest) {
+        earliest = dt;
+        sameTimestampCount = 1;
+      } else if (dt === earliest) {
+        sameTimestampCount++;
+      }
       const key = `${tx.id}|${dt}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -363,6 +489,20 @@ export async function getAllTransactions(
     }
 
     if (!earliest) break;
+
+    // Same-timestamp truncation guard. Many UK banks return date-only
+    // precision (T00:00:00.000Z). If an entire page shares one
+    // timestamp, advancing the exclusive `before` to it would skip any
+    // rows at that timestamp which spilled onto the next page. We can't
+    // page past it, so stop and say so loudly rather than losing rows
+    // silently.
+    if (sameTimestampCount >= data.length && data.length >= effectiveLimit) {
+      console.warn(
+        `[yapily.getAllTransactions] account=${accountId} full page shares one timestamp (${earliest}) — stopping to avoid silent truncation; ${collected.length} collected`,
+      );
+      break;
+    }
+
     // Yapily's `before` is EXCLUSIVE — passing the earliest tx
     // datetime we just received as the next page's `before` walks
     // strictly older without overlap. If `earliest` ever equals the
@@ -371,9 +511,22 @@ export async function getAllTransactions(
     if (earliest === before) break;
     // If we've already walked past `from`, stop — the next page
     // would be entirely older than the user's window.
-    if (opts.from && earliest <= opts.from) break;
-    if (data.length < pageLimit) break;
+    if (fromMs !== null) {
+      const earliestMs = Date.parse(earliest);
+      if (!Number.isNaN(earliestMs) && earliestMs <= fromMs) break;
+    }
+    // Stop only when Yapily says there is no next page AND the page came
+    // back short of the server-applied limit. Either signal alone is
+    // weaker: `next` is absent on some responses, and a short page can
+    // still be followed by more rows when the limit was clamped.
+    if (!hasNext && data.length < effectiveLimit) break;
     before = earliest;
+
+    if (page === MAX_PAGES - 1) {
+      console.warn(
+        `[yapily.getAllTransactions] account=${accountId} hit the ${MAX_PAGES}-page cap with more data available — window may be truncated`,
+      );
+    }
   }
 
   return collected;
@@ -727,6 +880,77 @@ export function isYapilyConsentExpiryError(err: unknown): boolean {
  */
 export const CONSENT_FAILURE_THRESHOLD = 3;
 
+// ── Authoritative consent-state lookup (build review, step 6) ──
+//
+// Yapily's build review step 6 is explicit: on a 403 from /accounts,
+// verify via GET /consents/{consentId} rather than guessing.
+//
+// We used to guess — isYapilyConsentExpiryError above pattern-matches
+// the error MESSAGE against 14 hard-coded substrings. That was a
+// deliberate narrowing after a production incident (a transient 401 was
+// flipping healthy banks to 'expired'), but it has a real failure mode:
+// if Yapily ever rewords an error string, re-consent prompting silently
+// stops and users quietly lose their bank feed with no signal.
+//
+// resolveConsentState asks Yapily directly and returns a DECISION, not
+// a raw status, so both sync call sites branch identically. The
+// message-matching path survives as the fallback for legacy rows that
+// have no yapily_consent_id (they exist — see /api/bank/renew-consent).
+
+export type ConsentVerdict =
+  /** Consent is dead. Flip to 'expired' and prompt a fresh consent. */
+  | { action: 'expired'; status: string }
+  /** Bank wants re-authorisation but the consent can be extended first. */
+  | { action: 'extendable'; status: string }
+  /** Consent is fine — the 403 was a scope/permission problem, not expiry. */
+  | { action: 'healthy'; status: string }
+  /** No consentId, or the lookup itself failed. Caller should fall back. */
+  | { action: 'unknown'; status: null };
+
+/** Yapily consent statuses that mean "this consent will never work again". */
+const TERMINAL_CONSENT_STATUSES = new Set([
+  'EXPIRED',
+  'REVOKED',
+  'REJECTED',
+  'FAILED',
+  'INVALID',
+]);
+
+/** Statuses where POST /consents/{id}/extend is the correct next move. */
+const EXTENDABLE_CONSENT_STATUSES = new Set([
+  'AWAITING_RE_AUTHORIZATION',
+  'AWAITING_RE_AUTHORISATION',
+]);
+
+/**
+ * Asks Yapily what state a consent is actually in. Never throws —
+ * a failed lookup returns { action: 'unknown' } so the caller can fall
+ * back to the legacy message-matching heuristic rather than crashing a
+ * sync run on a diagnostic call.
+ */
+export async function resolveConsentState(
+  consentId: string | null | undefined,
+): Promise<ConsentVerdict> {
+  if (!consentId) return { action: 'unknown', status: null };
+  try {
+    const consent = await getConsent(consentId);
+    const status = (consent?.status || '').toUpperCase();
+    if (!status) return { action: 'unknown', status: null };
+    if (TERMINAL_CONSENT_STATUSES.has(status)) return { action: 'expired', status };
+    if (EXTENDABLE_CONSENT_STATUSES.has(status)) return { action: 'extendable', status };
+    // AUTHORIZED and anything else Yapily considers live: the consent is
+    // not the problem. The 403 was almost certainly insufficient_rights
+    // or feature_not_supported, which must NOT disconnect the bank.
+    return { action: 'healthy', status };
+  } catch (err) {
+    console.error(
+      `[yapily.resolveConsentState] lookup failed for consent=${consentId}:`,
+      err instanceof Error ? err.message : err,
+    );
+    return { action: 'unknown', status: null };
+  }
+}
+
 export async function withConsentRetry<T>(
   consentId: string,
   fn: () => Promise<T>,
@@ -738,7 +962,7 @@ export async function withConsentRetry<T>(
     // First 403 → try extend.
     try {
       await extendConsent(consentId);
-    } catch (extendErr) {
+    } catch {
       // If extend itself fails, surface the original 403 — extend is
       // best-effort.
       throw new ConsentExpiredError(consentId, 403);
@@ -753,4 +977,74 @@ export async function withConsentRetry<T>(
       throw retryErr;
     }
   }
+}
+
+// ── Shared sync-failure triage (build review, step 6) ──
+
+export type ConsentFailureVerdict =
+  /** Consent is dead. Caller should stop syncing this connection and
+   *  count toward CONSENT_FAILURE_THRESHOLD. */
+  | 'fatal'
+  /** Consent was extendable and the extend succeeded — the next sync run
+   *  will work. Do NOT count this as a consent failure. */
+  | 'recovered'
+  /** Not a consent problem (scope error, 5xx, rate limit, anything else).
+   *  Log and carry on; the bank stays active. */
+  | 'non_fatal';
+
+/**
+ * Single decision point used by BOTH sync routes (cron/bank-sync and
+ * bank/sync-now) when a per-account Yapily call throws, so the two can
+ * never drift apart.
+ *
+ * Order of preference:
+ *   1. If it isn't a 401/403 at all, it's not a consent problem. Done.
+ *   2. Ask Yapily directly via GET /consents/{id} — this is what the
+ *      build review asks for and it's deterministic.
+ *   3. If the consent is extendable, extend it here and report
+ *      'recovered' so a renewable consent self-heals instead of
+ *      counting toward the disconnect threshold.
+ *   4. Only if we have no consentId (legacy rows) or the lookup failed
+ *      do we fall back to the old message-substring heuristic.
+ */
+export async function triageConsentFailure(
+  err: unknown,
+  consentId: string | null | undefined,
+  logPrefix = '[yapily.triage]',
+): Promise<ConsentFailureVerdict> {
+  const status = (err as { status?: number } | null)?.status;
+  if (status !== 401 && status !== 403) return 'non_fatal';
+
+  const verdict = await resolveConsentState(consentId);
+
+  if (verdict.action === 'expired') {
+    console.error(`${logPrefix} consent=${consentId} status=${verdict.status} — treating as expired`);
+    return 'fatal';
+  }
+
+  if (verdict.action === 'extendable') {
+    try {
+      await extendConsent(consentId!);
+      console.log(`${logPrefix} consent=${consentId} was ${verdict.status} — extended successfully`);
+      return 'recovered';
+    } catch (extendErr) {
+      console.error(
+        `${logPrefix} consent=${consentId} status=${verdict.status} — extend failed:`,
+        extendErr instanceof Error ? extendErr.message : extendErr,
+      );
+      return 'fatal';
+    }
+  }
+
+  if (verdict.action === 'healthy') {
+    console.warn(
+      `${logPrefix} ${status} but consent=${consentId} is ${verdict.status} — scope/permission issue, not expiry`,
+    );
+    return 'non_fatal';
+  }
+
+  // action === 'unknown': no consentId (legacy row) or the lookup itself
+  // failed. Fall back to the pre-build-review heuristic so behaviour
+  // never gets WORSE than it was before this function existed.
+  return isYapilyConsentExpiryError(err) ? 'fatal' : 'non_fatal';
 }

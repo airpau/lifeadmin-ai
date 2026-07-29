@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import { getAccounts, getAllTransactions, isYapilyConsentExpiryError } from '@/lib/yapily';
+import { getAccounts, getAllTransactions, triageConsentFailure } from '@/lib/yapily';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { recordConsentFailure, clearConsentFailures } from '@/lib/yapily/consent-failure-tracker';
@@ -24,6 +24,10 @@ interface BankConnection {
   provider: string;
   consent_token: string | null;
   consent_expires_at: string | null;
+  /** Yapily's underlying consent identifier — see bank-sync route.
+   *  Lets a 401/403 be verified via GET /consents/{id} (build review
+   *  step 6) instead of inferred from the error message. */
+  yapily_consent_id: string | null;
   access_token: string | null;
   refresh_token: string | null;
   token_expires_at: string | null;
@@ -367,10 +371,21 @@ export async function POST(request: NextRequest) {
         } catch (err: any) {
           const errorMsg = `account ${accountId}: ${err?.message || err}`;
           const status = (err as Error & { status?: number })?.status;
-          if (isYapilyConsentExpiryError(err)) {
+          // Build review step 6 — same authoritative triage as the cron.
+          const verdict = await triageConsentFailure(
+            err,
+            conn.yapily_consent_id,
+            `[sync-now] conn=${conn.id}`,
+          );
+          if (verdict === 'fatal') {
             consentExpiryDetected = true;
             console.error(`Sync: Yapily consent expiry on ${errorMsg}`);
             accountErrors.push(errorMsg);
+            break;
+          }
+          if (verdict === 'recovered') {
+            console.log(`Sync: consent extended mid-run for ${errorMsg} — will retry next run`);
+            accountErrors.push(`${errorMsg} (consent extended, retry next run)`);
             break;
           }
           // Generic Yapily error (including 403 insufficient_rights and

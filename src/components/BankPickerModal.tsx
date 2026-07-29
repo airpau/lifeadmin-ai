@@ -7,6 +7,41 @@ interface Institution {
   id: string;
   name: string;
   logoUrl: string | null;
+  /** Yapily's advertised capability list for this bank. Optional so a
+   *  cached response from before this field existed still renders. */
+  features?: string[];
+}
+
+/**
+ * Human-readable labels for the Yapily features users care about.
+ * Rendered under each bank so the person can see what they'll actually
+ * get before they consent — and so our capability checking (Yapily
+ * build review step 10) is visible in the product, not just in logs.
+ */
+const FEATURE_LABELS: Record<string, string> = {
+  ACCOUNT_TRANSACTIONS: 'transactions',
+  ACCOUNT_BALANCES: 'balances',
+  ACCOUNT_DIRECT_DEBITS: 'direct debits',
+  ACCOUNT_SCHEDULED_PAYMENTS: 'scheduled payments',
+  ACCOUNT_PERIODIC_PAYMENTS: 'standing orders',
+};
+
+/** Order matters — keep the list readable and consistent bank to bank. */
+const FEATURE_DISPLAY_ORDER = [
+  'ACCOUNT_TRANSACTIONS',
+  'ACCOUNT_BALANCES',
+  'ACCOUNT_DIRECT_DEBITS',
+  'ACCOUNT_SCHEDULED_PAYMENTS',
+  'ACCOUNT_PERIODIC_PAYMENTS',
+];
+
+function describeFeatures(features?: string[]): string | null {
+  if (!features?.length) return null;
+  const labels = FEATURE_DISPLAY_ORDER.filter((f) => features.includes(f)).map(
+    (f) => FEATURE_LABELS[f],
+  );
+  if (!labels.length) return null;
+  return `Supports ${labels.join(' · ')}`;
 }
 
 interface BankPickerModalProps {
@@ -151,7 +186,14 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
                   <Building2 className="h-4 w-4 text-slate-500" />
                 </div>
               )}
-              <span className="text-slate-900 text-sm font-medium flex-1">{inst.name}</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-slate-900 text-sm font-medium truncate">{inst.name}</span>
+                {describeFeatures(inst.features) && (
+                  <span className="block text-[11px] text-slate-500 truncate">
+                    {describeFeatures(inst.features)}
+                  </span>
+                )}
+              </span>
               {connecting === inst.id && (
                 <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
               )}
