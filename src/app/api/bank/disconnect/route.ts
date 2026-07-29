@@ -67,13 +67,55 @@ function getAdmin() {
  * end-state we're trying to achieve, so deleteConsent() treats it as
  * success (no throw).
  */
-async function revokeYapilyConsentIfPossible(consentId: string | null | undefined): Promise<void> {
+async function revokeYapilyConsentIfPossible(
+  consentId: string | null | undefined,
+  connectionId?: string | null,
+): Promise<void> {
   if (!consentId) return; // legacy connection without yapily_consent_id — nothing to revoke
+  const admin = getAdmin();
+  const attemptedAt = new Date().toISOString();
   try {
     await deleteConsent(consentId);
+    // Success (including Yapily's 404, which deleteConsent treats as
+    // already-gone). Clear any queued retry from a previous attempt.
+    if (connectionId) {
+      await admin
+        .from('bank_connections')
+        .update({
+          pending_yapily_revoke: false,
+          revoke_last_attempt_at: attemptedAt,
+          revoke_last_error: null,
+        })
+        .eq('id', connectionId);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown';
     console.error(`[bank.disconnect] yapily deleteConsent failed for ${consentId}: ${msg}`);
+    // Build review step 8: do NOT let this fail silently. The row is about
+    // to be marked revoked locally while the consent is still live at the
+    // bank — queue it so the daily consent-renewal cron keeps trying. The
+    // error text carries Yapily's tracingId (see yapilyRequest), which is
+    // what support would need.
+    if (connectionId) {
+      const { error: flagErr } = await admin
+        .from('bank_connections')
+        .update({
+          pending_yapily_revoke: true,
+          revoke_last_attempt_at: attemptedAt,
+          revoke_last_error: msg.slice(0, 500),
+        })
+        .eq('id', connectionId);
+      if (flagErr) {
+        // Last resort — if we can't even queue it, make the log loud.
+        console.error(
+          `[bank.disconnect] CRITICAL: could not queue revoke retry for connection=${connectionId} consent=${consentId}. Consent may remain live at the bank. ${flagErr.message}`,
+        );
+      }
+    } else {
+      console.error(
+        `[bank.disconnect] revoke failed for consent=${consentId} with no connectionId to queue against — consent may remain live at the bank`,
+      );
+    }
   }
 }
 
@@ -102,11 +144,15 @@ export async function POST(request: NextRequest) {
     const adminBulk = getAdmin();
     const { data: bulkRows } = await adminBulk
       .from('bank_connections')
-      .select('yapily_consent_id')
+      .select('id, yapily_consent_id')
       .eq('user_id', user.id)
       .in('status', ['active', 'expired', 'token_expired', 'expired_legacy', 'expiring_soon']);
     if (bulkRows?.length) {
-      await Promise.all(bulkRows.map((r) => revokeYapilyConsentIfPossible(r.yapily_consent_id)));
+      // Pass the row id so a failed upstream revoke gets queued for retry
+      // rather than vanishing into a log line (build review step 8).
+      await Promise.all(
+        bulkRows.map((r) => revokeYapilyConsentIfPossible(r.yapily_consent_id, r.id)),
+      );
     }
     const { error } = await supabase
       .from('bank_connections')
@@ -175,7 +221,7 @@ export async function POST(request: NextRequest) {
   // call): user-initiated disconnect must reach Yapily, not just flip
   // local rows.
   if (willRevokeConnection) {
-    await revokeYapilyConsentIfPossible(conn.yapily_consent_id);
+    await revokeYapilyConsentIfPossible(conn.yapily_consent_id, connectionId);
   }
 
   let transactionsAffected = 0;
