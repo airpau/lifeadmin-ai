@@ -849,10 +849,15 @@ export default function DashboardPage() {
       amountClass: 'neg' as const,
       amountLabel: `+${formatGBP(impact)}/yr cost`,
       impact,
+      // Non-disputable rises still need a destination that explains itself.
+      // Landing on a bare /dashboard/money-hub left the user with no idea why
+      // they'd been sent there, so carry the merchant and the old→new prices
+      // through to Regular Payments, which acknowledges them and highlights
+      // the matching card.
       ctaHref: classification === 'disputable'
         ? `/dashboard/complaints?company=${encodeURIComponent(merchant)}&issue=${encodeURIComponent(`price increase from £${Number(a.old_amount).toFixed(2)} to £${Number(a.new_amount).toFixed(2)}`)}&amount=${impact}&alertId=${a.id}&new=1`
-        : `/dashboard/money-hub`,
-      ctaLabel: classification === 'disputable' ? 'Start dispute' : 'View',
+        : `/dashboard/money-hub/payments?merchant=${encodeURIComponent(merchant)}&from=${Number(a.old_amount).toFixed(2)}&to=${Number(a.new_amount).toFixed(2)}`,
+      ctaLabel: classification === 'disputable' ? 'Start dispute' : 'View payment',
       classification,
       hook,
     };

@@ -1,6 +1,9 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   CreditCard, Repeat, ArrowUpRight, ChevronLeft, Loader2,
@@ -75,6 +78,20 @@ function getInitials(name: string): string {
   return name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
+// Strip to bare letters/digits so "E.ON Next" and "EON NEXT LTD" compare equal.
+function matchKey(raw: string): string {
+  return (raw || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// The Action Centre cleans merchant names with a different helper than this
+// page does, so match loosely in both directions rather than on equality.
+function isSameMerchant(payment: Payment, merchant: string): boolean {
+  const target = matchKey(merchant);
+  if (!target) return false;
+  const candidates = [matchKey(payment.provider_name), matchKey(cleanProviderName(payment.provider_name))];
+  return candidates.some(c => c.length > 0 && (c === target || c.includes(target) || target.includes(c)));
+}
+
 function daysSince(d: string | null): number | null {
   if (!d) return null;
   return Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
@@ -83,12 +100,13 @@ function daysSince(d: string | null): number | null {
 // ============================================================
 // Payment Card with edit, recategorise, and delete
 // ============================================================
-function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange }: {
+function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange, highlighted = false }: {
   payment: Payment;
   type: string;
   onCategoryChange: (id: string, newCategory: string) => void;
   onDelete: (id: string) => void;
   onAmountChange: (id: string, newAmount: number) => void;
+  highlighted?: boolean;
 }) {
   const name = cleanProviderName(payment.provider_name);
   const initials = getInitials(name);
@@ -151,7 +169,12 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
   };
 
   return (
-    <div className="card hover:border-emerald-200 transition-all relative group/card">
+    <div
+      id={`payment-${payment.id}`}
+      className={`card transition-all relative group/card ${
+        highlighted ? 'border-amber-400 ring-2 ring-amber-300/60' : 'hover:border-emerald-200'
+      }`}
+    >
       {/* Delete (X) button */}
       <button
         onClick={() => setConfirmDelete(true)}
@@ -305,6 +328,14 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'subscriptions' | 'direct_debits' | 'standing_orders'>('subscriptions');
 
+  // Context passed through from the Action Centre when the user taps a
+  // non-disputable price rise. Without it this page gave no clue why they'd
+  // been sent here.
+  const searchParams = useSearchParams();
+  const focusMerchant = searchParams.get('merchant');
+  const focusFrom = searchParams.get('from');
+  const focusTo = searchParams.get('to');
+
   useEffect(() => {
     fetch('/api/subscriptions')
       .then(r => r.json())
@@ -347,6 +378,19 @@ export default function PaymentsPage() {
   const handleAmountChange = (id: string, newAmount: number) => {
     setPayments(prev => prev.map(p => p.id === id ? { ...p, amount: newAmount } : p));
   };
+
+  // Resolve the merchant we were sent here for to an actual card.
+  const highlightedPayment = focusMerchant
+    ? payments.find(p => isSameMerchant(p, focusMerchant)) ?? null
+    : null;
+  const highlightedId = highlightedPayment?.id ?? null;
+
+  useEffect(() => {
+    if (!highlightedId) return;
+    document
+      .getElementById(`payment-${highlightedId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightedId]);
 
   const appSubs = payments.filter(p => APP_SUB_CATEGORIES.has(p.category));
   const directDebits = payments.filter(p => DD_CATEGORIES.has(p.category));
@@ -393,6 +437,41 @@ export default function PaymentsPage() {
       </div>
         <p className="text-slate-600 mt-1">Click a category to recategorise, click an amount to edit, or hover and press ✕ to remove.</p>
       </div>
+
+      {/* Why you're here — context carried from the Action Centre */}
+      {focusMerchant && !loading && (
+        <div className="mb-6 rounded-xl border border-amber-300/70 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              {highlightedPayment ? (
+                <>
+                  <p className="text-slate-900 font-semibold text-sm">
+                    Showing your {cleanProviderName(highlightedPayment.provider_name)} payment
+                  </p>
+                  <p className="text-slate-600 text-sm mt-0.5">
+                    {focusFrom && focusTo
+                      ? `The price went up from £${focusFrom} to £${focusTo}. `
+                      : 'The price went up. '}
+                    This one isn&apos;t usually worth disputing, but you can recategorise it,
+                    correct the amount, or remove it below.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-slate-900 font-semibold text-sm">
+                    We couldn&apos;t find a regular payment for {focusMerchant}
+                  </p>
+                  <p className="text-slate-600 text-sm mt-0.5">
+                    It may have been removed or not detected yet. All your other regular
+                    payments are listed below.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Overview with Pie Chart */}
       <div className="card mb-6">
@@ -491,6 +570,7 @@ export default function PaymentsPage() {
                 onCategoryChange={handleCategoryChange}
                 onDelete={handleDelete}
                 onAmountChange={handleAmountChange}
+                highlighted={p.id === highlightedId}
               />
             ))
           }
