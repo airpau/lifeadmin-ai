@@ -91,7 +91,11 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
       if (!session?.whatsapp_phone) continue;
       const provider = c.provider || 'your bank';
-      const url = 'paybacker.co.uk/dashboard/connections';
+      // /dashboard/connections does not exist — this template pointed
+      // users at a 404 for every reconnect prompt we ever sent. Money Hub
+      // is where bank connections actually live, and it now carries the
+      // one-click renewal banner (build review step 9).
+      const url = 'paybacker.co.uk/dashboard/money-hub';
       try {
         await sendWhatsAppTemplate({
           to: session.whatsapp_phone,

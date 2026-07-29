@@ -42,3 +42,6 @@ next-env.d.ts
 TASK.md
 TASK2.md
 .env*.local
+
+# scratch dir from a lint baseline comparison — delete when convenient
+src/__lintbase/

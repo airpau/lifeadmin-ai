@@ -48,10 +48,43 @@ export async function GET(request: NextRequest) {
   const errorParam = searchParams.get('error');
 
   // ── Handle bank-side errors ──
+  //
+  // Build review step 3: "error parameters are captured and logged".
+  // Capturing the whole query string matters — Yapily and the banks put
+  // the useful detail in error_description / error_source, and reading
+  // only `error` threw that away. Persisting it matters too: console
+  // logs are ephemeral, so before this the pending row sat at 'pending'
+  // forever and there was no queryable record that a user had failed to
+  // connect.
   if (errorParam) {
-    console.error('Yapily callback error:', errorParam);
+    const detail = Object.fromEntries(searchParams.entries());
+    console.error('[yapily.callback] error redirect:', JSON.stringify(detail));
+
+    if (consentRequestId) {
+      try {
+        const admin = createAdmin(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        );
+        await admin
+          .from('yapily_pending_consent_requests')
+          .update({
+            status: 'failed',
+            yapily_status: errorParam,
+            error_detail: detail,
+            resolved_at: new Date().toISOString(),
+            next_poll_at: null,
+          })
+          .eq('consent_request_id', consentRequestId);
+      } catch (persistErr) {
+        // Never let bookkeeping block the user's redirect — they still
+        // need to land somewhere with an error they can act on.
+        console.error('[yapily.callback] failed to persist error detail:', persistErr);
+      }
+    }
+
     return NextResponse.redirect(
-      new URL('/dashboard/money-hub?error=bank_auth_failed', request.url),
+      new URL(`/dashboard/money-hub?error=bank_auth_failed&reason=${encodeURIComponent(errorParam)}`, request.url),
     );
   }
 

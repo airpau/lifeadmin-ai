@@ -16,6 +16,8 @@ import {
   getHostedConsentRequest,
   deleteConsent,
   isHostedPagesEnabled,
+  classifyYapilyError,
+  isRetryableYapilyStatus,
 } from './yapily.ts';
 
 type FetchInput = Parameters<typeof fetch>[0];
@@ -376,6 +378,225 @@ describe('deleteConsent', () => {
     await assert.rejects(
       () => deleteConsent('consent-broken'),
       /boom|delete-consent error/,
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Error-class coverage (Yapily build review, test step 7)
+//
+// The build review asks for "at least one simulated example per error
+// class" and "coverage of all HTTP response codes". Before these tests
+// the suite exercised only 400, 404 and 500 — 401, 403, 409 and 429 had
+// no coverage at all, and the client had no differentiated behaviour for
+// them either.
+//
+// These tests pin down two things: the CLASSIFICATION (what kind of
+// problem is this) and the BEHAVIOUR (do we retry, and do we honour
+// Retry-After). The behavioural half matters most — an integration that
+// hammers a 429 is exactly what Yapily rate-limits applications for.
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Like mockFetch but returns a different status on the first N calls,
+ * then 200 — so we can prove the retry loop actually retries and
+ * eventually succeeds. Also counts calls.
+ */
+function mockFetchFailingThenOk(
+  failStatus: number,
+  failTimes: number,
+  okBody: unknown,
+  extraHeaders: Record<string, string> = {},
+): { fetch: typeof fetch; calls: () => number } {
+  let callCount = 0;
+  const f = (async (input: FetchInput, init?: FetchInit) => {
+    callCount++;
+    const url = typeof input === 'string' ? input : input.toString();
+    recorded.push({
+      url,
+      method: (init?.method as string) || 'GET',
+      headers: {},
+      body: undefined,
+    });
+    if (callCount <= failTimes) {
+      return new Response(
+        JSON.stringify({
+          error: { code: failStatus, status: 'Error', message: 'transient' },
+        }),
+        {
+          status: failStatus,
+          headers: { 'content-type': 'application/json', ...extraHeaders },
+        },
+      );
+    }
+    return new Response(JSON.stringify(okBody), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof fetch;
+  return { fetch: f, calls: () => callCount };
+}
+
+describe('classifyYapilyError', () => {
+  const cases: Array<[number, string]> = [
+    [400, 'bad_request'],
+    [422, 'bad_request'],
+    [401, 'auth'],
+    [403, 'consent'],
+    [404, 'not_found'],
+    [409, 'conflict'],
+    [429, 'rate_limit'],
+    [500, 'server'],
+    [503, 'server'],
+  ];
+
+  for (const [status, expected] of cases) {
+    it(`classifies ${status} as ${expected}`, () => {
+      const err = Object.assign(new Error('x'), { status });
+      assert.equal(classifyYapilyError(err), expected);
+    });
+  }
+
+  it('returns unknown for a non-HTTP error', () => {
+    assert.equal(classifyYapilyError(new Error('network down')), 'unknown');
+  });
+
+  it('marks only 429 and 5xx as retryable', () => {
+    assert.equal(isRetryableYapilyStatus(429), true);
+    assert.equal(isRetryableYapilyStatus(500), true);
+    assert.equal(isRetryableYapilyStatus(503), true);
+    assert.equal(isRetryableYapilyStatus(400), false);
+    assert.equal(isRetryableYapilyStatus(401), false);
+    assert.equal(isRetryableYapilyStatus(403), false);
+    assert.equal(isRetryableYapilyStatus(409), false);
+  });
+});
+
+describe('error handling per class', () => {
+  it('401: surfaces an auth error and attaches status + class', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = mockFetch(401, {
+      error: { code: 401, status: 'Unauthorized', message: 'invalid credentials' },
+    });
+
+    await assert.rejects(
+      () => getHostedConsentRequest('consent-req-401'),
+      (err: Error & { status?: number; errorClass?: string }) => {
+        assert.equal(err.status, 401);
+        assert.equal(err.errorClass, 'auth');
+        assert.match(err.message, /invalid credentials/);
+        return true;
+      },
+    );
+    // Never retried — a bad credential retried is a bad credential.
+    assert.equal(recorded.length, 1);
+  });
+
+  it('403: classified as a consent problem, not retried', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = mockFetch(403, {
+      error: { code: 403, status: 'Forbidden', message: 'insufficient_rights' },
+    });
+
+    await assert.rejects(
+      () => getHostedConsentRequest('consent-req-403'),
+      (err: Error & { status?: number; errorClass?: string }) => {
+        assert.equal(err.status, 403);
+        assert.equal(err.errorClass, 'consent');
+        return true;
+      },
+    );
+    assert.equal(recorded.length, 1);
+  });
+
+  it('409: classified as a conflict, not retried', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = mockFetch(409, {
+      error: { code: 409, status: 'Conflict', message: 'consent already exists' },
+    });
+
+    await assert.rejects(
+      () => getHostedConsentRequest('consent-req-409'),
+      (err: Error & { status?: number; errorClass?: string }) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.errorClass, 'conflict');
+        return true;
+      },
+    );
+    assert.equal(recorded.length, 1);
+  });
+
+  it('429: backs off and retries, then succeeds', async () => {
+    setEnvFor(() => {});
+    const m = mockFetchFailingThenOk(
+      429,
+      1,
+      { data: { consentRequestId: 'consent-req-429', status: 'AUTHORIZED' } },
+      // 0 seconds so the test doesn't actually sleep.
+      { 'Retry-After': '0' },
+    );
+    globalThis.fetch = m.fetch;
+
+    const result = await getHostedConsentRequest('consent-req-429');
+    assert.equal(result.consentRequestId, 'consent-req-429');
+    // One rejected call + one successful retry.
+    assert.equal(m.calls(), 2);
+  });
+
+  it('429: gives up after the retry budget and surfaces rate_limit', async () => {
+    setEnvFor(() => {});
+    // Fails more times than MAX_RETRIES allows.
+    const m = mockFetchFailingThenOk(429, 99, {}, { 'Retry-After': '0' });
+    globalThis.fetch = m.fetch;
+
+    await assert.rejects(
+      () => getHostedConsentRequest('consent-req-429-hard'),
+      (err: Error & { status?: number; errorClass?: string }) => {
+        assert.equal(err.status, 429);
+        assert.equal(err.errorClass, 'rate_limit');
+        return true;
+      },
+    );
+    // Initial attempt + MAX_RETRIES (2) = 3 total.
+    assert.equal(m.calls(), 3);
+  });
+
+  it('500: retries a transient server error and recovers', async () => {
+    setEnvFor(() => {});
+    const m = mockFetchFailingThenOk(500, 1, {
+      data: { consentRequestId: 'consent-req-500', status: 'AUTHORIZED' },
+    });
+    globalThis.fetch = m.fetch;
+
+    const result = await getHostedConsentRequest('consent-req-500');
+    assert.equal(result.consentRequestId, 'consent-req-500');
+    assert.equal(m.calls(), 2);
+  });
+
+  it('400: never retried — the request itself is the problem', async () => {
+    setEnvFor(() => {});
+    const m = mockFetchFailingThenOk(400, 99, {});
+    globalThis.fetch = m.fetch;
+
+    await assert.rejects(() => getHostedConsentRequest('consent-req-400'));
+    assert.equal(m.calls(), 1);
+  });
+
+  it('captures tracingId from the response header when the body has none', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = (async () =>
+      new Response('not json', {
+        status: 500,
+        headers: { 'Tracing-Id': 'trace-from-header-123' },
+      })) as typeof fetch;
+
+    await assert.rejects(
+      () => getHostedConsentRequest('consent-req-trace'),
+      (err: Error & { tracingId?: string }) => {
+        assert.equal(err.tracingId, 'trace-from-header-123');
+        assert.match(err.message, /trace-from-header-123/);
+        return true;
+      },
     );
   });
 });

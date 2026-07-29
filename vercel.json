@@ -66,7 +66,10 @@
     { "path": "/api/cron/weekly-newsletter",         "schedule": "0 11 * * 4" },
     { "path": "/api/cron/whatsapp-alert-coach",      "schedule": "0 9 * * 1" },
     { "path": "/api/cron/compute-send-time-prefs",   "schedule": "30 2 * * *" },
-    { "path": "/api/cron/whatsapp-queue-release",    "schedule": "0 * * * *" }
+    { "path": "/api/cron/whatsapp-queue-release",    "schedule": "0 * * * *" },
+    { "path": "/api/cron/ad-metrics",                "schedule": "0 7 * * *" },
+    { "path": "/api/cron/ad-strategist",             "schedule": "0 8 * * *" },
+    { "path": "/api/cron/yapily-consent-abandonment", "schedule": "* * * * *" }
   ]
 }
 

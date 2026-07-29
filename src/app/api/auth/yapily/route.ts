@@ -4,6 +4,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js';
 import {
   createAccountAuthorisation,
   createHostedConsentRequest,
+  getInstitutionFeatures,
   isHostedPagesEnabled,
 } from '@/lib/yapily';
 import { UPCOMING_FEATURE_SCOPES } from '@/lib/yapily/upcoming';
@@ -102,6 +103,41 @@ export async function GET(request: NextRequest) {
   ).toString('base64');
   const redirectWithState = `${callbackUrl}?state=${encodeURIComponent(state)}`;
 
+  // ── Scope intersection (Yapily build review step 10) ──
+  //
+  // Only request feature scopes the chosen institution actually
+  // advertises. Asking a bank for ACCOUNT_DIRECT_DEBITS when it doesn't
+  // support them can widen the consent screen the user sees for no
+  // benefit, and guarantees downstream 4xx traffic against Yapily.
+  //
+  // getInstitutions() is cached for an hour, so this costs no extra API
+  // call. Fail-open: an empty feature list means the lookup failed, and
+  // we fall back to the full scope set rather than silently requesting a
+  // narrower consent than the product needs.
+  let requestedScopes: readonly string[] = UPCOMING_FEATURE_SCOPES;
+  try {
+    const institutionFeatures = await getInstitutionFeatures(institutionId);
+    if (institutionFeatures.length > 0) {
+      const intersected = UPCOMING_FEATURE_SCOPES.filter((s) =>
+        institutionFeatures.includes(s),
+      );
+      if (intersected.length > 0) {
+        requestedScopes = intersected;
+        const dropped = UPCOMING_FEATURE_SCOPES.filter((s) => !intersected.includes(s));
+        if (dropped.length > 0) {
+          console.log(
+            `[yapily.auth] institution=${institutionId} does not advertise ${dropped.join(', ')} — requesting ${intersected.length}/${UPCOMING_FEATURE_SCOPES.length} scopes`,
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(
+      `[yapily.auth] feature lookup failed for institution=${institutionId}, requesting full scope set:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   try {
     if (isHostedPagesEnabled()) {
       // Hosted Pages flow (Migle's onboarding plan, 29 Apr 2026).
@@ -125,7 +161,7 @@ export async function GET(request: NextRequest) {
         institutionId,
         language: 'EN',
         location: 'GB',
-        featureScope: UPCOMING_FEATURE_SCOPES,
+        featureScope: requestedScopes,
       });
 
       // Track this in-flight request so the abandonment poller can
@@ -170,7 +206,7 @@ export async function GET(request: NextRequest) {
       institutionId,
       redirectWithState,
       user.id,
-      UPCOMING_FEATURE_SCOPES,
+      requestedScopes,
     );
     console.log(
       `Yapily auth (legacy): created authorisation for user=${user.id} institution=${institutionId}`
