@@ -83,13 +83,86 @@ function matchKey(raw: string): string {
   return (raw || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+// Minimum key length before a substring match is allowed.
+//
+// Bidirectional substring matching on short keys produces real
+// mis-targeting: "three".includes("ee") is true, so an alert for Three
+// would match an EE payment — and this page offers "edit amount" and
+// "remove" against whatever it matches. Four characters clears the short
+// UK provider names that collide (EE, O2, BT, Sky) while still allowing
+// the suffix-tolerant matching this exists for ("eonnext" vs
+// "eonnextltd").
+const MIN_SUBSTRING_MATCH_LEN = 4;
+
 // The Action Centre cleans merchant names with a different helper than this
-// page does, so match loosely in both directions rather than on equality.
+// page does, so match loosely — but only where loose matching is safe.
+//
+// Order of preference:
+//   1. Exact key equality, always allowed regardless of length.
+//   2. Substring in either direction, but ONLY when both keys are long
+//      enough that a coincidental collision is implausible.
 function isSameMerchant(payment: Payment, merchant: string): boolean {
   const target = matchKey(merchant);
   if (!target) return false;
-  const candidates = [matchKey(payment.provider_name), matchKey(cleanProviderName(payment.provider_name))];
-  return candidates.some(c => c.length > 0 && (c === target || c.includes(target) || target.includes(c)));
+  const candidates = [
+    matchKey(payment.provider_name),
+    matchKey(cleanProviderName(payment.provider_name)),
+  ].filter(c => c.length > 0);
+
+  // Exact match first — cheap, and the only safe option for short names.
+  if (candidates.some(c => c === target)) return true;
+
+  // Substring fallback, gated on length.
+  if (target.length < MIN_SUBSTRING_MATCH_LEN) return false;
+  return candidates.some(
+    c =>
+      c.length >= MIN_SUBSTRING_MATCH_LEN &&
+      (c.includes(target) || target.includes(c)),
+  );
+}
+
+/**
+ * Picks which payment an Action Centre alert is pointing at.
+ *
+ * Merchant name alone is not enough: this page deliberately keeps
+ * same-provider payments in separate amount bands (two mobile lines, two
+ * gym memberships), so matching on name only would highlight whichever
+ * row happens to come first and offer amount edits or removal against
+ * the wrong one. The CTA carries the post-rise amount, so use it to
+ * disambiguate and fall back to the name match only when nothing lines up.
+ */
+function findAlertedPayment(
+  payments: Payment[],
+  merchant: string,
+  newAmountRaw: string | null,
+): Payment | null {
+  const nameMatches = payments.filter(p => isSameMerchant(p, merchant));
+  if (nameMatches.length === 0) return null;
+  if (nameMatches.length === 1) return nameMatches[0];
+
+  const newAmount = newAmountRaw != null ? Number(newAmountRaw) : NaN;
+  if (Number.isFinite(newAmount)) {
+    // Exact-to-the-penny first, then nearest, so a small rounding
+    // difference between the alert and the stored amount still resolves
+    // to the right row instead of silently picking the first.
+    const exact = nameMatches.find(
+      p => Math.abs(Number(p.amount) - newAmount) < 0.005,
+    );
+    if (exact) return exact;
+
+    let nearest = nameMatches[0];
+    let nearestGap = Math.abs(Number(nameMatches[0].amount) - newAmount);
+    for (const p of nameMatches.slice(1)) {
+      const gap = Math.abs(Number(p.amount) - newAmount);
+      if (gap < nearestGap) {
+        nearest = p;
+        nearestGap = gap;
+      }
+    }
+    return nearest;
+  }
+
+  return nameMatches[0];
 }
 
 function daysSince(d: string | null): number | null {
@@ -379,9 +452,11 @@ export default function PaymentsPage() {
     setPayments(prev => prev.map(p => p.id === id ? { ...p, amount: newAmount } : p));
   };
 
-  // Resolve the merchant we were sent here for to an actual card.
+  // Resolve the merchant we were sent here for to an actual card, using
+  // the alert's post-rise amount to disambiguate when the user has more
+  // than one payment with the same provider.
   const highlightedPayment = focusMerchant
-    ? payments.find(p => isSameMerchant(p, focusMerchant)) ?? null
+    ? findAlertedPayment(payments, focusMerchant, focusTo)
     : null;
   const highlightedId = highlightedPayment?.id ?? null;
 
