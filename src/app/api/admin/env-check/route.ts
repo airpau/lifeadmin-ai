@@ -48,6 +48,12 @@ const REQUIRED_VARS = [
   "RESEND_API_KEY",
   "YAPILY_APPLICATION_UUID",
   "YAPILY_APPLICATION_SECRET",
+
+  // Yapily Hosted Pages flow gate (build review, 2026-07-29). Must be
+  // exactly "true" or the app silently falls back to the legacy
+  // /account-auth-requests flow. The route reports a 4-char prefix, and
+  // the prefix of "true" is the whole value — so this is a full readout.
+  "YAPILY_HOSTED_PAGES_ENABLED",
 ];
 
 function status(name: string): { present: boolean; length: number; prefix?: string } {
