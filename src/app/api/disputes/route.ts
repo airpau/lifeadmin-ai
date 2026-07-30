@@ -85,14 +85,20 @@ export async function POST(request: NextRequest) {
 
   const providerType = body.provider_type || detectProviderType(body.issue_type, normalisedName);
 
-  // Dedup: check if same user + same provider has an open dispute within 7 days
+  // Dedup: check if same user + same provider has a live dispute within 7 days.
+  // Mirrors ACTIVE_STATUSES in src/lib/dispute-helpers.ts — inlined because that
+  // module pulls in lucide-react, which shouldn't reach a server route bundle.
+  // Matching 'open' alone missed duplicates once a letter was saved and the
+  // dispute moved to 'awaiting_response'.
+  const LIVE_STATUSES = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { data: recentDup } = await supabase
     .from('disputes')
     .select('id, issue_summary')
     .eq('user_id', user.id)
     .eq('provider_name', normalisedName)
-    .eq('status', 'open')
+    .in('status', LIVE_STATUSES)
+    .is('archived_at', null)
     .gte('created_at', sevenDaysAgo)
     .order('created_at', { ascending: false })
     .limit(1)
