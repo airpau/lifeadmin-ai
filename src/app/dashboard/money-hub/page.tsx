@@ -123,6 +123,7 @@ export default function MoneyHubPage() {
  const [showBankPicker, setShowBankPicker] = useState(false);
  const [showFcaBanner, setShowFcaBanner] = useState(false);
  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+ const [connectError, setConnectError] = useState<string | null>(null);
  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
  // Expected bills
@@ -413,6 +414,44 @@ export default function MoneyHubPage() {
  refreshData();
  fetchExpectedBills();
  }
+ }, [searchParams]);
+
+ // Handle ?error=<code> redirects from the Yapily consent callback.
+ // The callback captures, logs and persists every failure, but until
+ // now nothing rendered it — the user landed here with a dirty URL and
+ // no explanation. Codes are emitted by src/app/api/yapily/callback.
+ useEffect(() => {
+ const code = searchParams.get('error');
+ if (!code) return;
+ const reason = searchParams.get('reason');
+ const messages: Record<string, string> = {
+ bank_auth_failed: 'We couldn\u2019t complete the bank connection. No data was shared \u2014 you can try again.',
+ access_denied: 'You cancelled the authorisation at your bank. Nothing was shared \u2014 you can try again whenever you\u2019re ready.',
+ invalid_callback: 'Your bank sent back an incomplete response, so we couldn\u2019t finish connecting. Please try again.',
+ state_mismatch: 'That connection link had expired, so we stopped for your security. Please start the connection again.',
+ hosted_consent_rejected: 'Your bank declined the connection request. No data was shared \u2014 you can try again or pick a different account.',
+ hosted_consent_revoked: 'That consent was revoked before we could finish. Please connect again.',
+ hosted_consent_expired: 'The consent expired before it was approved. Please connect again \u2014 it only takes a moment.',
+ hosted_consent_failed: 'Your bank couldn\u2019t complete the connection. This is usually temporary \u2014 please try again.',
+ hosted_consent_token_missing: 'Your bank approved the connection but didn\u2019t return an access token. Please try again.',
+ hosted_consent_id_missing: 'Your bank approved the connection but didn\u2019t return a consent reference. Please try again.',
+ hosted_consent_fetch_failed: 'We couldn\u2019t confirm the connection with your bank. Please try again in a moment.',
+ account_fetch_failed: 'We connected to your bank but couldn\u2019t read your accounts. Please try again in a moment.',
+ no_accounts: 'Your bank didn\u2019t return any accounts for that consent. Try again and make sure at least one account is selected.',
+ no_usable_accounts: 'None of the accounts your bank returned can be used for transaction data. Try again and select a current account.',
+ save_failed: 'We connected to your bank but couldn\u2019t save the connection. Please try again \u2014 nothing was charged or shared.',
+ };
+ const fallback = 'Something went wrong connecting your bank. Your data is safe \u2014 please try again.';
+ // `bank_auth_failed` carries the upstream reason; prefer its message
+ // when we recognise it (e.g. the user cancelled at the bank).
+ const resolved =
+ (reason && messages[reason]) || messages[code] || fallback;
+ setConnectError(resolved);
+ // Strip the error params so a refresh doesn't re-raise the banner.
+ const url = new URL(window.location.href);
+ url.searchParams.delete('error');
+ url.searchParams.delete('reason');
+ window.history.replaceState({}, '', url.toString());
  }, [searchParams]);
 
  useEffect(() => {
@@ -869,6 +908,25 @@ export default function MoneyHubPage() {
  )}
 
  <PlanLimitsBanner />
+
+ {/* Bank connection failure — surfaced from the Yapily consent callback */}
+ {connectError && (
+ <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 flex items-start gap-3">
+ <div className="flex-1">
+ <p className="text-sm font-semibold text-red-900">Connection didn&rsquo;t complete</p>
+ <p className="text-sm text-red-800 mt-0.5">{connectError}</p>
+ <button
+ onClick={() => { setConnectError(null); setShowBankPicker(true); }}
+ className="mt-2 text-sm font-semibold text-red-900 underline hover:opacity-80"
+ >
+ Try connecting again
+ </button>
+ </div>
+ <button onClick={() => setConnectError(null)} aria-label="Dismiss" className="text-red-700 hover:opacity-70">
+ <X className="h-4 w-4" />
+ </button>
+ </div>
+ )}
 
  {/* HEADER */}
  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
