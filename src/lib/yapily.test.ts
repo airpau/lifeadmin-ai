@@ -18,6 +18,7 @@ import {
   isHostedPagesEnabled,
   classifyYapilyError,
   isRetryableYapilyStatus,
+  getAllTransactions,
 } from './yapily.ts';
 
 type FetchInput = Parameters<typeof fetch>[0];
@@ -598,5 +599,230 @@ describe('error handling per class', () => {
         return true;
       },
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Build review step 11 — transaction pagination
+//
+// These cover the walk in getAllTransactions: the `from` / `before`
+// window, the timestamp cursor, and the offset continuation that takes
+// over when a full page shares a single timestamp (the date-only
+// precision case common to UK banks, and the exact truncation class
+// behind the 2026-05-15 zero-transaction incident).
+// ─────────────────────────────────────────────────────────────────────
+
+/** Queue a series of page responses, one per sequential fetch call. */
+function mockPagedFetch(pages: Array<{ status?: number; body: unknown }>): typeof fetch {
+  let i = 0;
+  return (async (input: FetchInput, init?: FetchInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    recorded.push({
+      url,
+      method: (init?.method as string) || 'GET',
+      headers: (init?.headers as Record<string, string>) ?? {},
+      body: undefined,
+    });
+    const page = pages[Math.min(i, pages.length - 1)];
+    i++;
+    return new Response(JSON.stringify(page.body), {
+      status: page.status ?? 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof fetch;
+}
+
+const tx = (id: string, dt: string) => ({ id, bookingDateTime: dt, date: dt });
+
+describe('getAllTransactions — windowing (step 11)', () => {
+  it('sends from and before as the time-range parameters', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = mockPagedFetch([{ body: { data: [] } }]);
+
+    await getAllTransactions('acc-1', 'consent-token', {
+      from: '2026-05-01T00:00:00Z',
+      before: '2026-08-01T00:00:00Z',
+    });
+
+    const url = new URL(recorded[0].url);
+    assert.equal(url.searchParams.get('from'), '2026-05-01T00:00:00Z');
+    assert.equal(url.searchParams.get('before'), '2026-08-01T00:00:00Z');
+    assert.equal(recorded[0].headers.consent, 'consent-token');
+  });
+
+  it('mirrors the legacy `to` alias onto `before`', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = mockPagedFetch([{ body: { data: [] } }]);
+
+    await getAllTransactions('acc-1', 'consent-token', { to: '2026-08-01T00:00:00Z' });
+
+    assert.equal(new URL(recorded[0].url).searchParams.get('before'), '2026-08-01T00:00:00Z');
+  });
+
+  it('does not send an offset param on the default timestamp cursor', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = mockPagedFetch([
+      { body: { data: [tx('a', '2026-07-10T00:00:00Z')] } },
+    ]);
+
+    await getAllTransactions('acc-1', 'consent-token', { limit: 2 });
+
+    assert.equal(new URL(recorded[0].url).searchParams.get('offset'), null);
+  });
+});
+
+describe('getAllTransactions — timestamp cursor (step 11)', () => {
+  it('walks `before` backwards and stops when a short page arrives', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = mockPagedFetch([
+      {
+        body: {
+          data: [tx('a', '2026-07-10T00:00:00Z'), tx('b', '2026-07-09T00:00:00Z')],
+          meta: { pagination: { self: { limit: 2, offset: 0 }, next: { limit: 2, offset: 2 } } },
+        },
+      },
+      { body: { data: [tx('c', '2026-07-08T00:00:00Z')], meta: { pagination: { self: { limit: 2, offset: 2 } } } } },
+    ]);
+
+    const out = await getAllTransactions('acc-1', 'consent-token', { limit: 2 });
+
+    assert.equal(recorded.length, 2);
+    // Second page continues strictly older than the earliest row of page 1.
+    assert.equal(new URL(recorded[1].url).searchParams.get('before'), '2026-07-09T00:00:00Z');
+    assert.deepEqual(out.map((t) => t.id), ['a', 'b', 'c']);
+  });
+
+  it('de-duplicates a row repeated at the cursor boundary', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = mockPagedFetch([
+      {
+        body: {
+          data: [tx('a', '2026-07-10T00:00:00Z'), tx('b', '2026-07-09T00:00:00Z')],
+          meta: { pagination: { self: { limit: 2, offset: 0 }, next: { limit: 2, offset: 2 } } },
+        },
+      },
+      // Yapily re-includes `b` at the boundary.
+      { body: { data: [tx('b', '2026-07-09T00:00:00Z')], meta: { pagination: { self: { limit: 2, offset: 2 } } } } },
+    ]);
+
+    const out = await getAllTransactions('acc-1', 'consent-token', { limit: 2 });
+
+    assert.deepEqual(out.map((t) => t.id), ['a', 'b']);
+  });
+
+  it('stops once the page is entirely older than `from`', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = mockPagedFetch([
+      {
+        body: {
+          data: [tx('a', '2026-07-10T00:00:00Z'), tx('b', '2026-05-01T00:00:00Z')],
+          meta: { pagination: { self: { limit: 2, offset: 0 }, next: { limit: 2, offset: 2 } } },
+        },
+      },
+      { body: { data: [tx('z', '2026-01-01T00:00:00Z')] } },
+    ]);
+
+    const out = await getAllTransactions('acc-1', 'consent-token', {
+      from: '2026-06-01T00:00:00Z',
+      limit: 2,
+    });
+
+    assert.equal(recorded.length, 1, 'should not request a page entirely below `from`');
+    assert.deepEqual(out.map((t) => t.id), ['a', 'b']);
+  });
+
+  it('honours the server-applied page size over the requested limit', async () => {
+    setEnvFor(() => {});
+    globalThis.fetch = mockPagedFetch([
+      {
+        body: {
+          // Asked for 1000, Yapily clamped to 2. A `data.length < requested`
+          // stop condition would have ended the walk here.
+          data: [tx('a', '2026-07-10T00:00:00Z'), tx('b', '2026-07-09T00:00:00Z')],
+          meta: { pagination: { self: { limit: 2, offset: 0 }, next: { limit: 2, offset: 2 } } },
+        },
+      },
+      { body: { data: [tx('c', '2026-07-08T00:00:00Z')], meta: { pagination: { self: { limit: 2, offset: 2 } } } } },
+    ]);
+
+    const out = await getAllTransactions('acc-1', 'consent-token');
+
+    assert.equal(recorded.length, 2, 'clamped page size must not stop the walk');
+    assert.deepEqual(out.map((t) => t.id), ['a', 'b', 'c']);
+  });
+});
+
+describe('getAllTransactions — offset continuation (step 11)', () => {
+  it('follows next.offset when a full page shares one timestamp', async () => {
+    setEnvFor(() => {});
+    const sameDay = '2026-07-10T00:00:00Z';
+    globalThis.fetch = mockPagedFetch([
+      {
+        body: {
+          data: [tx('a', sameDay), tx('b', sameDay)],
+          meta: { pagination: { self: { limit: 2, offset: 0 }, next: { limit: 2, offset: 2 } } },
+        },
+      },
+      {
+        body: {
+          data: [tx('c', sameDay), tx('d', sameDay)],
+          meta: { pagination: { self: { limit: 2, offset: 2 }, next: { limit: 2, offset: 4 } } },
+        },
+      },
+      { body: { data: [tx('e', '2026-07-09T00:00:00Z')], meta: { pagination: { self: { limit: 2, offset: 4 } } } } },
+    ]);
+
+    const out = await getAllTransactions('acc-1', 'consent-token', { limit: 2 });
+
+    assert.equal(new URL(recorded[1].url).searchParams.get('offset'), '2');
+    assert.equal(new URL(recorded[2].url).searchParams.get('offset'), '4');
+    assert.deepEqual(
+      out.map((t) => t.id),
+      ['a', 'b', 'c', 'd', 'e'],
+      'rows behind the shared timestamp must not be dropped',
+    );
+  });
+
+  it('stops when the offset does not advance', async () => {
+    setEnvFor(() => {});
+    const sameDay = '2026-07-10T00:00:00Z';
+    globalThis.fetch = mockPagedFetch([
+      {
+        body: {
+          data: [tx('a', sameDay), tx('b', sameDay)],
+          meta: { pagination: { self: { limit: 2, offset: 0 }, next: { limit: 2, offset: 2 } } },
+        },
+      },
+      {
+        body: {
+          // Same offset echoed back — must not loop forever.
+          data: [tx('c', sameDay), tx('d', sameDay)],
+          meta: { pagination: { self: { limit: 2, offset: 2 }, next: { limit: 2, offset: 2 } } },
+        },
+      },
+    ]);
+
+    const out = await getAllTransactions('acc-1', 'consent-token', { limit: 2 });
+
+    assert.equal(recorded.length, 2);
+    assert.deepEqual(out.map((t) => t.id), ['a', 'b', 'c', 'd']);
+  });
+
+  it('stops safely when a shared-timestamp page has no next.offset', async () => {
+    setEnvFor(() => {});
+    const sameDay = '2026-07-10T00:00:00Z';
+    globalThis.fetch = mockPagedFetch([
+      {
+        body: {
+          data: [tx('a', sameDay), tx('b', sameDay)],
+          meta: { pagination: { self: { limit: 2, offset: 0 } } },
+        },
+      },
+    ]);
+
+    const out = await getAllTransactions('acc-1', 'consent-token', { limit: 2 });
+
+    assert.equal(recorded.length, 1);
+    assert.deepEqual(out.map((t) => t.id), ['a', 'b']);
   });
 });

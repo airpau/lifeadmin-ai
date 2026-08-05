@@ -359,6 +359,10 @@ export interface GetTransactionsOptions {
   to?: string;
   /** Page size. Defaults to 1000 (Yapily's documented max). */
   limit?: number;
+  /** Offset-based cursor, taken from `meta.pagination.next.offset`.
+   * Used by `getAllTransactions` to continue past a page whose rows
+   * all share one timestamp, where the `before` cursor cannot advance. */
+  offset?: number;
 }
 
 export interface GetTransactionsPageResult {
@@ -401,6 +405,12 @@ export async function getTransactionsPage(
   if (upperBound) params.set('before', upperBound);
   const limit = opts.limit ?? 1000;
   params.set('limit', String(limit));
+  // Offset continuation. Only set when the caller is explicitly walking
+  // Yapily's `next.offset` — the default cursor strategy stays
+  // timestamp-based so existing call sites are unaffected.
+  if (typeof opts.offset === 'number' && opts.offset > 0) {
+    params.set('offset', String(opts.offset));
+  }
 
   const queryString = params.toString();
   const path = `/accounts/${accountId}/transactions${queryString ? `?${queryString}` : ''}`;
@@ -411,7 +421,9 @@ export async function getTransactionsPage(
 
   const data = response.data || [];
   console.log(
-    `[yapily.getTransactionsPage] account=${accountId} from=${opts.from ?? ''} before=${upperBound ?? ''} limit=${limit} returned=${data.length}` +
+    `[yapily.getTransactionsPage] account=${accountId} from=${opts.from ?? ''} before=${upperBound ?? ''} limit=${limit}` +
+      (typeof opts.offset === 'number' ? ` offset=${opts.offset}` : '') +
+      ` returned=${data.length}` +
       (response.meta?.pagination
         ? ` pagination=${JSON.stringify(response.meta.pagination)}`
         : ''),
@@ -446,6 +458,11 @@ export async function getAllTransactions(
   const seen = new Set<string>();
   const collected: YapilyTransaction[] = [];
   let before: string | undefined = opts.before ?? opts.to;
+  // Offset-continuation state. We stay on the timestamp cursor by
+  // default and only switch to offset paging when the `before` cursor
+  // provably cannot advance (a full page sharing one timestamp).
+  let offset: number | undefined;
+  let offsetMode = false;
 
   // `from` is compared numerically, not lexicographically. The old
   // string compare was only correct while every institution returned
@@ -457,6 +474,7 @@ export async function getAllTransactions(
       from: opts.from,
       before,
       limit: pageLimit,
+      offset,
     });
 
     if (data.length === 0) break;
@@ -497,10 +515,40 @@ export async function getAllTransactions(
     // page past it, so stop and say so loudly rather than losing rows
     // silently.
     if (sameTimestampCount >= data.length && data.length >= effectiveLimit) {
+      // Build review step 11: the `before` cursor is exclusive, so a full
+      // page sharing a single timestamp leaves us nowhere to advance to —
+      // any rows at that timestamp which spilled onto the next page would
+      // be lost. Yapily's `next.offset` is the escape hatch: continue by
+      // offset within the same window instead of bailing. Dedup on
+      // (id, date) already absorbs any overlap between the two strategies.
+      const nextOffset = meta?.pagination?.next?.offset;
+      if (typeof nextOffset === 'number' && (offset === undefined || nextOffset > offset)) {
+        if (!offsetMode) {
+          console.log(
+            `[yapily.getAllTransactions] account=${accountId} full page shares one timestamp (${earliest}) — switching to offset pagination at offset=${nextOffset}`,
+          );
+        }
+        offsetMode = true;
+        offset = nextOffset;
+        continue;
+      }
       console.warn(
-        `[yapily.getAllTransactions] account=${accountId} full page shares one timestamp (${earliest}) — stopping to avoid silent truncation; ${collected.length} collected`,
+        `[yapily.getAllTransactions] account=${accountId} full page shares one timestamp (${earliest}) and Yapily returned no usable next.offset — stopping to avoid silent truncation; ${collected.length} collected`,
       );
       break;
+    }
+
+    // While walking by offset, keep following `next.offset` and leave the
+    // timestamp cursor frozen — mixing the two would skip rows.
+    if (offsetMode) {
+      const nextOffset = meta?.pagination?.next?.offset;
+      if (typeof nextOffset !== 'number' || (offset !== undefined && nextOffset <= offset)) break;
+      if (fromMs !== null) {
+        const earliestMs = Date.parse(earliest);
+        if (!Number.isNaN(earliestMs) && earliestMs <= fromMs) break;
+      }
+      offset = nextOffset;
+      continue;
     }
 
     // Yapily's `before` is EXCLUSIVE — passing the earliest tx
