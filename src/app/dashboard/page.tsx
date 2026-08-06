@@ -313,7 +313,7 @@ export default function DashboardPage() {
 
         const [profile, subs, tasks, banks, userTasks] = await Promise.all([
           supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at').eq('id', user.id).maybeSingle(),
-          supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
+          supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status, archived_at')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('disputes').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),

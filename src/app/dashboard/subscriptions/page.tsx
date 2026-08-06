@@ -469,14 +469,8 @@ export default function SubscriptionsPage() {
   // Deduplicate by normalised name + amount band (e.g. "LBH" and "L.B.Hounslow"
   // collapse to one, but two separate council-tax DDs at different amounts stay
   // as distinct entries).
-  const baseSubscriptions = (() => {
-    // Apply archived filter first — rows the bot sent to
-    // archive_subscription have archived_at set; default view
-    // hides them.
-    const archiveFiltered = subscriptions.filter((s) =>
-      archivedFilter === 'archived' ? !!s.archived_at : !s.archived_at,
-    );
-    const filtered = archiveFiltered.filter(s => !isFinancePayment(s.provider_name));
+  const stripFinanceAndDedupe = (rows: Subscription[]) => {
+    const filtered = rows.filter(s => !isFinancePayment(s.provider_name));
     const seen = new Map<string, boolean>();
     return filtered.filter(s => {
       const normName = cleanMerchantName(s.provider_name).toLowerCase();
@@ -486,8 +480,21 @@ export default function SubscriptionsPage() {
       seen.set(key, true);
       return true;
     });
-  })();
-  const archivedSubsCount = subscriptions.filter((s) => !!s.archived_at).length;
+  };
+
+  // Apply the archived filter first — rows the bot sent to
+  // archive_subscription have archived_at set; default view hides them.
+  const baseSubscriptions = stripFinanceAndDedupe(
+    subscriptions.filter((s) => (archivedFilter === 'archived' ? !!s.archived_at : !s.archived_at)),
+  );
+  // Tab counts run through the same pipeline as the cards below, so
+  // "Active (N)" is the number of rows the user actually sees rather than
+  // a raw row count that includes finance rows and duplicates.
+  const unarchivedSubsCount = stripFinanceAndDedupe(subscriptions.filter((s) => !s.archived_at)).length;
+  const archivedSubsCount = stripFinanceAndDedupe(subscriptions.filter((s) => !!s.archived_at)).length;
+  // Single source of truth for "how many active subscriptions" on this page —
+  // the same helper Dashboard Overview and Money Hub use, so all three agree.
+  const activeSubscriptionCount = countActiveSubscriptions(subscriptions);
   const hiddenFinanceCount = subscriptions.filter(s => s.status === 'active' && isFinancePayment(s.provider_name)).length;
 
   const displaySubscriptions = (() => {
@@ -1706,10 +1713,10 @@ export default function SubscriptionsPage() {
       )}
 
       {/* Upgrade trigger: bank scan found subscriptions — only once tier is confirmed free */}
-      {tierLoaded && userTier === 'free' && bankConnections.length > 0 && baseSubscriptions.filter(s => s.status === 'active').length > 0 && (
+      {tierLoaded && userTier === 'free' && bankConnections.length > 0 && activeSubscriptionCount > 0 && (
         <UpgradeTrigger
           type="bank_scan"
-          subscriptionCount={rpcTotals?.subscriptions_count ?? baseSubscriptions.filter(s => s.status === 'active').length}
+          subscriptionCount={activeSubscriptionCount}
           monthlyCost={rpcTotals?.subscriptions_monthly ?? (flexibleTotalMonthly + statutoryTotalMonthly)}
           userTier={userTier ?? undefined}
           className="mb-6"
@@ -1766,7 +1773,7 @@ export default function SubscriptionsPage() {
       )}
 
       {/* Empty state: no contract end dates set */}
-      {!hasAnyContractEndDate && baseSubscriptions.filter(s => s.status === 'active').length > 0 && (
+      {!hasAnyContractEndDate && activeSubscriptionCount > 0 && (
         <div className="bg-blue-500/5 rounded-2xl p-6 text-center border border-blue-500/20 mb-6">
           <CalendarClock className="h-10 w-10 text-blue-400 mx-auto mb-3 opacity-80" />
           <h3 className="font-semibold text-slate-900 text-lg">Never miss a contract end date</h3>
@@ -1855,7 +1862,7 @@ export default function SubscriptionsPage() {
         const monthly = rpcTotals?.subscriptions_monthly ?? 0;
         const yearly = monthly * 12;
         const flaggedCount = (detectedSubs?.length || 0) + subscriptions.filter(s => (s as any).needs_review).length;
-        const activeCount = rpcTotals?.subscriptions_count ?? baseSubscriptions.filter(s => s.status === 'active').length;
+        const activeCount = activeSubscriptionCount;
         return (
           <>
             <div className="page-title-row">
@@ -2080,7 +2087,7 @@ export default function SubscriptionsPage() {
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
             <p className="text-slate-600 text-xs mb-1">Subscriptions & Bills</p>
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.subscriptions_monthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-            <p className="text-slate-500 text-xs mt-1">{countActiveSubscriptions(subscriptions)} active</p>
+            <p className="text-slate-500 text-xs mt-1">{activeSubscriptionCount} active</p>
           </div>
 
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
@@ -2098,7 +2105,7 @@ export default function SubscriptionsPage() {
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
             <p className="text-slate-600 text-xs mb-1">Total All Commitments</p>
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.monthly_total)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-            <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {countActiveSubscriptions(subscriptions) + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
+            <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {activeSubscriptionCount + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
           </div>
         </div>
       )}
@@ -2116,7 +2123,7 @@ export default function SubscriptionsPage() {
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            Active ({subscriptions.length - archivedSubsCount})
+            Active ({unarchivedSubsCount})
           </button>
           <button
             onClick={() => setArchivedFilter('archived')}

@@ -6,7 +6,10 @@
 // numbers for the same thing.
 //
 // Rules:
-//  - Only active, non-dismissed rows
+//  - Only active, non-dismissed, non-archived rows. Archived rows (the bot's
+//    archive_subscription tool sets archived_at) are hidden from every default
+//    list, so counting them made the headline number disagree with the cards
+//    actually on screen.
 //  - Exclude finance-category rows (mortgage / loan / credit card) — those
 //    are liabilities, tracked separately on Money Hub
 //  - Dedupe by normalised provider name + log-amount band so a Netflix row
@@ -19,6 +22,7 @@ export interface ActiveSubscriptionLike {
   amount?: number | string | null;
   status?: string | null;
   dismissed_at?: string | null;
+  archived_at?: string | null;
   category?: string | null;
 }
 
@@ -76,7 +80,11 @@ function amountBand(raw: number | string | null | undefined): number {
  */
 export function filterActiveSubscriptions<T extends ActiveSubscriptionLike>(subs: T[]): T[] {
   const active = subs.filter(
-    (s) => (s.status || 'active') === 'active' && !s.dismissed_at && !isFinanceProvider(s.provider_name),
+    (s) =>
+      (s.status || 'active') === 'active' &&
+      !s.dismissed_at &&
+      !s.archived_at &&
+      !isFinanceProvider(s.provider_name),
   );
 
   const seen = new Map<string, boolean>();
