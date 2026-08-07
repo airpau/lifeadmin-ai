@@ -39,6 +39,37 @@ async function lookupTelegramUserId(supabase: any, chatId: number): Promise<stri
   return (data as { user_id?: string } | null)?.user_id ?? null;
 }
 
+/**
+ * Statuses that mean a dispute is still live. Mirrors ACTIVE_STATUSES in
+ * src/lib/dispute-helpers.ts — inlined because that module pulls in
+ * lucide-react, which shouldn't reach the bot bundle.
+ */
+const LIVE_DISPUTE_STATUSES = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
+
+/**
+ * Find a live dispute the user already raised against this provider in the
+ * last 7 days. Both Telegram letter flows can fire more than once for the
+ * same provider — the user can ask for a second letter, and each new
+ * price-increase alert gets its own button — so without this the disputes
+ * centre fills with duplicates. Mirrors the 7-day guard on POST /api/disputes.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function findRecentDuplicateDispute(supabase: any, userId: string, providerName: string) {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from('disputes')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('provider_name', providerName)
+    .in('status', LIVE_DISPUTE_STATUSES)
+    .is('archived_at', null)
+    .gte('created_at', sevenDaysAgo)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as { id?: string } | null)?.id ?? null;
+}
+
 // ============================================================
 // Supabase admin client
 // ============================================================
@@ -684,19 +715,28 @@ export function createUserBot(): Bot<UserBotContext> {
       letter_text: string;
     };
 
-    // Save dispute
-    const { data: dispute } = await supabase
-      .from('disputes')
-      .insert({
-        user_id: pending.user_id,
-        provider_name: payload.provider,
-        issue_type: payload.issue_type ?? 'complaint',
-        issue_summary: payload.issue_description,
-        desired_outcome: payload.desired_outcome,
-        status: 'open',
-      })
-      .select('id')
-      .single();
+    // Save dispute — reusing a live one for the same provider rather than
+    // inserting a near-duplicate. The letter is already generated and paid
+    // for by this point, so we attach it to the existing dispute below
+    // instead of discarding the user's approved draft.
+    const duplicateId = await findRecentDuplicateDispute(supabase, pending.user_id, payload.provider);
+
+    const dispute = duplicateId
+      ? { id: duplicateId }
+      : (
+          await supabase
+            .from('disputes')
+            .insert({
+              user_id: pending.user_id,
+              provider_name: payload.provider,
+              issue_type: payload.issue_type ?? 'complaint',
+              issue_summary: payload.issue_description,
+              desired_outcome: payload.desired_outcome,
+              status: 'open',
+            })
+            .select('id')
+            .single()
+        ).data;
 
     // Save correspondence
     if (dispute?.id) {
@@ -746,7 +786,9 @@ export function createUserBot(): Bot<UserBotContext> {
       chatId,
       msgId,
       `✅ *Letter saved!*\n\n` +
-        `Your complaint to ${payload.provider} has been saved to your Disputes dashboard.\n\n` +
+        (duplicateId
+          ? `You already had an open ${payload.provider} dispute from the last 7 days, so I've added this letter to it rather than starting a duplicate.\n\n`
+          : `Your complaint to ${payload.provider} has been saved to your Disputes dashboard.\n\n`) +
         `I'll remind you in 14 days if you haven't had a response — you can then escalate to the relevant regulator or ombudsman.`,
     );
     // Send full letter inline so the user can copy and send it directly
@@ -939,6 +981,29 @@ export function createUserBot(): Bot<UserBotContext> {
           } else if (/\bbt\b|virgin media|sky\b|talktalk|vodafone|plusnet|\bee\b|now broadband|zen internet|hyperoptic|community fibre/.test(name)) {
             letterType = 'broadband_complaint';
           }
+        }
+      }
+
+      // Dedup: each price-increase alert gets its own button, so the same
+      // provider can offer this action several times in a week. Checked
+      // before the Anthropic call so a repeat tap costs nothing. Skipped
+      // when the provider is still the 'Provider' placeholder — that would
+      // collapse unrelated disputes that merely failed to resolve a name.
+      if (providerName !== 'Provider') {
+        const duplicateId = await findRecentDuplicateDispute(supabase, issue.user_id, providerName);
+        if (duplicateId) {
+          await supabase
+            .from('detected_issues')
+            .update({ status: 'actioned', actioned_at: new Date().toISOString() })
+            .eq('id', issueId);
+          await safeEdit(
+            bot.api,
+            chatId,
+            msgId,
+            `You already have an open ${providerName} dispute from the last 7 days, so I haven't created a duplicate.\n\n` +
+              `View it: https://paybacker.co.uk/dashboard/disputes?dispute=${duplicateId}`,
+          );
+          return;
         }
       }
 
