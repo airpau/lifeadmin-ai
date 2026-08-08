@@ -54,6 +54,7 @@ const MERCHANT_MAP: Record<string, string> = {
   'netflix': 'Netflix',
   'spotify': 'Spotify',
   'disney plus': 'Disney+',
+  'disneyplus': 'Disney+',
   'disney+': 'Disney+',
   'amazon prime': 'Amazon Prime',
   'apple': 'Apple',
@@ -73,6 +74,7 @@ const MERCHANT_MAP: Record<string, string> = {
   'fitness first': 'Fitness First',
   'nuffield': 'Nuffield Health',
   'anytime fitness': 'Anytime Fitness',
+  'energie fi': 'énergie Fitness',
   'whoop': 'WHOOP',
   'peloton': 'Peloton',
   'strava': 'Strava',
@@ -110,6 +112,7 @@ const MERCHANT_MAP: Record<string, string> = {
   'nando': 'Nando\'s',
 
   // Finance
+  'b/card plat': 'Barclaycard Platinum Visa',
   'barclaycard': 'Barclaycard',
   'mbna': 'MBNA',
   'halifax': 'Halifax',
@@ -142,6 +145,7 @@ const MERCHANT_MAP: Record<string, string> = {
 
   // Shopping
   'amazon': 'Amazon',
+  'amzn': 'Amazon',
   'ebay': 'eBay',
   'asos': 'ASOS',
   'argos': 'Argos',
@@ -228,6 +232,12 @@ export function normaliseMerchantName(raw: string): string {
 
   // Remove debit indicator "D " at start
   cleaned = cleaned.replace(/^D\s+/, '');
+
+  // Detect banking references BEFORE the reference-number strips below.
+  // "A/C 12345678" would otherwise lose its digits to the trailing-reference
+  // strip and fall through as the meaningless label "A/C".
+  const earlyBankingRef = detectBankingReference(cleaned.trim());
+  if (earlyBankingRef) return earlyBankingRef;
 
   // Remove prefixes like "PAYPAL *", "AMZN MKTP"
   cleaned = cleaned.replace(STRIP_PREFIXES, '');
