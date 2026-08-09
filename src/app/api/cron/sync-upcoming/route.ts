@@ -470,9 +470,13 @@ export async function GET(request: NextRequest) {
     const { error: logErr } = await supabase
       .from('business_log')
       .insert({
-        event_type: 'upcoming_payments_sync',
-        details: summary,
-        severity: summary.otherFailures > 0 ? 'warning' : 'info',
+        // business_log columns are category/title/content/created_by — the
+        // previous event_type/details/severity trio matched no column, so
+        // every run of this cron silently failed to log.
+        category: 'upcoming_payments_sync',
+        title: `Upcoming payments sync (${summary.otherFailures > 0 ? 'warning' : 'info'})`,
+        content: JSON.stringify(summary),
+        created_by: 'cron/sync-upcoming',
       });
     if (logErr) {
       console.error('[sync-upcoming] business_log insert failed:', logErr.message);

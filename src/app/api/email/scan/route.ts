@@ -323,10 +323,9 @@ IMPORTANT:
               status: 'active',
               source: 'imap_scan',
               category: o.category || 'other',
-              next_payment_date: o.nextPaymentDate || null,
+              next_billing_date: o.nextPaymentDate || null,
               contract_end_date: o.contractEndDate || null,
-              notes: o.description,
-              detected_at: new Date().toISOString()
+              notes: o.description
             }))
           ).then(({ error: e }) => { if (e) console.error('[email/scan] subscriptions insert error:', e.message); });
         }

@@ -385,7 +385,6 @@ export async function POST(request: NextRequest) {
               next_billing_date: o.nextPaymentDate || null,
               contract_end_date: o.contractEndDate || null,
               notes: o.description,
-              detected_at: new Date().toISOString(),
               recurring_group: key,
             }));
 
@@ -402,7 +401,7 @@ export async function POST(request: NextRequest) {
           await admin.from('money_hub_alerts').insert(
             alerts.map((o: any) => ({
               user_id: user.id,
-              type: o.type,
+              alert_type: o.type,
               title: o.title,
               description: o.description,
               value_gbp: o.amount || 0,
