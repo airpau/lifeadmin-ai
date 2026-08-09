@@ -91,6 +91,10 @@ interface CanaryResult {
   scenarios_run: number;
   passed: number;
   failed: number;
+  /** Categories whose scenario generation threw (e.g. Anthropic rate-limit). */
+  generation_errors: number;
+  /** True when the run did not complete full coverage, for any reason. */
+  incomplete: boolean;
   failures: Array<{
     category: string;
     scenario: string;
@@ -219,15 +223,28 @@ export async function GET(request: NextRequest) {
     return !!refs && refs.length > 0;
   });
 
+  let generationErrors = 0;
   const scenarioSets = await Promise.all(
     activeCategories.map(async (cat) => {
       try {
         return { cat, scenarios: await generateCanaryScenarios(cat, byCategory.get(cat)!) };
       } catch (e) {
-        console.warn(
-          `[citation-canary] scenario generation failed for category=${cat}`,
-          e instanceof Error ? e.message : e,
-        );
+        // Do NOT swallow this into an empty scenario set. If every category
+        // rejected (the concurrent burst below makes rate-limiting a real
+        // possibility) the queue would be empty, failed would be 0, and the
+        // canary would report "OK - 0/0" while testing nothing. A trip-wire
+        // that reports success when it could not run is worse than no
+        // trip-wire, so a generation error is an explicit failure.
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[citation-canary] scenario generation failed for category=${cat}`, msg);
+        generationErrors += 1;
+        failures.push({
+          category: cat,
+          scenario: '(scenario generation failed - category not tested)',
+          expected: [],
+          actual: [],
+          missing: [`SCENARIO_GENERATION_ERROR: ${msg}`],
+        });
         return { cat, scenarios: [] as Awaited<ReturnType<typeof generateCanaryScenarios>> };
       }
     }),
@@ -297,7 +314,11 @@ export async function GET(request: NextRequest) {
     await Promise.all(wave.map(runScenario));
   }
 
-  const ok = failed === 0;
+  // "ok" must mean the canary actually ran its full check AND everything
+  // passed. Anything less is a non-OK result: it returns HTTP 500 and fires
+  // the Telegram alert below, which is the entire point of a trip-wire.
+  const incomplete = generationErrors > 0 || budgetExhausted || scenariosRun === 0;
+  const ok = failed === 0 && !incomplete;
   const result: CanaryResult = {
     ok,
     generated_at: new Date().toISOString(),
@@ -305,6 +326,8 @@ export async function GET(request: NextRequest) {
     scenarios_run: scenariosRun,
     passed,
     failed,
+    generation_errors: generationErrors,
+    incomplete,
     failures,
   };
 
@@ -314,7 +337,10 @@ export async function GET(request: NextRequest) {
       category: 'citation_canary',
       title: (ok
         ? `Citation canary OK — ${passed}/${scenariosRun} scenarios across ${categoriesTested} categories`
-        : `Citation canary FAIL — ${failed}/${scenariosRun} scenarios under-cite`)
+        : scenariosRun === 0
+          ? `Citation canary INCOMPLETE — no scenarios ran (${generationErrors} category generation failure${generationErrors === 1 ? '' : 's'})`
+          : `Citation canary FAIL — ${failed}/${scenariosRun} scenarios under-cite`
+            + (generationErrors > 0 ? `, ${generationErrors} category generation failure${generationErrors === 1 ? '' : 's'}` : ''))
         + (budgetExhausted ? ' [PARTIAL — time budget reached]' : ''),
       content: JSON.stringify(result, null, 2),
       created_by: 'citation-canary-cron',
