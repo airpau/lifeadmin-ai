@@ -11,6 +11,9 @@ const MERCHANT_MAP: Record<string, string> = {
   // Energy
   'british gas': 'British Gas',
   'eon next': 'E.ON Next',
+  // 'e.on next' must precede 'e.on' — the first pass matches on startsWith in
+  // insertion order, so 'e.on' would otherwise swallow the Next tariff.
+  'e.on next': 'E.ON Next',
   'e.on': 'E.ON',
   'eon energy': 'E.ON',
   'octopus energy': 'Octopus Energy',
@@ -22,6 +25,7 @@ const MERCHANT_MAP: Record<string, string> = {
   'bulb energy': 'Bulb Energy',
   'shell energy': 'Shell Energy',
   'utilita': 'Utilita',
+  'sse': 'SSE Energy',
 
   // Broadband & TV
   'virgin media': 'Virgin Media',
@@ -122,7 +126,16 @@ const MERCHANT_MAP: Record<string, string> = {
   'lendinvest': 'LendInvest (Mortgage)',
   'funding circle': 'Funding Circle',
   'skipton b': 'Skipton Building Society',
+  'nationwide b': 'Nationwide Building Society',
+  'coventry b': 'Coventry Building Society',
+  'yorkshire b': 'Yorkshire Building Society',
+  'leeds b': 'Leeds Building Society',
   'creation': 'Creation (Finance)',
+  'hsbc': 'HSBC',
+  'american express': 'American Express',
+  'amex': 'American Express',
+  'klarna': 'Klarna',
+  'clearpay': 'Clearpay',
 
   // Software
   'adobe': 'Adobe',
@@ -155,6 +168,8 @@ const MERCHANT_MAP: Record<string, string> = {
   'lbh': 'LB Hounslow Council Tax',
   'hmrc': 'HMRC',
   'dvla': 'DVLA',
+  // Covers both "TV LICENCE" and "TV LICENSING"
+  'tv licen': 'TV Licence',
 
   // Bank fees and charges
   'interest': 'Bank Interest',
@@ -182,7 +197,14 @@ const MERCHANT_MAP: Record<string, string> = {
 
 // Suffixes to strip before matching
 const STRIP_SUFFIXES = /\s+(pymts?|payments?|subs?|subscriptions?|ltd|plc|uk|gbr|direct debit|dd|monthly|annual|online|internet|mobile|broadband|membership|membershippat)\s*$/gi;
-const STRIP_PREFIXES = /^(paypal \*|paypal\*|patreon\*\s*|amzn mktp|amzn |sqr\*|google \*|apple\.com\/bill|izettle\*|www\.|http[s]?:\/\/)/i;
+const STRIP_PREFIXES = /^(paypal \*|paypal\*|patreon\*\s*|amzn mktp|amzn |sqr\*|sq ?\*|sumup ?\*|i?zettle[_ ]?\*|google \*|apple\.com\/bill|izettle\*|www\.|http[s]?:\/\/)/i;
+
+/**
+ * Transaction-type prefixes that name the payment rail rather than the payee,
+ * e.g. "SO TO MR P AIREY", "DIRECT DEBIT PAYMENT TO BRITISH GAS".
+ * Stripped rather than collapsed so the payee survives for display and dedup.
+ */
+const STRIP_TXN_PREFIXES = /^(?:card\s+|bill\s+|mobile\s+)?(?:s\/?o|standing\s+order|d\/?d|direct\s+debit|tfr|trf|transfer|faster\s+payment|pymt|payment)\s*(?:payment|pymt)?\s+(?:to|from)\s+/i;
 
 /**
  * Detect banking reference patterns that look nothing like merchant names.
@@ -205,6 +227,26 @@ function detectBankingReference(cleaned: string): string | null {
   if (/^int['']?l(\s|$)/.test(l)) return 'International Payment';
   // "BALANCE TRANSFER" — credit card balance transfer
   if (/^balance\s+transfer/.test(l)) return 'Balance Transfer';
+  // "CHQ 000123", "CHEQUE PAID IN" — cheque movement
+  if (/^chq|^cheque\b/.test(l)) return 'Cheque';
+  // "BANK GIRO CREDIT" — inbound giro
+  if (/^bank\s+giro\s+credit/.test(l)) return 'Bank Giro Credit';
+  // "FASTER PAYMENT RECEIVED", "FASTER PAYMENTS RECEIPT" — no payee in the text
+  if (/^faster\s+payments?\b/.test(l)) return 'Faster Payment';
+  // "CASH WITHDRAWAL AT ATM", "ATM WITHDRAWAL HSBC"
+  if (/^(cash|atm)\s+withdrawal|^withdrawal\b/.test(l)) return 'Cash Withdrawal';
+  // "INTERNAL TRANSFER" — movement between the user's own accounts
+  if (/^internal\s+transfer/.test(l)) return 'Internal Transfer';
+  // "NON-STERLING TRANS FEE" — FX handling charge
+  if (/^non[-\s]?sterling/.test(l)) return 'Non-Sterling Fee';
+  // "SO REF 12345678", "STANDING ORDER" with no payee attached
+  if (/^(s\/?o|standing\s+order)(\s+ref\b|\s*$)/.test(l)) return 'Standing Order';
+  // "DD PAYMENT", "DIRECT DEBIT" with no payee attached
+  if (/^(d\/?d|direct\s+debit)(\s+payment)?\s*$/.test(l)) return 'Direct Debit';
+  // "REF: 4567" — bare payment reference
+  if (/^ref\b|^ref:/.test(l)) return 'Payment Reference';
+  // "GBP 45.00 @ 1.00" — FX conversion line
+  if (/^[a-z]{3}\s+[\d.,]+\s*@/.test(l)) return 'Currency Conversion';
   return null;
 }
 
@@ -228,6 +270,10 @@ export function normaliseMerchantName(raw: string): string {
 
   // Remove debit indicator "D " at start
   cleaned = cleaned.replace(/^D\s+/, '');
+
+  // Strip the payment rail ("SO TO ", "DIRECT DEBIT PAYMENT TO ") so the payee
+  // behind it reaches the merchant map instead of being title-cased wholesale.
+  cleaned = cleaned.replace(STRIP_TXN_PREFIXES, '');
 
   // Remove prefixes like "PAYPAL *", "AMZN MKTP"
   cleaned = cleaned.replace(STRIP_PREFIXES, '');
