@@ -202,62 +202,99 @@ export async function GET(request: NextRequest) {
   let failed = 0;
   let categoriesTested = 0;
 
-  for (const cat of TEST_CATEGORIES) {
-    const refs = byCategory.get(cat);
-    if (!refs || refs.length === 0) continue;
-    categoriesTested += 1;
+  // This used to be two nested sequential loops: one Haiku scenario call per
+  // category followed by a full Sonnet letter generation per scenario, all
+  // awaited one at a time. At ~25s per letter that is 400s+ of serial work
+  // against a 300s maxDuration, so the route timed out on every run since
+  // 2026-06-17 and never once reached the business_log write below. Generate
+  // scenarios in parallel, then run the letter checks in bounded waves with a
+  // wall-clock budget so a slow day degrades to a partial result.
+  const LETTER_CONCURRENCY = 5;
+  const TIME_BUDGET_MS = 240_000; // ~60s headroom under maxDuration
+  const startedAt = Date.now();
+  let budgetExhausted = false;
 
-    // 1. Have Claude generate scenarios from the live refs.
-    const scenarios = await generateCanaryScenarios(cat, refs);
+  const activeCategories = TEST_CATEGORIES.filter((cat) => {
+    const refs = byCategory.get(cat);
+    return !!refs && refs.length > 0;
+  });
+
+  const scenarioSets = await Promise.all(
+    activeCategories.map(async (cat) => {
+      try {
+        return { cat, scenarios: await generateCanaryScenarios(cat, byCategory.get(cat)!) };
+      } catch (e) {
+        console.warn(
+          `[citation-canary] scenario generation failed for category=${cat}`,
+          e instanceof Error ? e.message : e,
+        );
+        return { cat, scenarios: [] as Awaited<ReturnType<typeof generateCanaryScenarios>> };
+      }
+    }),
+  );
+
+  const queue: Array<{ cat: string; sc: (typeof scenarioSets)[number]['scenarios'][number] }> = [];
+  for (const { cat, scenarios } of scenarioSets) {
     if (scenarios.length === 0) {
       console.warn(`[citation-canary] no scenarios generated for category=${cat}`);
       continue;
     }
+    categoriesTested += 1;
+    for (const sc of scenarios) queue.push({ cat, sc });
+  }
 
-    // 2. Run each scenario through the engine and verify citations.
-    for (const sc of scenarios) {
-      scenariosRun += 1;
-      try {
-        const result = await generateComplaintLetter({
-          companyName: 'Test Provider',
-          issueDescription: sc.scenario_text,
-          desiredOutcome: sc.desired_outcome,
-          amount: sc.amount_gbp ? String(sc.amount_gbp) : undefined,
-          letterType: 'complaint',
-          // The engine's category resolver doesn't see 'category' as
-          // input — it works from issueDescription text. We're testing
-          // the WHOLE pipeline including category resolution, so don't
-          // shortcut.
-        });
+  async function runScenario({ cat, sc }: { cat: string; sc: (typeof queue)[number]['sc'] }) {
+    try {
+      const result = await generateComplaintLetter({
+        companyName: 'Test Provider',
+        issueDescription: sc.scenario_text,
+        desiredOutcome: sc.desired_outcome,
+        amount: sc.amount_gbp ? String(sc.amount_gbp) : undefined,
+        letterType: 'complaint',
+        // The engine's category resolver works from issueDescription text.
+        // We're testing the WHOLE pipeline including category resolution.
+      });
 
-        const actual = result.legalReferences || [];
-        const missing = sc.must_cite_law_names.filter(
-          (mustCite) => !citationFuzzyMatch(mustCite, actual),
-        );
+      const actual = result.legalReferences || [];
+      const missing = sc.must_cite_law_names.filter(
+        (mustCite) => !citationFuzzyMatch(mustCite, actual),
+      );
 
-        if (missing.length === 0) {
-          passed += 1;
-        } else {
-          failed += 1;
-          failures.push({
-            category: cat,
-            scenario: sc.scenario_text.slice(0, 200),
-            expected: sc.must_cite_law_names,
-            actual,
-            missing,
-          });
-        }
-      } catch (e) {
+      if (missing.length === 0) {
+        passed += 1;
+      } else {
         failed += 1;
         failures.push({
           category: cat,
           scenario: sc.scenario_text.slice(0, 200),
           expected: sc.must_cite_law_names,
-          actual: [],
-          missing: [`ENGINE_ERROR: ${e instanceof Error ? e.message : String(e)}`],
+          actual,
+          missing,
         });
       }
+    } catch (e) {
+      failed += 1;
+      failures.push({
+        category: cat,
+        scenario: sc.scenario_text.slice(0, 200),
+        expected: sc.must_cite_law_names,
+        actual: [],
+        missing: [`ENGINE_ERROR: ${e instanceof Error ? e.message : String(e)}`],
+      });
     }
+  }
+
+  for (let i = 0; i < queue.length; i += LETTER_CONCURRENCY) {
+    if (Date.now() - startedAt > TIME_BUDGET_MS) {
+      budgetExhausted = true;
+      console.warn(
+        `[citation-canary] time budget reached after ${scenariosRun}/${queue.length} scenarios — reporting partial result`,
+      );
+      break;
+    }
+    const wave = queue.slice(i, i + LETTER_CONCURRENCY);
+    scenariosRun += wave.length;
+    await Promise.all(wave.map(runScenario));
   }
 
   const ok = failed === 0;
@@ -275,9 +312,10 @@ export async function GET(request: NextRequest) {
   try {
     await sb.from('business_log').insert({
       category: 'citation_canary',
-      title: ok
+      title: (ok
         ? `Citation canary OK — ${passed}/${scenariosRun} scenarios across ${categoriesTested} categories`
-        : `Citation canary FAIL — ${failed}/${scenariosRun} scenarios under-cite`,
+        : `Citation canary FAIL — ${failed}/${scenariosRun} scenarios under-cite`)
+        + (budgetExhausted ? ' [PARTIAL — time budget reached]' : ''),
       content: JSON.stringify(result, null, 2),
       created_by: 'citation-canary-cron',
     });

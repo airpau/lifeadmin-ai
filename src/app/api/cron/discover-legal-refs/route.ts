@@ -110,6 +110,9 @@ async function callPerplexity(prompt: string): Promise<{ items: PerplexityCandid
       ],
       return_citations: true,
     }),
+    // Without this a stalled upstream hangs until maxDuration kills the
+    // whole route with an opaque timeout.
+    signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok) {
     throw new Error(`Perplexity HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -300,6 +303,16 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await logRun({ leg, category: targetCategory, found: 0, added: 0, skipped: 0, costGbp: 0, notes: `perplexity error: ${msg}` });
+
+    // An unpaid or rate-limited provider is an account problem, not a broken
+    // route. Returning 502 for it made every run page as a cron failure and
+    // buried the real signal. Log it, report it, but exit 200 so genuine
+    // faults stay distinguishable in Vercel's cron health view.
+    if (/HTTP (401|402|429)\b/.test(msg)) {
+      console.warn('[discover-legal-refs] upstream quota/auth failure, skipping run:', msg);
+      return NextResponse.json({ ok: true, skipped: true, reason: 'perplexity-quota', detail: msg });
+    }
+
     return NextResponse.json({ ok: false, error: msg }, { status: 502 });
   }
 

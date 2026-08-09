@@ -193,7 +193,6 @@ export async function GET(request: NextRequest) {
           billing_cycle: billingCycle,
           status: 'active',
           source: 'bank_auto',
-          detected_at: new Date().toISOString(),
           recurring_group: merchantKey,
         });
 

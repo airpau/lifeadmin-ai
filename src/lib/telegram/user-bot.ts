@@ -1971,7 +1971,6 @@ Return JSON: { "subject": "...", "body": "..." }`;
         status:       'active',
         source:       'telegram_bot',
         category:     'other',
-        detected_at:  new Date().toISOString(),
       });
       await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
 

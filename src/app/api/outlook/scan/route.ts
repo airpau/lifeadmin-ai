@@ -148,10 +148,9 @@ export async function POST(request: NextRequest) {
               status: 'active',
               source: 'outlook_scan',
               category: o.category || 'other',
-              next_payment_date: o.nextPaymentDate || null,
+              next_billing_date: o.nextPaymentDate || null,
               contract_end_date: o.contractEndDate || null,
-              notes: o.description,
-              detected_at: new Date().toISOString()
+              notes: o.description
             }))
           ).then(({ error: e }) => { if (e) console.error('[outlook-scan] subscriptions insert error:', e.message); });
         }

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { createHash } from 'crypto';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
+import { fetchLegalSource } from '@/lib/legal-data/source-fetch';
 
 export const maxDuration = 300; // 5 minutes — checking many sources
 
@@ -211,22 +212,17 @@ async function verifyStatute(
   const dataUrl = ref.source_url.replace(/\/$/, '') + '/data.xml';
 
   try {
-    const res = await fetch(dataUrl, {
-      headers: {
-        'User-Agent': 'Paybacker-LegalVerifier/1.0 (hello@paybacker.co.uk)',
-        'Accept': 'application/xml',
-      },
-      signal: AbortSignal.timeout(10000),
+    const dataFetch = await fetchLegalSource(dataUrl, {
+      timeoutMs: 10000,
+      accept: 'application/xml',
     });
+    const res = dataFetch.response;
 
-    if (!res.ok) {
+    if (dataFetch.outcome !== 'ok' || !res) {
       // If data.xml not available, try the main page
-      const pageRes = await fetch(ref.source_url, {
-        headers: { 'User-Agent': 'Paybacker-LegalVerifier/1.0 (hello@paybacker.co.uk)' },
-        signal: AbortSignal.timeout(10000),
-      });
+      const pageFetch = await fetchLegalSource(ref.source_url, { timeoutMs: 10000 });
 
-      if (pageRes.ok) {
+      if (pageFetch.outcome === 'ok') {
         // Page exists and loads — mark as current. Reset url-failure
         // counter so a transient blip doesn't accumulate.
         await supabase
@@ -239,8 +235,23 @@ async function verifyStatute(
           })
           .eq('id', ref.id);
         results.current++;
+      } else if (!pageFetch.countsAsUrlFailure) {
+        // Blocked by a WAF, timed out, or 5xx — we learned nothing about
+        // whether the page still exists. Flag for review but do NOT count a
+        // strike, otherwise a bot-hostile host silently disables the rule.
+        await supabase
+          .from('legal_references')
+          .update({
+            verification_status: 'needs_review',
+            verification_notes: `${pageFetch.reason} (checked ${new Date().toISOString()})`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', ref.id);
+
+        results.needs_review++;
+        issues.push({ id: ref.id, law: ref.law_name, issue: pageFetch.reason });
       } else {
-        // Page doesn't load. Three-strike rule before promoting to
+        // Genuine 404/410. Three-strike rule before promoting to
         // 'url_dead' (a status excluded from retrieval) — avoids one
         // transient 503 silently disabling a rule.
         const nextFailures = ((ref.consecutive_url_failures as number | null) ?? 0) + 1;
@@ -249,7 +260,7 @@ async function verifyStatute(
           .from('legal_references')
           .update({
             verification_status: promoteToDead ? 'url_dead' : 'needs_review',
-            verification_notes: `Source URL returned ${pageRes.status} on ${new Date().toISOString()} (${nextFailures}/3 failures)`,
+            verification_notes: `Source URL returned ${pageFetch.status} on ${new Date().toISOString()} (${nextFailures}/3 failures)`,
             consecutive_url_failures: nextFailures,
             updated_at: new Date().toISOString(),
           })
@@ -259,13 +270,13 @@ async function verifyStatute(
           legal_reference_id: ref.id,
           change_type: 'content_update',
           source_url: ref.source_url,
-          detected_change_summary: `Source URL returned HTTP ${pageRes.status} — page may have moved or been removed (${nextFailures}/3 failures)`,
+          detected_change_summary: `Source URL returned HTTP ${pageFetch.status} — page may have moved or been removed (${nextFailures}/3 failures)`,
           confidence: promoteToDead ? 'high' : 'medium',
           status: 'pending',
         });
 
         results.needs_review++;
-        issues.push({ id: ref.id, law: ref.law_name, issue: `Source URL returned ${pageRes.status} (${nextFailures}/3)` });
+        issues.push({ id: ref.id, law: ref.law_name, issue: `Source URL returned ${pageFetch.status} (${nextFailures}/3)` });
       }
       return;
     }
@@ -396,21 +407,36 @@ async function verifyRegulatorRule(
   let pageContent = '';
   let rawHtml = '';
   try {
-    const res = await fetch(ref.source_url, {
-      headers: { 'User-Agent': 'Paybacker-LegalVerifier/1.0 (hello@paybacker.co.uk)' },
-      signal: AbortSignal.timeout(15000),
-    });
+    const pageFetch = await fetchLegalSource(ref.source_url, { timeoutMs: 15000 });
+    const res = pageFetch.response;
 
-    if (!res.ok) {
-      // Three-strike rule before promoting to 'url_dead' — same as
-      // verifyStatute. Transient 5xx shouldn't disable a rule.
+    if (pageFetch.outcome !== 'ok' || !res) {
+      if (!pageFetch.countsAsUrlFailure) {
+        // Blocked by a WAF (Ofcom returns 403 to unknown agents), timed out,
+        // or 5xx. We learned nothing about whether the page still exists, so
+        // flag for review without counting a strike.
+        await supabase
+          .from('legal_references')
+          .update({
+            verification_status: 'needs_review',
+            verification_notes: `${pageFetch.reason} (checked ${new Date().toISOString()})`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', ref.id);
+
+        results.needs_review++;
+        issues.push({ id: ref.id, law: ref.law_name, issue: pageFetch.reason });
+        return;
+      }
+
+      // Genuine 404/410. Three-strike rule before promoting to 'url_dead'.
       const nextFailures = ((ref.consecutive_url_failures as number | null) ?? 0) + 1;
       const promoteToDead = nextFailures >= 3;
       await supabase
         .from('legal_references')
         .update({
           verification_status: promoteToDead ? 'url_dead' : 'needs_review',
-          verification_notes: `Source URL returned ${res.status} on ${new Date().toISOString()} (${nextFailures}/3 failures)`,
+          verification_notes: `Source URL returned ${pageFetch.status} on ${new Date().toISOString()} (${nextFailures}/3 failures)`,
           consecutive_url_failures: nextFailures,
           updated_at: new Date().toISOString(),
         })
@@ -420,13 +446,13 @@ async function verifyRegulatorRule(
         legal_reference_id: ref.id,
         change_type: 'regulator_change',
         source_url: ref.source_url,
-        detected_change_summary: `Source URL returned HTTP ${res.status} — regulator page may have changed (${nextFailures}/3 failures)`,
+        detected_change_summary: `Source URL returned HTTP ${pageFetch.status} — regulator page may have changed (${nextFailures}/3 failures)`,
         confidence: promoteToDead ? 'high' : 'medium',
         status: 'pending',
       });
 
       results.needs_review++;
-      issues.push({ id: ref.id, law: ref.law_name, issue: `Source returned ${res.status} (${nextFailures}/3)` });
+      issues.push({ id: ref.id, law: ref.law_name, issue: `Source returned ${pageFetch.status} (${nextFailures}/3)` });
       return;
     }
 
