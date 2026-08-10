@@ -13,10 +13,10 @@
 - [x] daily-ceo-report updated — Now includes open GitHub PRs and sprint completions (needs GITHUB_TOKEN)
 
 ## URGENT - Email Spam Fix
-- [~PR#99] Implement global email rate limiter (max 2 emails per user per day) — rate limiter exists in email-rate-limit.ts; PR#99 fixes missing types (contract_expiry_alert, contract_end_alert, overcharge_alert) that were bypassing the cap (PR created 2026-04-20)
+- [x] Implement global email rate limiter (max 2 emails per user per day) — rate limiter lives in email-rate-limit.ts. PR#99 was CLOSED unmerged on 2026-04-24 as superseded: contract_expiry_alert, contract_end_alert and overcharge_alert are already in MARKETING_EMAIL_TYPES on master (email-rate-limit.ts:33-37), shipped by a later pass. Verified 2026-08-10. Note the live cap is MAX_MARKETING_EMAILS_PER_DAY = 1, not 2.
 - [ ] Consolidate deal alerts + targeted deals + price increases into single daily digest
 - [ ] Add user email preference settings (daily digest / weekly / off)
-- [ ] Audit and restructure all 11 email cron triggers (see email-audit below)
+- [~PR#522] Audit and restructure all 11 email cron triggers (see email-audit below) (PR created 2026-08-10 — audited all 36 cron routes that send email. Of the 7 that call `canSendEmail`, 6 already recorded their send as a `tasks` row; `churn-prevention` recorded only into `onboarding_emails`, so all 3 churn sends were invisible to the daily cap. PR#522 adds `markEmailSent` to those 3 sites. STILL OPEN: 9 crons send with no cap check at all — `energy-tariff-monitor`, `mobile-deal-alert`, `marketing-automation`, `legal-updates`, `weekly-newsletter`, `launch-announcement`, `consent-renewal`, `waitlist-emails`, `trial-expiry` — each needs a Paul decision on whether it belongs under the consumer cap before wiring)
 
 ## Architecture Task - AI Letters Intelligence Upgrade (Consumer-Friendly)
 - [ ] Claude Desktop to architect the full AI Letters upgrade (see shared-context/handoff-notes.md for brief)
