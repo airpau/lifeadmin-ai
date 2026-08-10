@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendChurnEmail } from '@/lib/email/churn-prevention';
 import { normalizeTier, tierDisplayName } from '@/lib/tier-utils';
-import { canSendEmail } from '@/lib/email-rate-limit';
+import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -138,6 +138,7 @@ export async function GET(request: NextRequest) {
 
         if (sent) {
           await admin.from('onboarding_emails').insert({ user_id: userId, email_key: key });
+          await markEmailSent(admin, userId, key, 'Re-engagement email (7 days inactive)');
           results.inactive_7d++;
         }
         continue; // One email per user per run
@@ -151,6 +152,7 @@ export async function GET(request: NextRequest) {
         const sent = await sendChurnEmail(email, firstName, 'inactive_14d');
         if (sent) {
           await admin.from('onboarding_emails').insert({ user_id: userId, email_key: key });
+          await markEmailSent(admin, userId, key, 'Re-engagement email (14 days inactive)');
           results.inactive_14d++;
         }
         continue;
@@ -212,6 +214,7 @@ export async function GET(request: NextRequest) {
 
           if (sent) {
             await admin.from('onboarding_emails').insert({ user_id: userId, email_key: key });
+            await markEmailSent(admin, userId, key, 'Monthly value summary');
             results.pre_renewal++;
           }
         }
