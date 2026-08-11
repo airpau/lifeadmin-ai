@@ -149,12 +149,17 @@ export async function GET(request: NextRequest) {
 
       // 3) Deal opportunities (weekly cadence baked into daily digest)
       // Only include if user hasn't had deal content in last 3 days.
+      // .limit(1) is required: a regular user has MORE than one matching row
+      // inside the window, and maybeSingle() errors on multi-row rather than
+      // returning the first — which read as "no recent deal content" and
+      // defeated the cooldown entirely.
       const { data: recentDealContent } = await supabase
         .from('tasks')
         .select('id')
         .eq('user_id', user.id)
         .in('type', ['deal_alert_email', 'daily_digest'])
         .gte('created_at', threeDaysAgo.toISOString())
+        .limit(1)
         .maybeSingle();
 
       // Fetch subscriptions once — used by both deal opportunities and total spend
@@ -195,6 +200,7 @@ export async function GET(request: NextRequest) {
         .eq('user_id', user.id)
         .in('type', ['targeted_deal_email', 'daily_digest'])
         .gte('created_at', cooldownDate.toISOString())
+        .limit(1)
         .maybeSingle();
 
       const includeScore = !recentTargeted && score.tier !== 'low';

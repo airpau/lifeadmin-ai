@@ -14,7 +14,8 @@
 
 ## URGENT - Email Spam Fix
 - [~PR#99] Implement global email rate limiter (max 2 emails per user per day) — rate limiter exists in email-rate-limit.ts; PR#99 fixes missing types (contract_expiry_alert, contract_end_alert, overcharge_alert) that were bypassing the cap (PR created 2026-04-20)
-- [ ] Consolidate deal alerts + targeted deals + price increases into single daily digest
+- [x] Consolidate deal alerts + targeted deals + price increases into single daily digest — verified complete 2026-08-11: all three sections are built into `/api/cron/daily-digest` (price increases via `detectPriceIncreases`, deals via `findDealOpportunities`, targeted via `updateUserOpportunityScore`), and `deal-alerts` / `targeted-deals` / `price-increases` are no longer scheduled in vercel.json. The consolidation shipped; its cooldowns were still broken — see PR#523.
+- [~PR#523] Digest cooldowns defeated by multi-row `.maybeSingle()` (PR created 2026-08-11 — five "already contacted?" probes in `daily-digest` (x2), `renewal-reminders`, `deal-alerts` and `targeted-deals` called `.maybeSingle()` on a `.gte()` window matching many rows. PostgREST errors on multi-row instead of returning the first, so `data` came back null and every cooldown read as "never sent". Worst for the heaviest-emailed users: the daily digest re-ran its deal + score sections every day instead of every 3/7. Fixed with `.limit(1)`. `weekly-money-digest` already used the correct `count`/`head` pattern.)
 - [ ] Add user email preference settings (daily digest / weekly / off)
 - [ ] Audit and restructure all 11 email cron triggers (see email-audit below)
 

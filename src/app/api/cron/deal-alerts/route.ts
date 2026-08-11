@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
         .eq('user_id', user.id)
         .eq('type', 'deal_alert_email')
         .gte('created_at', weekAgo.toISOString())
+        .limit(1)
         .maybeSingle();
 
       if (recentAlert) {
