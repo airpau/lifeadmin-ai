@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
         .eq('user_id', user.id)
         .eq('type', 'targeted_deal_email')
         .gte('created_at', cooldownDate.toISOString())
+        .limit(1)
         .maybeSingle();
 
       if (recentSend) {

@@ -74,6 +74,7 @@ export async function GET(request: NextRequest) {
         .eq('user_id', userId)
         .eq('type', 'renewal_reminder')
         .eq('description', reminderKey)
+        .limit(1)
         .maybeSingle();
 
       if (alreadySent) continue;
