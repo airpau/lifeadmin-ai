@@ -46,32 +46,38 @@ export async function GET(request: NextRequest) {
     );
     const emailsSent: string[] = subscriber.emails_sent ?? [];
 
-    // Find the next sequence email that's due and not yet sent
-    const due = WAITLIST_SEQUENCE.filter(
-      (s) => s.dayOffset > 0 && // Day 0 is sent at signup time
-             daysSinceSignup >= s.dayOffset &&
-             !emailsSent.includes(s.id)
-    );
+    // Find the next sequence email that's due and not yet sent. Only ONE is
+    // sent per run — the earliest outstanding step — so the sequence keeps its
+    // order and a subscriber with a backlog gets caught up one email at a time
+    // instead of receiving the whole remaining sequence in a single burst.
+    const next = WAITLIST_SEQUENCE
+      .filter(
+        (s) => s.dayOffset > 0 && // Day 0 is sent at signup time
+               daysSinceSignup >= s.dayOffset &&
+               !emailsSent.includes(s.id)
+      )
+      .sort((a, b) => a.dayOffset - b.dayOffset)[0];
 
-    for (const seq of due) {
-      const sent = await sendSequenceEmail(
-        subscriber.email,
-        subscriber.full_name ?? 'there',
-        seq.id
-      );
-
-      if (sent) {
-        await supabase
-          .from('waitlist_signups')
-          .update({ emails_sent: [...emailsSent, seq.id] })
-          .eq('id', subscriber.id);
-        results.sent++;
-      } else {
-        results.errors++;
-      }
+    if (!next) {
+      results.skipped++;
+      continue;
     }
 
-    if (due.length === 0) results.skipped++;
+    const sent = await sendSequenceEmail(
+      subscriber.email,
+      subscriber.full_name ?? 'there',
+      next.id
+    );
+
+    if (sent) {
+      await supabase
+        .from('waitlist_signups')
+        .update({ emails_sent: [...emailsSent, next.id] })
+        .eq('id', subscriber.id);
+      results.sent++;
+    } else {
+      results.errors++;
+    }
   }
 
   console.log('Waitlist email cron results:', results);
