@@ -25,8 +25,10 @@ function getAdmin() {
  *   - targeted-deals (Wed+Fri 9am)
  *   - price-increases (daily 8am)
  *
- * Schedule: daily at 8:00 UTC — after bank sync completes (3am, 6am)
- * so price-increase detection sees fresh transactions.
+ * Schedule: daily at 8:15 UTC — after bank sync completes (3am, 6am) so
+ * price-increase detection sees fresh transactions, and last in the 08:00
+ * marketing-email block so the more time-sensitive alerts get first claim
+ * on the daily cap. See the scheduling note in src/lib/email-rate-limit.ts.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');

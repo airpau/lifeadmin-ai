@@ -10,9 +10,25 @@ import { SupabaseClient } from '@supabase/supabase-js';
  * tasks table (which all crons already write to) and enforce a global cap.
  *
  * Rules:
- * - Max 2 marketing emails per user per day
+ * - Max 1 marketing email per user per day (MAX_MARKETING_EMAILS_PER_DAY)
  * - Transactional emails (welcome, password reset, ticket reply) bypass the limit
  * - Onboarding sequence gets 1 reserved slot per day (so it's not blocked by deals)
+ *
+ * SCHEDULING INVARIANT — read before adding a cron entry to vercel.json.
+ * The cap is read-then-write with no lock: canSendEmail() counts today's rows
+ * in `tasks`, and markEmailSent() inserts the row only after the send lands.
+ * Two crons triggered in the same minute therefore both read 0 and both send,
+ * which is precisely the spam the cap exists to prevent. Any cron that sends a
+ * MARKETING_EMAIL_TYPES email must get its own minute slot, ordered
+ * most-time-sensitive first, because the first cron to run claims the day's
+ * only slot. The 08:00 block is currently:
+ *
+ *   08:00  contract-expiry-alerts   (contract auto-renewing — hard deadline)
+ *   08:05  renewal-reminders        (renewal in 30/14/7 days)
+ *   08:10  founding-member-expiry   (offer expiry)
+ *   08:15  daily-digest             (general digest — broadest, least urgent)
+ *
+ * weekly-money-digest sits at 07:00 Monday, an hour clear of the block.
  */
 
 const MAX_MARKETING_EMAILS_PER_DAY = 1;
