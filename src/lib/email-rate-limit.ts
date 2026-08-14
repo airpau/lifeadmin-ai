@@ -30,6 +30,7 @@ const MARKETING_EMAIL_TYPES = [
   'churn_pre_renewal',
   'founding_reminder',
   'weekly_money_digest',
+  'weekly_newsletter',
   'onboarding_email',
   // Contract and overcharge alerts are marketing-adjacent — they count toward
   // the daily cap so users can't receive both a deal email AND a contract alert
@@ -135,6 +136,14 @@ export async function getBlockedUsers(
 /**
  * Record that a marketing email was sent. Must be called after every successful
  * send so canSendEmail / getBlockedUsers see it in the daily count.
+ *
+ * IMPORTANT: `tasks.type` carries a CHECK constraint (`tasks_type_check`) that
+ * is a closed whitelist. Adding a type to MARKETING_EMAIL_TYPES above WITHOUT
+ * adding it to that constraint makes every insert here fail, and the failure is
+ * only logged — so the send never counts and every later cron that day sees 0
+ * and sends anyway. That is exactly how 'daily_digest' went uncounted from the
+ * deal-alert consolidation until 2026-08-14. When you add an email type, add it
+ * to the constraint in the same PR.
  */
 export async function markEmailSent(
   supabase: SupabaseClient,
@@ -149,6 +158,11 @@ export async function markEmailSent(
     status: 'completed',
   });
   if (error) {
-    console.error(`[email-rate-limit] markEmailSent failed for ${userId} type=${emailType}:`, error.message);
+    const hint = /tasks_type_check/.test(error.message)
+      ? ` — '${emailType}' is not whitelisted in the tasks_type_check constraint, so this send will NOT count towards the daily cap. Add it in a migration.`
+      : '';
+    console.error(
+      `[email-rate-limit] markEmailSent failed for ${userId} type=${emailType}: ${error.message}${hint}`,
+    );
   }
 }

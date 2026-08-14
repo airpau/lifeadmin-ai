@@ -20,6 +20,12 @@
  *
  * Dedup: per-user `profiles.newsletter_last_sent_at` stops a manual
  * replay from double-sending within 6 days.
+ *
+ * Daily cap: every recipient is checked against the global marketing
+ * limiter (`canSendEmail`) and every send is recorded (`markEmailSent`).
+ * As the least time-sensitive marketing send of the week, the newsletter
+ * yields to anything that already reached that user today rather than
+ * becoming their second email of the day.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -32,6 +38,7 @@ import {
 } from '@/lib/email/weekly-newsletter';
 import { composeWeeklyIssue } from '@/lib/email/weekly-newsletter-content';
 import { sendPaybackerEmail } from '@/lib/email/send';
+import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -102,10 +109,23 @@ async function runCron() {
 
   let sent = 0;
   let failed = 0;
+  let rateLimited = 0;
   const results: Array<{ email: string; ok: boolean; error?: string }> = [];
 
   for (const r of audience) {
     if (!r.email) continue;
+
+    // Global marketing cap. The newsletter is the least time-sensitive
+    // marketing send of the week, so it yields to anything that already
+    // reached this user today (the 08:00 digest, a renewal reminder, ...).
+    // We deliberately do NOT stamp newsletter_last_sent_at when we yield,
+    // so the recipient stays in next Thursday's audience.
+    const rateCheck = await canSendEmail(sb, r.user_id, 'weekly_newsletter');
+    if (!rateCheck.allowed) {
+      rateLimited++;
+      continue;
+    }
+
     const unsubscribeUrl = `${SITE}/api/unsubscribe?token=${encodeURIComponent(r.newsletter_unsub_token ?? '')}&kind=newsletter`;
 
     const issue = await composeWeeklyIssue({
@@ -132,6 +152,7 @@ async function runCron() {
 
     if (result.ok) {
       sent++;
+      await markEmailSent(sb, r.user_id, 'weekly_newsletter', 'Weekly newsletter');
       await sb
         .from('profiles')
         .update({ newsletter_last_sent_at: now.toISOString() })
@@ -147,6 +168,7 @@ async function runCron() {
     audience: audience.length,
     sent,
     failed,
+    rate_limited: rateLimited,
     results: results.slice(0, 20),
   });
 }
