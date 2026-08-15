@@ -16,7 +16,7 @@
 - [~PR#99] Implement global email rate limiter (max 2 emails per user per day) — rate limiter exists in email-rate-limit.ts; PR#99 fixes missing types (contract_expiry_alert, contract_end_alert, overcharge_alert) that were bypassing the cap (PR created 2026-04-20)
 - [ ] Consolidate deal alerts + targeted deals + price increases into single daily digest
 - [ ] Add user email preference settings (daily digest / weekly / off)
-- [ ] Audit and restructure all 11 email cron triggers (see email-audit below)
+- [~PR#527] Audit and restructure all 11 email cron triggers (see email-audit below) — PR#527 closes the last uncapped scheduled consumer marketing cron: the Thu 11:00 weekly newsletter now checks the global daily cap and consumes a slot. Remaining scheduled email crons all respect it (PR created 2026-08-15)
 
 ## Architecture Task - AI Letters Intelligence Upgrade (Consumer-Friendly)
 - [ ] Claude Desktop to architect the full AI Letters upgrade (see shared-context/handoff-notes.md for brief)
