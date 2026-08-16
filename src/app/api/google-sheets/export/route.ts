@@ -26,6 +26,13 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const INTERNAL_KEY = process.env.INTERNAL_API_KEY ?? ''
 
+// A full backfill (thousands of rows across several tabs) makes many Sheets
+// API calls and can take tens of seconds. Without an explicit maxDuration the
+// function can be killed mid-export, leaving the sheet partially written
+// while the caller reports a sync that never completed.
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
 const SHEET_HEADERS = [
   'Date', 'Description', 'Merchant', 'Amount (£)', 'Category', 'Type', 'Recurring', 'Transaction ID',
 ]

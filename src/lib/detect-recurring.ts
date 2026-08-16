@@ -1,18 +1,15 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { deriveRecurringGroup } from './subscription-key';
 import { isPayrollLike } from './subscriptions/payroll-filter';
+import {
+  LOOKBACK_DAYS,
+  isCouncilTaxMerchant,
+  isExcludedTransactionCategory,
+  isHighVarianceMerchant,
+  qualifyRecurringSeries,
+} from './subscriptions/recurring-qualification';
 
 const STRIP_SUFFIXES = /\b(ltd|limited|plc|llp|inc|corp|group|uk|co\.uk)\b/gi;
-const AMOUNT_VARIANCE = 0.10; // 10%
-const INTERVAL_TOLERANCE_DAYS = 5;
-
-// Approximate day counts for billing cycles
-const CYCLE_DAYS = {
-  weekly: 7,
-  monthly: 30,
-  quarterly: 91,
-  yearly: 365,
-};
 
 /**
  * Extract a merchant name from a bank transaction description.
@@ -110,27 +107,21 @@ function normaliseMerchant(name: string): string {
     .trim();
 }
 
-function detectCycle(intervals: number[]): string | null {
-  for (const [cycle, days] of Object.entries(CYCLE_DAYS)) {
-    const allMatch = intervals.every(
-      (d) => Math.abs(d - days) <= INTERVAL_TOLERANCE_DAYS
-    );
-    if (allMatch) return cycle;
-  }
-  return null;
-}
-
-function amountsConsistent(amounts: number[]): boolean {
-  if (amounts.length === 0) return false;
-  const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length;
-  if (avg === 0) return false;
-  return amounts.every((a) => Math.abs(a - avg) / avg <= AMOUNT_VARIANCE);
-}
-
 /**
  * Detects recurring payments from bank transactions for a user.
- * Uses merchant_name if available, falls back to extracting from description.
- * Marks transactions as recurring and creates subscription records for new ones.
+ *
+ * Qualification is delegated to `qualifyRecurringSeries`
+ * (src/lib/subscriptions/recurring-qualification.ts): >= 3 occurrences,
+ * >= 2 intervals all inside one tight cadence window, amounts within
+ * +/-8% of the median, 13-month lookback with a liveness check, £1
+ * minimum, and a stricter 4-occurrence identical-amount rule for
+ * grocery/fuel/eating-out/retail merchants. The true billing cycle is
+ * stored — weekly stays weekly (the old weekly->monthly rewrite is gone).
+ *
+ * Dismissals are PERMANENT: if any matching subscription row already
+ * exists for the merchant — active, dismissed, cancelled or archived —
+ * we never re-insert it. Re-subscribing after a dismissal is a manual
+ * user action, not something the detector second-guesses.
  */
 export async function detectRecurring(
   userId: string,
@@ -146,13 +137,20 @@ export async function detectRecurring(
     rulesMap.set(rule.raw_name_normalised, rule);
   }
 
-  // Fetch all debit transactions
+  // Fetch debit transactions inside the 13-month lookback window only.
+  // Ordered newest-first so that if the PostgREST row cap bites on a
+  // heavy account, we keep the RECENT payments the liveness check needs
+  // (and txs[0] carries the freshest merchant_name/description).
+  const lookbackStart = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString();
   const { data: transactions, error } = await supabase
     .from('bank_transactions')
-    .select('id, merchant_name, description, amount, timestamp, recurring_group')
+    .select('id, merchant_name, description, amount, timestamp, recurring_group, category, user_category, transfer_pair_id')
     .eq('user_id', userId)
     .lt('amount', 0) // debits only
-    .order('timestamp', { ascending: true });
+    .is('deleted_at', null)
+    .gte('timestamp', lookbackStart)
+    .order('timestamp', { ascending: false })
+    .limit(5000);
 
   if (error || !transactions) {
     console.error('Error fetching transactions for recurring detection:', error);
@@ -163,6 +161,14 @@ export async function detectRecurring(
   const groups = new Map<string, Array<typeof transactions[0] & { extracted_name: string }>>();
 
   for (const tx of transactions) {
+    // Category exclusions: transfers, cash withdrawals, income, fees and
+    // payments to a credit card can look perfectly periodic but are never
+    // subscriptions. Paired internal transfers are excluded outright.
+    if (tx.transfer_pair_id) continue;
+    if (isExcludedTransactionCategory(tx.category) || isExcludedTransactionCategory(tx.user_category)) {
+      continue;
+    }
+
     const merchantName = tx.merchant_name || extractMerchantFromDescription(tx.description || '');
     if (!merchantName) continue;
 
@@ -173,37 +179,29 @@ export async function detectRecurring(
     groups.get(key)!.push({ ...tx, extracted_name: merchantName });
   }
 
+  // One fetch of the user's subscription rows (all statuses) for dedup —
+  // previously re-queried inside the loop for every merchant group.
+  const { data: allUserSubs } = await supabase
+    .from('subscriptions')
+    .select('id, provider_name, status, cancelled_at, dismissed_at, archived_at, recurring_group')
+    .eq('user_id', userId);
+
+  // Helper: extract significant words (3+ chars, no noise)
+  const sigWords = (s: string) => s.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length >= 3 && !['ltd', 'limited', 'plc', 'the', 'and', 'for'].includes(w));
+
   let newRecurringCount = 0;
 
   for (const [normalisedName, txs] of groups.entries()) {
-    if (txs.length < 2) continue;
-
-    // Calculate intervals in days between consecutive transactions
-    const sorted = [...txs].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    );
-    const intervals: number[] = [];
-    for (let i = 1; i < sorted.length; i++) {
-      const diff =
-        (new Date(sorted[i].timestamp).getTime() -
-          new Date(sorted[i - 1].timestamp).getTime()) /
-        (1000 * 60 * 60 * 24);
-      intervals.push(diff);
-    }
-
-    const amounts = sorted.map((t) => Math.abs(Number(t.amount)));
-    const cycle = detectCycle(intervals);
-
-    if (!cycle || !amountsConsistent(amounts)) continue;
-
-    // Mark transactions as recurring
-    const ids = txs.map((t) => t.id);
-    await supabase
-      .from('bank_transactions')
-      .update({ is_recurring: true, recurring_group: normalisedName })
-      .in('id', ids);
-
     const displayName = txs[0].extracted_name;
+
+    // Council tax is legitimately recurring but belongs in Expected
+    // Bills, never in subscriptions. Shared blocklist with the cron.
+    if (isCouncilTaxMerchant(displayName) || isCouncilTaxMerchant(txs[0].description || '')) {
+      continue;
+    }
 
     // Never auto-create a subscription from a payroll / salary / wages outgoing.
     // A staff payment ("Lisagroom", £808.71/mo) was mis-detected here as a
@@ -214,17 +212,32 @@ export async function detectRecurring(
       continue;
     }
 
-    // Check if subscription already exists (any status) — aggressive dedup
-    const { data: allUserSubs } = await supabase
-      .from('subscriptions')
-      .select('id, provider_name, status, cancelled_at, dismissed_at, recurring_group')
-      .eq('user_id', userId);
+    // Qualification core: cadence windows, median amount trim, recency.
+    const highVariance = isHighVarianceMerchant(displayName, txs[0].description);
+    const result = qualifyRecurringSeries(
+      txs.map((t) => ({ date: t.timestamp, amount: Math.abs(Number(t.amount)) })),
+      { highVariance }
+    );
+    if (!result.qualifies || !result.billingCycle || result.medianAmount == null) {
+      continue;
+    }
 
-    // Helper: extract significant words (3+ chars, no noise)
-    const sigWords = (s: string) => s.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .split(/\s+/)
-      .filter(w => w.length >= 3 && !['ltd', 'limited', 'plc', 'the', 'and', 'for'].includes(w));
+    // Mark ONLY the transactions that form the qualifying series as
+    // recurring — not one-off charges at the same merchant that the
+    // amount trim excluded.
+    const usedDays = new Set(result.usedDayKeys);
+    const ids = txs
+      .filter((t) => {
+        const day = new Date(t.timestamp).toISOString().slice(0, 10);
+        return usedDays.has(day);
+      })
+      .map((t) => t.id);
+    if (ids.length > 0) {
+      await supabase
+        .from('bank_transactions')
+        .update({ is_recurring: true, recurring_group: normalisedName })
+        .in('id', ids);
+    }
 
     // Canonical key for this recurring group — same function used everywhere
     // that inserts into `subscriptions`, so the partial unique index
@@ -255,31 +268,15 @@ export async function detectRecurring(
     });
 
     if (matchingSub) {
-      // Active or pending - skip, already tracked
-      if (matchingSub.status === 'active' || matchingSub.status === 'pending_cancellation') continue;
-
-      // Cancelled or dismissed - check if it's a re-subscription (>90 days since cancelled)
-      const cancelDate = matchingSub.cancelled_at || matchingSub.dismissed_at;
-      if (cancelDate) {
-        const daysSinceCancelled = (Date.now() - new Date(cancelDate).getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSinceCancelled < 90) {
-          // Recently cancelled - don't re-add
-          continue;
-        }
-        // >90 days: new payments detected after cancellation = re-subscription
-        // Check that recent transactions exist (within last 60 days)
-        const recentTxs = sorted.filter(tx => {
-          const txAge = (Date.now() - new Date(tx.timestamp).getTime()) / (1000 * 60 * 60 * 24);
-          return txAge < 60;
-        });
-        if (recentTxs.length < 2) continue; // Not enough recent evidence
-        console.log(`Re-subscription detected: ${displayName} (cancelled ${Math.round(daysSinceCancelled)} days ago, ${recentTxs.length} recent payments)`);
-      } else {
-        continue;
-      }
+      // A matching row already exists — never insert another, whatever
+      // its status. Dismissed, cancelled and archived rows are PERMANENT
+      // tombstones: the old "90 days since dismissal = re-subscription"
+      // amnesia silently resurrected subscriptions users had dismissed,
+      // so it has been removed. If a user genuinely re-subscribes, they
+      // re-add it manually or un-dismiss the existing row.
+      continue;
     }
 
-    const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
     const bankDesc = txs[0].description || null;
 
     // Check merchant rules first (learned from user edits), then fall back to keyword matching
@@ -292,13 +289,14 @@ export async function detectRecurring(
     const { error: insertError } = await supabase.from('subscriptions').insert({
       user_id: userId,
       provider_name: finalDisplayName,
-      amount: parseFloat(avgAmount.toFixed(2)),
-      billing_cycle: cycle === 'weekly' ? 'monthly' : cycle,
+      amount: result.medianAmount,
+      billing_cycle: result.billingCycle,
       status: 'active',
       source: 'bank',
       category,
       bank_description: bankDesc,
       notes: 'Detected from bank transactions',
+      needs_review: true,
       // Canonical key so `get_subscription_total` can join this row against
       // the ledger and the partial unique index catches any race that
       // slipped past the `matchingSub` filter above. See 20260422020000.
@@ -318,7 +316,18 @@ export async function detectRecurring(
       }
     } else {
       newRecurringCount++;
-      console.log(`Detected recurring: ${finalDisplayName} £${avgAmount.toFixed(2)}/${cycle} [${category}]${rule ? ' (from merchant rules)' : ''}`);
+      // Keep the in-memory dedup list current so a second qualifying
+      // group in this run can't insert a near-duplicate row.
+      (allUserSubs || []).push({
+        id: '',
+        provider_name: finalDisplayName,
+        status: 'active',
+        cancelled_at: null,
+        dismissed_at: null,
+        archived_at: null,
+        recurring_group: deriveRecurringGroup(finalDisplayName),
+      });
+      console.log(`Detected recurring: ${finalDisplayName} £${result.medianAmount.toFixed(2)}/${result.billingCycle} (${result.occurrencesUsed} payments)[${category}]${rule ? ' (from merchant rules)' : ''}`);
     }
   }
 
