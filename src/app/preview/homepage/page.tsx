@@ -867,29 +867,31 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="hero-copy">
               <span className="eyebrow">Free forever tier · No card required</span>
               <h1>
-                <span className="l1">Your AI consumer champion</span>
-                <span className="l2">for unfair bills.</span>
-                <span className="l3">You keep 100% of what we recover.</span>
+                <span className="l1">Your AI financial helper.</span>
+                <span className="l2">In your pocket.</span>
+                <span className="l3">On your side.</span>
               </h1>
               <p className="hero-sub">
-                Reads your bank and inbox. Drafts the legal letter. Disputes it
-                end-to-end.
+                Paybacker watches your bills, bank and inbox. It spots
+                overcharges and price rises, drafts dispute letters citing UK
+                law, and sees every dispute through to the end.
                 <br />
-                You keep every penny we win back.
+                You keep 100% of anything you get back.
               </p>
               <div className="hero-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
                   Start free — keep 100% of your wins →
                 </Link>
-                <a className="btn btn-ghost" href="#vs-claims-firms">
-                  See how we compare →
+                <a className="btn btn-ghost" href="#pocket-agent">
+                  Meet your Pocket Agent →
                 </a>
               </div>
               <div className="hero-ticker">
                 <span className="pulse" />
                 <span>
-                  Solicitors: £250/hr. Claims firms: 30% cut.{' '}
-                  <strong>Paybacker: £4.99/mo, you keep 100%.</strong>
+                  Price rises spotted. Disputes drafted in 30 seconds.
+                  Subscriptions tracked.{' '}
+                  <strong>Free tier available, and you keep 100% of anything you get back.</strong>
                 </span>
               </div>
             </Reveal>
@@ -949,8 +951,8 @@ export default function HomepageV3PreviewPage() {
               <div className="underline" />
               <div className="blurb">
                 AI cites the exact statute — Consumer Rights Act 2015 s.49, UK261,
-                Ofcom and Ofgem rules — and formats it like a solicitor&rsquo;s
-                letter.
+                Ofcom and Ofgem rules — and formats it professionally, ready to
+                send.
               </div>
             </Reveal>
 
@@ -962,9 +964,8 @@ export default function HomepageV3PreviewPage() {
               </div>
               <div className="underline" />
               <div className="blurb">
-                Paybacker takes 0% of your refund. Competitors take 15–30% of what
-                you recover — we just charge a flat monthly subscription, so every
-                £ you get back stays yours.
+                Paybacker never takes a cut of what you get back. We just charge
+                a flat monthly subscription, so every £ you recover stays yours.
               </div>
             </Reveal>
           </div>
@@ -1066,6 +1067,50 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
+      {/* ----- Pocket Agent · your AI financial helper, in your pocket ----- */}
+      <section className="feature-section feature-section--ink" id="pocket-agent">
+        <div className="wrap">
+          <div className="feature-grid">
+            <Reveal className="feature-copy">
+              <h2 className="feature-title">Your AI financial helper, in your pocket</h2>
+              <p className="feature-tagline">
+                Paybacker lives on WhatsApp and Telegram, the apps you already
+                check. It messages you when something needs your eyes and
+                quietly handles the rest.
+              </p>
+              <p>
+                It tells you when a dispute is ready to send, when the company
+                replies, and when the 8-week Ombudsman clock hits. Tap to
+                approve. Done — no chasing, no hold music.
+              </p>
+              <ul className="feature-bullets">
+                <li>Drafts ready in 30 seconds — approve with one tap</li>
+                <li>Watches your inbox for the provider&rsquo;s response</li>
+                <li>Auto-escalates to Ombudsman at the 8-week mark</li>
+                <li>
+                  <strong>WhatsApp Pocket Agent</strong>{' '}
+                  <span className="tier-chip tier-chip--pro">Pro</span> — £9.99/month.
+                  Your money, managed from the app you already use every day.
+                </li>
+                <li>
+                  Also available on{' '}
+                  <strong>Telegram</strong>{' '}
+                  <span className="tier-chip tier-chip--free">Free</span> — same agent, any plan.
+                </li>
+              </ul>
+              <div className="feature-cta-row">
+                <Link className="btn btn-mint" href="/pocket-agent">
+                  Set up your Pocket Agent →
+                </Link>
+              </div>
+            </Reveal>
+            <Reveal className="feature-stage" delay={120}>
+              <PocketAgentDemo />
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
       {/* ----- 01 · AI Disputes Centre (copy + demo merged) ----- */}
       <section className="feature-section section-light" id="disputes">
         <div className="wrap">
@@ -1100,49 +1145,6 @@ export default function HomepageV3PreviewPage() {
             </Reveal>
             <Reveal className="feature-stage" delay={120}>
               <DisputesDemo />
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
-      {/* ----- Pocket Agent · reframed as "personal caseworker" ----- */}
-      <section className="feature-section feature-section--ink" id="pocket-agent">
-        <div className="wrap">
-          <div className="feature-grid">
-            <Reveal className="feature-copy">
-              <h2 className="feature-title">Your personal caseworker on WhatsApp</h2>
-              <p className="feature-tagline">
-                A solicitor takes a week to reply to email. Your Paybacker
-                caseworker is on WhatsApp 24/7.
-              </p>
-              <p>
-                It tells you when a dispute is ready to send, when the company
-                replies, and when the 8-week Ombudsman clock hits. Tap to
-                approve. Done — no chasing, no hold music.
-              </p>
-              <ul className="feature-bullets">
-                <li>Drafts ready in 30 seconds — approve with one tap</li>
-                <li>Watches your inbox for the provider&rsquo;s response</li>
-                <li>Auto-escalates to Ombudsman at the 8-week mark</li>
-                <li>
-                  <strong>WhatsApp Pocket Agent</strong>{' '}
-                  <span className="tier-chip tier-chip--pro">Pro</span> — £9.99/month.
-                  Your caseworker on the app you already use every day.
-                </li>
-                <li>
-                  Also available on{' '}
-                  <strong>Telegram</strong>{' '}
-                  <span className="tier-chip tier-chip--free">Free</span> — same agent, any plan.
-                </li>
-              </ul>
-              <div className="feature-cta-row">
-                <Link className="btn btn-mint" href="/pocket-agent">
-                  Set up your Pocket Agent →
-                </Link>
-              </div>
-            </Reveal>
-            <Reveal className="feature-stage" delay={120}>
-              <PocketAgentDemo />
             </Reveal>
           </div>
         </div>
@@ -1390,84 +1392,6 @@ export default function HomepageV3PreviewPage() {
             cites the law and tracks the case through the provider&rsquo;s formal
             complaint process and Ombudsman Services if needed.
           </Reveal>
-        </div>
-      </section>
-
-      {/* ========== vs Solicitors / Claims firms ==========
-          Strategic positioning: Paybacker replaces the legal-services
-          spend (solicitors at £250/hr, claims firms taking 30%), not
-          another budgeting app. This block sits straight after the
-          case study so the reader has the proof first, then the
-          alternative-cost framing. Re-uses .pricing-grid + .price-card
-          so it inherits the responsive stacking already wired into the
-          mobile breakpoint. */}
-      <section className="pricing-section section-light" id="vs-claims-firms" aria-label="Paybacker vs claims management firms">
-        <div className="wrap">
-          <Reveal className="section-head section-head--center">
-            <span className="eyebrow">The category we replace</span>
-            <h2 style={{ margin: '12px 0' }}>
-              Why people pay solicitors and claims firms —
-              <br />
-              and why you don&rsquo;t need to.
-            </h2>
-            <p>
-              The same dispute, three ways to run it. Same UK statutes
-              cited. Wildly different price tag.
-            </p>
-          </Reveal>
-
-          <div className="pricing-grid">
-            <Reveal className="price-card" delay={0}>
-              <div className="tier">Solicitor</div>
-              <div className="price">£250<span className="per">/hour</span></div>
-              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
-              <ul>
-                <li>Books a 30-minute consultation</li>
-                <li>You repeat the facts on the call</li>
-                <li>Drafts one letter, then bills you</li>
-                <li>Forgets to chase the response</li>
-                <li>Won&rsquo;t take cases under £1,000</li>
-              </ul>
-            </Reveal>
-
-            <Reveal className="price-card" delay={80}>
-              <div className="tier">Claims management firm</div>
-              <div className="price">30%<span className="per">of recovery</span></div>
-              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
-              <ul>
-                <li>Takes a third of whatever you recover</li>
-                <li>Cherry-picks high-value cases only</li>
-                <li>Drops you if your claim is under £200</li>
-                <li>You sign over conduct of the case</li>
-                <li>Often run by ex-PPI shops, not consumer rights experts</li>
-              </ul>
-            </Reveal>
-
-            <Reveal className="price-card featured" delay={160}>
-              <span className="ribbon">You keep 100%</span>
-              <div className="tier">Paybacker</div>
-              <div className="price">£4.99<span className="per">/month</span></div>
-              <div className="founding">Or use the free tier — 3 letters / month</div>
-              <ul>
-                <li>Drafts the letter in 30 seconds</li>
-                <li>Cites the exact UK statute, not a template</li>
-                <li>Tracks the response in your inbox automatically</li>
-                <li>Escalates to the Ombudsman when the 8-week clock hits</li>
-                <li>You keep 100% of every £ recovered</li>
-              </ul>
-              <Link className="btn btn-mint cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
-                Start free →
-              </Link>
-            </Reveal>
-          </div>
-
-          <p className="compare-footnote" style={{ marginTop: 24 }}>
-            Paybacker is not a law firm and AI-generated letters are guidance,
-            not legal advice. For complex litigation, instruct a solicitor.
-            For everyday consumer disputes — broadband, energy, parking,
-            flights, faulty goods — paying £250/hour is the part we&rsquo;re
-            replacing.
-          </p>
         </div>
       </section>
 
