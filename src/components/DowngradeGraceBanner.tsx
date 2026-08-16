@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { type PlanTier } from '@/lib/tier-rank';
+import { tierDisplayName } from '@/lib/tier-utils';
 
 /**
  * Renders during an active plan_downgrade_events grace period.
@@ -22,8 +24,10 @@ import { createClient } from '@/lib/supabase/client';
  */
 
 interface GracePeriod {
-  fromTier: 'essential' | 'pro';
-  toTier: 'free' | 'essential';
+  // Any consumer tier can be either end of a downgrade now that Household and
+  // Dispute Pro sit above Pro — e.g. dispute_pro → pro is a real transition.
+  fromTier: PlanTier;
+  toTier: PlanTier;
   graceEndsAt: string;
   daysRemaining: number;
 }
@@ -68,18 +72,20 @@ export default function DowngradeGraceBanner() {
       <AlertTriangle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${urgent ? 'text-rose-600' : 'text-amber-600'}`} />
       <div className="flex-1 text-sm">
         <p className="font-semibold mb-0.5">
-          Your plan changed to <span className="capitalize">{grace.toTier}</span>{' '}
+          {/* tierDisplayName, not CSS capitalize — "dispute_pro" would render
+              as "Dispute_pro" through a text-transform. */}
+          Your plan changed to <span>{tierDisplayName(grace.toTier)}</span>{' '}
           — {grace.daysRemaining > 0 ? `${grace.daysRemaining} day${grace.daysRemaining === 1 ? '' : 's'} left` : 'grace period ending today'} to act
         </p>
         <p className="text-xs opacity-90">
-          We&apos;ll keep your <strong>oldest-connected</strong> banks/emails active and pause sync on the rest after <strong>{dateLabel}</strong>. Transaction history is preserved either way — only sync pauses. Upgrade back to {grace.fromTier} to keep everything live, or pick which connections to keep manually.
+          We&apos;ll keep your <strong>oldest-connected</strong> banks/emails active and pause sync on the rest after <strong>{dateLabel}</strong>. Transaction history is preserved either way — only sync pauses. Upgrade back to {tierDisplayName(grace.fromTier)} to keep everything live, or pick which connections to keep manually.
         </p>
         <div className="flex items-center gap-3 mt-2">
           <Link
             href="/pricing"
             className={`text-xs font-bold px-3 py-1.5 rounded-lg ${urgent ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700'} text-white`}
           >
-            Upgrade to {grace.fromTier}
+            Upgrade to {tierDisplayName(grace.fromTier)}
           </Link>
           <Link
             href="/dashboard/profile"

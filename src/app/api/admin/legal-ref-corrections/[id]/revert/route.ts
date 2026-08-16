@@ -125,17 +125,43 @@ export async function POST(
   }
 
   // Audit row.
+  //
+  // Column names verified against the live schema (16 Aug 2026):
+  // `ref_id`, `before_url`/`after_url`, `changes` (jsonb), `notes`.
+  // There is no `legal_reference_id` and no `reasons` column — the
+  // previous version used both, so every revert audit insert failed
+  // silently behind a bare `catch {}`. Failures are now logged.
+  let auditWritten = true;
   try {
-    await supabase.from('legal_ref_verifications').insert({
-      legal_reference_id: correction.ref_id,
+    const { error } = await supabase.from('legal_ref_verifications').insert({
+      ref_id: correction.ref_id,
       verifier: 'founder-revert',
-      changes: { restored: restore, correction_id: correction.id },
-      reasons: ['Founder one-click revert via admin UI'],
+      triggered_by: auth.userId ?? 'founder',
+      after_url: (restore.source_url as string | undefined) ?? null,
+      changes: {
+        restored: restore,
+        correction_id: correction.id,
+        reasons: ['Founder one-click revert via admin UI'],
+      },
+      notes: 'Founder one-click revert via admin UI',
       verified_at: new Date().toISOString(),
     });
-  } catch {
-    // γ table may not exist — silent
+    if (error) {
+      auditWritten = false;
+      console.error(
+        `[legal-ref-revert] audit insert FAILED for correction ${id} ` +
+          `(ref ${correction.ref_id}) — revert applied but not audited:`,
+        error,
+      );
+    }
+  } catch (e) {
+    auditWritten = false;
+    console.error(
+      `[legal-ref-revert] audit insert THREW for correction ${id} ` +
+        `(ref ${correction.ref_id}) — revert applied but not audited:`,
+      e,
+    );
   }
 
-  return NextResponse.json({ ok: true, restored: restore });
+  return NextResponse.json({ ok: true, restored: restore, auditWritten });
 }

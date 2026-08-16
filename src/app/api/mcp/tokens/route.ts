@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getUserPlan } from '@/lib/get-user-plan';
+import { isAtLeastPro } from '@/lib/tier-rank';
 import { mintToken } from '@/lib/mcp-tokens';
 import { captureServer } from '@/lib/posthog-server';
 
@@ -71,9 +72,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Pro-only feature
+  // Pro-only feature.
+  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
   const plan = await getUserPlan(user.id);
-  if (plan.tier !== 'pro' || !plan.isActive) {
+  if (!isAtLeastPro(plan.tier) || !plan.isActive) {
     return NextResponse.json(
       { error: 'The Paybacker MCP is available on the Pro plan.' },
       { status: 403 },

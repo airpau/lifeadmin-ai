@@ -6,6 +6,7 @@ import { updateUserOpportunityScore } from '@/lib/opportunity-scoring';
 import { buildDailyDigestEmail } from '@/lib/email/daily-digest';
 import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
+import { isPaidTier } from '@/lib/tier-rank';
 
 export const maxDuration = 60;
 
@@ -222,7 +223,9 @@ export async function GET(request: NextRequest) {
       }
 
       // 6) Send via unified dispatcher
-      const isPaid = user.subscription_tier === 'essential' || user.subscription_tier === 'pro';
+      // Any paid tier, not just essential/pro — a literal check would have
+      // downgraded household and dispute_pro users to the free-tier digest.
+      const isPaid = isPaidTier(user.subscription_tier);
 
       // Telegram/WhatsApp text — short summary
       const lines: string[] = [];

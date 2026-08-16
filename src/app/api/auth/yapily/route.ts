@@ -10,6 +10,7 @@ import {
 import { UPCOMING_FEATURE_SCOPES } from '@/lib/yapily/upcoming';
 import { TIER_CONFIG, type BankTier } from '@/lib/bank-tier-config';
 import { getEffectiveTier } from '@/lib/plan-limits';
+import { isPlanTier } from '@/lib/tier-rank';
 
 /**
  * GET /api/auth/yapily?institutionId=xxx
@@ -46,7 +47,17 @@ export async function GET(request: NextRequest) {
   // Use getEffectiveTier, not the raw profile column: it applies the
   // onboarding-trial override, so a trial-Pro user isn't capped at the
   // Free limit while their trial is still running.
+  //
+  // The `?? TIER_CONFIG.free` fallback is kept as a safety net but must not
+  // be silent: it applies the Free 2-bank cap, so a paid subscriber on a
+  // tier missing from TIER_CONFIG would be blocked at 2 banks with no trace
+  // of why. Log it so the missing entry is findable.
   const tier = (await getEffectiveTier(user.id)) as BankTier;
+  if (!isPlanTier(tier)) {
+    console.error(
+      `[auth/yapily] unknown tier "${tier}" for user ${user.id} has no TIER_CONFIG entry — applying the Free bank cap. Add it to TIER_CONFIG in src/lib/bank-tier-config.ts.`,
+    );
+  }
   const tierConfig = TIER_CONFIG[tier] ?? TIER_CONFIG.free;
 
   const { data: existingConnections } = await supabase

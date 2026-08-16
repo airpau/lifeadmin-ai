@@ -31,6 +31,7 @@ import {
   type NotificationEventType,
 } from '@/lib/notifications/events';
 import { getEffectiveTier } from '@/lib/plan-limits';
+import { isAtLeastPro } from '@/lib/tier-rank';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -285,7 +286,9 @@ export async function GET(req: NextRequest) {
 
     if (meta.proOnly) {
       const tier = await getEffectiveTier(row.user_id);
-      if (tier !== 'pro') {
+      // Pro AND ABOVE. household and dispute_pro both include the full Pro
+      // entitlement set, so an equality check would have denied them.
+      if (!isAtLeastPro(tier)) {
         skipped++;
         continue;
       }

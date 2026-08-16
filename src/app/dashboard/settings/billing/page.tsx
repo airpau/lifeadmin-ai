@@ -7,8 +7,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { CreditCard, ExternalLink, Loader2, CheckCircle2 } from 'lucide-react';
+import { isAtLeastEssential, isAtLeastPro, tierRank, type PlanTier } from '@/lib/tier-rank';
+import { tierDisplayName } from '@/lib/tier-utils';
 
-type Tier = 'free' | 'essential' | 'pro';
+type Tier = PlanTier;
 
 interface ProfileRow {
   subscription_tier: Tier | null;
@@ -18,10 +20,14 @@ interface ProfileRow {
   founding_member: boolean | null;
 }
 
+// Record<Tier, …> so the compiler forces an entry for every tier — a partial
+// map would render "undefined/undefined" on the current-plan card.
 const TIER_COPY: Record<Tier, { price: string; cadence: string; include: string }> = {
   free: { price: '£0', cadence: '/forever', include: '3 letters/mo · manual tracker · one-time scans' },
   essential: { price: '£4.99', cadence: '/month', include: 'Unlimited letters · 1 bank + 1 email · daily auto-sync' },
   pro: { price: '£9.99', cadence: '/month', include: 'Unlimited banks + emails · priority support · export + MCP' },
+  household: { price: '£14.99', cadence: '/month', include: 'Everything in Pro, for up to 4 people in one household' },
+  dispute_pro: { price: '£19.99', cadence: '/month', include: 'Everything in Pro · dispute escalation support' },
 };
 
 export default function BillingPage() {
@@ -80,8 +86,15 @@ export default function BillingPage() {
   };
 
   const tier: Tier = (profile?.subscription_tier as Tier) || 'free';
-  const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+  // tierDisplayName, not manual capitalisation — that rendered "Dispute_pro".
+  const tierLabel = tierDisplayName(tier);
   const isFree = tier === 'free' || !profile?.stripe_customer_id;
+
+  // Switchable tiers shown in the grid. The current tier is appended when it
+  // sits outside the base three, so a Household or Dispute Pro subscriber
+  // still sees their own plan marked "Current plan" rather than nothing.
+  const switchTiers: Tier[] = ['free', 'essential', 'pro'];
+  if (!switchTiers.includes(tier)) switchTiers.push(tier);
 
   if (loading) {
     return (
@@ -106,12 +119,14 @@ export default function BillingPage() {
       <div
         className="card"
         style={{
-          background: tier === 'pro'
+          // Rank checks, not tier equality — Household and Dispute Pro would
+          // otherwise fall through to the plain white "free" treatment.
+          background: isAtLeastPro(tier)
             ? 'linear-gradient(135deg,#F0FDF4,#DCFCE7)'
-            : tier === 'essential'
+            : isAtLeastEssential(tier)
               ? 'linear-gradient(135deg,#F0F9FF,#E0F2FE)'
               : '#FFFFFF',
-          borderColor: tier === 'pro' ? '#86EFAC' : tier === 'essential' ? '#BAE6FD' : undefined,
+          borderColor: isAtLeastPro(tier) ? '#86EFAC' : isAtLeastEssential(tier) ? '#BAE6FD' : undefined,
           marginBottom: 14,
           padding: 24,
         }}
@@ -149,7 +164,7 @@ export default function BillingPage() {
           Switch tier
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }} className="tier-grid">
-          {(['free', 'essential', 'pro'] as Tier[]).map((t) => {
+          {switchTiers.map((t) => {
             const on = t === tier;
             const copy = TIER_COPY[t];
             return (
@@ -163,7 +178,9 @@ export default function BillingPage() {
                   background: on ? 'var(--mint-wash)' : '#fff',
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', textTransform: 'capitalize' }}>{t}</div>
+                {/* tierDisplayName rather than CSS capitalize — "dispute_pro"
+                    only reads correctly through the display map. */}
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{tierDisplayName(t)}</div>
                 <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-.015em', color: 'var(--text)', margin: '4px 0' }}>
                   {copy.price}
                   <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)' }}>{copy.cadence}</span>
@@ -195,7 +212,9 @@ export default function BillingPage() {
                     href="/pricing"
                     style={{ display: 'block', width: '100%', padding: 8, fontSize: 12.5, fontWeight: 600, background: 'var(--text)', color: '#fff', borderRadius: 8, textAlign: 'center', textDecoration: 'none', fontFamily: 'inherit' }}
                   >
-                    {tier === 'free' ? 'Upgrade' : tier === 'essential' && t === 'pro' ? 'Upgrade to Pro' : 'Change'}
+                    {/* "Upgrade to X" only when the target genuinely outranks the
+                        current tier — anything else reads as a neutral "Change". */}
+                    {tier === 'free' ? 'Upgrade' : tierRank(t) > tierRank(tier) ? `Upgrade to ${tierDisplayName(t)}` : 'Change'}
                   </Link>
                 )}
               </div>

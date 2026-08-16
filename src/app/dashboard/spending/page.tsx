@@ -5,6 +5,7 @@ import { Loader2, TrendingUp, TrendingDown, BarChart3, ArrowRight, Lock, Chevron
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatGBP } from '@/lib/format';
+import { isAtLeastEssential, isAtLeastPro } from '@/lib/tier-rank';
 
 interface SpendingData {
   hasData: boolean;
@@ -63,8 +64,10 @@ export default function SpendingPage() {
     );
   }
 
-  const isPaid = tier === 'essential' || tier === 'pro';
-  const isPro = tier === 'pro';
+  // Rank checks, not tier equality — Household and Dispute Pro sit above Pro
+  // and are entitled to everything Pro unlocks here.
+  const isPaid = isAtLeastEssential(tier);
+  const isPro = isAtLeastPro(tier);
 
   if (!data?.hasData) {
     return (

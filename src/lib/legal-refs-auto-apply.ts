@@ -397,28 +397,58 @@ export async function applyCorrection(
     console.warn('[auto-apply] correction status update skipped', e);
   }
 
-  // 3. Audit row in legal_ref_verifications (γ). Soft if missing.
+  // 3. Audit row in legal_ref_verifications.
+  //
+  // Column names verified against the live schema (project
+  // kcxxlesishltdmfctlmo, 16 Aug 2026): the table has `ref_id`,
+  // `before_url` / `after_url`, `before_status` / `after_status`,
+  // `changes` (jsonb) and `notes`. It has NO `legal_reference_id` and
+  // NO `reasons` column — an earlier version of this insert used both,
+  // which meant every insert failed and was swallowed by a bare
+  // `catch {}`, so the auto-apply audit trail was never written.
+  //
+  // The failure is now logged loudly. This row is the founder-visible
+  // record behind the admin "Auto-applied (last 7 days)" panel, so a
+  // silent failure here is a compliance problem, not a nice-to-have.
   try {
-    await supabase.from('legal_ref_verifications').insert({
-      legal_reference_id: correction.ref_id,
+    const { error } = await supabase.from('legal_ref_verifications').insert({
+      ref_id: correction.ref_id,
       verifier: 'auto-apply-low-risk',
+      triggered_by: 'compliance-sync',
+      before_url: correction.before_source_url ?? null,
+      after_url: correction.proposed_source_url ?? null,
       changes: {
         before: {
-          law_name: correction.before_law_name,
-          source_url: correction.before_source_url,
-          section: correction.before_section,
+          law_name: correction.before_law_name ?? null,
+          source_url: correction.before_source_url ?? null,
+          section: correction.before_section ?? null,
         },
         after: {
-          law_name: correction.proposed_law_name,
-          source_url: correction.proposed_source_url,
-          section: correction.proposed_section,
+          law_name: correction.proposed_law_name ?? null,
+          source_url: correction.proposed_source_url ?? null,
+          section: correction.proposed_section ?? null,
         },
+        correction_id: correction.id,
+        reasons: decision.reasons,
       },
-      reasons: decision.reasons,
+      notes: decision.reasons.join(' | '),
       verified_at: new Date().toISOString(),
     });
-  } catch {
-    // γ table may not exist yet — silent.
+    if (error) {
+      console.error(
+        '[auto-apply] legal_ref_verifications audit insert FAILED — the ' +
+          'auto-apply audit trail is incomplete for correction ' +
+          `${correction.id} (ref ${correction.ref_id}):`,
+        error,
+      );
+    }
+  } catch (e) {
+    console.error(
+      '[auto-apply] legal_ref_verifications audit insert THREW — the ' +
+        'auto-apply audit trail is incomplete for correction ' +
+        `${correction.id} (ref ${correction.ref_id}):`,
+      e,
+    );
   }
 
   return true;

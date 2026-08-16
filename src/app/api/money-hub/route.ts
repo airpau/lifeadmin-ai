@@ -9,6 +9,7 @@ import { loadLearnedRules } from '@/lib/learning-engine';
 import { ensureDefaultSpace, getSpace, spaceConnectionFilter, spaceTransactionFilter } from '@/lib/spaces';
 import { bucketFor } from '@/lib/category-taxonomy';
 import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits';
+import { isAtLeastEssential, isAtLeastPro, isPlanTier } from '@/lib/tier-rank';
 
 export const runtime = 'nodejs';
 // Money Hub aggregates transactions across all connections, runs
@@ -122,8 +123,11 @@ export async function GET(request: Request) {
       !profile?.trial_converted_at &&
       !profile?.trial_expired_at);
     const effectiveTier = (isTestUser || isOnboardingTrial) ? 'pro' : tier;
-    const isPaid = effectiveTier === 'essential' || effectiveTier === 'pro';
-    const isPro = effectiveTier === 'pro';
+    // Rank comparisons, not equality: a literal `=== 'essential' || === 'pro'`
+    // list silently treats every tier ABOVE Pro (Household, Dispute Pro) as
+    // Free, which downgrades a paying subscriber's Money Hub.
+    const isPaid = isAtLeastEssential(effectiveTier);
+    const isPro = isAtLeastPro(effectiveTier);
 
     const url = new URL(request.url);
     const now = new Date();
@@ -160,6 +164,14 @@ export async function GET(request: Request) {
     const requestedSpaceId = url.searchParams.get('space_id');
     await ensureDefaultSpace(supabase, user.id);
     const requestedSpace = await getSpace(supabase, user.id, requestedSpaceId);
+    // The `?? 1` fallback is kept for safety, but an unrecognised tier is a
+    // real bug (a new tier added without a PLAN_LIMITS entry) and silently
+    // applying the Free 1-Space cap would hide it. Log loudly instead.
+    if (!isPlanTier(effectiveTier)) {
+      console.error(
+        `[money-hub] unknown subscription tier "${effectiveTier}" for user ${user.id} — falling back to the Free Spaces cap. Add it to PLAN_LIMITS in src/lib/plan-limits.ts.`,
+      );
+    }
     const planMaxSpaces = PLAN_LIMITS[effectiveTier as PlanTier]?.maxSpaces ?? 1;
     const tierAllowsCustomSpaces = planMaxSpaces === null || planMaxSpaces > 1;
     const requestingNonDefault = !!(requestedSpaceId && requestedSpace && requestedSpace.is_default === false);

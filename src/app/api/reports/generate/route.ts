@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getUserPlan } from '@/lib/get-user-plan';
+import { isAtLeastPro } from '@/lib/tier-rank';
 import {
   generateAnnualReportData,
   generateOnDemandReportData,
@@ -29,9 +30,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Pro users only
+    // Pro users only.
+    // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
     const plan = await getUserPlan(user.id);
-    if (plan.tier !== 'pro') {
+    if (!isAtLeastPro(plan.tier)) {
       return NextResponse.json(
         { error: 'Financial reports are available on the Pro plan.' },
         { status: 403 }

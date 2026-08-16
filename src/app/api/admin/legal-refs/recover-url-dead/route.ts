@@ -312,8 +312,23 @@ export async function POST(request: NextRequest) {
         ).toFixed(4);
 
         const proposedUrl = recovery?.current_url ?? null;
-        const sameAuthority =
-          proposedUrl && checkUkLegalAuthority(proposedUrl).ok;
+        // SOURCE AUTHORITY GATE. This route is reachable unattended via
+        // the compliance-sync cron, so it must not accept anything softer
+        // than the allowlist. `.ok` is true for reason==='secondary'
+        // (citizensadvice.org.uk / moneyhelper.org.uk) — those must never
+        // silently replace a canonical citation, so we require
+        // reason === 'authority' explicitly.
+        const authorityCheck = proposedUrl
+          ? checkUkLegalAuthority(proposedUrl)
+          : null;
+        const sameAuthority = authorityCheck?.reason === 'authority';
+        if (proposedUrl && !sameAuthority) {
+          console.warn(
+            `[recover-url-dead] REJECTED non-authority URL for ref ${row.id}: ` +
+              `${proposedUrl} (reason=${authorityCheck?.reason ?? 'unparseable'}) — ` +
+              `stored source_url left untouched`,
+          );
+        }
         const samePublisher =
           proposedUrl && publisherDomain(proposedUrl) === pubDomain;
         const confOk =

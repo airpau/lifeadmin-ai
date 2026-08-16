@@ -21,6 +21,7 @@ import {
   paragraph,
   unorderedList,
 } from './PaybackerEmailLayout';
+import { TIER_DISPLAY_NAME, TIER_PRICE_GBP, isAtLeastPro } from '@/lib/tier-rank';
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
 
@@ -40,7 +41,7 @@ export const SUBJECT_LINES: Record<NurtureTemplate, (tier: string) => string> = 
 export interface NurtureContext {
   email: string;
   name: string | null;
-  intendedTier: 'essential' | 'pro' | null;
+  intendedTier: NurtureTier | null;
   intendedBillingInterval: 'monthly' | 'yearly' | null;
   unsubscribeToken: string;
   /** Only set for email_3 / email_4 */
@@ -51,16 +52,21 @@ export interface NurtureContext {
   recoveryUrl?: string;
 }
 
-function tierName(t: 'essential' | 'pro' | null): string {
-  if (t === 'pro') return 'Pro';
-  if (t === 'essential') return 'Essential';
-  return 'LifeAdmin';
+/**
+ * Tiers a consumer can abandon a checkout on. Mirrors the
+ * `consumer_leads_intended_tier_check` constraint. Derived from the
+ * canonical tier tables so a price change lands in one place.
+ */
+export type NurtureTier = 'essential' | 'pro' | 'household' | 'dispute_pro';
+
+function tierName(t: NurtureTier | null): string {
+  if (!t) return 'LifeAdmin';
+  return TIER_DISPLAY_NAME[t];
 }
 
-function tierPrice(t: 'essential' | 'pro' | null): string {
-  if (t === 'pro') return '£9.99/month';
-  if (t === 'essential') return '£4.99/month';
-  return 'a paid plan';
+function tierPrice(t: NurtureTier | null): string {
+  if (!t) return 'a paid plan';
+  return `£${TIER_PRICE_GBP[t].monthly.toFixed(2)}/month`;
 }
 
 function unsubUrl(token: string): string {
@@ -119,7 +125,10 @@ function build(template: NurtureTemplate, ctx: NurtureContext): BuiltEmail {
   }
 
   if (template === 'email_2_value_nudge') {
-    const isPro = ctx.intendedTier === 'pro';
+    // Rank comparison, not `=== 'pro'`: someone who abandoned a Household
+    // or Dispute Pro checkout should see the richer Pro-and-above bullets,
+    // not the Essential ones.
+    const isPro = isAtLeastPro(ctx.intendedTier);
     const bullets = isPro
       ? [
           'Unlimited bill scanning and complaint letters',

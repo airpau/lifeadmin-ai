@@ -25,6 +25,7 @@ import {
   Bell, Calendar, BarChart3, Megaphone, ShieldCheck, CheckCircle2,
   Send, Lock, Sparkles,
 } from 'lucide-react';
+import { isAtLeastPro, type PlanTier } from '@/lib/tier-rank';
 
 type Channel = 'email' | 'telegram' | 'whatsapp' | 'push';
 type PocketAgentChannel = 'telegram' | 'whatsapp' | 'none';
@@ -41,7 +42,7 @@ interface EventRow {
 }
 
 interface Payload {
-  tier: 'free' | 'essential' | 'pro';
+  tier: PlanTier;
   pocketAgentChannel: PocketAgentChannel;
   whatsappPhone: string | null;
   events: EventRow[];
@@ -213,7 +214,9 @@ export default function NotificationsSettingsPage() {
     );
   }
 
-  const isPro = data.tier === 'pro';
+  // isAtLeastPro, not === 'pro' — WhatsApp and the other Pro-gated channels
+  // are included in Household and Dispute Pro.
+  const isPro = isAtLeastPro(data.tier);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">

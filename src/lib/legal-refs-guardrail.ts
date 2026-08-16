@@ -221,13 +221,68 @@ export async function refreshSingleRef(
       last_verified: new Date().toISOString(),
       verification_notes: typeof parsed.notes === 'string' ? parsed.notes : null,
     };
-    if (typeof parsed.current_url === 'string') update.verified_url = parsed.current_url;
+
+    // SOURCE AUTHORITY GATE — non-negotiable (CLAUDE.md "Source authority
+    // is non-negotiable"). `parsed.current_url` is LLM-supplied and this
+    // function runs inside a LIVE USER REQUEST, so it is the one place an
+    // unattended path could write an off-allowlist source into the
+    // canonical `legal_references.source_url`. Nothing here writes a URL
+    // unless `checkUkLegalAuthority` returns reason === 'authority'.
+    //
+    // `reason === 'secondary'` (citizensadvice.org.uk, moneyhelper.org.uk)
+    // is deliberately NOT accepted: per legal-refs-authority.ts, secondary
+    // sources must never silently replace an existing canonical citation.
+    // If the proposed URL is rejected we leave the stored URL untouched
+    // and let the status logic fall through — a ref the verifier says is
+    // invalid with no acceptable replacement ends up 'broken', which is
+    // the safe outcome.
+    const proposedUrl =
+      typeof parsed.current_url === 'string' ? parsed.current_url.trim() : '';
+    let proposedUrlAccepted = false;
+    if (proposedUrl) {
+      // Imported lazily rather than at module scope purely so that the
+      // pure-function test suite (legal-refs-guardrail.test.ts) keeps
+      // running under `node --experimental-strip-types --test`, which
+      // does not do extensionless module resolution. The specifier is a
+      // static literal, so bundlers still resolve it at build time —
+      // there is exactly ONE allowlist and this is it.
+      const { checkUkLegalAuthority } = await import('./legal-refs-authority');
+      const authority = checkUkLegalAuthority(proposedUrl);
+      proposedUrlAccepted = authority.reason === 'authority';
+      if (!proposedUrlAccepted) {
+        console.warn(
+          `[guardrail] refreshSingleRef REJECTED non-authority URL for ref ${refId}: ` +
+            `${proposedUrl} (reason=${authority.reason}` +
+            `${authority.hostname ? `, host=${authority.hostname}` : ''}) — ` +
+            `stored source_url left untouched`,
+        );
+        // Durable audit trail so the founder can see what the verifier
+        // tried to write. Fire-and-forget: never block the user request.
+        void supabase
+          .from('business_log')
+          .insert({
+            category: 'legal_intelligence',
+            action: 'guardrail_rejected_non_authority_url',
+            details: {
+              ref_id: refId,
+              law_name: ref.law_name,
+              proposed_url: proposedUrl,
+              current_url: ref.source_url,
+              authority_reason: authority.reason,
+              hostname: authority.hostname ?? null,
+              source: 'refreshSingleRef',
+            },
+          })
+          .then(undefined, () => {});
+      }
+    }
+    if (proposedUrlAccepted) update.verified_url = proposedUrl;
 
     let newStatus: string;
     if (conf === 'high' && typeof parsed.superseded_by === 'string') {
       newStatus = 'superseded';
-    } else if (conf === 'high' && parsed.valid === false && typeof parsed.current_url === 'string') {
-      update.source_url = parsed.current_url;
+    } else if (conf === 'high' && parsed.valid === false && proposedUrlAccepted) {
+      update.source_url = proposedUrl;
       newStatus = 'updated';
     } else if (conf === 'medium') {
       newStatus = 'needs_review';

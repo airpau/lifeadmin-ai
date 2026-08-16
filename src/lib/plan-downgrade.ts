@@ -28,10 +28,14 @@ import { sendNotification } from '@/lib/notifications/dispatch';
 
 const GRACE_DAYS = 14;
 
-const TIER_RANK: Record<PlanTier, number> = { free: 0, essential: 1, pro: 2 };
+// Was a fourth private copy of the rank map, hardcoding Pro as the
+// ceiling. Now the canonical one — Household ranks equal to Pro, so
+// Pro → Household correctly registers as neither an upgrade nor a
+// downgrade and does not open a grace period.
+import { TIER_RANK, isTierDowngrade } from '@/lib/tier-rank';
 
 export function isDowngrade(from: PlanTier, to: PlanTier): boolean {
-  return TIER_RANK[to] < TIER_RANK[from];
+  return isTierDowngrade(from, to);
 }
 
 export interface GraceSnapshot {

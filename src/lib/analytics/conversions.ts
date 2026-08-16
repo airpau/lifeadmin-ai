@@ -23,6 +23,7 @@
  */
 
 import { hasConsent } from '@/lib/consent';
+import type { PlanTier } from '@/lib/tier-rank';
 
 declare global {
   interface Window {
@@ -104,7 +105,13 @@ export function trackSignupCompleted(opts: { dedupeKey?: string; email?: string 
  * later — these client-side hits are a sensible v1.
  */
 export function trackPaidUpgrade(opts: {
-  tier: 'essential' | 'pro';
+  /**
+   * Full PlanTier union rather than the old `'essential' | 'pro'` pair.
+   * Household and Dispute Pro are real upgrade destinations, and narrowing
+   * here forced every caller to cast — which is exactly how a new tier goes
+   * untracked.
+   */
+  tier: PlanTier;
   billingPeriod: 'monthly' | 'annual';
   amountGbp: number;
   /** Stripe payment_intent or checkout_session id, used for dedupe */

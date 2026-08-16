@@ -1,4 +1,6 @@
-export type NormalizedTier = 'free' | 'essential' | 'pro';
+import { TIER_DISPLAY_NAME, isPlanTier, type PlanTier } from '@/lib/tier-rank';
+
+export type NormalizedTier = PlanTier;
 
 /**
  * Backstop normaliser for any tier string still flowing around the app
@@ -16,23 +18,21 @@ export type NormalizedTier = 'free' | 'essential' | 'pro';
  * "treat as pro" (which was inconsistent with PRICE_ID_TO_TIER and
  * caused these users to render Pro labels while quota-checks gave
  * them free-tier caps).
+ *
+ * 2026-08-16: this used to be a `switch` whose `default:` returned 'free'.
+ * That was a silent-demotion trap — any tier added above Pro (household,
+ * dispute_pro) would have been reported as Free by every consumer of this
+ * function, including the churn-prevention and marketing-automation crons.
+ * It now recognises every tier in the canonical PlanTier union and only
+ * falls back to 'free' for genuinely unknown strings.
  */
 export function normalizeTier(tier: string | null | undefined): NormalizedTier {
-  switch ((tier ?? '').toLowerCase()) {
-    case 'pro':
-      return 'pro';
-    case 'essential':
-    case 'plus': // legacy single-paid-tier — same Stripe price IDs as essential
-      return 'essential';
-    default:
-      return 'free';
-  }
+  const raw = (tier ?? '').toLowerCase();
+  // legacy single-paid-tier — same Stripe price IDs as essential
+  if (raw === 'plus') return 'essential';
+  return isPlanTier(raw) ? raw : 'free';
 }
 
 export function tierDisplayName(tier: string | null | undefined): string {
-  switch (normalizeTier(tier)) {
-    case 'pro': return 'Pro';
-    case 'essential': return 'Essential';
-    default: return 'Free';
-  }
+  return TIER_DISPLAY_NAME[normalizeTier(tier)];
 }

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import NotificationBell from '@/components/NotificationBell';
+import { type PlanTier } from '@/lib/tier-rank';
+import { tierDisplayName } from '@/lib/tier-utils';
 
 // ─── Icon library (ported verbatim from redesign/shell.jsx) ─────────────
 const I = {
@@ -145,16 +147,16 @@ function tierLabel(
   trialDaysLeft: number | null,
 ): string {
   if (isTrial) return trialDaysLeft ? `Pro Trial · ${trialDaysLeft}d` : 'Pro Trial';
-  if (tier === 'pro') return 'Pro Plan';
-  if (tier === 'essential') return 'Essential Plan';
-  return 'Free Plan';
+  // Derived from TIER_DISPLAY_NAME rather than an if-chain — an if-chain
+  // silently labelled every new tier (Household, Dispute Pro) as "Free Plan".
+  return `${tierDisplayName(tier)} Plan`;
 }
 
 // ─── Public types & component ────────────────────────────────────────────
 export type UserSummary = {
   firstName: string | null;
   email: string | null;
-  tier: 'free' | 'essential' | 'pro';
+  tier: PlanTier;
   isTrial: boolean;
   trialDaysLeft: number | null;
 };

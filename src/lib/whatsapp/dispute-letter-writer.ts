@@ -40,6 +40,7 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
+import { CITATION_PERMISSIVE_STATUSES } from '@/lib/legal-refs-statuses';
 
 const FCA_WEEKS = 8;
 
@@ -283,13 +284,21 @@ export async function buildGroundingContext(
     dispute.issue_type as string | null,
     dispute.provider_type as string | null,
   );
+  // NOTE: this list drives the "Cites:" line in the WhatsApp confirmation
+  // preview ONLY. The letter itself is grounded by
+  // `generateDisputeReply`, which runs its own retrieval plus the
+  // freshness + post-flight guardrail. Use the same status set as the
+  // engine so the preview does not disagree with the letter — the
+  // previous hard-coded ['verified','needs_review'] silently excluded
+  // 'current' and 'updated', which is the overwhelming majority of the
+  // table, so the preview usually said "no relevant statute matched".
   const { data: rawRefs } = await sb
     .from('legal_references')
     .select(
       'law_name, section, summary, source_url, verification_status, category',
     )
     .in('category', categories)
-    .in('verification_status', ['verified', 'needs_review'])
+    .in('verification_status', CITATION_PERMISSIVE_STATUSES as unknown as string[])
     .limit(8);
   const legislation = (rawRefs ?? []).map((r) => ({
     law_name: r.law_name as string,

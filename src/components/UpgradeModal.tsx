@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { tierDisplayName } from '@/lib/tier-utils';
 
 interface UpgradeModalProps {
   open: boolean;
@@ -28,7 +29,9 @@ export default function UpgradeModal({ open, onClose, used, limit, tier }: Upgra
           <h2 className="text-2xl font-bold text-slate-900 mb-2">Monthly Limit Reached</h2>
           <p className="text-gray-400">
             You&apos;ve used <span className="text-slate-900 font-semibold">{used} of {limit}</span> complaint{limit !== 1 ? 's' : ''} this month on the{' '}
-            <span className="text-yellow-400 capitalize">{tier}</span> plan.
+            {/* tierDisplayName rather than CSS capitalize — an underscored tier
+                key like "dispute_pro" only reads correctly through the map. */}
+            <span className="text-yellow-400">{tierDisplayName(tier)}</span> plan.
           </p>
         </div>
 

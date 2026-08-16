@@ -148,6 +148,7 @@ _Updated 2026-04-22 after Emma-matched tier review — see
 **Free — £0:**
 - 2 bank connections with daily auto-sync
 - 1 email connection with 30-min Watchdog dispute-reply polling
+- Inbox scan reads the last 90 days of history (Essential/Pro read 2 years)
 - Unlimited dispute thread links (email-thread monitoring)
 - 3 AI letters per month
 - Unlimited manual subscription tracking
@@ -497,7 +498,7 @@ phase the cron chains must follow the same pattern.
 
 ### 4. Email Inbox Scanning
 - Connect Gmail or Outlook (read-only, Google OAuth verified)
-- Scans up to 2 years of email history
+- Scan depth is a plan limit (`PLAN_LIMITS[tier].emailScanDays`): Free scans the last 90 days, Essential and Pro scan up to 2 years. Enforced server-side in every scan path via `resolveEmailScanWindow()` in `src/lib/email-scan-window.ts`.
 - Opportunity Scanner: finds overcharges, forgotten subscriptions, flight delay opportunities, debt disputes
 - Smart action buttons: Add to Subscriptions, Write Complaint Letter, Claim Compensation, Create Task, Dismiss
 - Free: 1 email account with 30-min auto-sync for dispute replies. Essential: 3 email accounts. Pro: unlimited.

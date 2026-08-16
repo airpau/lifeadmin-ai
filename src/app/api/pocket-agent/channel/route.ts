@@ -22,6 +22,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getEffectiveTier } from '@/lib/plan-limits';
+import { isAtLeastPro } from '@/lib/tier-rank';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,8 @@ export async function GET() {
   return NextResponse.json({
     channel: (data as Channel) ?? 'none',
     tier,
-    canUseWhatsapp: tier === 'pro',
+    // isAtLeastPro, not === 'pro' — Dispute Pro and Household include WhatsApp.
+    canUseWhatsapp: isAtLeastPro(tier),
   });
 }
 
@@ -81,10 +83,11 @@ export async function PUT(req: Request) {
     );
   }
 
-  // Pro gate
+  // Pro gate.
+  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
   if (channel === 'whatsapp') {
     const tier = await getEffectiveTier(user.id);
-    if (tier !== 'pro') {
+    if (!isAtLeastPro(tier)) {
       return NextResponse.json(
         {
           error: 'WhatsApp Pocket Agent is part of Paybacker Pro',

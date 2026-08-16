@@ -10,9 +10,11 @@
  *    see CLAUDE.md memory). The correct counter is "any non-deleted
  *    connection that isn't permanently revoked" across all providers.
  *  - MRR was using stale prices (£9.99 essential / £19.99 pro).
- *    Authoritative pricing is in CLAUDE.md and src/lib/stripe.ts:
- *      Essential: £4.99 / mo  or £44.99 / yr  (yearly ≈ £3.75/mo eqv)
- *      Pro:       £9.99 / mo  or £94.99 / yr  (yearly ≈ £7.92/mo eqv)
+ *    Authoritative pricing is TIER_PRICE_GBP in src/lib/tier-rank.ts:
+ *      Essential:   £4.99 / mo  or £44.99 / yr  (yearly ≈ £3.75/mo eqv)
+ *      Pro:         £9.99 / mo  or £94.99 / yr  (yearly ≈ £7.92/mo eqv)
+ *      Household:  £14.99 / mo  or £149.99 / yr
+ *      Dispute Pro:£19.99 / mo  or £199.99 / yr
  *    `profiles.subscription_tier` does not record billing interval, so
  *    until that column exists we approximate MRR as
  *    count × monthly headline price. The error from yearly subs is at
@@ -22,9 +24,15 @@
  *    separate table) so no filter is needed here to exclude them.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { PAID_PLAN_TIERS, TIER_PRICE_GBP, isPlanTier, type PlanTier } from './tier-rank';
 
-export const ESSENTIAL_MONTHLY_GBP = 4.99;
-export const PRO_MONTHLY_GBP = 9.99;
+/**
+ * Kept as named exports for any caller that imports them directly. The
+ * authoritative figures live in TIER_PRICE_GBP (src/lib/tier-rank.ts) —
+ * these just re-export the monthly headline so the two can never drift.
+ */
+export const ESSENTIAL_MONTHLY_GBP = TIER_PRICE_GBP.essential.monthly;
+export const PRO_MONTHLY_GBP = TIER_PRICE_GBP.pro.monthly;
 
 export interface AdminDeal {
   id: string;
@@ -91,27 +99,41 @@ export async function computeMrrGbp(
     return { mrr: 0, arr: 0, breakdown: [] };
   }
 
-  let essential = 0;
-  let pro = 0;
+  // Counted per paid tier rather than with two hardcoded `essential`/`pro`
+  // counters. Household (£14.99) and Dispute Pro (£19.99) subscribers were
+  // previously counted into neither bucket, so their revenue was missing
+  // from MRR entirely. They are NOT collapsed into Pro — they are priced
+  // differently and need their own line in the breakdown.
+  const counts: Record<PlanTier, number> = {
+    free: 0,
+    essential: 0,
+    pro: 0,
+    household: 0,
+    dispute_pro: 0,
+  };
   for (const row of data || []) {
-    if (row.subscription_tier === 'essential') essential++;
-    else if (row.subscription_tier === 'pro') pro++;
+    const t = row.subscription_tier;
+    if (isPlanTier(t)) counts[t]++;
   }
 
-  // MRR formula: per-tier paying-customer count × monthly headline price.
+  // MRR formula: per-tier paying-customer count × monthly headline price
+  // from TIER_PRICE_GBP.
   // (Yearly subscribers pay less per month — see file header. The fix is
   // a billing_interval column, tracked separately.)
-  const essentialMrr = essential * ESSENTIAL_MONTHLY_GBP;
-  const proMrr = pro * PRO_MONTHLY_GBP;
-  const mrr = essentialMrr + proMrr;
+  const breakdown = PAID_PLAN_TIERS.map((tier) => {
+    const count = counts[tier];
+    return {
+      tier: tier as string,
+      count,
+      monthly: round2(count * TIER_PRICE_GBP[tier].monthly),
+    };
+  });
+  const mrr = breakdown.reduce((sum, b) => sum + b.monthly, 0);
 
   return {
     mrr: round2(mrr),
     arr: round2(mrr * 12),
-    breakdown: [
-      { tier: 'essential', count: essential, monthly: round2(essentialMrr) },
-      { tier: 'pro', count: pro, monthly: round2(proMrr) },
-    ],
+    breakdown,
   };
 }
 

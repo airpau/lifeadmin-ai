@@ -6,6 +6,7 @@ import { handleConfirmationReply, isAwaitingConfirmation } from '@/lib/support/c
 // product-context.ts is the seed/fallback; runtime source of truth is product_features table
 import { PRODUCT_CONTEXT } from '@/lib/product-context';
 import { getToolDefinitions, executeTool } from './tools/registry';
+import { isAtLeastEssential, isAtLeastPro } from '@/lib/tier-rank';
 
 export const maxDuration = 30;
 
@@ -501,24 +502,29 @@ ALWAYS say: "Sign up for free and our AI will cite the exact legislation for you
 
 You do NOT have access to subscription management tools for anonymous users.` : '';
 
+    // Rank comparisons rather than `=== 'free' / 'essential' / 'pro'`: with
+    // literal equality a tier ABOVE Pro (Household, Dispute Pro) matched none
+    // of the three branches, so the model got no plan context at all and
+    // would tell a paying subscriber to upgrade. The `isLoggedIn &&` guard on
+    // the free branch keeps anonymous visitors block-free exactly as before.
     const tierContext = `
 ## Current User's Plan: ${userTier.toUpperCase()}
 
 IMPORTANT PLAN GATING RULES -- you MUST follow these:
-${userTier === 'free' ? `
+${isLoggedIn && !isAtLeastEssential(userTier) ? `
 - This user is on the FREE plan.
 - They CAN access: 3 complaint/form letters per month, unlimited manual subscription tracking, one-time bank scan, one-time email inbox scan, one-time opportunity scan, basic spending overview (top 5 categories only), deals browsing (free), AI chatbot, loyalty rewards, referral programme, Share Your Win.
 - They CANNOT access: ongoing daily bank sync, full Money Hub dashboard, cancellation emails, renewal reminders, contract tracking, contract upload, receipt scanning, price increase alerts, email re-scans, savings challenges, text-to-speech on letters, annual financial report.
 - When they ask about a paid feature, briefly explain the benefit and mention the upgrade path: "That's an Essential feature. Upgrade for £4.99/month to unlock [feature]." Keep it natural, not pushy.
 - If they ask about multiple bank accounts: "Pro plan (£9.99/month) gives you unlimited bank accounts."
 - Dispute thread tracking (viewing correspondence history on their letters) is available on all plans.` : ''}
-${userTier === 'essential' ? `
+${isAtLeastEssential(userTier) && !isAtLeastPro(userTier) ? `
 - This user is on the ESSENTIAL plan (£4.99/month).
 - They have: unlimited complaint and form letters, text-to-speech on letters, 1 bank account with daily auto-sync, monthly email and opportunity re-scans, full Money Hub dashboard, cancellation emails, renewal reminders, contract tracking, contract upload and AI analysis, receipt scanning, price increase alerts, email inbox scanning, savings challenges, deals browsing, loyalty rewards, referral programme.
 - They do NOT have: multiple bank accounts, on-demand manual bank sync, full transaction-level analysis (only category totals), savings goals, annual financial report PDF, priority support.
 - If they ask about multiple banks, savings goals, or the annual report: "Upgrade to Pro (£9.99/month) to unlock unlimited bank accounts, savings goals, and your annual PDF financial report."
 - IMPORTANT: loans, mortgages, and credit card payments are tracked in the Money Hub, NOT in subscriptions. If they ask why a loan is not in subscriptions, explain this.` : ''}
-${userTier === 'pro' ? `
+${isAtLeastPro(userTier) ? `
 - This user is on the PRO plan (£9.99/month). They have ALL current features.
 - Unlimited: complaint letters, bank accounts, email scans, opportunity scans.
 - Full transaction-level analysis, savings goals, annual financial report PDF, priority support, savings challenges, price increase alerts, contract upload, receipt scanning, text-to-speech on letters, full Money Hub dashboard, deals browsing.
@@ -700,9 +706,11 @@ ${userTier === 'pro' ? `
           .map((m: any) => `[${m.role}]: ${m.content}`)
           .join('\n\n');
 
-        // Priority based on user tier
-        const priority = userTier === 'pro' ? 'urgent'
-          : userTier === 'essential' ? 'high'
+        // Priority based on user tier. Rank comparisons, not equality —
+        // Dispute Pro and Household pay more than Pro and must land on
+        // 'urgent', not drop through to 'medium'.
+        const priority = isAtLeastPro(userTier) ? 'urgent'
+          : isAtLeastEssential(userTier) ? 'high'
           : 'medium';
 
         // Categorise based on keywords

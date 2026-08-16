@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getEffectiveTier } from '@/lib/plan-limits'
+import { isAtLeastPro } from '@/lib/tier-rank'
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!
 const REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/google-sheets/callback`
@@ -21,8 +22,9 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
   const tier = await getEffectiveTier(user.id)
-  if (tier !== 'pro') {
+  if (!isAtLeastPro(tier)) {
     return NextResponse.json(
       { error: 'Google Sheets export is available on the Pro plan.', upgradeRequired: true },
       { status: 403 },

@@ -7,6 +7,7 @@ import {
   loadFounderWhatsAppPhone,
 } from '@/lib/telegram/admin-tools';
 import { getAnalyticsReport, formatAnalyticsReport } from '@/lib/analytics/posthog-insights';
+import { PAID_PLAN_TIERS, TIER_DISPLAY_NAME, TIER_PRICE_GBP, isPlanTier } from '@/lib/tier-rank';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -29,6 +30,28 @@ function getAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
+}
+
+/**
+ * Sum monthly revenue across every paid tier from a list of profile rows.
+ *
+ * Replaces the two hardcoded `if (tier === 'essential') mrr += 4.99` blocks
+ * that appeared twice in this file — they counted nothing for Household
+ * (£14.99) or Dispute Pro (£19.99), so those subscribers were invisible in
+ * the founder's revenue readout.
+ *
+ * NOTE: `profiles.subscription_tier` carries no billing interval, so this
+ * uses the monthly headline price for everyone. That approximation is
+ * pre-existing behaviour, not something introduced here — a yearly
+ * subscriber is slightly overstated.
+ */
+function sumMonthlyRevenueGbp(rows: { subscription_tier?: string | null }[]): number {
+  let mrr = 0;
+  for (const row of rows) {
+    const tier = row.subscription_tier;
+    if (isPlanTier(tier)) mrr += TIER_PRICE_GBP[tier].monthly;
+  }
+  return mrr;
 }
 
 async function sendTelegram(chatId: number, text: string) {
@@ -91,11 +114,7 @@ async function getFullBusinessContext(supabase: ReturnType<typeof getAdmin>): Pr
   const allUsers = subs.data || [];
   const tiers: Record<string, number> = {};
   allUsers.forEach(u => { tiers[u.subscription_tier || 'free'] = (tiers[u.subscription_tier || 'free'] || 0) + 1; });
-  let mrr = 0;
-  allUsers.forEach(u => {
-    if (u.subscription_tier === 'essential') mrr += 4.99;
-    if (u.subscription_tier === 'pro') mrr += 9.99;
-  });
+  const mrr = sumMonthlyRevenueGbp(allUsers);
 
   const recentUsers = (profiles.data || []).slice(0, 10).map(p =>
     `  ${p.email} - ${p.subscription_tier}${p.founding_member ? ' (founding)' : ''} - joined ${new Date(p.created_at).toLocaleDateString('en-GB')}`
@@ -160,11 +179,7 @@ async function getLiveAgentData(supabase: ReturnType<typeof getAdmin>, agentName
   const allUsers = profiles.data || [];
   const tiers: Record<string, number> = {};
   allUsers.forEach(u => { tiers[u.subscription_tier || 'free'] = (tiers[u.subscription_tier || 'free'] || 0) + 1; });
-  let mrr = 0;
-  allUsers.forEach(u => {
-    if (u.subscription_tier === 'essential') mrr += 4.99;
-    if (u.subscription_tier === 'pro') mrr += 9.99;
-  });
+  const mrr = sumMonthlyRevenueGbp(allUsers);
 
   let base = `LIVE DATA (queried ${now}):
 Users: ${allUsers.length} total | ${Object.entries(tiers).map(([t, c]) => `${t}: ${c}`).join(', ')}
@@ -180,7 +195,13 @@ Recent tasks: ${(tasks.data || []).length}\n\n`;
       base += `FINANCIAL DATA:
 Paid users: ${paidUsers.length}
 Founding members (free Pro): ${foundingMembers}
-Revenue per tier: Essential (${tiers['essential'] || 0} x £4.99 = £${((tiers['essential'] || 0) * 4.99).toFixed(2)}/mo), Pro (${tiers['pro'] || 0} x £9.99 = £${((tiers['pro'] || 0) * 9.99).toFixed(2)}/mo)
+Revenue per tier: ${PAID_PLAN_TIERS.map(t => {
+        // Built from PAID_PLAN_TIERS + TIER_PRICE_GBP rather than a hardcoded
+        // Essential/Pro pair, so Household and Dispute Pro revenue shows up.
+        const c = tiers[t] || 0;
+        const p = TIER_PRICE_GBP[t].monthly;
+        return `${TIER_DISPLAY_NAME[t]} (${c} x £${p.toFixed(2)} = £${(c * p).toFixed(2)}/mo)`;
+      }).join(', ')}
 Recent signups:\n${allUsers.slice(0, 10).map(u => `  ${u.email} - ${u.subscription_tier} - ${new Date(u.created_at).toLocaleDateString('en-GB')} - source: ${u.signup_source || 'unknown'}`).join('\n')}`;
       break;
     }

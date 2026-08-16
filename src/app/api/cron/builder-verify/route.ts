@@ -25,6 +25,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isAtLeastPro } from '@/lib/tier-rank';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -205,9 +206,10 @@ async function notifyTicketUser(
     }
   }
 
-  // 4. WhatsApp — Pro-only. Send via Meta WhatsApp Cloud API utility template
-  // if (a) user has a WhatsApp session AND (b) profile.subscription_tier in
-  // ('pro','b2b','admin'). Wraps best-effort; failures don't block the loop.
+  // 4. WhatsApp — Pro and above. Send via Meta WhatsApp Cloud API utility
+  // template if (a) user has a WhatsApp session AND (b) their tier ranks at
+  // or above Pro, or is one of the internal 'b2b' / 'admin' markers. Wraps
+  // best-effort; failures don't block the loop.
   if (userId && process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN) {
     try {
       const { data: prof } = await supabase
@@ -216,7 +218,11 @@ async function notifyTicketUser(
         .eq('id', userId)
         .single();
       const tier = ((prof as { subscription_tier: string | null } | null)?.subscription_tier ?? 'free').toLowerCase();
-      const proLike = tier === 'pro' || tier === 'b2b' || tier === 'admin';
+      // Consumer side goes through the canonical rank check so household
+      // and dispute_pro qualify. 'b2b' and 'admin' are internal staff /
+      // partner markers that live outside the consumer PlanTier union, so
+      // they stay as explicit special cases.
+      const proLike = isAtLeastPro(tier) || tier === 'b2b' || tier === 'admin';
       if (proLike) {
         const { data: waSession } = await supabase
           .from('whatsapp_sessions')

@@ -72,6 +72,7 @@ import { createClient } from '@supabase/supabase-js';
 import { scanEmailsForOpportunities, refreshAccessToken, type Opportunity as GmailOpportunity } from '@/lib/gmail';
 import { scanOutlookForOpportunities, refreshMicrosoftToken } from '@/lib/outlook';
 import { resolveEmailScanWindow, clampSinceToWindow } from '@/lib/email-scan-window';
+import { isAtLeastEssential } from '@/lib/tier-rank';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -166,7 +167,9 @@ export async function GET(req: NextRequest) {
     // Free-tier users are gated on the user-triggered scan path; mirror
     // that here so the cron doesn't grant a benefit that the dashboard
     // refuses.
-    if (tier !== 'essential' && tier !== 'pro') {
+    // Any paid tier qualifies. A literal essential/pro check would have
+    // locked household and dispute_pro users out of their own scans.
+    if (!isAtLeastEssential(tier)) {
       outcomes.push({
         connectionId: c.id,
         userId: c.user_id,

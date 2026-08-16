@@ -24,23 +24,30 @@ import "../../blog/styles.css";
  *
  * Claims deliberately NOT made here, because they are not true of the
  * code as written — do not add them back without changing the code first:
- *   1. "Every letter Paybacker produces passes the guardrail." It runs on
- *      the website complaint generator and the /v1/disputes API. The
- *      WhatsApp letter writer (src/lib/whatsapp/dispute-letter-writer.ts)
- *      and the dispute-reply engine (src/lib/agents/dispute-reply-engine.ts)
- *      retrieve refs but do not run checkRefFreshness or the sanitiser.
- *   2. "No automated path changes a citation's source URL or verification
+ *   1. "No automated path changes a citation's source URL or verification
  *      status without founder approval." Untrue: refreshSingleRef in
  *      legal-refs-guardrail.ts, recover-url-dead, the legal-updates cron
  *      and verify-legal-refs all write those fields unattended. What IS
  *      true, and what this page says instead, is that no unattended path
- *      changes the LAW NAME or the SECTION — those need founder approval.
- *   3. "Auto-applied changes are written to legal_ref_verifications."
- *      That insert is currently broken against the schema
- *      (legal_reference_id / reasons vs ref_id) and is swallowed by a
- *      bare catch. The admin panel + revert button do work, so the page
- *      claims only those.
- *   4. Any response-time SLA on citation reports. Nothing measures one.
+ *      changes the LAW NAME or the SECTION — those need founder approval —
+ *      and that a source URL is only ever replaced with one that
+ *      checkUkLegalAuthority returns as reason==='authority'.
+ *   2. Any response-time SLA on citation reports. Nothing measures one.
+ *
+ * Fixed on 16 Aug 2026, so these claims ARE now safe to make (they were
+ * not before — see git history if you are auditing):
+ *   - The guardrail scope. checkRefFreshness + the post-flight sanitiser
+ *     now also run in src/lib/agents/dispute-reply-engine.ts, which is
+ *     the single grounding path behind the Pocket Agent on WhatsApp and
+ *     Telegram and the dashboard "Draft reply". The WhatsApp letter
+ *     writer delegates to that engine; its own legal_references query is
+ *     display-only (the "Cites:" preview line).
+ *   - The authority gate on refreshSingleRef and recover-url-dead. Both
+ *     now require reason==='authority', not merely .ok (which also
+ *     admits the secondary list).
+ *   - "Auto-applied changes are written to legal_ref_verifications."
+ *     The insert now uses the real column names (ref_id / changes /
+ *     notes) and logs loudly on failure instead of a bare catch.
  */
 
 export const metadata: Metadata = {
@@ -230,8 +237,10 @@ export default function HowWeCitePage() {
       <h2 id="guardrail">4. What runs before a letter</h2>
       <p>
         Two checks sit around the writing step. They apply to the complaint
-        letter generator on this website and to the{" "}
-        <code>/v1/disputes</code> API.
+        letter generator on this website, to the <code>/v1/disputes</code> API
+        used by our business customers, and to the dispute-reply engine behind
+        the assistant on WhatsApp and Telegram and the &ldquo;draft a
+        reply&rdquo; button in your dashboard.
       </p>
       <p>
         <strong>Before writing — a freshness check.</strong> Every reference
@@ -321,11 +330,21 @@ export default function HowWeCitePage() {
       </p>
       <p>
         Separately from the corrections queue, routine maintenance does update
-        two things unattended: a source link that has demonstrably moved on the
-        same official site, and a reference&apos;s freshness status when its
-        source stops responding or is found to have been superseded. Those
-        changes affect where a citation points and whether we are willing to use
-        it — not what it says.
+        two things unattended: the <strong>source link</strong> a reference
+        points at, and its <strong>freshness status</strong> when the source
+        stops responding or is found to have been superseded. Those changes
+        affect where a citation points and whether we are willing to use it,
+        not what it says.
+      </p>
+      <p>
+        The link is the one an automated verifier could get wrong, so it is
+        gated: a replacement URL is written only if it passes the allowlist in{" "}
+        <a href="#authority-allowlist">section 3</a> as a primary official
+        source. A proposed link that is not on that list, including the two
+        secondary consumer-guidance sites, is refused and logged, and the
+        stored link is left exactly as it was. There is no path, attended or
+        unattended, by which a Paybacker citation comes to point at a law-firm
+        blog or a news article.
       </p>
 
       <h2 id="discovery">6. How new citations get added</h2>
@@ -393,13 +412,18 @@ export default function HowWeCitePage() {
           you send it.
         </li>
         <li>
-          <strong>The guardrail is bounded.</strong> The pre-writing freshness
-          check and the post-writing citation check described in{" "}
-          <a href="#guardrail">section 4</a> run on the complaint letter
-          generator on this website and on the <code>/v1/disputes</code> API.
-          Other, more conversational surfaces retrieve from the same reference
-          store but do not run the full check, so treat anything drafted there
-          as a starting point rather than a finished letter.
+          <strong>The guardrail is a sourcing check, not a legal opinion.</strong>{" "}
+          The pre-writing freshness check and the post-writing citation check
+          described in <a href="#guardrail">section 4</a> run on every path that
+          drafts a letter for you: this website&apos;s generator, the{" "}
+          <code>/v1/disputes</code> API, and the assistant on WhatsApp and
+          Telegram. What they confirm is that a citation came from our
+          maintained store and an official source, and that the finished text
+          does not cite something we never supplied. They cannot confirm it is
+          the right law for your circumstances. On the conversational surfaces
+          we cap how long we will spend re-checking a reference live, so a
+          reference we cannot re-check in time is substituted or dropped rather
+          than used unchecked.
         </li>
         <li>
           <strong>Coverage is uneven.</strong> Our reference store is strongest

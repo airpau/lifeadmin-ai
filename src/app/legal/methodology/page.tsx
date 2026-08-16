@@ -146,10 +146,26 @@ export default function LegalMethodologyPage() {
         cancellation letter on a user&apos;s behalf. The autonomous Dispute
         Agent surfaces recommended next actions (escalate, await response,
         send follow-up) but a human click is required before any outbound
-        communication is generated or transmitted. The AI also never writes
-        the terminal canonical fields of a citation — corrections to a
-        citation&apos;s name, source URL or status pass through a founder-reviewed
-        corrections queue (see <a href="#auditability">section 9</a>).
+        communication is generated or transmitted.
+      </p>
+      <p>
+        On the citations themselves, the rule is narrower than &ldquo;a person
+        approves everything&rdquo;, and we would rather state it precisely.{" "}
+        <strong>
+          No unattended process changes what a citation says: the name of the
+          Act or the section number.
+        </strong>{" "}
+        Those changes are proposed to a corrections queue and applied only after
+        a founder approval click (see <a href="#auditability">section 9</a>).
+        Routine maintenance does update two things without a click: the{" "}
+        <strong>source URL</strong> a citation points at, and its{" "}
+        <strong>verification status</strong> when a source stops resolving or is
+        found to have been superseded. A source URL is only ever replaced with a
+        URL on our allowlist of official domains (legislation.gov.uk, gov.uk,
+        the statutory regulators, the ombudsman schemes and the courts). A
+        proposed URL that is not on that allowlist is rejected, and the stored
+        URL is left as it was. The full statement, including what we do not
+        claim, is on <a href="/legal/how-we-cite">How we cite the law</a>.
       </p>
 
       <h2 id="coverage-limits">7. Find Case Law coverage limits</h2>
@@ -184,13 +200,17 @@ export default function LegalMethodologyPage() {
           discovery of newly-published judgments and guidance.
         </li>
         <li>
-          Any proposed change to a citation&apos;s name, URL or status is
+          Any proposed change to a citation&apos;s <strong>name</strong> is
           queued in <code>legal_ref_corrections</code> and reviewed by the
-          founder before it touches the canonical record. Same-host redirect
-          fixes within the authority allowlist may auto-apply (e.g.{" "}
-          legislation.gov.uk/x/y → legislation.gov.uk/x/y/contents); semantic
-          changes — section numbers, year changes, act renames — always
-          require founder approval.
+          founder before it touches the canonical record. Semantic changes
+          (section numbers, year changes, act renames, supersessions) always
+          require founder approval. Link and status maintenance runs
+          unattended within the constraints described in{" "}
+          <a href="#human-in-loop">section 6</a>: a same-host redirect fix
+          (e.g. legislation.gov.uk/x/y → legislation.gov.uk/x/y/contents) or a
+          replacement URL that passes the official-domain allowlist may be
+          applied automatically, and every automatic change is logged with a
+          one-click revert.
         </li>
       </ul>
 

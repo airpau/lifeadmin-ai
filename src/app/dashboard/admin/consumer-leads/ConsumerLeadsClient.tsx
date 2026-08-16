@@ -7,7 +7,9 @@ interface Lead {
   email: string;
   name: string | null;
   source: string;
-  intended_tier: 'essential' | 'pro' | null;
+  // Mirrors the widened CHECK constraint on consumer_leads.intended_tier —
+  // a pricing-page click can now intend Household or Dispute Pro.
+  intended_tier: 'essential' | 'pro' | 'household' | 'dispute_pro' | null;
   intended_billing_interval: 'monthly' | 'yearly' | null;
   funnel_stage: string;
   captured_at: string;

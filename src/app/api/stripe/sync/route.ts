@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import { priceIdToTier, TIER_RANK } from '@/lib/stripe';
+import { priceIdToTier } from '@/lib/stripe';
+import { tierRank } from '@/lib/tier-rank';
 
 export const runtime = 'nodejs';
 
@@ -109,7 +110,13 @@ export async function POST() {
         priceId: currentPriceId,
         subscriptionId: sub.id,
       });
-    } else if ((TIER_RANK[currentTier] ?? 0) < (TIER_RANK[storedTier] ?? 0)) {
+    } else if (tierRank(currentTier) < tierRank(storedTier)) {
+      // `tierRank` returns -1 for an unrecognised tier, not 0. That
+      // matters here: the old `?? 0` made an unknown stored tier
+      // indistinguishable from Free, so a legitimate promotion could be
+      // compared against a bogus rank. -1 means an unknown STORED tier
+      // can never block a real write, while an unknown RESOLVED tier is
+      // already caught by the `!currentTier` branch above.
       skipTierWrite = 'Stored tier is higher — demotion is webhook-driven only';
       console.warn('Stripe sync: resolved tier is lower than stored tier — write skipped', {
         userId: user.id,

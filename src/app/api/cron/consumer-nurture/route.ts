@@ -36,7 +36,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
-import { sendNurtureEmail, type NurtureTemplate } from '@/lib/email/consumer-nurture';
+import { sendNurtureEmail, type NurtureTemplate, type NurtureTier } from '@/lib/email/consumer-nurture';
 import { createOneOffDiscountCoupon } from '@/lib/stripe/coupons';
 import { captureServer } from '@/lib/posthog-server';
 
@@ -66,7 +66,10 @@ interface LeadRow {
   id: string;
   email: string;
   name: string | null;
-  intended_tier: 'essential' | 'pro' | null;
+  // Widened from the old inline 'essential' | 'pro' — the column can now
+  // hold household / dispute_pro, and NurtureTier is the canonical union
+  // the email builder already understands.
+  intended_tier: NurtureTier | null;
   intended_billing_interval: 'monthly' | 'yearly' | null;
   funnel_stage: string;
   captured_at: string;

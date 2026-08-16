@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
 import { computeMrrGbp, getActiveBankConnectionCount } from '@/lib/admin-metrics';
+import { ALL_PLAN_TIERS, PAID_PLAN_TIERS } from '@/lib/tier-rank';
 
 export const runtime = 'nodejs';
 // Always recompute — these numbers feed the live admin overview and must
@@ -72,9 +73,12 @@ export async function GET(request: NextRequest) {
   ]);
 
   // Calculate tier breakdown. Counts every profile, defaulting NULL
-  // subscription_tier to 'free'. Initialised with the three canonical
-  // tiers so the widget renders even when one bucket is empty.
-  const tierBreakdown: Record<string, number> = { free: 0, essential: 0, pro: 0 };
+  // subscription_tier to 'free'. Seeded from ALL_PLAN_TIERS rather than a
+  // hardcoded free/essential/pro trio so Household and Dispute Pro render
+  // as their own buckets instead of appearing only when non-empty.
+  const tierBreakdown: Record<string, number> = Object.fromEntries(
+    ALL_PLAN_TIERS.map((t) => [t, 0]),
+  );
   for (const p of tiersResult.data || []) {
     const tier = p.subscription_tier || 'free';
     tierBreakdown[tier] = (tierBreakdown[tier] || 0) + 1;
@@ -96,7 +100,9 @@ export async function GET(request: NextRequest) {
     revenue: {
       mrr: mrrSummary.mrr,
       arr: mrrSummary.arr,
-      paying_customers: (tierBreakdown.essential || 0) + (tierBreakdown.pro || 0),
+      // Sums every paid tier — Household and Dispute Pro subscribers were
+      // previously excluded from the paying-customer count.
+      paying_customers: PAID_PLAN_TIERS.reduce((n, t) => n + (tierBreakdown[t] || 0), 0),
       free_users: tierBreakdown.free || 0,
     },
     mrr_breakdown: mrrSummary.breakdown,

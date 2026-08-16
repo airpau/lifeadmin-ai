@@ -255,6 +255,12 @@ export async function generateComplaintLetter(
     council_tax_band: 'Council tax band challenge. Address to the Valuation Office Agency (VOA). Cite the Local Government Finance Act 1992 and provide comparable property evidence.',
     dvla_vehicle: 'DVLA vehicle issue letter. Formal correspondence to DVLA.',
     nhs_complaint: 'NHS complaint. Follow NHS Complaints Procedure (The Local Authority Social Services and National Health Service Complaints Regulations 2009). Mention PALS and the Parliamentary and Health Service Ombudsman.',
+    // Added 2026-08-16 for the Ombudsman escalation pack. This is an
+    // ADDITIVE key in the existing map — no signature change, no new
+    // `voice`, so both call sites of this shared engine (consumer
+    // /api/complaints/generate and B2B src/lib/b2b/disputes.ts) are
+    // unaffected. See src/lib/escalation-pack/build.ts for the caller.
+    ombudsman_escalation: 'Ombudsman or ADR referral. This letter is addressed TO THE OMBUDSMAN / ADR SCHEME, not to the company being complained about. Structure it as a referral: (1) who the consumer is and their reference details; (2) who the company is and what the complaint was; (3) a dated chronology referencing the numbered exhibits supplied in the correspondence bundle; (4) why the company\'s response is inadequate, citing the specific UK statute or regulator rule breached; (5) the remedy sought, with the figure; (6) a statement of eligibility explaining why the case is now within the scheme\'s remit (eight weeks elapsed, or a deadlock/final response letter received). Use the vetted scheme information supplied in the prompt for eligibility, time limits and cost — do NOT state scheme rules, deadlines or fees from your own recollection, and if a figure is not supplied, describe it qualitatively instead of guessing. Do not threaten the ombudsman with escalation and do not set the ombudsman a deadline.',
   };
 
   const letterTypeContext = input.letterType ? LETTER_TYPE_CONTEXT[input.letterType] || '' : '';

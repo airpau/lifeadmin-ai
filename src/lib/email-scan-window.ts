@@ -22,6 +22,7 @@
  * We do not know that. Never add an estimate here.
  */
 import { PLAN_LIMITS, getEffectiveTier, type PlanTier } from './plan-limits';
+import { isPlanTier } from './tier-rank';
 
 /**
  * The full sweep, in days. Paid tiers get this; it is also the value the
@@ -52,6 +53,16 @@ export async function resolveEmailScanWindow(userId: string): Promise<EmailScanW
 export function windowForTier(tier: PlanTier): EmailScanWindow {
   // Unknown/legacy tier strings fall back to the free window rather than
   // the expensive one. Fail closed on cost.
+  //
+  // The fallback stays, but it must not be SILENT: an unrecognised tier here
+  // means a plan was added without a PLAN_LIMITS entry, and the symptom
+  // (a paying subscriber quietly getting the Free 90-day sweep) is
+  // indistinguishable from correct behaviour without this log.
+  if (!isPlanTier(tier)) {
+    console.error(
+      `[email-scan-window] unknown tier "${tier}" has no PLAN_LIMITS entry — applying the Free scan window. Add it to PLAN_LIMITS in src/lib/plan-limits.ts.`,
+    );
+  }
   const days = PLAN_LIMITS[tier]?.emailScanDays ?? PLAN_LIMITS.free.emailScanDays;
   return {
     days,

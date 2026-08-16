@@ -51,8 +51,16 @@ import { createClient } from '@/lib/supabase/client';
 import { PRICE_IDS, priceIdToTier, priceIdToCycle } from '@/lib/stripe';
 import { ArrowLeft, CheckCircle2, CreditCard, Loader2, ShieldCheck, AlertTriangle, Lock } from 'lucide-react';
 
-type Plan = 'essential' | 'pro';
+import { TIER_DISPLAY_NAME, TIER_PRICE_GBP } from '@/lib/tier-rank';
+
+type Plan = 'essential' | 'pro' | 'household' | 'dispute_pro';
 type Cycle = 'monthly' | 'yearly';
+
+const SELECTABLE_PLANS: Plan[] = ['essential', 'pro', 'dispute_pro', 'household'];
+
+function isSelectablePlan(v: string | null | undefined): v is Plan {
+  return !!v && (SELECTABLE_PLANS as string[]).includes(v);
+}
 
 interface Preview {
   hasExistingSub: boolean;
@@ -73,15 +81,34 @@ interface PaymentMethod {
   expYear?: number;
 }
 
+const money = (n: number) => `£${n.toFixed(2)}`;
+
+/**
+ * Headline copy derived from the canonical TIER_PRICE_GBP table so the
+ * confirmation card can never quote a price that disagrees with what the
+ * webhook reports or what /pricing displays.
+ */
 const PLAN_HEADLINE: Record<Plan, { monthly: string; yearly: string; cadence: string }> = {
-  essential: { monthly: '£4.99', yearly: '£44.99', cadence: 'Essential' },
-  pro: { monthly: '£9.99', yearly: '£94.99', cadence: 'Pro' },
+  essential:   { monthly: money(TIER_PRICE_GBP.essential.monthly),   yearly: money(TIER_PRICE_GBP.essential.yearly),   cadence: TIER_DISPLAY_NAME.essential },
+  pro:         { monthly: money(TIER_PRICE_GBP.pro.monthly),         yearly: money(TIER_PRICE_GBP.pro.yearly),         cadence: TIER_DISPLAY_NAME.pro },
+  household:   { monthly: money(TIER_PRICE_GBP.household.monthly),   yearly: money(TIER_PRICE_GBP.household.yearly),   cadence: TIER_DISPLAY_NAME.household },
+  dispute_pro: { monthly: money(TIER_PRICE_GBP.dispute_pro.monthly), yearly: money(TIER_PRICE_GBP.dispute_pro.yearly), cadence: TIER_DISPLAY_NAME.dispute_pro },
 };
 
+/**
+ * Returns undefined when the plan's price-ID env var is unset, which
+ * makes the page render its "which plan would you like?" chooser rather
+ * than send an empty priceId to Stripe.
+ */
 function priceIdFor(plan: Plan, cycle: Cycle): string | undefined {
-  if (plan === 'essential') return cycle === 'yearly' ? PRICE_IDS.essential_yearly : PRICE_IDS.essential_monthly;
-  if (plan === 'pro')       return cycle === 'yearly' ? PRICE_IDS.pro_yearly       : PRICE_IDS.pro_monthly;
-  return undefined;
+  const yearly = cycle === 'yearly';
+  switch (plan) {
+    case 'essential':   return (yearly ? PRICE_IDS.essential_yearly   : PRICE_IDS.essential_monthly)   || undefined;
+    case 'pro':         return (yearly ? PRICE_IDS.pro_yearly         : PRICE_IDS.pro_monthly)         || undefined;
+    case 'household':   return (yearly ? PRICE_IDS.household_yearly   : PRICE_IDS.household_monthly)   || undefined;
+    case 'dispute_pro': return (yearly ? PRICE_IDS.dispute_pro_yearly : PRICE_IDS.dispute_pro_monthly) || undefined;
+    default:            return undefined;
+  }
 }
 
 function brandLabel(brand?: string): string {
@@ -110,10 +137,10 @@ function UpgradeInner() {
   const priceIdParam = params.get('priceId');
   const cycleParam = params.get('cycle');
 
-  const resolvedPlan: Plan | null =
-    planParam === 'essential' || planParam === 'pro'
-      ? planParam
-      : priceIdToTier(priceIdParam);
+  const derivedPlan = priceIdToTier(priceIdParam);
+  const resolvedPlan: Plan | null = isSelectablePlan(planParam)
+    ? planParam
+    : (isSelectablePlan(derivedPlan) ? derivedPlan : null);
 
   const cycle: Cycle =
     cycleParam === 'yearly' || cycleParam === 'monthly'
@@ -243,7 +270,7 @@ function UpgradeInner() {
             Pick one below and we will show you the full breakdown before you pay.
           </p>
           <div className="space-y-3">
-            {(['essential', 'pro'] as Plan[]).map((p) => (
+            {SELECTABLE_PLANS.filter((p) => !!priceIdFor(p, cycle)).map((p) => (
               <Link
                 key={p}
                 href={`/upgrade?plan=${p}&cycle=${cycle}`}

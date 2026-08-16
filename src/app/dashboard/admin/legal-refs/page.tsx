@@ -1103,7 +1103,7 @@ export default function LegalRefsAdminPage() {
           </div>
         </div>
         <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
-          Hard rule: AI proposes, founder approves. No code path mutates a citation&apos;s law name, source URL, source type or verification status to a non-pending value without passing through <span className="font-mono">legal_ref_corrections</span> and a founder approval click — except the same-host redirect fast-path (e.g. <span className="font-mono">legislation.gov.uk/x/y → /x/y/contents</span>) where no semantic change is possible by definition.
+          Hard rule: AI proposes, founder approves. No unattended path changes a citation&apos;s <strong>law name</strong> or <strong>section number</strong>; those pass through <span className="font-mono">legal_ref_corrections</span> and a founder approval click. Routine maintenance <em>does</em> update two things without a click: a citation&apos;s <strong>source URL</strong> and its <strong>verification status</strong>. Source URLs are only ever replaced with a URL that <span className="font-mono">checkUkLegalAuthority</span> returns as <span className="font-mono">authority</span> (the official-domain allowlist); anything else is rejected and the stored URL is left untouched. See <a href="/legal/how-we-cite" className="underline">/legal/how-we-cite</a> for the published version of this statement.
         </p>
       </div>
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getEffectiveTier } from '@/lib/plan-limits';
+import { isAtLeastPro } from '@/lib/tier-rank';
 import Anthropic from '@anthropic-ai/sdk';
 
 export const runtime = 'nodejs';
@@ -22,9 +23,10 @@ export async function POST(request: NextRequest) {
 
   const admin = getAdmin();
 
-  // Check effective tier (respects onboarding trial)
+  // Check effective tier (respects onboarding trial).
+  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
   const effectiveTier = await getEffectiveTier(user.id);
-  if (effectiveTier !== 'pro') {
+  if (!isAtLeastPro(effectiveTier)) {
     return NextResponse.json({ error: 'Money Hub AI assistant is available on the Pro plan.', upgradeRequired: true }, { status: 403 });
   }
 

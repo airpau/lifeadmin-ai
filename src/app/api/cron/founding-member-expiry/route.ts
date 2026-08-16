@@ -2,27 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { canSendEmail } from '@/lib/email-rate-limit';
+import { priceIdToTier } from '@/lib/stripe';
+import type { PlanTier } from '@/lib/tier-rank';
 
 const STRIPE_BASE = 'https://api.stripe.com/v1';
 
-const PRICE_ID_TO_TIER: Record<string, 'essential' | 'pro'> = {
-  'price_1TDVvS7qw7mEWYpyN80zzAXM': 'essential',
-  'price_1TDVvS7qw7mEWYpynfpI5x9M': 'essential',
-  'price_1TDVvT7qw7mEWYpySmjZJTpG': 'pro',
-  'price_1TDVvT7qw7mEWYpyrLHr6L45': 'pro',
-  'price_1TDPoH8FbRNalJNU4KeEPNs7': 'essential',
-  'price_1TDPoI8FbRNalJNUSVBFOpyA': 'essential',
-  'price_1TDPoI8FbRNalJNUDAepvxYt': 'pro',
-  'price_1TDPoI8FbRNalJNUEVzsBMvB': 'pro',
-  'price_1TEdJN8FbRNalJNUQxTQpM8Y': 'essential',
-  'price_1TEdJN8FbRNalJNUymPQdKvT': 'essential',
-  'price_1TEdJN8FbRNalJNU0o6F4WZZ': 'pro',
-  'price_1TEdJO8FbRNalJNUEb0U09ln': 'pro',
-  'price_1TEsJe7qw7mEWYpyVIt4i2Iy': 'essential',
-  'price_1TEsJf7qw7mEWYpysxw2lnL3': 'essential',
-  'price_1TEsJf7qw7mEWYpy4alOarY6': 'pro',
-  'price_1TEsJf7qw7mEWYpyJmrhcy8b': 'pro',
-};
+// The local PRICE_ID_TO_TIER map that used to live here was a stale copy of
+// the canonical resolver: it knew only essential/pro, so a household or
+// dispute_pro subscriber whose founding-member window expired resolved to
+// "unknown price" and had their tier wiped. `priceIdToTier` in @/lib/stripe
+// is now the single source of truth (env-overridable current prices plus
+// the archived legacy IDs) and returns null for anything it doesn't know.
 
 async function stripeGet(path: string): Promise<any> {
   if (!process.env.STRIPE_SECRET_KEY) return null;
@@ -41,11 +31,16 @@ async function stripeGet(path: string): Promise<any> {
  * On expiry, never blindly write tier='free'. If the user has any
  * active/trialing Stripe sub we don't know about, backfill the tier
  * from the price ID instead of wiping it.
+ *
+ * `tier: null` means "Stripe says this customer has a live subscription
+ * but we can't map its price to a tier". The caller MUST skip the
+ * subscription_tier write entirely in that case — writing 'free' would
+ * downgrade a paying customer on the strength of a missing env var.
  */
 async function resolveTierAtExpiry(
   stripeCustomerId: string | null,
   fallbackSubId: string | null,
-): Promise<{ tier: 'free' | 'essential' | 'pro'; subscriptionId: string | null; status: string }> {
+): Promise<{ tier: PlanTier | null; subscriptionId: string | null; status: string }> {
   // Valid `subscription_status` values are constrained by the
   // 20260101 initial-schema CHECK: trialing | active | canceled |
   // past_due | paused. Writing 'expired' silently failed the entire
@@ -64,13 +59,15 @@ async function resolveTierAtExpiry(
   }
   const sub = subs[0];
   const priceId = sub.items?.data?.[0]?.price?.id || '';
-  const mapped = PRICE_ID_TO_TIER[priceId];
+  const mapped = priceIdToTier(priceId);
   if (!mapped) {
-    // Unknown price ID — don't silently downgrade. Mark it for founder
-    // review and keep the row on 'free' but with a Stripe sub linked so
-    // it shows up as an exception in the admin billing dashboard.
-    console.warn(`[founding] Stripe sub ${sub.id} has unknown price ${priceId} — leaving tier on free`);
-    return { tier: 'free', subscriptionId: sub.id, status: sub.status || 'active' };
+    // Unknown price ID — don't silently downgrade. Return null so the
+    // caller leaves subscription_tier exactly as it is, still links the
+    // Stripe sub, and the row shows up as an exception in the admin
+    // billing dashboard. The previous version returned 'free' here, which
+    // wrote the downgrade it claimed to be preventing.
+    console.warn(`[founding] Stripe sub ${sub.id} has unknown price ${priceId} — leaving subscription_tier untouched`);
+    return { tier: null, subscriptionId: sub.id, status: sub.status || 'active' };
   }
   return { tier: mapped, subscriptionId: sub.id, status: sub.status || 'active' };
 }
@@ -300,11 +297,14 @@ export async function GET(request: NextRequest) {
     );
 
     const update: Record<string, unknown> = {
-      subscription_tier: resolved.tier,
       subscription_status: resolved.status,
       founding_member: false,
       trial_expired_at: new Date().toISOString(),
     };
+    // Only write the tier when we actually resolved one. A null means the
+    // customer has a live Stripe sub on a price we can't map — leave their
+    // existing tier alone rather than defaulting it to free.
+    if (resolved.tier !== null) update.subscription_tier = resolved.tier;
     if (resolved.subscriptionId) update.stripe_subscription_id = resolved.subscriptionId;
 
     const { error: updateError } = await supabase
@@ -327,11 +327,15 @@ export async function GET(request: NextRequest) {
 
     // Only email expired users moving to 'free'. Backfilled Stripe
     // sub means they're keeping a paid tier — sending a "your trial
-    // has ended, you're on Free" email would be wrong.
+    // has ended, you're on Free" email would be wrong. A null tier means
+    // we couldn't map the price, so they still hold a live sub and must
+    // not get the downgrade email either.
     if (resolved.tier !== 'free') {
       results.push({
         email: user.email,
-        action: `kept on ${resolved.tier} via Stripe sub ${resolved.subscriptionId}`,
+        action: resolved.tier === null
+          ? `tier left untouched (unmapped price) — Stripe sub ${resolved.subscriptionId}`
+          : `kept on ${resolved.tier} via Stripe sub ${resolved.subscriptionId}`,
       });
       continue;
     }

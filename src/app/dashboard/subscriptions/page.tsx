@@ -20,6 +20,7 @@ import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, categoryMatchesFilte
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 import ScanWindowNotice, { type ScanWindowNoticeData } from '@/components/scanner/ScanWindowNotice';
+import { isAtLeastPro, type PlanTier } from '@/lib/tier-rank';
 
 // Rotating copy for the Inbox Scan loading card. British tone, mix of
 // concrete progress and light humour. Tokens: {N}, {X} are replaced at render.
@@ -102,7 +103,7 @@ interface BankConnection {
 }
 
 interface BankTierInfo {
-  tier: 'free' | 'essential' | 'pro';
+  tier: PlanTier;
   maxConnections: number | null; // null = unlimited
   manualSyncAllowed: boolean;
   manualSyncDailyLimit: number;
@@ -1545,7 +1546,10 @@ export default function SubscriptionsPage() {
                 } else if (bankTierInfo.tier === 'free') {
                   syncBtnDisabled = true;
                   syncBtnTitle = 'Upgrade to Essential or Pro for more syncs';
-                } else if (bankTierInfo.tier === 'essential') {
+                } else if (!isAtLeastPro(bankTierInfo.tier)) {
+                  // Rank check rather than === 'essential' — on-demand sync is a
+                  // Pro entitlement, so Household and Dispute Pro must fall
+                  // through to the enabled branch below, not be locked out here.
                   syncBtnDisabled = true;
                   syncBtnLabel = 'Sync Now (Pro only)';
                   syncBtnTitle = 'Upgrade to Pro for on-demand sync';

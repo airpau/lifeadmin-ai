@@ -11,6 +11,8 @@ import FinancialReport from '@/components/reports/FinancialReport';
 import { NotificationsManager } from '@/components/profile/NotificationsManager';
 import { WhatsAppAlertsCard } from '@/components/profile/WhatsAppAlertsCard';
 import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
+import { isAtLeastEssential, isAtLeastPro, TIER_PRICE_GBP } from '@/lib/tier-rank';
+import { normalizeTier, tierDisplayName } from '@/lib/tier-utils';
 
 interface Profile {
   email: string;
@@ -744,7 +746,9 @@ export default function ProfilePage() {
     const tier = profile?.subscription_tier;
     const status = profile?.subscription_status ?? '';
     const terminated = ['canceled', 'cancelled', 'expired', 'incomplete_expired'].includes(status);
-    const isPro = tier === 'pro' && !terminated;
+    // isAtLeastPro, not === 'pro' — saved reports are a Pro entitlement that
+    // Household and Dispute Pro also carry.
+    const isPro = isAtLeastPro(tier) && !terminated;
     if (profile && isPro) {
       fetchSavedReports();
     }
@@ -864,7 +868,9 @@ export default function ProfilePage() {
       <div className="page-title-row" style={{marginBottom:12}}>
         <div>
           <h1 className="page-title">{profile?.full_name || 'Your profile'}</h1>
-          <p className="page-sub">{profile?.email}{profile?.subscription_tier && profile.subscription_tier !== 'free' ? ` · Paybacker ${profile.subscription_tier.charAt(0).toUpperCase()}${profile.subscription_tier.slice(1)}` : ' · Paybacker Free'} · Member since {memberSince}</p>
+          {/* tierDisplayName, not manual capitalisation — that rendered
+              "Dispute_pro" for the tiers above Pro. */}
+          <p className="page-sub">{profile?.email} · Paybacker {tierDisplayName(profile?.subscription_tier)} · Member since {memberSince}</p>
         </div>
       </div>
 
@@ -1138,13 +1144,18 @@ export default function ProfilePage() {
             </h2>
             <div className="flex items-center justify-between">
               <div>
+                {/* Badge colour is per-tier, then rank-based as a fallback —
+                    an if-chain keyed on 'pro' / 'essential' dropped Household
+                    and Dispute Pro into the grey "Free" styling. */}
                 <span className={`inline-block text-sm font-semibold px-3 py-1 rounded-full ${
                   isTrialUser ? 'bg-amber-100 text-amber-600' :
-                  effectiveTier === 'pro' ? 'bg-brand-400/10 text-brand-400' :
-                  effectiveTier === 'essential' ? 'bg-emerald-500/10 text-emerald-600' :
+                  effectiveTier === 'dispute_pro' ? 'bg-violet-500/10 text-violet-600' :
+                  effectiveTier === 'household' ? 'bg-sky-500/10 text-sky-600' :
+                  isAtLeastPro(effectiveTier) ? 'bg-brand-400/10 text-brand-400' :
+                  isAtLeastEssential(effectiveTier) ? 'bg-emerald-500/10 text-emerald-600' :
                   'bg-slate-400/10 text-slate-600'
                 }`}>
-                  {isTrialUser ? 'Pro Trial' : effectiveTier === 'pro' ? 'Pro' : effectiveTier === 'essential' ? 'Essential' : 'Free'}
+                  {isTrialUser ? 'Pro Trial' : tierDisplayName(effectiveTier)}
                 </span>
                 <p className="text-slate-600 text-sm mt-2">
                   {isTrialUser
@@ -1153,6 +1164,10 @@ export default function ProfilePage() {
                     ? '3 letters/month, one-time scans. Upgrade for unlimited access.'
                     : effectiveTier === 'essential'
                     ? 'Unlimited letters, daily bank sync, full spending dashboard.'
+                    : effectiveTier === 'household'
+                    ? 'Everything in Pro, for up to 4 people in your household.'
+                    : effectiveTier === 'dispute_pro'
+                    ? 'Everything in Pro plus dispute escalation support.'
                     : 'Everything in Essential plus unlimited bank accounts and priority support.'}
                 </p>
               </div>
@@ -1311,9 +1326,11 @@ export default function ProfilePage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-slate-50/50 rounded-lg">
               <div>
-                <h3 className="text-slate-900 font-semibold capitalize">{effectiveTier} Plan</h3>
+                <h3 className="text-slate-900 font-semibold">{tierDisplayName(effectiveTier)} Plan</h3>
                 <p className="text-sm text-slate-600">
-                  {effectiveTier === 'essential' ? '£4.99/month' : '£9.99/month'}
+                  {/* Price from TIER_PRICE_GBP — the old essential/else ternary
+                      billed Household and Dispute Pro users at Pro's £9.99. */}
+                  £{TIER_PRICE_GBP[normalizeTier(effectiveTier)].monthly.toFixed(2)}/month
                 </p>
                 {renewalDate && !pendingChange && (
                   <p className="text-xs text-slate-500 mt-1">Renews {renewalDate}</p>

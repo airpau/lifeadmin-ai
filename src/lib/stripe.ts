@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import type { PlanTier } from '@/lib/tier-rank';
 
 export function getStripeClient() {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -16,14 +17,61 @@ export const stripe = process.env.STRIPE_SECRET_KEY
   ? getStripeClient()
   : null as any;
 
+/**
+ * Stripe price IDs, env-overridable.
+ *
+ * Essential/Pro keep their hardcoded fallbacks because live subscribers
+ * are billed on them and an unset env var must not break an existing
+ * customer. The tiers added 2026-08-16 have NO fallback on purpose — an
+ * unset env var resolves to '' and `priceIdToTier` returns null for it,
+ * which every call site treats as "skip the tier write". Failing closed
+ * beats inventing a price ID.
+ */
 export const PRICE_IDS = {
-  essential_monthly: process.env.STRIPE_ESSENTIAL_MONTHLY_PRICE_ID || 'price_1TEsJe7qw7mEWYpyVIt4i2Iy',
-  essential_yearly:  process.env.STRIPE_ESSENTIAL_YEARLY_PRICE_ID  || 'price_1TEsJf7qw7mEWYpysxw2lnL3',
-  pro_monthly:       process.env.STRIPE_PRO_MONTHLY_PRICE_ID       || 'price_1TEsJf7qw7mEWYpy4alOarY6',
-  pro_yearly:        process.env.STRIPE_PRO_YEARLY_PRICE_ID        || 'price_1TEsJf7qw7mEWYpyJmrhcy8b',
+  essential_monthly:  process.env.STRIPE_ESSENTIAL_MONTHLY_PRICE_ID  || 'price_1TEsJe7qw7mEWYpyVIt4i2Iy',
+  essential_yearly:   process.env.STRIPE_ESSENTIAL_YEARLY_PRICE_ID   || 'price_1TEsJf7qw7mEWYpysxw2lnL3',
+  pro_monthly:        process.env.STRIPE_PRO_MONTHLY_PRICE_ID        || 'price_1TEsJf7qw7mEWYpy4alOarY6',
+  pro_yearly:         process.env.STRIPE_PRO_YEARLY_PRICE_ID         || 'price_1TEsJf7qw7mEWYpyJmrhcy8b',
+  household_monthly:  process.env.STRIPE_HOUSEHOLD_MONTHLY_PRICE_ID  || '',
+  household_yearly:   process.env.STRIPE_HOUSEHOLD_YEARLY_PRICE_ID   || '',
+  dispute_pro_monthly: process.env.STRIPE_DISPUTE_PRO_MONTHLY_PRICE_ID || '',
+  dispute_pro_yearly:  process.env.STRIPE_DISPUTE_PRO_YEARLY_PRICE_ID  || '',
 };
 
-export type PaidTier = 'essential' | 'pro';
+/**
+ * One-off (non-subscription) price IDs.
+ *
+ * Kept in a SEPARATE map from PRICE_IDS so it is structurally impossible
+ * for `priceIdToTier` to resolve a one-off purchase to a subscription
+ * tier. Buying an escalation pack must never move anyone's
+ * `subscription_tier` — it grants a row in `dispute_entitlements` and
+ * nothing else.
+ */
+export const ONE_OFF_PRICE_IDS = {
+  escalation_pack: process.env.STRIPE_ESCALATION_PACK_PRICE_ID || '',
+};
+
+export function isEscalationPackPrice(priceId: string | null | undefined): boolean {
+  if (!priceId || !ONE_OFF_PRICE_IDS.escalation_pack) return false;
+  return priceId === ONE_OFF_PRICE_IDS.escalation_pack;
+}
+
+/**
+ * Stripe `metadata.product` tags. The webhook routes on these before it
+ * looks at anything else.
+ *
+ *   'b2b_api'         → B2B key minting (src/lib/b2b/stripe-webhook.ts)
+ *   'escalation_pack' → one-off entitlement, NO tier write
+ *   'household'       → subscription + household_plans row
+ *   (absent)          → default consumer subscription flow
+ */
+export const STRIPE_PRODUCT_TAG = {
+  b2bApi: 'b2b_api',
+  escalationPack: 'escalation_pack',
+  household: 'household',
+} as const;
+
+export type PaidTier = Exclude<PlanTier, 'free'>;
 
 /**
  * Historical price IDs that real subscribers are still billed on.
@@ -65,6 +113,12 @@ const LEGACY_PRICE_ID_TO_TIER: Record<string, PaidTier> = {
  */
 export function priceIdToTier(priceId: string | null | undefined): PaidTier | null {
   if (!priceId) return null;
+  // Ordered most-specific first. Note every comparison is against a value
+  // that may legitimately be '' when its env var is unset — the `!priceId`
+  // guard above means '' can never reach here as the needle, so an unset
+  // env var simply never matches rather than matching everything.
+  if (priceId === PRICE_IDS.dispute_pro_monthly || priceId === PRICE_IDS.dispute_pro_yearly) return 'dispute_pro';
+  if (priceId === PRICE_IDS.household_monthly || priceId === PRICE_IDS.household_yearly) return 'household';
   if (priceId === PRICE_IDS.pro_monthly || priceId === PRICE_IDS.pro_yearly) return 'pro';
   if (priceId === PRICE_IDS.essential_monthly || priceId === PRICE_IDS.essential_yearly) return 'essential';
   return LEGACY_PRICE_ID_TO_TIER[priceId] ?? null;
@@ -73,13 +127,35 @@ export function priceIdToTier(priceId: string | null | undefined): PaidTier | nu
 /** Billing cycle for a known price ID, or null if unrecognised. */
 export function priceIdToCycle(priceId: string | null | undefined): 'monthly' | 'yearly' | null {
   if (!priceId) return null;
-  if (priceId === PRICE_IDS.pro_yearly || priceId === PRICE_IDS.essential_yearly) return 'yearly';
-  if (priceId === PRICE_IDS.pro_monthly || priceId === PRICE_IDS.essential_monthly) return 'monthly';
+  if (
+    priceId === PRICE_IDS.pro_yearly
+    || priceId === PRICE_IDS.essential_yearly
+    || priceId === PRICE_IDS.household_yearly
+    || priceId === PRICE_IDS.dispute_pro_yearly
+  ) return 'yearly';
+  if (
+    priceId === PRICE_IDS.pro_monthly
+    || priceId === PRICE_IDS.essential_monthly
+    || priceId === PRICE_IDS.household_monthly
+    || priceId === PRICE_IDS.dispute_pro_monthly
+  ) return 'monthly';
   return null;
 }
 
-/** Ordering used to detect a would-be demotion. Higher wins. */
-export const TIER_RANK: Record<string, number> = { free: 0, essential: 1, pro: 2 };
+/** Price ID for a (tier, cycle) pair, or undefined when the env var is unset. */
+export function priceIdFor(tier: PaidTier, cycle: 'monthly' | 'yearly'): string | undefined {
+  const key = `${tier}_${cycle === 'yearly' ? 'yearly' : 'monthly'}` as keyof typeof PRICE_IDS;
+  const id = PRICE_IDS[key];
+  return id || undefined;
+}
+
+/**
+ * Ordering used to detect a would-be demotion. Higher wins.
+ *
+ * Re-exported from the canonical @/lib/tier-rank rather than redeclared,
+ * so a new tier can never rank correctly here and wrongly somewhere else.
+ */
+export { TIER_RANK, tierRank, isAtLeastPro, isAtLeast } from '@/lib/tier-rank';
 
 export const PLANS = {
   free: {

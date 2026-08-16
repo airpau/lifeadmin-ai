@@ -243,7 +243,13 @@ export async function POST(request: NextRequest) {
     // Read Awin awc cookie for attribution tracking
     const awcCookie = request.cookies.get('awc')?.value || '';
 
-    const session = await stripePost('/checkout/sessions', {
+    // Tag Household checkouts so the webhook can provision the
+    // household_plans row and seat the owner. Everything else stays
+    // untagged and follows the default consumer path — B2B uses
+    // metadata.product='b2b_api', one-off packs use 'escalation_pack'.
+    const checkoutTier = priceIdToTier(priceId);
+
+    const sessionParams: Record<string, string> = {
       customer: customerId,
       'line_items[0][price]': priceId,
       'line_items[0][quantity]': '1',
@@ -254,7 +260,14 @@ export async function POST(request: NextRequest) {
       'metadata[billing_cycle]': billingCycle || 'monthly',
       'metadata[awc]': awcCookie,
       'subscription_data[metadata][user_id]': user.id,
-    });
+    };
+
+    if (checkoutTier === 'household') {
+      sessionParams['metadata[product]'] = 'household';
+      sessionParams['subscription_data[metadata][product]'] = 'household';
+    }
+
+    const session = await stripePost('/checkout/sessions', sessionParams);
 
     if (session.error) {
       console.error('Stripe session error:', JSON.stringify(session.error));

@@ -5,7 +5,15 @@
 
 export type SyncTrigger = 'cron' | 'manual' | 'initial';
 export type SyncStatus = 'success' | 'failed' | 'skipped';
-export type BankTier = 'free' | 'essential' | 'pro';
+import type { PlanTier } from '@/lib/tier-rank';
+
+/**
+ * Bank config is keyed by the full PlanTier union so the compiler forces
+ * an entry for every new tier. The previous local
+ * `'free' | 'essential' | 'pro'` alias let `TIER_CONFIG[tier] ?? TIER_CONFIG.free`
+ * in /api/auth/yapily silently apply Free's 2-bank cap to a higher tier.
+ */
+export type BankTier = PlanTier;
 
 // Updated April 2026 to match PLAN_LIMITS (see src/lib/plan-limits.ts).
 // Free now gets daily auto-sync and 2 banks (Emma-parity on Free so we don't
@@ -37,6 +45,28 @@ export const TIER_CONFIG = {
     manualSyncAllowed: true,
     manualSyncCooldownHours: 1,
     manualSyncDailyLimit: 10,
+    upgradeMessage: null,
+  },
+  // Household seats get the full Pro bank experience — each member's
+  // connections are their own, counted against their own account.
+  household: {
+    maxConnections: Infinity,
+    dailyCron: true,
+    weeklyCron: false,
+    manualSyncAllowed: true,
+    manualSyncCooldownHours: 1,
+    manualSyncDailyLimit: 10,
+    upgradeMessage: null,
+  },
+  // Dispute Pro: shorter manual-sync cooldown so someone chasing a
+  // disputed transaction can refresh as the merchant refunds.
+  dispute_pro: {
+    maxConnections: Infinity,
+    dailyCron: true,
+    weeklyCron: false,
+    manualSyncAllowed: true,
+    manualSyncCooldownHours: 0,
+    manualSyncDailyLimit: 24,
     upgradeMessage: null,
   },
 } as const satisfies Record<BankTier, {

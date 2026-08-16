@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getUserPlan } from '@/lib/get-user-plan';
+import { isAtLeastPro } from '@/lib/tier-rank';
 import { hashToken, looksLikeToken } from '@/lib/mcp-tokens';
 import { captureServer } from '@/lib/posthog-server';
 
@@ -89,9 +90,12 @@ export async function authenticateMcp(
     );
   }
 
-  // Pro gate — re-checked on every call, so downgrades cut off access immediately
+  // Pro gate — re-checked on every call, so downgrades cut off access immediately.
+  // isAtLeastPro, not === 'pro': Household and Dispute Pro both include the
+  // full Pro entitlement set, so a literal equality check would lock out
+  // subscribers paying more than Pro.
   const plan = await getUserPlan(row.user_id);
-  if (plan.tier !== 'pro' || !plan.isActive) {
+  if (!isAtLeastPro(plan.tier) || !plan.isActive) {
     return NextResponse.json(
       { error: 'MCP access requires an active Pro plan.' },
       { status: 403 },

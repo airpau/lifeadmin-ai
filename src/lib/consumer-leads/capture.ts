@@ -29,7 +29,10 @@ export interface CaptureInput {
   stripeCheckoutSessionId?: string | null;
   stripeCustomerId?: string | null;
   stripeRecoveryUrl?: string | null;
-  intendedTier?: 'essential' | 'pro' | null;
+  // Widened 2026-08-16 alongside the consumer_leads_intended_tier_check
+  // constraint. An abandoned Household / Dispute Pro checkout previously
+  // violated that constraint inside the Stripe webhook and lost the lead.
+  intendedTier?: 'essential' | 'pro' | 'household' | 'dispute_pro' | null;
   intendedBillingInterval?: 'monthly' | 'yearly' | null;
   ipAddress?: string | null;
   userAgent?: string | null;

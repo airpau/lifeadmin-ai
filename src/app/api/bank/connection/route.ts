@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getUserPlan } from '@/lib/get-user-plan';
 import { TIER_CONFIG } from '@/lib/bank-tier-config';
+import { isAtLeastPro } from '@/lib/tier-rank';
 
 export async function GET() {
   const supabase = await createClient();
@@ -35,9 +36,11 @@ export async function GET() {
   const expired = expiredResult.data || [];
   const connection = connections.length > 0 ? connections[0] : null;
 
-  // For Pro users: include today's manual sync count so the UI can show the daily limit
+  // For Pro users: include today's manual sync count so the UI can show the daily limit.
+  // isAtLeastPro, not === 'pro' — Dispute Pro and Household get manual sync too,
+  // so they need the same counter or the UI would show 0 of 3 used forever.
   let manualSyncsToday = 0;
-  if (plan.tier === 'pro') {
+  if (isAtLeastPro(plan.tier)) {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { X, Sparkles, TrendingUp, Mail, CreditCard, ArrowRight } from 'lucide-react';
 import { capture } from '@/lib/posthog';
+import { isPaidTier } from '@/lib/tier-rank';
 
 type TriggerType = 'bank_scan' | 'letter_limit' | 'email_scan' | 'price_increase';
 
@@ -63,8 +64,10 @@ export default function UpgradeTrigger({
 
   if (!mounted || dismissed) return null;
 
-  // Never show to paid users (or while tier is still loading)
-  if (!userTier || userTier === 'essential' || userTier === 'pro') return null;
+  // Never show to paid users (or while tier is still loading).
+  // isPaidTier, not a hardcoded essential/pro list — Household and Dispute Pro
+  // are paid tiers too and must not be nagged to upgrade.
+  if (!userTier || isPaidTier(userTier)) return null;
 
   // Guard: only show when there's something meaningful to say
   if (type === 'bank_scan' && subscriptionCount === 0) return null;

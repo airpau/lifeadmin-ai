@@ -14,6 +14,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { EVENT_CATALOG, type NotificationEventType } from './events';
+import { isAtLeastPro } from '@/lib/tier-rank';
 
 export type Channel = 'email' | 'telegram' | 'whatsapp' | 'push';
 
@@ -200,7 +201,9 @@ function resolveChannels(
 
   // Pro-only events (morning/evening/payday summaries) skip Free/Essential
   // users entirely — even if they've enabled the channels.
-  if (meta?.proOnly && routing.tier !== 'pro') return [];
+  // isAtLeastPro, not !== 'pro': Household and Dispute Pro are entitled to
+  // every Pro-only event too.
+  if (meta?.proOnly && !isAtLeastPro(routing.tier)) return [];
 
   // Pocket-agent mutex: a user can have telegram OR whatsapp but never
   // both active. The DB-level trigger enforces this, but resolving here

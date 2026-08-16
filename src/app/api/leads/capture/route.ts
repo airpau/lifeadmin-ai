@@ -12,10 +12,23 @@ import { captureConsumerLead } from '@/lib/consumer-leads/capture';
 
 export const runtime = 'nodejs';
 
+/**
+ * Tiers the `consumer_leads_intended_tier_check` DB constraint accepts.
+ * Free is excluded on purpose: there is nothing to abandon on Free.
+ * Anything not in this list is dropped to null rather than passed on,
+ * so a stale or spoofed client can't fail the insert on the constraint.
+ */
+const INTENDED_TIERS = ['essential', 'pro', 'household', 'dispute_pro'] as const;
+type IntendedTier = (typeof INTENDED_TIERS)[number];
+
+function parseIntendedTier(value: unknown): IntendedTier | null {
+  return INTENDED_TIERS.includes(value as IntendedTier) ? (value as IntendedTier) : null;
+}
+
 interface Body {
   email?: string;
   name?: string;
-  intended_tier?: 'essential' | 'pro';
+  intended_tier?: IntendedTier;
   intended_billing_interval?: 'monthly' | 'yearly';
   source?: 'signup_form' | 'pricing_page_exit';
   utm_source?: string;
@@ -43,7 +56,7 @@ export async function POST(req: NextRequest) {
     email,
     name: body.name ?? null,
     source: body.source === 'pricing_page_exit' ? 'pricing_page_exit' : 'signup_form',
-    intendedTier: body.intended_tier ?? null,
+    intendedTier: parseIntendedTier(body.intended_tier),
     intendedBillingInterval: body.intended_billing_interval ?? null,
     utmSource: body.utm_source ?? null,
     utmMedium: body.utm_medium ?? null,

@@ -24,6 +24,7 @@ import NetWorthPanel from './NetWorthPanel';
 import ContractsPanel from './ContractsPanel';
 import UpcomingWidget from './UpcomingWidget';
 import { filterActiveSubscriptions } from '@/lib/subscriptions/active-count';
+import { isAtLeastEssential, isAtLeastPro } from '@/lib/tier-rank';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -728,7 +729,9 @@ export default function MoneyHubPage() {
  // mobile loads. The 24h timestamp is the only signal we need — empty
  // alerts is the steady state for users who've already actioned them.
  useEffect(() => {
- if (data && data.tier === 'pro') {
+ // isAtLeastPro, not === 'pro' — Household and Dispute Pro get the same
+ // background inbox scan Pro does.
+ if (data && isAtLeastPro(data.tier)) {
  const lastScan = localStorage.getItem('pb_last_gmail_scan');
  const now = Date.now();
  const stale = !lastScan || now - parseInt(lastScan, 10) > 24 * 60 * 60 * 1000;
@@ -752,7 +755,9 @@ export default function MoneyHubPage() {
  // render, then once data arrived the hook started running and React
  // tripped (2026-04-28).
  const lockedSpaceIds = useMemo(() => {
-   const tierMaxSpaces = data?.tier === 'pro' ? null : 1;
+   // isAtLeastPro — unlimited Spaces is a Pro entitlement, so Household and
+   // Dispute Pro must not be capped back to a single Space.
+   const tierMaxSpaces = isAtLeastPro(data?.tier) ? null : 1;
    if (tierMaxSpaces === null) return new Set<string>();
    const ordered = [...spaces].sort((a, b) => {
      if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
@@ -847,8 +852,10 @@ export default function MoneyHubPage() {
  // data.tier is the effectiveTier returned by /api/money-hub, so trial users
  // and the hardcoded test user already come through as 'pro'. No need for
  // a separate isTestUserOverride branch — the API never populates that flag.
- const isPaid = (data && data.tier === 'essential') || (data && data.tier === 'pro');
- const isPro = (data && data.tier === 'pro');
+ // Rank checks, not tier equality — an essential/pro literal list silently
+ // treated Household and Dispute Pro as free-tier users.
+ const isPaid = isAtLeastEssential(data?.tier);
+ const isPro = isAtLeastPro(data?.tier);
 
  const hasLockedSpaces = lockedSpaceIds.size > 0;
 
@@ -874,11 +881,13 @@ export default function MoneyHubPage() {
  })();
  const canSync = (() => {
  if (syncing) return false;
- if (data.tier !== 'pro') return false;
+ // On-demand sync is a Pro entitlement — isAtLeastPro covers Household and
+ // Dispute Pro, which would otherwise see the button permanently disabled.
+ if (!isAtLeastPro(data.tier)) return false;
  return syncCooldownMinsLeft === 0;
  })();
  const syncButtonTitle = (() => {
- if (data.tier !== 'pro') return 'Manual sync is a Pro feature';
+ if (!isAtLeastPro(data.tier)) return 'Manual sync is a Pro feature';
  if (syncCooldownMinsLeft === 0) return 'Sync now';
  const h = Math.floor(syncCooldownMinsLeft / 60);
  const m = syncCooldownMinsLeft % 60;
@@ -887,8 +896,10 @@ export default function MoneyHubPage() {
 
  const syncTierText = (() => {
  const stamp = lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)} (${formatAbsoluteDateTime(lastSyncedAt)})` : '';
- if (data.tier === 'pro') return `Auto-syncs up to 4× daily${stamp}`;
- if (data.tier === 'essential') return `Auto-syncs daily${stamp}`;
+ // Ordered rank checks so a new tier lands in the right branch rather than
+ // falling through to the free-tier "manual sync" copy.
+ if (isAtLeastPro(data.tier)) return `Auto-syncs up to 4× daily${stamp}`;
+ if (isAtLeastEssential(data.tier)) return `Auto-syncs daily${stamp}`;
  return 'Manual sync · 1× per day';
  })();
 
@@ -1079,7 +1090,7 @@ export default function MoneyHubPage() {
  className="flex items-center gap-2 cta-ghost transition-all"
  >
  <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
- {syncing ? 'Syncing...' : !canSync && data.tier === 'pro' && syncCooldownMinsLeft > 0
+ {syncing ? 'Syncing...' : !canSync && isAtLeastPro(data.tier) && syncCooldownMinsLeft > 0
  ? `Sync · ${Math.floor(syncCooldownMinsLeft / 60)}h ${syncCooldownMinsLeft % 60}m`
  : 'Sync'}
  </button>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
+import { ALL_PLAN_TIERS, PAID_PLAN_TIERS, TIER_DISPLAY_NAME, TIER_PRICE_GBP } from '@/lib/tier-rank';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -169,14 +170,26 @@ export async function POST(request: NextRequest) {
       .limit(10),
   ]);
 
-  const tiers: Record<string, number> = { free: 0, essential: 0, pro: 0 };
+  // Seeded from ALL_PLAN_TIERS so Household and Dispute Pro get their own
+  // buckets instead of being invisible.
+  const tiers: Record<string, number> = Object.fromEntries(ALL_PLAN_TIERS.map((t) => [t, 0]));
   for (const p of tiersResult.data || []) {
     const tier = p.subscription_tier || 'free';
     tiers[tier] = (tiers[tier] || 0) + 1;
   }
-  const mrr = tiers.essential * 9.99 + tiers.pro * 19.99;
+  // Priced from TIER_PRICE_GBP. The old line was `tiers.essential * 9.99 +
+  // tiers.pro * 19.99` — stale prices (the same bug already fixed in
+  // src/lib/admin-metrics.ts) AND no Household / Dispute Pro revenue at all.
+  // Monthly headline price per subscriber: profiles.subscription_tier carries
+  // no billing interval, so yearly subs are approximated. Pre-existing.
+  const mrr = PAID_PLAN_TIERS.reduce(
+    (sum, t) => sum + (tiers[t] || 0) * TIER_PRICE_GBP[t].monthly,
+    0,
+  );
+  const totalUsers = ALL_PLAN_TIERS.reduce((sum, t) => sum + (tiers[t] || 0), 0);
+  const tierSummary = ALL_PLAN_TIERS.map((t) => `${TIER_DISPLAY_NAME[t]}: ${tiers[t] || 0}`).join(', ');
 
-  const businessContext = `Current business snapshot: MRR £${mrr.toFixed(2)}, ${tiers.free + tiers.essential + tiers.pro} total users (Free: ${tiers.free}, Essential: ${tiers.essential}, Pro: ${tiers.pro}), ${openTickets.count || 0} open support tickets.`;
+  const businessContext = `Current business snapshot: MRR £${mrr.toFixed(2)}, ${totalUsers} total users (${tierSummary}), ${openTickets.count || 0} open support tickets.`;
 
   // Build conversation history for context
   const historyContext = (history || [])

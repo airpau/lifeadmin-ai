@@ -9,8 +9,9 @@ import ConnectionHealthBanner from '@/components/ConnectionHealthBanner';
 import DashboardShell, { type UserSummary } from '@/components/dashboard/DashboardShell';
 import './shell-v2.css';
 import './dashboard.css';
+import { type PlanTier } from '@/lib/tier-rank';
 
-type Tier = 'free' | 'essential' | 'pro';
+type Tier = PlanTier;
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();

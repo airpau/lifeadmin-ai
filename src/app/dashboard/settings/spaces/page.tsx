@@ -18,6 +18,7 @@ import {
   Users as UsersIcon, PiggyBank, Home, Globe, CircleDot, X, Star, Info,
 } from 'lucide-react';
 import UpgradeLock from '@/components/UpgradeLock';
+import { isAtLeastPro, type PlanTier } from '@/lib/tier-rank';
 
 interface Connection {
   id: string;
@@ -54,7 +55,7 @@ export default function SpacesSettingsPage() {
   // is over their plan's Spaces cap (e.g. they had 3 Spaces on Pro,
   // downgraded to Essential, now sit over the 1-Space cap until grace
   // period auto-archives or they upgrade back).
-  const [tier, setTier] = useState<'free' | 'essential' | 'pro' | null>(null);
+  const [tier, setTier] = useState<PlanTier | null>(null);
   const [maxSpaces, setMaxSpaces] = useState<number | null>(null);
   const [newName, setNewName] = useState('');
   const [newEmoji, setNewEmoji] = useState<string>('💼');
@@ -97,7 +98,9 @@ export default function SpacesSettingsPage() {
   }, []);
 
   const overCap = !!(maxSpaces !== null && spaces.length > maxSpaces);
-  const isPro = tier === 'pro';
+  // isAtLeastPro, not === 'pro' — unlimited Spaces is a Pro entitlement that
+  // Household and Dispute Pro also carry.
+  const isPro = isAtLeastPro(tier);
 
   const beginCreate = () => {
     setCreating(true);
@@ -238,7 +241,9 @@ export default function SpacesSettingsPage() {
           has more Spaces than their current plan allows — typical after
           a Pro→Essential downgrade. Pro users see nothing here because
           their cap is null (unlimited). */}
-      {overCap && tier && tier !== 'pro' && (
+      {/* !isPro (rank-based) rather than tier !== 'pro' — Household and
+          Dispute Pro are uncapped, so they must not see this banner. */}
+      {overCap && tier && !isPro && (
         <div className="mb-4">
           <UpgradeLock
             feature={`You're using ${spaces.length} Spaces — ${tier} allows ${maxSpaces}`}

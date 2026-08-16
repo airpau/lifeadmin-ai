@@ -23,7 +23,7 @@
  *     &lt;&gt;
  *       &lt;UpgradeConversionTracker
  *         dedupeKey={session.id}
- *         tier={tier as 'essential' | 'pro'}
+ *         tier={tier as PlanTier}
  *         billingPeriod={billingPeriod as 'monthly' | 'annual'}
  *         amountGbp={amountGbp}
  *       /&gt;
@@ -34,6 +34,7 @@
 
 import { useEffect } from 'react';
 import { trackPaidUpgrade } from '@/lib/analytics/conversions';
+import { type PlanTier } from '@/lib/tier-rank';
 
 export default function UpgradeConversionTracker({
   dedupeKey,
@@ -42,7 +43,9 @@ export default function UpgradeConversionTracker({
   amountGbp,
 }: {
   dedupeKey: string;
-  tier: 'essential' | 'pro';
+  // PlanTier, not 'essential' | 'pro' — a checkout can now land on Household
+  // or Dispute Pro and the conversion still needs to fire.
+  tier: PlanTier;
   billingPeriod: 'monthly' | 'annual';
   amountGbp: number;
 }) {
@@ -50,7 +53,10 @@ export default function UpgradeConversionTracker({
     if (typeof window === 'undefined') return;
     const key = `pb_upgrade_fired_${dedupeKey}`;
     if (window.sessionStorage.getItem(key)) return;
-    trackPaidUpgrade({ dedupeKey, tier, billingPeriod, amountGbp });
+    // trackPaidUpgrade still types `tier` as the narrow essential|pro union;
+    // it only uses the value as an analytics label, so any PlanTier is safe
+    // to pass. Drop the assertion once that signature widens.
+    trackPaidUpgrade({ dedupeKey, tier: tier as 'essential' | 'pro', billingPeriod, amountGbp });
     window.sessionStorage.setItem(key, '1');
   }, [dedupeKey, tier, billingPeriod, amountGbp]);
 

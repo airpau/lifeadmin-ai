@@ -18,6 +18,8 @@
  * naturally exclude them. No second filter needed here.
  */
 
+import { isAtLeastPro } from '@/lib/tier-rank';
+
 export type EligibilityProfile = {
   subscription_tier?: string | null;
   subscription_status?: string | null;
@@ -72,6 +74,9 @@ export function isPocketAgentEligible(p: EligibilityProfile): boolean {
  * dispute Watchdog alerts) are gated to Pro only per the pricing matrix.
  */
 export function isProPocketAgentEligible(p: EligibilityProfile): boolean {
-  if ((p.subscription_tier ?? 'free') !== 'pro') return false;
+  // isAtLeastPro, not !== 'pro': this gate feeds ~15 cron routes. A literal
+  // equality check would silently cut every Household and Dispute Pro
+  // subscriber out of the entire Telegram/WhatsApp alert stream.
+  if (!isAtLeastPro(p.subscription_tier ?? 'free')) return false;
   return isPocketAgentEligible(p);
 }

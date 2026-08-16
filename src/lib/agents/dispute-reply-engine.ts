@@ -33,6 +33,47 @@ import {
 import { CITATION_PERMISSIVE_STATUSES } from '@/lib/legal-refs-statuses';
 import { detectReplyCategories } from './dispute-reply-categories';
 import { loadFreshLegalRefs } from '@/lib/legal-data/freshness-gate';
+import {
+  checkRefFreshness,
+  refreshSingleRef,
+  freshnessTier,
+  tierWarning,
+  findTieredSubstitute,
+  findChainSubstitute,
+  postFlightSanitise,
+} from '@/lib/legal-refs-guardrail';
+
+/**
+ * Live re-check budget for the pre-flight guardrail.
+ *
+ * The B2C web generator (`/api/complaints/generate`) attempts a
+ * synchronous Perplexity re-check for every stale ref. This engine also
+ * serves the conversational surfaces (WhatsApp / Telegram Pocket Agent),
+ * where a Twilio/Telegram round-trip is already waiting on a Sonnet call,
+ * so we cap the number of 5-second re-checks per request. Stale refs
+ * beyond the cap are NOT used blind — they fall straight through to the
+ * substitute / category-chain / strip path, which is stricter than a
+ * re-check, just cheaper and faster.
+ */
+const MAX_INLINE_REFRESHES = 3;
+
+/**
+ * Shape of a `legal_references` row as selected by this engine. Loose on
+ * purpose — the retrieval SELECT and the guardrail's substitute helpers
+ * return slightly different column sets, and the prompt builder only
+ * reads a handful of them.
+ */
+type RetrievedRef = {
+  id: string;
+  category?: string | null;
+  law_name?: string | null;
+  section?: string | null;
+  summary?: string | null;
+  source_url?: string | null;
+  escalation_body?: string | null;
+  applies_to?: string[] | null;
+  verification_status?: string | null;
+};
 
 export { detectReplyCategories };
 
@@ -79,6 +120,14 @@ export interface DraftDisputeReplyResult extends ComplaintOutput {
   groundedRefCount: number;
   /** True when no refs were available even after fallback. */
   groundingGap: boolean;
+  /**
+   * Human-readable guardrail warnings — tier 2-4 freshness caveats,
+   * category-chain substitutions, and post-flight citation removals.
+   * Additive and optional: existing callers can ignore it.
+   */
+  guardrailWarnings?: string[];
+  /** Citations the model produced that were not in the supplied pool. */
+  rogueCitations?: string[];
 }
 
 /**
@@ -150,6 +199,114 @@ export async function generateDisputeReply(
           fallback_count: relevantRefs.length,
         },
       });
+    }
+  }
+
+  // ---- PRE-FLIGHT GUARDRAIL ------------------------------------------
+  // Same contract as `/api/complaints/generate` and `/v1/disputes`:
+  // check every ref we intend to put in the prompt, try to salvage the
+  // stale ones, substitute within the category, then along the category
+  // fallback chain, and strip anything that cannot be salvaged. Never
+  // blocks — a reply always goes out, worst case with a footer caveat.
+  //
+  // Added 16 Aug 2026 so this engine (Pocket Agent on WhatsApp and
+  // Telegram, plus the dashboard "Draft reply" path) is covered by the
+  // same guardrail as the web generator. /legal/how-we-cite previously
+  // carved this surface out of its scope statement.
+  const guardrailWarnings: string[] = [];
+  let guardrailFooterNote: string | null = null;
+  if (relevantRefs.length > 0) {
+    try {
+      const refs = relevantRefs as RetrievedRef[];
+      const refIds = refs
+        .map((r) => r.id)
+        .filter((x: unknown): x is string => typeof x === 'string');
+      const freshness = await checkRefFreshness(supabase, refIds);
+      if (!freshness.ok && freshness.stale.length > 0) {
+        const usedIds = new Set<string>(refIds);
+        let refreshBudget = MAX_INLINE_REFRESHES;
+        for (const { id: staleId, reason } of freshness.stale) {
+          // 1. Live re-check (budget-capped).
+          if (refreshBudget > 0) {
+            refreshBudget--;
+            const refreshed = await refreshSingleRef(supabase, staleId);
+            if (refreshed) {
+              const t = freshnessTier(refreshed);
+              if (t) {
+                const idx = refs.findIndex((r) => r.id === staleId);
+                if (idx >= 0) refs[idx] = { ...refs[idx], ...refreshed };
+                const w = tierWarning(refreshed, t);
+                if (w) guardrailWarnings.push(w);
+                continue;
+              }
+            }
+          }
+
+          const original = refs.find((r) => r.id === staleId);
+          const category = original?.category ?? undefined;
+
+          // 2. Fresher substitute in the same category.
+          if (category) {
+            const sub = await findTieredSubstitute(supabase, category, [...usedIds]);
+            if (sub) {
+              const idx = refs.findIndex((r) => r.id === staleId);
+              if (idx >= 0) {
+                refs[idx] = {
+                  ...sub.ref,
+                  applies_to: original?.applies_to || [],
+                };
+                usedIds.add(sub.ref.id);
+              }
+              const w = tierWarning(sub.ref, sub.tier);
+              if (w) guardrailWarnings.push(w);
+              continue;
+            }
+
+            // 3. Legally-adjacent category (energy → utilities → general).
+            const chained = await findChainSubstitute(supabase, category, [...usedIds]);
+            if (chained) {
+              const idx = refs.findIndex((r) => r.id === staleId);
+              if (idx >= 0) {
+                refs[idx] = {
+                  ...chained.ref,
+                  applies_to: original?.applies_to || [],
+                };
+                usedIds.add(chained.ref.id);
+              }
+              guardrailWarnings.push(
+                `No fresh ref for '${category}' — substituted with '${chained.fallbackCategory}' (${chained.ref.law_name})`,
+              );
+              const w = tierWarning(chained.ref, chained.tier);
+              if (w) guardrailWarnings.push(w);
+              continue;
+            }
+          }
+
+          // 4. Nothing usable — strip it rather than cite it blind.
+          const idx = refs.findIndex((r) => r.id === staleId);
+          if (idx >= 0) refs.splice(idx, 1);
+          guardrailFooterNote =
+            "We couldn't verify the current statute reference for this point. Please confirm before sending.";
+          void supabase.from('business_log').insert({
+            category: 'legal_intelligence',
+            action: 'guardrail_stripped_stale_ref',
+            details: {
+              user_id: input.userId ?? null,
+              surface: input.surface,
+              ref_id: staleId,
+              reason,
+              company: input.providerName,
+            },
+          });
+        }
+      }
+    } catch (err) {
+      // Fail-open, same as the web generator: a guardrail error must not
+      // cost the user their reply. The post-flight pass below still runs.
+      console.warn(
+        '[guardrail] dispute-reply pre-flight failed (non-fatal):',
+        (err as Error).message,
+      );
     }
   }
 
@@ -226,10 +383,57 @@ export async function generateDisputeReply(
 
   const out = await generateComplaintLetter(complaintInput);
 
+  // ---- POST-FLIGHT GUARDRAIL -----------------------------------------
+  // Pre-flight only controls what goes INTO the prompt. The model can
+  // still dredge a fabricated or stale UK statute out of training data.
+  // Pure regex + substring, no I/O — same pass the web generator runs.
+  let rogueCitations: string[] = [];
+  if (out.letter && relevantRefs.length > 0) {
+    const pf = postFlightSanitise(
+      out.letter,
+      (relevantRefs as RetrievedRef[]).map((r) => ({
+        law_name: r.law_name ?? '',
+        category: r.category ?? null,
+      })),
+    );
+    if (pf.rogue.length > 0) {
+      out.letter = pf.sanitised;
+      rogueCitations = pf.rogue;
+      guardrailWarnings.push(...pf.warnings);
+      console.warn(
+        `[guardrail] dispute-reply post-flight stripped/substituted ${pf.rogue.length} ` +
+          `rogue citation(s): ${pf.rogue.join(', ')}`,
+      );
+      void supabase.from('business_log').insert({
+        category: 'legal_intelligence',
+        action: 'guardrail_postflight_sanitised',
+        details: {
+          user_id: input.userId ?? null,
+          surface: input.surface,
+          company: input.providerName,
+          rogue: pf.rogue,
+          warnings: pf.warnings,
+        },
+      });
+      if (!guardrailFooterNote) {
+        guardrailFooterNote =
+          'Some statutory references were removed during compliance review — please verify before sending.';
+      }
+    }
+  }
+
+  // Single-line footer caveat, mirroring the web generator, so the user
+  // sees the same "double-check this" signal on every surface.
+  if (guardrailFooterNote && out.letter) {
+    out.letter = `${out.letter}\n\n---\nNote: ${guardrailFooterNote}`;
+  }
+
   return {
     ...out,
     categoriesUsed: categories,
     groundedRefCount: relevantRefs.length,
     groundingGap: relevantRefs.length === 0,
+    guardrailWarnings,
+    rogueCitations,
   };
 }

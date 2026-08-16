@@ -28,6 +28,7 @@ import {
   occurrencesFrom,
 } from '@/lib/upcoming/detect-income';
 import { endOfTodayLondonIso } from '@/lib/alerts/future-dated';
+import { isAtLeastPro } from '@/lib/tier-rank';
 
 export const maxDuration = 300;
 
@@ -508,9 +509,13 @@ export async function GET(request: NextRequest) {
         .eq('id', row.user_id)
         .single();
 
-      const tier = (profile?.subscription_tier || 'free') as 'free' | 'essential' | 'pro';
-      // Pro: instant. Essential: email only (handled elsewhere). Free: in-app only.
-      if (tier !== 'pro') continue;
+      // Left as a plain string rather than a narrowed union — the inline
+      // 'free' | 'essential' | 'pro' union silently excluded the tiers
+      // added above Pro and would have to be widened on every new tier.
+      const tier = profile?.subscription_tier || 'free';
+      // Pro AND ABOVE: instant. Essential: email only (handled elsewhere).
+      // Free: in-app only.
+      if (!isAtLeastPro(tier)) continue;
 
       const { data: session } = await supabase
         .from('telegram_sessions')

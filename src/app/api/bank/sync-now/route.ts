@@ -7,6 +7,7 @@ import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from
 import { recordConsentFailure, clearConsentFailures } from '@/lib/yapily/consent-failure-tracker';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
+import { isAtLeastPro } from '@/lib/tier-rank';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import {
   TIER_CONFIG,
@@ -74,8 +75,11 @@ export async function POST(request: NextRequest) {
   const isTestUser =
     process.env.NODE_ENV !== 'production' &&
     user.email === 'sheva.tests.2026@outlook.com';
+  //
+  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to
+  // on-demand sync exactly as Pro is.
   const plan = await getUserPlan(user.id);
-  if (plan.tier !== 'pro' && !isTestUser) {
+  if (!isAtLeastPro(plan.tier) && !isTestUser) {
     const msg = plan.tier === 'essential'
       ? 'Manual sync is a Pro feature. Upgrade to Pro for on-demand syncing.'
       : 'Manual sync requires an Essential or Pro plan.';

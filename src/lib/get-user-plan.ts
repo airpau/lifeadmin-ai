@@ -1,6 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
+import { isAtLeast, type PlanTier } from '@/lib/tier-rank';
+import { resolveHouseholdTier } from '@/lib/household';
 
-export type PlanTier = 'free' | 'essential' | 'pro';
+// Was a second, drifting copy of the union. Now re-exported from the
+// canonical @/lib/tier-rank so it cannot fall out of step with
+// @/lib/plan-limits.
+export type { PlanTier } from '@/lib/tier-rank';
 
 export interface UserPlan {
   tier: PlanTier;
@@ -59,18 +64,39 @@ export async function getUserPlan(userId: string): Promise<UserPlan> {
     && !profile?.trial_converted_at
     && !profile?.trial_expired_at;
 
-  if (onboardingTrialActive) {
+  // Trial is PROMOTE-ONLY. `tier: 'pro'` unconditionally would have
+  // demoted a Dispute Pro subscriber with an overlapping onboarding trial.
+  if (onboardingTrialActive && !isAtLeast(storedTier, 'pro')) {
     const daysLeft = Math.ceil((trialEnd!.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     return { tier: 'pro', status: 'trialing', isActive: true, isTrial: true, isPastDue: false, trialDaysLeft: daysLeft };
   }
 
   // Explicit termination → demote. This is the only path that can flip a
   // paid user to Free; everything else trusts the stored tier.
+  //
+  // A household MEMBER has no Stripe subscription of their own, so this
+  // branch must still consult the household seat before returning Free —
+  // otherwise a member whose own (long-cancelled) personal subscription
+  // left a 'canceled' status would lose their seat entitlement.
   if (TERMINATED_STATUSES.has(status)) {
+    const householdTier = await resolveHouseholdTier(admin, userId);
+    if (householdTier !== 'free') {
+      return { tier: householdTier, status: 'active', isActive: true, isTrial: false, isPastDue: false, trialDaysLeft: null };
+    }
     return { tier: 'free', status, isActive: false, isTrial: false, isPastDue: false, trialDaysLeft: null };
   }
 
   const isTrial = status === 'trialing';
+
+  // Household members carry subscription_tier='free' on their own profile;
+  // their entitlement lives on the owner's household_plans row.
+  if (storedTier === 'free') {
+    const householdTier = await resolveHouseholdTier(admin, userId);
+    if (householdTier !== 'free') {
+      return { tier: householdTier, status: 'active', isActive: true, isTrial: false, isPastDue: false, trialDaysLeft: null };
+    }
+  }
+
   return {
     tier: storedTier,
     status,

@@ -17,9 +17,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, X, Sparkles } from 'lucide-react';
+import { type PlanTier } from '@/lib/tier-rank';
 
 interface PlanStatus {
-  tier: 'free' | 'essential' | 'pro';
+  tier: PlanTier;
   limits: { maxBanks: number | null; maxEmails: number | null; maxSpaces: number | null };
   usage: { banks: number; emails: number; spaces: number };
   overLimit: { banks: boolean; emails: boolean; spaces: boolean };

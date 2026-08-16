@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { runAssessment } from '@/lib/overcharge-engine';
 import { sendOverchargeAlert } from '@/lib/email/overcharge-alerts';
 import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
+import { isPaidTier } from '@/lib/tier-rank';
 
 export const maxDuration = 120;
 
@@ -93,7 +94,9 @@ export async function GET(request: NextRequest) {
         .eq('id', userId)
         .single();
 
-      if (profile && ['essential', 'pro'].includes(profile.subscription_tier || '')) {
+      // Any paid tier — the old literal array silently excluded household
+      // and dispute_pro from the overcharge alert email.
+      if (profile && isPaidTier(profile.subscription_tier)) {
         const rateCheck = await canSendEmail(supabase, userId, 'overcharge_alert');
         if (rateCheck.allowed && highScore.length > 0) {
           const sent = await sendOverchargeAlert(

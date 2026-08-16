@@ -14,6 +14,8 @@ import {
   checkAndAlertCeiling,
   sendTelegramAlert,
 } from '@/lib/bank-tier-config';
+import { PAID_PLAN_TIERS } from '@/lib/tier-rank';
+import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits';
 
 export const maxDuration = 60;
 
@@ -50,11 +52,13 @@ function getAdmin() {
  * Tiered bank sync cron — runs daily at 3am (configured in vercel.json).
  *
  * Tier behaviour:
- *   Pro + Essential — synced every day (fetches last 90 days of transactions)
+ *   Every paid tier — synced every day (fetches last 90 days of transactions)
  *   Free           — synced only on Mondays (fetches last 90 days)
  *
- * Processing order: Pro first, then Essential, then Free.
- * This ensures paying users are never deprioritised behind free users.
+ * Processing order follows PLAN_LIMITS[tier].disputeQueuePriority
+ * (lower runs first): Dispute Pro, then Pro/Household, then Essential,
+ * then Free. This ensures paying users are never deprioritised behind
+ * free users when the daily API ceiling starts biting mid-run.
  *
  * Cost protection:
  *   - Global 500 API call ceiling per day (shared with manual syncs)
@@ -89,11 +93,17 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Determine which tiers to sync today
-  // Pro + Essential: every day. Free: Mondays only.
-  const tiersToSync = isMonday
-    ? ['pro', 'essential', 'free']
-    : ['pro', 'essential'];
+  // Determine which tiers to sync today.
+  // Every PAID tier: every day. Free: Mondays only.
+  //
+  // Built from PAID_PLAN_TIERS rather than a hardcoded ['pro','essential']
+  // list. The old literal meant a tier added above Pro (household,
+  // dispute_pro) matched no row in the `.in()` filter below and therefore
+  // got ZERO bank syncs — the most expensive plans silently receiving less
+  // than Free. Any future tier is picked up automatically.
+  const tiersToSync: string[] = isMonday
+    ? [...PAID_PLAN_TIERS, 'free']
+    : [...PAID_PLAN_TIERS];
 
   // Fetch all users by tier, maintaining processing order (Pro first)
   const { data: allProfiles } = await supabase
@@ -105,10 +115,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, synced: 0, reason: 'No eligible users' });
   }
 
-  // Sort: pro → essential → free
-  const tierOrder: Record<string, number> = { pro: 0, essential: 1, free: 2 };
+  // Sort: dispute_pro → pro/household → essential → free.
+  //
+  // `disputeQueuePriority` is the canonical lower-runs-first ordering in
+  // PLAN_LIMITS, so it drops straight into a numeric ascending sort. The
+  // previous inline map hardcoded pro=0 and gave anything unrecognised a
+  // rank of 3 — i.e. a dispute_pro user would have been sorted BEHIND free
+  // users when the API ceiling starts biting mid-run. An unknown tier now
+  // falls back to the Free priority rather than a magic number, so it can
+  // never rank worse than the lowest real tier.
+  const queuePriority = (tier: string | null | undefined): number =>
+    PLAN_LIMITS[tier as PlanTier]?.disputeQueuePriority ?? PLAN_LIMITS.free.disputeQueuePriority;
+
   const sortedProfiles = [...allProfiles].sort(
-    (a, b) => (tierOrder[a.subscription_tier] ?? 3) - (tierOrder[b.subscription_tier] ?? 3)
+    (a, b) => queuePriority(a.subscription_tier) - queuePriority(b.subscription_tier)
   );
 
   const orderedUserIds = sortedProfiles.map((p) => p.id);
@@ -131,8 +151,10 @@ export async function GET(request: NextRequest) {
   // Sort connections to match tier order
   const userTierMap = new Map(sortedProfiles.map((p) => [p.id, p.subscription_tier]));
   const sortedConnections = [...connections].sort((a, b) => {
-    const tierA = tierOrder[userTierMap.get(a.user_id) ?? 'free'] ?? 3;
-    const tierB = tierOrder[userTierMap.get(b.user_id) ?? 'free'] ?? 3;
+    // Same canonical priority as the profile sort above — keep the two in
+    // step or the connection loop undoes the profile ordering.
+    const tierA = queuePriority(userTierMap.get(a.user_id));
+    const tierB = queuePriority(userTierMap.get(b.user_id));
     return tierA - tierB;
   });
 

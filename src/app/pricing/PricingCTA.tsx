@@ -35,6 +35,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { PRICE_IDS } from '@/lib/stripe';
+import { TIER_DISPLAY_NAME, TIER_PRICE_GBP } from '@/lib/tier-rank';
 import { capture as posthogCapture } from '@/lib/posthog';
 
 // Basic-but-sensible email regex — local@host.tld, no spaces, no
@@ -60,7 +61,7 @@ function readUtm(): { utm_source?: string; utm_medium?: string; utm_campaign?: s
   }
 }
 
-type Plan = 'free' | 'essential' | 'pro';
+type Plan = 'free' | 'essential' | 'pro' | 'household' | 'dispute_pro';
 
 interface Props {
   plan: Plan;
@@ -78,14 +79,21 @@ interface PreviewState {
   current_price_id?: string;
 }
 
+/**
+ * Returns undefined when the plan's price-ID env var is unset. The new
+ * tiers have no hardcoded fallback price ID on purpose, so a missing env
+ * var makes the button inert rather than sending an empty priceId to
+ * Stripe.
+ */
 function priceIdFor(plan: Plan, cycle: 'monthly' | 'yearly'): string | undefined {
-  if (plan === 'essential') {
-    return cycle === 'yearly' ? PRICE_IDS.essential_yearly : PRICE_IDS.essential_monthly;
+  const yearly = cycle === 'yearly';
+  switch (plan) {
+    case 'essential':   return (yearly ? PRICE_IDS.essential_yearly   : PRICE_IDS.essential_monthly)   || undefined;
+    case 'pro':         return (yearly ? PRICE_IDS.pro_yearly         : PRICE_IDS.pro_monthly)         || undefined;
+    case 'household':   return (yearly ? PRICE_IDS.household_yearly   : PRICE_IDS.household_monthly)   || undefined;
+    case 'dispute_pro': return (yearly ? PRICE_IDS.dispute_pro_yearly : PRICE_IDS.dispute_pro_monthly) || undefined;
+    default:            return undefined;
   }
-  if (plan === 'pro') {
-    return cycle === 'yearly' ? PRICE_IDS.pro_yearly : PRICE_IDS.pro_monthly;
-  }
-  return undefined;
 }
 
 export default function PricingCTA({ plan, className, children, style, billingCycle = 'monthly' }: Props) {
@@ -340,17 +348,27 @@ export default function PricingCTA({ plan, className, children, style, billingCy
       return;
     }
 
+    // Plan name and headline price come from the canonical tier tables,
+    // not a `plan === 'pro' ? … : …` ternary. That ternary would have told
+    // a Dispute Pro buyer they were being charged £4.99/month.
+    const planName = TIER_DISPLAY_NAME[plan];
+    const headlineMonthly = `£${TIER_PRICE_GBP[plan].monthly.toFixed(2)}`;
+    const headlineYearly = `£${TIER_PRICE_GBP[plan].yearly.toFixed(2)}`;
+    const headline = billingCycle === 'yearly'
+      ? `${headlineYearly}/year`
+      : `${headlineMonthly}/month`;
+
     if (preview.hasExistingSub && preview.prorated_amount_pennies > 0) {
       // Upgrade flow — show prorated total.
       const confirmed = window.confirm(
-        `Upgrading to ${plan === 'pro' ? 'Pro' : 'Essential'} will charge ${preview.prorated_amount_display} to your card on file today.\n\nThis is the prorated upgrade — you get a credit for the unused days on your current plan, and pay only the difference for the rest of this billing cycle.\n\nFrom your next billing date you'll be charged the full ${plan === 'pro' ? '£9.99' : '£4.99'}/month rate. Continue?`,
+        `Upgrading to ${planName} will charge ${preview.prorated_amount_display} to your card on file today.\n\nThis is the prorated upgrade — you get a credit for the unused days on your current plan, and pay only the difference for the rest of this billing cycle.\n\nFrom your next billing date you'll be charged the full ${headline} rate. Continue?`,
       );
       if (!confirmed) return;
     } else if (!preview.hasExistingSub) {
       // Fresh-subscribe flow — Stripe Checkout will collect the card,
       // but we still confirm the headline price first.
       const confirmed = window.confirm(
-        `You'll be taken to a secure Stripe checkout page to start your ${plan === 'pro' ? 'Pro (£9.99/mo)' : 'Essential (£4.99/mo)'} plan. You can cancel anytime. Continue?`,
+        `You'll be taken to a secure Stripe checkout page to start your ${planName} (${headline}) plan. You can cancel anytime. Continue?`,
       );
       if (!confirmed) return;
     }

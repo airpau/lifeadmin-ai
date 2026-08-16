@@ -18,6 +18,7 @@ import {
   type NotificationEventType,
 } from '@/lib/notifications/events';
 import { getEffectiveTier, checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { isAtLeast, isAtLeastPro, TIER_DISPLAY_NAME } from '@/lib/tier-rank';
 import { generateDisputeReply } from '@/lib/agents/dispute-reply-engine';
 import { syncLinkedThread } from '@/lib/dispute-sync/sync-runner';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
@@ -137,10 +138,12 @@ async function requireTier(
   featureLabel: string,
 ): Promise<ToolResult | null> {
   const tier = await getEffectiveTier(userId);
-  const rank: Record<string, number> = { free: 0, essential: 1, pro: 2 };
-  if ((rank[tier] ?? 0) >= rank[minimum]) return null;
+  // Uses the canonical rank map in @/lib/tier-rank rather than a private one.
+  // The old inline `{ free: 0, essential: 1, pro: 2 }` with a `?? 0` fallback
+  // ranked Household and Dispute Pro as Free, blocking paid subscribers.
+  if (isAtLeast(tier, minimum)) return null;
 
-  const planName = minimum === 'pro' ? 'Pro' : 'Essential';
+  const planName = TIER_DISPLAY_NAME[minimum];
   return {
     text:
       `${featureLabel} is part of Paybacker ${planName}. ` +
@@ -6438,8 +6441,9 @@ async function setNotificationSchedule(
     }
   }
 
-  // Pro-only: custom_prompt
-  if (customPrompt && tier !== 'pro') {
+  // Pro-only: custom_prompt.
+  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
+  if (customPrompt && !isAtLeastPro(tier)) {
     return {
       text:
         `Custom prompts are a Pro feature. I can still set the timing for you on Essential — ` +
@@ -8633,8 +8637,9 @@ async function generateReportTool(
   }
 
   // Pro-only — same gate as POST /api/reports/generate.
+  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
   const tier = await getEffectiveTier(userId);
-  if (tier !== 'pro') {
+  if (!isAtLeastPro(tier)) {
     return {
       text: `Financial reports are a Pro feature. You're on the ${tier} plan — upgrade at paybacker.co.uk/pricing to unlock.`,
     };

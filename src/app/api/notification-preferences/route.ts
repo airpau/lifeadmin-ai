@@ -18,6 +18,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { EVENT_CATALOG, type NotificationEventType } from '@/lib/notifications/events';
+import { isAtLeastPro } from '@/lib/tier-rank';
 import { getEffectiveTier } from '@/lib/plan-limits';
 
 export const runtime = 'nodejs';
@@ -202,8 +203,9 @@ export async function PUT(request: Request) {
     // Pro-tier gate: a non-Pro user can't enable WhatsApp on any event.
     // We force `whatsapp: false` server-side rather than 403 the request,
     // so the rest of their settings still save cleanly.
+    // isAtLeastPro, not === 'pro' — Dispute Pro and Household are entitled to this.
     const tier = await getEffectiveTier(user.id);
-    const isPro = tier === 'pro';
+    const isPro = isAtLeastPro(tier);
 
     const validEvents = new Set(EVENT_CATALOG.map((e) => e.event));
     const rows = body.events

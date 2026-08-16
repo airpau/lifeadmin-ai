@@ -24,6 +24,8 @@ import { calculateTotalSavings, parseComparisonDeals, isPriceAlertValid, priceAl
 import { disputeWinnabilityHook } from '@/lib/category-taxonomy';
 import PendingDisputeLettersCard from '@/components/dashboard/PendingDisputeLettersCard';
 import ScanWindowNotice, { type ScanWindowNoticeData } from '@/components/scanner/ScanWindowNotice';
+import { isAtLeastPro, TIER_PRICE_GBP } from '@/lib/tier-rank';
+import { normalizeTier, tierDisplayName } from '@/lib/tier-utils';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -197,13 +199,22 @@ export default function DashboardPage() {
         .then(r => r.json())
         .then(data => {
           if (data.synced && data.tier && data.tier !== 'free') {
-            setSyncMessage(`Welcome to Paybacker ${data.tier.charAt(0).toUpperCase() + data.tier.slice(1)}!`);
+            // tierDisplayName, not manual capitalisation — that produced
+            // "Dispute_pro" for the tiers added above Pro.
+            setSyncMessage(`Welcome to Paybacker ${tierDisplayName(data.tier)}!`);
             setTimeout(() => setSyncMessage(null), 5000);
 
             // Use subscription ID from sync to match S2S tracking ref exactly
             const tier = data.tier;
-            const amount = tier === 'pro' ? '9.99' : '4.99';
-            const commGroup = tier === 'pro' ? 'PRO' : 'ESSENTIAL';
+            // Price comes from TIER_PRICE_GBP so the Awin/Meta conversion value
+            // can't drift from the real charge when a tier is added or repriced.
+            const amount = (TIER_PRICE_GBP[normalizeTier(tier)]?.monthly ?? 4.99).toFixed(2);
+            // Commission groups must match the ones the Stripe webhook reports.
+            const commGroup =
+              tier === 'dispute_pro' ? 'DISPUTE_PRO'
+              : tier === 'household' ? 'HOUSEHOLD'
+              : tier === 'pro' ? 'PRO'
+              : 'ESSENTIAL';
             const orderRef = data.subscriptionId ? `sub-${data.subscriptionId}` : (savedCheckout?.orderRef || `conversion-${tier}-${Date.now()}`);
 
             // Meta Pixel Purchase event
@@ -2113,7 +2124,9 @@ export default function DashboardPage() {
                 >
                   Connect on Telegram →
                 </a>
-                {effectiveTier === 'pro' && (
+                {/* isAtLeastPro, not === 'pro' — WhatsApp is a Pro entitlement
+                    and Household / Dispute Pro both include it. */}
+                {isAtLeastPro(effectiveTier) && (
                   <Link
                     href="/dashboard/settings/whatsapp"
                     className="cta-ghost"

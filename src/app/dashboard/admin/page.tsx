@@ -14,6 +14,7 @@ import AITeamPanel from '@/components/admin/AITeamPanel';
 import MeetingRoom from '@/components/admin/MeetingRoom';
 import LeadsList from '@/components/admin/LeadsList';
 import AdminTabStrip from '@/components/admin/AdminTabStrip';
+import { isAtLeastEssential, isAtLeastPro } from '@/lib/tier-rank';
 
 // Server-side gate now lives in src/app/dashboard/admin/layout.tsx —
 // a non-admin can't reach this component. The client-side check below
@@ -234,9 +235,14 @@ export default function AdminPage() {
     );
   }
 
+  // Each paid tier gets its own colour so Household and Dispute Pro rows
+  // don't render in the grey "free" treatment. Ranked fallbacks keep any
+  // future tier looking paid rather than free.
   const tierColor = (tier: string) => {
-    if (tier === 'pro') return 'text-purple-400 bg-purple-500/10';
-    if (tier === 'essential') return 'text-emerald-600 bg-emerald-500/10';
+    if (tier === 'dispute_pro') return 'text-violet-500 bg-violet-500/10';
+    if (tier === 'household') return 'text-sky-600 bg-sky-500/10';
+    if (isAtLeastPro(tier)) return 'text-purple-400 bg-purple-500/10';
+    if (isAtLeastEssential(tier)) return 'text-emerald-600 bg-emerald-500/10';
     return 'text-slate-600 bg-slate-100';
   };
 

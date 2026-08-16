@@ -14,6 +14,7 @@ import GoogleSheetsConnect from '@/components/GoogleSheetsConnect'
 import DataExportCard from '@/components/DataExportCard'
 import UpgradeLock from '@/components/UpgradeLock'
 import { createClient } from '@/lib/supabase/client'
+import { isAtLeastPro, type PlanTier } from '@/lib/tier-rank'
 
 type ComingSoonDestination = {
   name: string
@@ -59,19 +60,21 @@ const comingSoon: ComingSoonDestination[] = [
 ]
 
 export default function ExportPage() {
-  const [tier, setTier] = useState<'free' | 'essential' | 'pro' | null>(null);
+  const [tier, setTier] = useState<PlanTier | null>(null);
   useEffect(() => {
     const sb = createClient();
     sb.auth.getUser().then(({ data: { user } }) => {
       if (!user) { setTier('free'); return; }
       sb.from('profiles').select('subscription_tier').eq('id', user.id).single()
-        .then(({ data }) => setTier((data?.subscription_tier as 'free' | 'essential' | 'pro') ?? 'free'));
+        .then(({ data }) => setTier((data?.subscription_tier as PlanTier) ?? 'free'));
     });
   }, []);
 
   // Pro-only feature per CLAUDE.md tier matrix. Until tier loads, show a
   // lightweight skeleton (no flash of unlocked content for free users).
-  if (tier !== 'pro') {
+  // isAtLeastPro, not !== 'pro' — Household and Dispute Pro include export.
+  // A null tier (still loading) fails the check, so the lock still shows first.
+  if (!isAtLeastPro(tier)) {
     return (
       <div className="max-w-5xl">
         <div className="page-title-row" style={{ marginBottom: 14 }}>

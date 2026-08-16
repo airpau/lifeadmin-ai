@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { isAtLeastPro } from '@/lib/tier-rank';
 import {
   Terminal,
   Copy,
@@ -88,8 +89,10 @@ export default function McpSettingsPage() {
         const tier = profile?.subscription_tier;
         const status = profile?.subscription_status;
         const hasStripe = !!profile?.stripe_subscription_id;
+        // isAtLeastPro, not === 'pro' — the Paybacker Assistant (MCP) is a Pro
+        // entitlement, so Household and Dispute Pro qualify too.
         const pro =
-          tier === 'pro' &&
+          isAtLeastPro(tier) &&
           (hasStripe
             ? ['active', 'trialing'].includes(status ?? '')
             : status === 'trialing' || status === 'active');

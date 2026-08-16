@@ -254,15 +254,57 @@ async function attemptInlineRefresh(
         last_freshness_check_at: new Date().toISOString(),
       })
       .eq('id', ref.id);
-    await supabase.from('legal_ref_corrections').insert({
-      legal_reference_id: ref.id,
-      proposed_law_name: ref.law_name,
-      proposed_source_url: ref.source_url,
-      proposer: 'freshness-gate',
-      reason: 'Inline freshness gate detected hash drift vs legislation.gov.uk canonical XML.',
-      status: 'pending',
-      risk_score: 'medium',
-    });
+
+    // Column names verified against the live schema (project
+    // kcxxlesishltdmfctlmo, 16 Aug 2026). The table uses `ref_id`,
+    // `reasoning` and `confidence` — NOT `legal_reference_id`, `reason`
+    // or `risk_score`. The previous version used the wrong three, never
+    // checked the result, and still returned `correctionProposed: true`,
+    // so this gate reported proposals it had not persisted.
+    //
+    // `confidence` and `proposer` are NOT NULL in the schema.
+    //
+    // Dedupe: this runs inline on every letter/dispute request, so
+    // without a guard a single drifted ref would enqueue one pending
+    // correction per request and flood the founder review queue.
+    const { data: existing } = await supabase
+      .from('legal_ref_corrections')
+      .select('id')
+      .eq('ref_id', ref.id)
+      .eq('proposer', 'freshness-gate')
+      .eq('status', 'pending')
+      .limit(1);
+    if (existing && existing.length > 0) {
+      // Already queued and awaiting founder review — nothing new to add.
+      return { refreshed: false, correctionProposed: true };
+    }
+
+    const { error: proposeErr } = await supabase
+      .from('legal_ref_corrections')
+      .insert({
+        ref_id: ref.id,
+        proposer: 'freshness-gate',
+        before_law_name: ref.law_name,
+        before_source_url: ref.source_url,
+        before_status: ref.verification_status ?? null,
+        proposed_law_name: ref.law_name,
+        proposed_source_url: ref.source_url,
+        reasoning:
+          'Inline freshness gate detected hash drift vs legislation.gov.uk ' +
+          'canonical XML. The stored text no longer matches the official ' +
+          'source — needs founder review.',
+        confidence: 'medium',
+        status: 'pending',
+      });
+    if (proposeErr) {
+      console.error(
+        `[freshness-gate] legal_ref_corrections insert FAILED for ref ${ref.id} ` +
+          `(${ref.law_name}) — drift detected but NOT queued for review:`,
+        proposeErr,
+      );
+      // Honest result: the ref is stale and no correction was persisted.
+      return { refreshed: false, correctionProposed: false };
+    }
     return { refreshed: false, correctionProposed: true };
   }
 

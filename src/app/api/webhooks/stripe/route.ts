@@ -4,7 +4,8 @@ import Stripe from 'stripe';
 import { notifyAgents } from '@/lib/agent-notify';
 import { trackSubscription } from '@/lib/meta-conversions';
 import { captureServer } from '@/lib/posthog-server';
-import { priceIdToTier } from '@/lib/stripe';
+import { priceIdToTier, STRIPE_PRODUCT_TAG } from '@/lib/stripe';
+import { TIER_RANK, TIER_PRICE_GBP, isPlanTier, type PlanTier } from '@/lib/tier-rank';
 
 export const runtime = 'nodejs';
 
@@ -25,12 +26,37 @@ function getStripe() {
 // would have written every Pro subscriber down to Essential. Unknown
 // price IDs now return null and every call site SKIPS the tier write
 // rather than guessing.
-function getPlanTier(priceId: string): 'essential' | 'pro' | null {
+function getPlanTier(priceId: string): PlanTier | null {
   const tier = priceIdToTier(priceId);
   if (!tier) {
     console.error('[stripe webhook] unrecognised price ID — tier write skipped', { priceId });
   }
   return tier;
+}
+
+/**
+ * Amount in GBP for analytics / Awin, derived from the canonical price
+ * table rather than a `tier === 'pro' ? 9.99 : 4.99` ternary. That ternary
+ * priced every non-Pro tier at £4.99, so a £19.99 Dispute Pro sale would
+ * have been reported to PostHog, Meta and Awin as an Essential sale.
+ */
+function amountForTier(tier: PlanTier | null, interval: 'month' | 'year'): number {
+  const t: PlanTier = tier && isPlanTier(tier) ? tier : 'essential';
+  return interval === 'year' ? TIER_PRICE_GBP[t].yearly : TIER_PRICE_GBP[t].monthly;
+}
+
+/**
+ * Awin commission group. Unknown tiers fall back to ESSENTIAL, matching
+ * the pre-existing behaviour, but the new tiers now get their own groups
+ * so the founder can set distinct commission rates per product.
+ */
+function awinCommissionGroup(tier: PlanTier | null): string {
+  switch (tier) {
+    case 'dispute_pro': return 'DISPUTE_PRO';
+    case 'household': return 'HOUSEHOLD';
+    case 'pro': return 'PRO';
+    default: return 'ESSENTIAL';
+  }
 }
 
 async function scheduleLegacySubscriptionsForCancellation(
@@ -93,13 +119,23 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case 'checkout.session.expired': {
         const session = event.data.object as Stripe.Checkout.Session;
-        if (session.metadata?.product === 'b2b_api') {
+        if (session.metadata?.product === STRIPE_PRODUCT_TAG.b2bApi) {
           try {
             const { handleB2bCheckoutExpired } = await import('@/lib/b2b/stripe-webhook');
             await handleB2bCheckoutExpired(supabase as any, session);
           } catch (e: any) {
             console.error('[stripe webhook] b2b checkout.expired failed:', e?.message);
           }
+          break;
+        }
+
+        // An abandoned one-off escalation-pack checkout is not a
+        // subscription lead. Feeding it into the consumer nurture funnel
+        // would email a "finish setting up your subscription" sequence to
+        // someone who was buying a £14.99 product, and to existing paying
+        // subscribers. Skip it.
+        if (session.metadata?.product === STRIPE_PRODUCT_TAG.escalationPack) {
+          console.log('[stripe webhook] escalation_pack checkout expired — no nurture capture', session.id);
           break;
         }
 
@@ -112,7 +148,7 @@ export async function POST(request: NextRequest) {
           const email = session.customer_details?.email || session.customer_email || null;
           if (email) {
             // Pull intended tier off the line items if we can.
-            let intendedTier: 'essential' | 'pro' | null = null;
+            let intendedTier: PlanTier | null = null;
             let intendedInterval: 'monthly' | 'yearly' | null = null;
             try {
               const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1, expand: ['data.price'] });
@@ -147,13 +183,66 @@ export async function POST(request: NextRequest) {
 
         // B2B API checkouts have metadata.product='b2b_api' and skip the
         // consumer profile-update path entirely. Mint key, email plaintext.
-        if (session.metadata?.product === 'b2b_api') {
+        if (session.metadata?.product === STRIPE_PRODUCT_TAG.b2bApi) {
           try {
             const { handleB2bCheckoutCompleted } = await import('@/lib/b2b/stripe-webhook');
             await handleB2bCheckoutCompleted(supabase as any, stripe, session);
           } catch (e: any) {
             console.error('[stripe webhook] b2b checkout failed:', e?.message);
           }
+          break;
+        }
+
+        // ------------------------------------------------------------------
+        // ONE-OFF: Ombudsman escalation pack (£14.99).
+        //
+        // This branch MUST come before any code that touches
+        // `subscription_tier`. A one-off purchase grants an entitlement
+        // row and nothing else — a Free user who buys a pack stays Free,
+        // and a Pro user who buys one stays Pro. There is deliberately no
+        // profile update anywhere in this block.
+        //
+        // Idempotent: `grantEscalationPackEntitlement` is keyed on the
+        // checkout session id via a unique index, so Stripe's replays are
+        // no-ops rather than duplicate £14.99 credits.
+        // ------------------------------------------------------------------
+        if (session.metadata?.product === STRIPE_PRODUCT_TAG.escalationPack) {
+          try {
+            const { grantEscalationPackEntitlement } = await import('@/lib/escalation-pack/entitlements');
+            const packUserId = session.metadata?.user_id;
+            const packDisputeId = session.metadata?.dispute_id ?? null;
+
+            if (!packUserId) {
+              console.error('[stripe webhook] escalation_pack session missing user_id metadata', session.id);
+              break;
+            }
+            if (session.payment_status !== 'paid') {
+              console.warn('[stripe webhook] escalation_pack session not paid — no grant', {
+                sessionId: session.id, payment_status: session.payment_status,
+              });
+              break;
+            }
+
+            const entitlementId = await grantEscalationPackEntitlement(supabase as any, {
+              userId: packUserId,
+              disputeId: packDisputeId,
+              stripeCheckoutSessionId: session.id,
+              stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+              amountGbp: session.amount_total != null ? session.amount_total / 100 : null,
+            });
+
+            console.log('[stripe webhook] escalation pack entitlement granted', {
+              entitlementId, userId: packUserId, disputeId: packDisputeId,
+            });
+
+            captureServer('escalation_pack_purchased', packUserId, {
+              dispute_id: packDisputeId,
+              amount_gbp: session.amount_total != null ? session.amount_total / 100 : null,
+            });
+          } catch (e: any) {
+            console.error('[stripe webhook] escalation_pack grant failed:', e?.message);
+          }
+          // Explicit break — never fall through to the subscription path.
           break;
         }
 
@@ -169,7 +258,7 @@ export async function POST(request: NextRequest) {
         // that case we still record the customer/subscription ids and
         // status, but we do NOT write a guessed subscription_tier — the
         // old `?? 'essential'` default could demote a Pro subscriber.
-        let resolvedTier: 'essential' | 'pro' | null = null;
+        let resolvedTier: PlanTier | null = null;
         let billingInterval: 'month' | 'year' = 'month';
         if (session.subscription) {
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
@@ -179,7 +268,7 @@ export async function POST(request: NextRequest) {
           console.log(`Webhook: subscription priceId=${priceId} tier=${resolvedTier ?? 'UNKNOWN'} status=${subscription.status}`);
         }
         // Label used for analytics / Awin only — never written to the DB.
-        const tier = resolvedTier ?? 'essential';
+        const tier: PlanTier = resolvedTier ?? 'essential';
 
         const { error: updateError, data: updated } = await supabase
           .from('profiles')
@@ -201,6 +290,42 @@ export async function POST(request: NextRequest) {
             session.customer as string,
             session.subscription as string
           );
+        }
+
+        // Household: provision the plan row and seat the owner. Runs only
+        // once the profile write succeeded, and is idempotent on
+        // owner_user_id so Stripe replays cannot create a second plan.
+        //
+        // Note we deliberately do NOT copy stripe_customer_id /
+        // stripe_subscription_id onto member profiles — both columns are
+        // UNIQUE on `profiles`, and this webhook updates profiles by
+        // `.eq('stripe_customer_id', …)` assuming one row per customer.
+        // Member entitlement is derived at read time instead. See
+        // src/lib/household.ts for the full reasoning.
+        if (!updateError && resolvedTier === 'household') {
+          try {
+            const { ensureHouseholdPlan } = await import('@/lib/household');
+            const { data: ownerProfile } = await supabase
+              .from('profiles').select('email').eq('id', userId).single();
+            const ownerEmail =
+              (ownerProfile?.email as string)
+              || session.customer_details?.email
+              || session.customer_email
+              || '';
+            if (ownerEmail) {
+              await ensureHouseholdPlan(supabase as any, {
+                ownerUserId: userId,
+                ownerEmail,
+                stripeSubscriptionId: (session.subscription as string) ?? null,
+                stripeCustomerId: (session.customer as string) ?? null,
+              });
+              console.log('[stripe webhook] household plan provisioned for', userId);
+            } else {
+              console.error('[stripe webhook] household checkout has no owner email — plan not provisioned', userId);
+            }
+          } catch (e: any) {
+            console.error('[stripe webhook] household provisioning failed:', e?.message);
+          }
         }
 
         // Mark any matching consumer_leads row as converted_paid so the
@@ -240,8 +365,10 @@ export async function POST(request: NextRequest) {
         // Send actual sale amount (not commission) — commission group rate handles the percentage
         if (!updateError) {
           const awinAdvId = process.env.NEXT_PUBLIC_AWIN_ADVERTISER_ID || '125502';
-          const saleAmount = tier === 'pro' ? '9.99' : '4.99';
-          const commissionGroup = tier === 'pro' ? 'PRO' : 'ESSENTIAL';
+          // Was `tier === 'pro' ? '9.99' : '4.99'`, which would have
+          // reported a £19.99 Dispute Pro sale as £4.99 to Awin.
+          const saleAmount = amountForTier(resolvedTier, billingInterval).toFixed(2);
+          const commissionGroup = awinCommissionGroup(resolvedTier);
           const orderRef = encodeURIComponent(`sub-${session.subscription || session.id}`);
           const awcRaw = session.metadata?.awc;
           let awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=${awinAdvId}` +
@@ -262,16 +389,11 @@ export async function POST(request: NextRequest) {
         if (!updateError) {
           notifyAgents('subscription_change', `New ${tier} subscription`, `User ${userId} subscribed to ${tier} plan. Stripe sub: ${session.subscription}`, 'stripe').catch(() => {});
 
-          // PostHog server-side conversion. Annual amounts differ from
-          // monthly (Essential £4.99/mo · £44.99/yr; Pro £9.99/mo · £94.99/yr).
-          const amountGbp =
-            billingInterval === 'year'
-              ? tier === 'pro'
-                ? 94.99
-                : 44.99
-              : tier === 'pro'
-                ? 9.99
-                : 4.99;
+          // PostHog server-side conversion. Amounts come from the single
+          // TIER_PRICE_GBP table so a new tier can never be mispriced in
+          // analytics (Essential £4.99/£44.99 · Pro £9.99/£94.99 ·
+          // Household £14.99/£149.99 · Dispute Pro £19.99/£199.99).
+          const amountGbp = amountForTier(resolvedTier, billingInterval);
           captureServer('subscription_created', userId, {
             plan: tier,
             amount_gbp: amountGbp,
@@ -285,7 +407,7 @@ export async function POST(request: NextRequest) {
               email: profile?.email || session.customer_details?.email || '',
               userId,
               tier,
-              value: tier === 'pro' ? 9.99 : 4.99,
+              value: amountForTier(resolvedTier, 'month'),
               fbclid: profile?.fbclid || session.metadata?.fbclid || undefined,
             }).catch(() => {});
           }
@@ -342,8 +464,28 @@ export async function POST(request: NextRequest) {
         const status = subscription.status;
         // 'free' on cancellation is an explicit demotion signal, not a
         // price lookup. Otherwise: null (unknown price) means skip.
-        const newTier: 'free' | 'essential' | 'pro' | null =
-          status === 'canceled' ? 'free' : tier;
+        const newTier: PlanTier | null = status === 'canceled' ? 'free' : tier;
+
+        // Keep the household plan's status in step with the subscription
+        // so members lose entitlement the moment the owner's plan ends,
+        // and regain it if a past_due card recovers. Runs before the
+        // profile write so a failure here still leaves the owner correct.
+        try {
+          const { cancelHouseholdPlan } = await import('@/lib/household');
+          if (status === 'canceled' || status === 'incomplete_expired' || status === 'unpaid') {
+            await cancelHouseholdPlan(supabase as any, { stripeSubscriptionId: subscription.id });
+          } else if (newTier === 'household') {
+            await supabase
+              .from('household_plans')
+              .update({
+                status: status === 'past_due' ? 'past_due' : 'active',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('stripe_subscription_id', subscription.id);
+          }
+        } catch (e: any) {
+          console.error('[stripe webhook] household status sync failed:', e?.message);
+        }
 
         console.log(`Webhook subscription.updated: status=${status} customer=${customerId} tier=${newTier ?? 'UNKNOWN — tier write skipped'}`);
 
@@ -378,11 +520,12 @@ export async function POST(request: NextRequest) {
           }
 
           // PostHog server-side funnel — distinguish an upgrade from a
-          // downgrade by comparing tier rank (free < essential < pro).
-          // Only emit when the tier actually changed.
-          const tierRank: Record<string, number> = { free: 0, essential: 1, pro: 2 };
-          const oldRank = tierRank[existing.subscription_tier] ?? 0;
-          const newRank = tierRank[newTier] ?? 0;
+          // downgrade by comparing tier rank. Uses the canonical TIER_RANK
+          // from @/lib/tier-rank rather than a private map that hardcoded
+          // Pro as the ceiling (a dispute_pro user's `?? 0` fallback would
+          // have ranked them below Free).
+          const oldRank = TIER_RANK[existing.subscription_tier as PlanTier] ?? 0;
+          const newRank = TIER_RANK[newTier] ?? 0;
           if (newRank > oldRank) {
             captureServer('plan_upgraded', existing.id, {
               from_plan: existing.subscription_tier,
@@ -404,7 +547,7 @@ export async function POST(request: NextRequest) {
         console.log(`Webhook subscription.deleted: customer=${customerId}`);
 
         // B2B API subscription cancellation → revoke the linked key.
-        if (subscription.metadata?.product === 'b2b_api') {
+        if (subscription.metadata?.product === STRIPE_PRODUCT_TAG.b2bApi) {
           try {
             const { handleB2bSubscriptionDeleted } = await import('@/lib/b2b/stripe-webhook');
             await handleB2bSubscriptionDeleted(supabase as any, subscription);
@@ -412,6 +555,19 @@ export async function POST(request: NextRequest) {
             console.error('[stripe webhook] b2b sub.deleted failed:', e?.message);
           }
           break;
+        }
+
+        // Household cancellation. Marking the PLAN canceled is what
+        // revokes every member's entitlement — there is no fan-out write
+        // to member profiles, so no member can be left on a stale tier.
+        try {
+          const { cancelHouseholdPlan } = await import('@/lib/household');
+          await cancelHouseholdPlan(supabase as any, {
+            stripeSubscriptionId: subscription.id,
+            stripeCustomerId: customerId,
+          });
+        } catch (e: any) {
+          console.error('[stripe webhook] household cancel failed:', e?.message);
         }
 
         const { data: existing } = await supabase
@@ -477,6 +633,24 @@ export async function POST(request: NextRequest) {
           } catch (e) {
             console.warn('[stripe webhook] churn-capture step failed:', e);
           }
+        }
+        break;
+      }
+
+      // Refund of a one-off escalation pack → void the entitlement so the
+      // user cannot generate a pack they no longer paid for. Only touches
+      // rows tagged with this payment intent; subscriptions are unaffected.
+      case 'charge.refunded': {
+        const charge = event.data.object as Stripe.Charge;
+        if (charge.metadata?.product !== STRIPE_PRODUCT_TAG.escalationPack) break;
+        try {
+          const { voidEntitlementForSession } = await import('@/lib/escalation-pack/entitlements');
+          await voidEntitlementForSession(supabase as any, {
+            paymentIntentId: typeof charge.payment_intent === 'string' ? charge.payment_intent : null,
+          });
+          console.log('[stripe webhook] escalation pack entitlement voided on refund', charge.payment_intent);
+        } catch (e: any) {
+          console.error('[stripe webhook] escalation_pack refund handling failed:', e?.message);
         }
         break;
       }

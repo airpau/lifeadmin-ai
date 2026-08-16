@@ -25,6 +25,7 @@ import EmailCorrespondenceBody from '@/components/dispute/EmailCorrespondenceBod
 import LatestSupplierReplyCard from '@/components/dispute/LatestSupplierReplyCard';
 import WatchdogCard from '@/components/dispute/WatchdogCard';
 import { DisputeAgentBanner } from '@/components/disputes/DisputeAgentBanner';
+import EscalationPackCard from '@/components/disputes/EscalationPackCard';
 import LetterModal from '@/components/disputes/LetterModal';
 import AddCorrespondenceModal from '@/components/disputes/AddCorrespondenceModal';
 import ResolveDisputeModal from '@/components/disputes/ResolveDisputeModal';
@@ -473,8 +474,15 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-4">
+      <div className="mb-4 space-y-3">
         <DisputeAgentBanner disputeId={disputeId} />
+        {/* Ombudsman escalation pack. Renders in every state: it shows the
+            routing (which body covers this dispute, and whether the user
+            is eligible yet) for free, and gates only the drafted letter
+            plus the evidence bundle behind the £14.99 one-off or Dispute
+            Pro. Self-contained, so it drops in without refactoring this
+            page, same pattern as DisputeAgentBanner. */}
+        <EscalationPackCard disputeId={disputeId} />
       </div>
       {letterModal && (
         <LetterModal

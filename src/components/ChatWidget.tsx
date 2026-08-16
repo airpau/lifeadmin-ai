@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { isAtLeastEssential } from '@/lib/tier-rank';
 
 const CHART_COLORS = ['#34d399', '#a78bfa', '#3b82f6', '#f59e0b', '#ef4444', '#64748b', '#ec4899', '#14b8a6'];
 
@@ -336,7 +337,9 @@ export default function ChatWidget() {
                 <p className="text-slate-900 font-medium mb-1">Hi there!</p>
                 <p className="text-slate-500 text-sm mb-3">I can help you organise your finances through conversation. Try asking me to recategorise transactions, find missing subscriptions, check your spending, or dispute a bill.</p>
                 <div className="space-y-2">
-                  {((userTier === 'essential' || userTier === 'pro')
+                  {/* isAtLeastEssential, not an essential/pro list — Household and
+                      Dispute Pro users get the paid prompt set too. */}
+                  {(isAtLeastEssential(userTier)
                     ? [
                         'Show my subscriptions',
                         'Find my OneStream payments',

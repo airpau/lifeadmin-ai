@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
+import { ALL_PLAN_TIERS } from '@/lib/tier-rank';
 
 export const maxDuration = 60;
 
@@ -122,7 +123,10 @@ export async function GET(request: NextRequest) {
         name: `[Draft] ${route}`,
         description: `Auto-discovered route at ${route}. Please update name and description then set is_active=true.`,
         category: 'uncategorised',
-        tier_access: ['free', 'essential', 'pro'],
+        // Draft rows land open to every tier — the founder narrows this
+        // on review. Built from ALL_PLAN_TIERS so a new tier isn't quietly
+        // omitted from the chatbot's feature/tier description.
+        tier_access: ALL_PLAN_TIERS,
         route_path: route,
         is_active: false,
       });

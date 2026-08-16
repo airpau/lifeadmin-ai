@@ -7,7 +7,11 @@
  * surfaces high-signal actions via Pocket Agent (WhatsApp/Telegram)
  * with an email fallback.
  *
- * Caps at 100 disputes per tick. Defers the rest to the next run.
+ * Caps at 100 disputes per tick. Defers the rest to the next run. When
+ * more than the cap are due, the cap is allocated by plan tier
+ * (PLAN_LIMITS[tier].disputeQueuePriority, lower runs first) with
+ * created_at as the tiebreak — this is what makes the Dispute Pro
+ * "priority dispute handling" entitlement real.
  *
  * AI proposes — user approves. We never auto-send a letter. The cron
  * only writes decision rows + sends push prompts.
@@ -29,11 +33,22 @@ import {
 import type { ScopeStats, MerchantLegalRefStat } from '@/lib/dispute-outcome/stats';
 import { sendPaybackerEmail } from '@/lib/email/send';
 import { card, paragraph } from '@/lib/email/PaybackerEmailLayout';
+import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 const MAX_PER_RUN = 100;
+/**
+ * How many disputes to pull before tier-sorting down to MAX_PER_RUN.
+ *
+ * We over-fetch so the tier sort has something to actually choose between.
+ * Fetching exactly MAX_PER_RUN would mean the DB has already picked the
+ * winners by created_at and the sort would only reorder within a set that
+ * was going to be processed anyway.
+ */
+const CANDIDATE_MULTIPLIER = 3;
+const MAX_CANDIDATES = MAX_PER_RUN * CANDIDATE_MULTIPLIER;
 const SCOPE_KINDS = [
   'overall',
   'merchant',
@@ -86,13 +101,55 @@ async function runAgent() {
     .is('archived_at', null)
     .neq('agent_disabled', true)
     .order('created_at', { ascending: true })
-    .limit(MAX_PER_RUN);
+    .limit(MAX_CANDIDATES);
 
   if (dueErr) {
     return NextResponse.json({ ok: false, error: dueErr.message }, { status: 500 });
   }
 
-  const disputes = (dueDisputes ?? []) as Array<DisputeRow & { agent_paused_until: string | null }>;
+  const candidates = (dueDisputes ?? []) as Array<DisputeRow & { agent_paused_until: string | null }>;
+
+  // --- Tier priority queue -------------------------------------------------
+  //
+  // THIS IS THE ONLY MECHANISM BEHIND THE "priority dispute handling" CLAIM
+  // ON THE DISPUTE PRO PLAN. Without it the cron is pure FIFO on created_at
+  // and a Dispute Pro subscriber whose case happens to be newer than 100
+  // other due disputes waits a full six hours for the next tick — i.e. the
+  // thing they paid extra for does not exist.
+  //
+  // The `disputes` query cannot cheaply join `profiles.subscription_tier`
+  // (no FK relationship exposed to PostgREST here), so we over-fetch
+  // candidates by created_at, batch-load the tier for the distinct user_ids
+  // in one round trip, then sort by
+  //   (PLAN_LIMITS[tier].disputeQueuePriority ASC, created_at ASC)
+  // and slice back down to MAX_PER_RUN. Ties still resolve oldest-first, so
+  // within a tier the behaviour is byte-for-byte what it was before.
+  const distinctUserIds = Array.from(new Set(candidates.map((d) => d.user_id))).filter(Boolean);
+  const tierByUser = new Map<string, string | null>();
+  if (distinctUserIds.length > 0) {
+    const { data: tierRows } = await sb
+      .from('profiles')
+      .select('id,subscription_tier')
+      .in('id', distinctUserIds);
+    for (const r of (tierRows ?? []) as Array<{ id: string; subscription_tier: string | null }>) {
+      tierByUser.set(r.id, r.subscription_tier);
+    }
+  }
+
+  // Unknown / missing tier falls back to the Free priority rather than a
+  // magic number, so a profile we failed to load can never jump the queue
+  // ahead of a paying subscriber.
+  const queuePriority = (userId: string): number =>
+    PLAN_LIMITS[tierByUser.get(userId) as PlanTier]?.disputeQueuePriority
+      ?? PLAN_LIMITS.free.disputeQueuePriority;
+
+  const disputes = [...candidates]
+    .sort((a, b) => {
+      const byTier = queuePriority(a.user_id) - queuePriority(b.user_id);
+      if (byTier !== 0) return byTier;
+      return Date.parse(a.created_at) - Date.parse(b.created_at);
+    })
+    .slice(0, MAX_PER_RUN);
 
   // Cache active Pocket Agent sessions once.
   const sessions = await listActivePocketAgentSessions(sb);

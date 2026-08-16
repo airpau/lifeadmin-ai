@@ -5,6 +5,7 @@ import { buildPriceIncreaseEmail } from '@/lib/email/price-increase-alerts';
 import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import { buildPriceAlertSuppressor } from '@/lib/price-alerts/suppression';
+import { isPaidTier } from '@/lib/tier-rank';
 
 export const maxDuration = 60;
 
@@ -70,7 +71,9 @@ export async function GET(request: NextRequest) {
         .eq('id', userId)
         .single();
 
-      const isPaid = profile?.subscription_tier === 'essential' || profile?.subscription_tier === 'pro';
+      // Any paid tier, not just essential/pro — household and dispute_pro
+      // both include price-increase alerts.
+      const isPaid = isPaidTier(profile?.subscription_tier);
       const userName = profile?.full_name || profile?.first_name || 'there';
 
       // Collect all new increases for this user, then send ONE consolidated email
