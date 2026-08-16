@@ -94,6 +94,10 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
   const [drillSpendingCategory, setDrillSpendingCategory] = useState<string | null>(null);
   const [showAllIncome, setShowAllIncome] = useState(false);
   const [showAllSpending, setShowAllSpending] = useState(false);
+  // Touch devices have no hover, so the pillar breakdown and the trends
+  // tooltip both need an explicit tap state or they're unreachable on mobile.
+  const [showPillars, setShowPillars] = useState(false);
+  const [activeTrendIdx, setActiveTrendIdx] = useState<number | null>(null);
 
   const { overview, healthScore, spending } = data;
   const { monthlyIncome, monthlyOutgoings, savingsRate, incomeBreakdown } = overview;
@@ -126,21 +130,21 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
   return (
     <div className="space-y-4">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="card p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="h-4 w-4 text-green-400" />
-            <span className="text-slate-500 text-xs">Income this month</span>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <div className="card p-4 sm:p-5 min-w-0">
+          <div className="flex items-center gap-2 mb-2 min-w-0">
+            <TrendingUp className="h-4 w-4 shrink-0 text-green-400" />
+            <span className="text-slate-500 text-xs truncate">Income this month</span>
           </div>
-          <p className="text-2xl md:text-3xl font-bold text-green-400">£{fmtNum(monthlyIncome)}</p>
+          <p className="text-xl sm:text-2xl md:text-3xl font-bold text-green-400 tabular-nums truncate">£{fmtNum(monthlyIncome)}</p>
         </div>
 
-        <div className="card p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingDown className="h-4 w-4 text-amber-400" />
-            <span className="text-slate-500 text-xs">Spent this month</span>
+        <div className="card p-4 sm:p-5 min-w-0">
+          <div className="flex items-center gap-2 mb-2 min-w-0">
+            <TrendingDown className="h-4 w-4 shrink-0 text-amber-400" />
+            <span className="text-slate-500 text-xs truncate">Spent this month</span>
           </div>
-          <p className="text-2xl md:text-3xl font-bold text-amber-400">£{fmtNum(monthlyOutgoings)}</p>
+          <p className="text-xl sm:text-2xl md:text-3xl font-bold text-amber-400 tabular-nums truncate">£{fmtNum(monthlyOutgoings)}</p>
           {/* Canonical bucket split — surfaced when the API returns a breakdown.
               Hidden gracefully on accounts where the RPC hasn't been built yet
               (the field is undefined). */}
@@ -150,39 +154,52 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
             // breakdown invisible against the white card background — user
             // reported "money hub hasn't changed".
             <div className="mt-3 pt-3 border-t border-slate-200 space-y-1">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Fixed</span>
-                <span className="text-slate-900 font-semibold">£{fmtNum(spending.breakdown.fixedCost)}</span>
+              <div className="flex items-center justify-between gap-2 text-[11px] min-w-0">
+                <span className="text-slate-500 truncate">Fixed</span>
+                <span className="text-slate-900 font-semibold tabular-nums shrink-0">£{fmtNum(spending.breakdown.fixedCost)}</span>
               </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Variable</span>
-                <span className="text-slate-900 font-semibold">£{fmtNum(spending.breakdown.variableCost)}</span>
+              <div className="flex items-center justify-between gap-2 text-[11px] min-w-0">
+                <span className="text-slate-500 truncate">Variable</span>
+                <span className="text-slate-900 font-semibold tabular-nums shrink-0">£{fmtNum(spending.breakdown.variableCost)}</span>
               </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Discretionary</span>
-                <span className="text-slate-900 font-semibold">£{fmtNum(spending.breakdown.discretionary)}</span>
+              <div className="flex items-center justify-between gap-2 text-[11px] min-w-0">
+                <span className="text-slate-500 truncate">Discretionary</span>
+                <span className="text-slate-900 font-semibold tabular-nums shrink-0">£{fmtNum(spending.breakdown.discretionary)}</span>
               </div>
               {spending.breakdown.internalTransfer > 0 && (
-                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100 mt-1">
-                  <span className="text-slate-400">Transfers (excluded)</span>
-                  <span className="text-slate-500">£{fmtNum(spending.breakdown.internalTransfer)}</span>
+                <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-100 mt-1 min-w-0">
+                  <span className="text-slate-400 truncate">Transfers (excluded)</span>
+                  <span className="text-slate-500 tabular-nums shrink-0">£{fmtNum(spending.breakdown.internalTransfer)}</span>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        <div className="card p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <Wallet className="h-4 w-4 text-mint-400" />
-            <span className="text-slate-500 text-xs">Savings Rate</span>
+        <div className="card p-4 sm:p-5 min-w-0">
+          <div className="flex items-center gap-2 mb-2 min-w-0">
+            <Wallet className="h-4 w-4 shrink-0 text-mint-400" />
+            <span className="text-slate-500 text-xs truncate">Savings Rate</span>
           </div>
-          <p className={`text-2xl md:text-3xl font-bold ${(savingsRate || 0) >= 0 ? 'text-mint-400' : 'text-red-400'}`}>
+          <p className={`text-xl sm:text-2xl md:text-3xl font-bold tabular-nums ${(savingsRate || 0) >= 0 ? 'text-mint-400' : 'text-red-400'}`}>
             {(savingsRate || 0).toFixed(1)}%
           </p>
         </div>
 
-        <div className="card p-5 relative overflow-hidden group">
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={showPillars}
+          aria-label="Health Score — show pillar breakdown"
+          onClick={() => setShowPillars((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setShowPillars((v) => !v);
+            }
+          }}
+          className="card p-4 sm:p-5 relative overflow-hidden group cursor-pointer min-w-0 focus:outline-none focus:ring-2 focus:ring-purple-300"
+        >
           <div className="flex items-center gap-2 mb-2">
             <Target className="h-4 w-4 text-purple-400" />
             <span className="text-slate-500 text-xs">Health Score</span>
@@ -191,10 +208,11 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
                 hover-overlay below shows the live numbers; this tooltip
                 explains the methodology so a first-time user knows what
                 a "good" score even means (Paul, 2026-04-28). */}
-            <span className="relative group/tip">
+            <span className="relative group/tip" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
                 aria-label="How is the Health Score calculated?"
+                onClick={(e) => e.stopPropagation()}
                 className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-semibold text-slate-500 hover:bg-slate-200 hover:text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-300"
                 tabIndex={0}
               >
@@ -212,17 +230,23 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
                   <li><strong className="text-slate-900">Borrow</strong> — debt-to-income ratio + minimum-payment ratio on credit. Lower is better.</li>
                   <li><strong className="text-slate-900">Plan</strong> — recurring-payment coverage + budget adherence. Rewards predictability.</li>
                 </ul>
-                <p className="mt-2 text-slate-500">≥80 strong · 40-79 fair · &lt;40 needs work. Hover the score for live pillar values.</p>
+                <p className="mt-2 text-slate-500">≥80 strong · 40-79 fair · &lt;40 needs work. Tap the score for live pillar values.</p>
               </div>
             </span>
           </div>
-          <p className={`text-2xl md:text-3xl font-bold ${data.score >= 80 ? 'text-green-400' : data.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+          <p className={`text-xl sm:text-2xl md:text-3xl font-bold tabular-nums ${data.score >= 80 ? 'text-green-400' : data.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
             {data.score}
           </p>
-          {/* Hover detail — live pillar scores. Kept as the primary
-              hover surface so the explainer tooltip and the live
-              numbers don't compete for the same space. */}
-          <div className="absolute inset-0 bg-slate-100 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center px-4 text-xs rounded-2xl pointer-events-none">
+          {/* Live pillar scores. Shown on hover (pointer) OR on tap
+              (touch — where hover never fires, which previously made these
+              numbers completely unreachable on mobile). */}
+          <div
+            className={`absolute inset-0 bg-slate-100 backdrop-blur transition-opacity flex flex-col justify-center px-4 text-xs rounded-2xl ${
+              showPillars
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100 pointer-events-none'
+            }`}
+          >
             <div className="flex justify-between mb-1"><span className="text-slate-500">Spend</span><span className="text-slate-900">{healthScore?.pillars?.spend?.score || 0}%</span></div>
             <div className="flex justify-between mb-1"><span className="text-slate-500">Save</span><span className="text-slate-900">{healthScore?.pillars?.save?.score || 0}%</span></div>
             <div className="flex justify-between mb-1"><span className="text-slate-500">Borrow</span><span className="text-slate-900">{healthScore?.pillars?.borrow?.score || 0}%</span></div>
@@ -354,25 +378,39 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
             <BarChart3 className="h-5 w-5 text-blue-400" />
             Monthly Trends
           </h3>
-          <div className="flex items-end gap-2 h-32">
+          {/* pt-14 reserves room for the tooltip so it stays inside the card
+              instead of being clipped above it (it used to sit at -top-16). */}
+          <div className="flex items-end gap-2 pt-14">
             {monthlyTrends.map((t: any, i: number) => {
               const monthLabel = new Date(t.month + '-15').toLocaleDateString('en-GB', { month: 'short' });
               const incomeH = (t.income / trendsMax) * 100;
               const outH = (t.outgoings / trendsMax) * 100;
+              const isActive = activeTrendIdx === i;
               return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`${monthLabel} — in £${fmtNum(t.income)}, out £${fmtNum(t.outgoings)}`}
+                  aria-pressed={isActive}
+                  onClick={() => setActiveTrendIdx(isActive ? null : i)}
+                  className="flex-1 flex flex-col items-center gap-1 group relative focus:outline-none"
+                >
                   <div className="flex gap-0.5 items-end w-full justify-center" style={{ height: '100px' }}>
                     <div className="w-3 bg-green-400/80 rounded-t transition-all" style={{ height: `${incomeH}%`, minHeight: t.income > 0 ? '4px' : '0' }} />
                     <div className="w-3 bg-amber-400/80 rounded-t transition-all" style={{ height: `${outH}%`, minHeight: t.outgoings > 0 ? '4px' : '0' }} />
                   </div>
-                  <span className="text-[10px] text-slate-500">{monthLabel}</span>
-                  {/* Hover tooltip */}
-                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg p-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap pointer-events-none">
-                    <p className="text-green-400">In: £{fmtNum(t.income)}</p>
-                    <p className="text-amber-400">Out: £{fmtNum(t.outgoings)}</p>
+                  <span className={`text-[10px] ${isActive ? 'text-slate-900 font-semibold' : 'text-slate-500'}`}>{monthLabel}</span>
+                  {/* Tooltip — hover on pointer devices, tap-toggled on touch. */}
+                  <div
+                    className={`absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-white border border-slate-200 shadow-lg rounded-lg p-2 text-[10px] text-left transition-opacity z-10 whitespace-nowrap pointer-events-none ${
+                      isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    }`}
+                  >
+                    <p className="text-green-500">In: £{fmtNum(t.income)}</p>
+                    <p className="text-amber-500">Out: £{fmtNum(t.outgoings)}</p>
                     <p className="text-slate-700">Net: £{fmtNum(t.income - t.outgoings)}</p>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

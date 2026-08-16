@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, PiggyBank, Building2, CreditCard } from 'lucide-react';
 import { fmtNum } from '@/lib/format';
 
@@ -11,6 +11,14 @@ export default function NetWorthManagementModal({ isOpen, onClose, data, onUpdat
   const [liabilityForm, setLiabilityForm] = useState({ type: 'loan', name: '', balance: '' });
 
   const { assetsList = [], liabilitiesList = [] } = data.netWorth || {};
+
+  // Lock the page behind the modal so mobile scroll doesn't chain through.
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [isOpen]);
 
   const handleAddAsset = async () => {
     if (!assetForm.name || !assetForm.value) return;
@@ -55,7 +63,8 @@ export default function NetWorthManagementModal({ isOpen, onClose, data, onUpdat
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-white backdrop-blur-sm" onClick={onClose} />
+      {/* Dim overlay — white-on-white read as a blank screen on mobile. */}
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative card w-full max-w-xl max-h-[92vh] sm:max-h-[85vh] flex flex-col shadow-2xl rounded-b-none sm:rounded-2xl">
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200">
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 pt-1"><PiggyBank className="h-6 w-6 text-mint-400" /> Manage Net Worth</h2>
@@ -73,7 +82,7 @@ export default function NetWorthManagementModal({ isOpen, onClose, data, onUpdat
           <button onClick={() => setActiveTab('liabilities')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${activeTab === 'liabilities' ? 'text-red-400 border-b-2 border-red-400' : 'text-slate-500 hover:text-slate-700'}`}>Liabilities</button>
         </div>
 
-        <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar flex-1">
+        <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain custom-scrollbar flex-1">
           {activeTab === 'assets' ? (
             <div className="space-y-6">
               <div className="bg-white p-4 rounded-xl border border-slate-200">

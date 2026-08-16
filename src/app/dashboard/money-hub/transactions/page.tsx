@@ -103,6 +103,9 @@ export default function TransactionsLedgerPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [recatBusy, setRecatBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Non-blocking inline error — replaces the old native alert() which froze
+  // the whole page on mobile and lost the user's scroll position.
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Tier-2 user-defined subcategories (loaded once, refreshed after edits)
   const [userSubcats, setUserSubcats] = useState<UserSubcategory[]>([]);
@@ -186,6 +189,32 @@ export default function TransactionsLedgerPage() {
     return Array.from(out.entries()).sort(([a], [b]) => (a < b ? 1 : -1));
   }, [items]);
 
+  /**
+   * Patch already-loaded rows in place after a successful recategorise.
+   *
+   * The old behaviour cleared `items` and refetched from the top, which threw
+   * the user back to the start of an infinite-scroll list every time they
+   * relabelled a transaction — the single worst mobile bug on this page.
+   * Patching in place keeps scroll position and the loaded pages intact.
+   */
+  const patchItems = useCallback(
+    (match: (t: LedgerTx) => boolean, newCategory: string, sub: string | null) => {
+      setItems((prev) =>
+        prev.map((t) =>
+          match(t)
+            ? {
+                ...t,
+                user_category: newCategory,
+                spendingCategory: newCategory,
+                user_subcategory: sub,
+              }
+            : t,
+        ),
+      );
+    },
+    [],
+  );
+
   // Recategorise actions
   async function recategorise(opts: {
     transactionId?: string;
@@ -195,6 +224,7 @@ export default function TransactionsLedgerPage() {
     userSubcategory?: string | null;
   }) {
     setRecatBusy(true);
+    setErrorMsg(null);
     try {
       const res = await fetch('/api/money-hub/recategorise', {
         method: 'POST',
@@ -202,16 +232,23 @@ export default function TransactionsLedgerPage() {
         body: JSON.stringify(opts),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'failed');
-      // Refresh from top
-      setItems([]);
-      setCursor(null);
-      setHasMore(true);
-      setSelected(new Set());
+
+      // Patch in place — never reset the list (see patchItems).
+      const sub = opts.userSubcategory ?? null;
+      if (opts.transactionId) {
+        patchItems((t) => t.id === opts.transactionId, opts.newCategory, sub);
+      } else if (opts.merchantPattern) {
+        const pattern = opts.merchantPattern.trim().toLowerCase();
+        patchItems(
+          (t) => (t.merchant_name ?? t.description ?? '').trim().toLowerCase() === pattern,
+          opts.newCategory,
+          sub,
+        );
+      }
       setEditingId(null);
       setBulkOpen(false);
-      await fetchPage(true);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Recategorise failed');
+      setErrorMsg(e instanceof Error ? e.message : 'Recategorise failed — please retry.');
     } finally {
       setRecatBusy(false);
     }
@@ -233,26 +270,42 @@ export default function TransactionsLedgerPage() {
   async function bulkRecategorise(newCategory: string) {
     if (selected.size === 0) return;
     setRecatBusy(true);
+    setErrorMsg(null);
     try {
       const ids = Array.from(selected);
+      const failed: string[] = [];
       // Run in parallel up to 5 at a time so the UI stays responsive
       const batchSize = 5;
       for (let i = 0; i < ids.length; i += batchSize) {
         const batch = ids.slice(i, i + batchSize);
-        await Promise.all(batch.map((id) =>
-          fetch('/api/money-hub/recategorise', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transactionId: id, newCategory }),
-          }),
-        ));
+        const results = await Promise.all(batch.map(async (id) => {
+          try {
+            const res = await fetch('/api/money-hub/recategorise', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ transactionId: id, newCategory }),
+            });
+            return res.ok ? null : id;
+          } catch {
+            return id;
+          }
+        }));
+        for (const r of results) if (r) failed.push(r);
       }
-      setItems([]);
-      setCursor(null);
-      setHasMore(true);
+
+      // Patch only the rows that actually succeeded — no list reset.
+      const failedSet = new Set(failed);
+      const okIds = new Set(ids.filter((id) => !failedSet.has(id)));
+      if (okIds.size > 0) patchItems((t) => okIds.has(t.id), newCategory, null);
       setSelected(new Set());
       setBulkOpen(false);
-      await fetchPage(true);
+      if (failed.length > 0) {
+        setErrorMsg(
+          `${failed.length} of ${ids.length} transactions couldn't be recategorised. Please retry.`,
+        );
+      }
+    } catch {
+      setErrorMsg('Bulk recategorise failed — please retry.');
     } finally {
       setRecatBusy(false);
     }
@@ -352,9 +405,27 @@ export default function TransactionsLedgerPage() {
         </div>
       </div>
 
-      {/* Bulk action bar */}
+      {/* Inline error — non-blocking, replaces the old native alert() */}
+      {errorMsg && (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700"
+        >
+          <span>{errorMsg}</span>
+          <button
+            onClick={() => setErrorMsg(null)}
+            aria-label="Dismiss error"
+            className="shrink-0 text-red-500 hover:text-red-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Bulk action bar — sits below the sticky mobile header (~52px) so it
+          never slides underneath it. */}
       {selected.size > 0 && (
-        <div className="sticky top-2 z-30 flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-2.5">
+        <div className="sticky top-16 sm:top-2 z-[45] flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-2.5">
           <span className="text-sm font-medium text-emerald-900">
             {selected.size} selected
           </span>
@@ -369,7 +440,7 @@ export default function TransactionsLedgerPage() {
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
             {bulkOpen && (
-              <div className="absolute right-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-40 max-h-80 overflow-y-auto">
+              <div className="absolute right-0 mt-1 w-64 max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-[60vh] sm:max-h-80 overflow-y-auto overscroll-contain">
                 {Object.entries(CATEGORIES_BY_GROUP).map(([group, cats]) => (
                   <div key={group}>
                     <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">
@@ -414,8 +485,12 @@ export default function TransactionsLedgerPage() {
           {grouped.map(([date, txs]) => {
             const dayTotal = txs.reduce((s, t) => s + (t.kind === 'spending' ? Math.abs(t.amount) : 0), 0);
             return (
-              <section key={date} className="bg-white rounded-2xl border border-slate-200/60 overflow-hidden">
-                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200/60 flex items-center justify-between">
+              // overflow-hidden only exists to clip the header/last-row tint to
+              // the rounded corners. On sm+ we need overflow-visible so the
+              // row-anchored recategorise panel isn't clipped, so the rounding
+              // is re-applied on the header and last row instead.
+              <section key={date} className="bg-white rounded-2xl border border-slate-200/60 overflow-hidden sm:overflow-visible">
+                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200/60 flex items-center justify-between sm:rounded-t-2xl">
                   <span className="text-sm font-semibold text-slate-700">{formatDateHeading(date)}</span>
                   {dayTotal > 0 && (
                     <span className="text-xs text-slate-500">spent {fmtAmount(dayTotal)}</span>
@@ -491,14 +566,20 @@ function Row({
   const isTransfer = tx.kind === 'transfer';
 
   return (
-    <li className={`px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors ${selected ? 'bg-emerald-50/50' : ''}`}>
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={onToggle}
-        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-        onClick={(e) => e.stopPropagation()}
-      />
+    <li className={`relative px-4 py-3 flex items-center gap-1 sm:gap-2 hover:bg-slate-50 transition-colors sm:last:rounded-b-2xl ${selected ? 'bg-emerald-50/50' : ''}`}>
+      {/* p-2.5 hit area around the checkbox — the box itself stays 16px but the
+          tap target is ~36px so it no longer collides with the row's
+          tap-to-edit button on touch. */}
+      <label className="-my-2.5 -ml-2 flex shrink-0 cursor-pointer items-center justify-center p-2.5">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggle}
+          aria-label="Select transaction"
+          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </label>
       <button
         onClick={onStartEdit}
         className="flex-1 text-left flex items-center gap-3 min-w-0"
@@ -584,8 +665,21 @@ function RecategoriseDropdown({
 
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute right-2 sm:right-6 z-50 w-80 bg-white border border-slate-200 rounded-xl shadow-xl p-3" onClick={(e) => e.stopPropagation()}>
+      {/* z-[60] clears the sticky mobile dashboard header (z-40) and the bulk
+          bar (z-[45]); the panel itself sits above the backdrop at z-[70]. */}
+      <div className="fixed inset-0 z-[60] bg-slate-900/30 sm:bg-transparent" onClick={onClose} />
+      <div
+        className={
+          // Mobile: fixed bottom sheet — immune to any ancestor overflow clip.
+          'fixed inset-x-0 bottom-0 z-[70] max-h-[70vh] overflow-y-auto overscroll-contain ' +
+          'rounded-t-2xl border border-slate-200 bg-white p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-2xl ' +
+          // sm+: anchored to the row (the <li> is relative, the <section> is
+          // overflow-visible at this breakpoint).
+          'sm:absolute sm:inset-x-auto sm:right-2 sm:bottom-auto sm:top-full sm:mt-1 sm:w-80 ' +
+          'sm:max-w-[calc(100vw-1rem)] sm:max-h-none sm:overflow-visible sm:rounded-xl sm:pb-3 sm:shadow-xl'
+        }
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
             {stagedParent
@@ -614,7 +708,9 @@ function RecategoriseDropdown({
           </label>
         )}
 
-        <div className="max-h-72 overflow-y-auto -mx-3 px-1">
+        {/* One scroller per breakpoint: on mobile the sheet itself scrolls, on
+            sm+ this inner list does. */}
+        <div className="-mx-3 px-1 overflow-visible sm:max-h-72 sm:overflow-y-auto sm:overscroll-contain">
           {!stagedParent && Object.entries(CATEGORIES_BY_GROUP).map(([group, cats]) => (
             <div key={group}>
               <div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">

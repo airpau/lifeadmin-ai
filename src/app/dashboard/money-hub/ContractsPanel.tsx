@@ -122,12 +122,12 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
               const cycleLabel = sub.billing_cycle === 'yearly' ? '/yr' : sub.billing_cycle === 'quarterly' ? '/qtr' : '/mo';
               
               return (
-                <div key={sub.id} className="flex items-center justify-between bg-white rounded-xl p-3 border border-slate-200 hover:border-slate-200 transition-colors">
-                  <div className="min-w-0">
+                <div key={sub.id} className="flex items-center justify-between gap-3 bg-white rounded-xl p-3 border border-slate-200 hover:border-slate-200 transition-colors">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-900 capitalize truncate">{sub.provider_name}</p>
                     {tag}
                   </div>
-                  <p className="text-sm font-semibold text-amber-400 whitespace-nowrap ml-2">
+                  <p className="text-sm font-semibold text-amber-400 whitespace-nowrap shrink-0">
                     £{fmtNum(amt)}<span className="text-[10px] text-slate-500 font-normal">{cycleLabel}</span>
                   </p>
                 </div>

@@ -894,10 +894,11 @@ export default function MoneyHubPage() {
  // ─── Render ──────────────────────────────────────────────────────────
 
  return (
- <div className="max-w-7xl space-y-6">
- {/* Toast */}
+ <div className="max-w-7xl mx-auto space-y-6">
+ {/* Toast — on mobile it sits below the sticky header and spans the
+     viewport; on sm+ it stays a top-right pill. */}
  {toast && (
- <div className={`fixed top-4 right-4 z-[100] max-w-sm px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-3 animate-[slideIn_0.3s_ease] ${
+ <div className={`fixed top-16 left-4 right-4 sm:top-4 sm:left-auto sm:right-4 z-[100] sm:max-w-sm px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-3 animate-[slideIn_0.3s_ease] ${
  toast.type === 'success' ? 'bg-green-500/20 border-green-500/30 text-green-300' :
  toast.type === 'error' ? 'bg-red-500/20 border-red-500/30 text-red-300' :
  'bg-blue-500/20 border-blue-500/30 text-blue-300'
@@ -1227,6 +1228,21 @@ export default function MoneyHubPage() {
  </div>
  )}
 
+ {/* OVERVIEW (Summary cards + Income breakdown + Monthly trends) */}
+ <OverviewPanel
+   data={data}
+   refreshData={refreshData}
+   selectedMonth={selectedMonth || data.selectedMonth}
+   activeSpaceId={activeSpaceId}
+   activeSpaceType={(spaces.find(s => s.id === activeSpaceId)?.space_type) ?? null}
+ />
+
+ {/* MAIN GRID: Spending + Budgets & Goals */}
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+ <SpendingPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
+ <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
+ </div>
+
  {/* Next 7 days widget — only relevant when viewing the current
       month. Past months (e.g. "March 2026" when today is April)
       have nothing upcoming by definition, so showing the card
@@ -1242,21 +1258,6 @@ export default function MoneyHubPage() {
      </div>
    );
  })()}
-
- {/* OVERVIEW (Summary cards + Income breakdown + Monthly trends) */}
- <OverviewPanel
-   data={data}
-   refreshData={refreshData}
-   selectedMonth={selectedMonth || data.selectedMonth}
-   activeSpaceId={activeSpaceId}
-   activeSpaceType={(spaces.find(s => s.id === activeSpaceId)?.space_type) ?? null}
- />
-
- {/* MAIN GRID: Spending + Budgets & Goals */}
- <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
- <SpendingPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
- <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
- </div>
 
  {/* Expected Bills (for the selected month) */}
  {expectedBills.length > 0 && (
@@ -1287,7 +1288,7 @@ export default function MoneyHubPage() {
  <div className="flex items-center justify-between">
  <div className="min-w-0 flex-1">
  <p className={`text-sm font-medium truncate ${bill.paid ? 'text-slate-600 line-through' : 'text-slate-900'}`}>{bill.name}</p>
- <div className="flex items-center gap-2 mt-0.5">
+ <div className="flex items-center gap-2 mt-0.5 flex-wrap min-w-0">
  {bill.billing_day > 0 && <span className="text-[10px] text-slate-500">Due ~{ordinal(bill.billing_day)}</span>}
  {catLabel && <span className="text-[10px] text-slate-500 capitalize">{catLabel}</span>}
  {bill.paid && <span className="text-[10px] text-green-400 font-medium">✓ Paid</span>}
@@ -1341,85 +1342,6 @@ export default function MoneyHubPage() {
  )}
  </div>
  )}
-
- {/* Price Increase Alerts */}
- {priceIncreasAlerts.length > 0 && (
- <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-5">
- <h3 className="font-semibold text-lg flex items-center gap-2 mb-4">
- <AlertTriangle className="h-5 w-5 text-red-400" />
- Price Increases Detected
- </h3>
- <div className="space-y-2">
- {priceIncreasAlerts.slice(0, 5).map((alert: any) => (
- <div key={alert.id} className="bg-slate-50/50 rounded-xl p-3 border border-slate-200 flex items-center justify-between">
- <div className="min-w-0">
- <p className="text-sm text-slate-900 font-medium">{alert.title || 'Price increase'}</p>
- <p className="text-xs text-slate-500">{alert.details || alert.description || ''}</p>
- </div>
- {alert.value_gbp > 0 && (
- <span className="text-red-400 text-sm font-semibold whitespace-nowrap ml-2">+£{fmtNum(alert.value_gbp)}/yr</span>
- )}
- </div>
- ))}
- </div>
- </div>
- )}
-
- {/* Contracts + Net Worth row */}
- <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
- <ContractsPanel data={data} isPro={isPro} />
- <NetWorthPanel data={data} isPro={isPro} refreshData={refreshData} />
- </div>
-
- {/* Ask Paybacker about your money — MCP prompt strip */}
- <div className="card">
- <div className="flex items-start justify-between gap-4 mb-4">
- <div className="min-w-0">
- <h3 className="font-semibold text-lg flex items-center gap-2 flex-wrap">
- <MessageCircle className="h-5 w-5 text-emerald-600" />
- Ask Paybacker about your money
- <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-emerald-600 bg-emerald-500/10 border border-emerald-200">
- Pro
- </span>
- </h3>
- <p className="text-slate-600 text-sm mt-1">
- Connect the Paybacker Assistant to your desktop AI app and ask plain-English questions about your own transactions, subscriptions, budgets, and disputes. Read-only — it can&apos;t move money or change anything.
- </p>
- </div>
- <Link
- href={isPro ? '/dashboard/settings/mcp' : '/docs/paybacker-assistant'}
- className="whitespace-nowrap text-xs bg-emerald-500/10 border border-emerald-200 text-emerald-600 hover:bg-emerald-500/20 hover:text-emerald-500 px-3 py-1.5 rounded-full transition-colors"
- >
- {isPro ? 'Generate token →' : 'Setup guide →'}
- </Link>
- </div>
- <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
- {[
- 'How much did I spend on food and drink last month?',
- 'Which subscriptions have I paid for but not used?',
- 'Am I over budget on anything this month?',
- 'How close am I to my holiday savings goal?',
- 'Did I pay British Gas twice in March?',
- 'List every open dispute and the total amount I\u2019m trying to recover.',
- ].map((q) => (
- <div
- key={q}
- className="bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700"
- >
- &ldquo;{q}&rdquo;
- </div>
- ))}
- </div>
- {!isPro && (
- <p className="text-xs text-slate-500 mt-4">
- The Paybacker Assistant is a Pro feature.{' '}
- <Link href="/pricing" className="text-emerald-600 hover:text-emerald-500">
- Upgrade for £9.99/mo
- </Link>{' '}
- to unlock it.
- </p>
- )}
- </div>
 
  {/* Financial Action Centre (Pro) */}
  {isPro && (
@@ -1476,12 +1398,12 @@ export default function MoneyHubPage() {
  ) : alerts.length > 0 ? (
  <div className="space-y-2">
  {alerts.slice(0, 5).map((a: any) => (
- <div key={a.id} className="flex items-center justify-between bg-slate-50/50 rounded-lg p-3 border border-slate-200">
- <div className="min-w-0">
+ <div key={a.id} className="flex items-center justify-between gap-3 bg-slate-50/50 rounded-lg p-3 border border-slate-200">
+ <div className="min-w-0 flex-1">
  <p className="text-sm text-slate-900 font-medium truncate">{a.title}</p>
  {a.details && <p className="text-xs text-slate-500 truncate">{a.details}</p>}
  </div>
- {a.value_gbp > 0 && <span className="text-emerald-600 text-sm font-semibold whitespace-nowrap ml-2">Save £{fmtNum(a.value_gbp)}</span>}
+ {a.value_gbp > 0 && <span className="text-emerald-600 text-sm font-semibold whitespace-nowrap shrink-0">Save £{fmtNum(a.value_gbp)}</span>}
  </div>
  ))}
  </div>
@@ -1731,6 +1653,85 @@ export default function MoneyHubPage() {
  </div>
  )}
 
+ {/* Price Increase Alerts */}
+ {priceIncreasAlerts.length > 0 && (
+ <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-5">
+ <h3 className="font-semibold text-lg flex items-center gap-2 mb-4">
+ <AlertTriangle className="h-5 w-5 text-red-400" />
+ Price Increases Detected
+ </h3>
+ <div className="space-y-2">
+ {priceIncreasAlerts.slice(0, 5).map((alert: any) => (
+ <div key={alert.id} className="bg-slate-50/50 rounded-xl p-3 border border-slate-200 flex items-center justify-between gap-3">
+ <div className="min-w-0 flex-1">
+ <p className="text-sm text-slate-900 font-medium truncate">{alert.title || 'Price increase'}</p>
+ <p className="text-xs text-slate-500 truncate">{alert.details || alert.description || ''}</p>
+ </div>
+ {alert.value_gbp > 0 && (
+ <span className="text-red-400 text-sm font-semibold whitespace-nowrap shrink-0">+£{fmtNum(alert.value_gbp)}/yr</span>
+ )}
+ </div>
+ ))}
+ </div>
+ </div>
+ )}
+
+ {/* Contracts + Net Worth row */}
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+ <ContractsPanel data={data} isPro={isPro} />
+ <NetWorthPanel data={data} isPro={isPro} refreshData={refreshData} />
+ </div>
+
+ {/* Ask Paybacker about your money — MCP prompt strip */}
+ <div className="card">
+ <div className="flex items-start justify-between gap-4 mb-4">
+ <div className="min-w-0">
+ <h3 className="font-semibold text-lg flex items-center gap-2 flex-wrap">
+ <MessageCircle className="h-5 w-5 text-emerald-600" />
+ Ask Paybacker about your money
+ <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-emerald-600 bg-emerald-500/10 border border-emerald-200">
+ Pro
+ </span>
+ </h3>
+ <p className="text-slate-600 text-sm mt-1">
+ Connect the Paybacker Assistant to your desktop AI app and ask plain-English questions about your own transactions, subscriptions, budgets, and disputes. Read-only — it can&apos;t move money or change anything.
+ </p>
+ </div>
+ <Link
+ href={isPro ? '/dashboard/settings/mcp' : '/docs/paybacker-assistant'}
+ className="whitespace-nowrap text-xs bg-emerald-500/10 border border-emerald-200 text-emerald-600 hover:bg-emerald-500/20 hover:text-emerald-500 px-3 py-1.5 rounded-full transition-colors"
+ >
+ {isPro ? 'Generate token →' : 'Setup guide →'}
+ </Link>
+ </div>
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+ {[
+ 'How much did I spend on food and drink last month?',
+ 'Which subscriptions have I paid for but not used?',
+ 'Am I over budget on anything this month?',
+ 'How close am I to my holiday savings goal?',
+ 'Did I pay British Gas twice in March?',
+ 'List every open dispute and the total amount I am trying to recover.',
+ ].map((q) => (
+ <div
+ key={q}
+ className="bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700"
+ >
+ &ldquo;{q}&rdquo;
+ </div>
+ ))}
+ </div>
+ {!isPro && (
+ <p className="text-xs text-slate-500 mt-4">
+ The Paybacker Assistant is a Pro feature.{' '}
+ <Link href="/pricing" className="text-emerald-600 hover:text-emerald-500">
+ Upgrade for £9.99/mo
+ </Link>{' '}
+ to unlock it.
+ </p>
+ )}
+ </div>
+
  {/* Bank accounts info removed — shown in expired banner and header sync area */}
 
  {/* PRO UPGRADE NUDGE */}
@@ -1749,14 +1750,18 @@ export default function MoneyHubPage() {
  <>
  <button
  onClick={() => setChatOpen(!chatOpen)}
- className="fixed bottom-6 right-6 z-50 bg-gradient-to-br from-purple-500 to-blue-600 hover:from-purple-400 hover:to-blue-500 text-slate-900 p-4 rounded-full shadow-2xl transition-all"
+ className="fixed right-6 z-50 bg-gradient-to-br from-purple-500 to-blue-600 hover:from-purple-400 hover:to-blue-500 text-slate-900 p-4 rounded-full shadow-2xl transition-all"
+ style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
  title="Financial AI Assistant"
  >
  <MessageCircle className="h-6 w-6" />
  </button>
 
  {chatOpen && (
- <div className="fixed bottom-20 right-6 z-50 w-96 max-w-[calc(100vw-2rem)] card shadow-2xl flex flex-col" style={{ height: '480px' }}>
+ <div
+ className="fixed right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] max-w-96 card shadow-2xl flex flex-col"
+ style={{ height: 'min(480px, 65dvh)', bottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
+ >
  <div className="p-4 border-b border-slate-200 flex items-center justify-between">
  <div>
  <h3 className="font-semibold text-sm">AI Financial Assistant</h3>

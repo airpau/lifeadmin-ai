@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { X, Search, ChevronDown, CheckCircle2, Loader2, ArrowRight, Plus } from 'lucide-react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { X, Search, ChevronDown, CheckCircle2, Check, Loader2, ArrowRight, Plus } from 'lucide-react';
 import { fmtNum } from '@/lib/format';
 import { cleanMerchantName, isGarbageMerchantName, pickRawMerchantSource } from '@/lib/merchant-utils';
 import { USER_SELECTABLE_CATEGORIES } from '@/lib/categories';
@@ -45,6 +45,26 @@ const INCOME_TYPES = [
 // non-income (income_type = 'credit_loan') and labels it on the spending side.
 const NON_INCOME_CATEGORIES = ['transfers', 'loans', 'mortgage', 'credit'];
 
+/**
+ * The reassign picker used to be absolutely positioned inside the modal's
+ * overflow-y-auto body, so tall option lists were clipped and the bottom
+ * options were unreachable on mobile. It now renders as a bottom sheet
+ * (a centred floating panel on sm+) outside any clipping ancestor.
+ */
+function ReassignSheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-slate-900/30" onClick={onClose} />
+      <div
+        className="fixed inset-x-0 bottom-0 z-[70] max-h-[60vh] overflow-y-auto overscroll-contain custom-scrollbar rounded-t-2xl border border-slate-200 bg-white shadow-2xl pb-[env(safe-area-inset-bottom)] sm:inset-x-auto sm:left-1/2 sm:bottom-8 sm:w-80 sm:-translate-x-1/2 sm:rounded-2xl sm:pb-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </>
+  );
+}
+
 export default function CategoryDrillDownModal({ isOpen, onClose, category, incomeType, searchQuery, selectedMonth, onRecategorised, activeSpaceId, activeSpaceType }: CategoryDrillDownModalProps) {
   const [data, setData] = useState<{ transactions: any[]; merchants: any[]; totalSpent: number } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -85,6 +105,15 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, category, incomeType, searchQuery, selectedMonth, activeSpaceId]);
+
+  // Lock the page behind the modal — without this, scrolling inside the modal
+  // chains to the page underneath on mobile and the modal appears to "jump".
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [isOpen]);
 
   // Detect business accounts once on first open — drives whether the Business
   // category group appears in the reassign dropdown.
@@ -253,17 +282,25 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
           <div className="p-2 border-b border-slate-200 bg-white">
             <p className="text-xs text-slate-500 font-medium">Change income type</p>
           </div>
-          <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
-            {INCOME_TYPES.map(t => (
-              <button
-                key={`inc-${t}`}
-                onClick={() => handleRecategorise(pattern, t, 'incomeType')}
-                disabled={recatLoading}
-                className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
-              >
-                {t.replace(/_/g, ' ')}
-              </button>
-            ))}
+          <div className="p-1">
+            {INCOME_TYPES.map(t => {
+              const isCurrent = t === incomeType;
+              return (
+                <button
+                  key={`inc-${t}`}
+                  onClick={() => handleRecategorise(pattern, t, 'incomeType')}
+                  disabled={recatLoading}
+                  className={`w-full text-left px-3 py-2 text-sm rounded capitalize flex items-center gap-2 disabled:opacity-50 ${
+                    isCurrent
+                      ? 'bg-emerald-50 text-emerald-700 font-medium'
+                      : 'text-slate-700 hover:bg-slate-100 active:bg-slate-200'
+                  }`}
+                >
+                  <span className="flex-1">{t.replace(/_/g, ' ')}</span>
+                  {isCurrent && <Check className="h-3.5 w-3.5 shrink-0" />}
+                </button>
+              );
+            })}
           </div>
 
           {/* User's previously-saved custom income types */}
@@ -272,13 +309,13 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
               <div className="p-2 border-t border-b border-slate-200 bg-white">
                 <p className="text-xs text-slate-500 font-medium">Your custom income types</p>
               </div>
-              <div className="max-h-40 overflow-y-auto custom-scrollbar p-1">
+              <div className="p-1">
                 {relevantCustoms.map((s) => (
                   <button
                     key={s.id}
                     onClick={() => handleRecategorise(pattern, 'other', 'incomeType', s.name)}
                     disabled={recatLoading}
-                    className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-purple-500/20 hover:text-purple-300 rounded flex items-center gap-2 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 active:bg-slate-200 rounded flex items-center gap-2 disabled:opacity-50"
                   >
                     <span aria-hidden>{s.emoji ?? '·'}</span>
                     <span className="flex-1 truncate">{s.name}</span>
@@ -321,7 +358,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
             ) : (
               <button
                 onClick={() => { setShowCustomInput(pattern); setCustomCategoryValue(''); }}
-                className="w-full text-left px-3 py-2 text-sm text-purple-400 hover:bg-purple-500/10 hover:text-purple-300 rounded flex items-center gap-1"
+                className="w-full text-left px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 active:bg-purple-100 rounded flex items-center gap-1"
               >
                 <Plus className="h-3 w-3" /> Add custom income type
               </button>
@@ -331,13 +368,13 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
           <div className="p-2 border-t border-b border-slate-200 bg-white">
             <p className="text-xs text-slate-500 font-medium">Not income — tag as</p>
           </div>
-          <div className="max-h-32 overflow-y-auto custom-scrollbar p-1">
+          <div className="p-1">
             {NON_INCOME_CATEGORIES.map(c => (
               <button
                 key={`nic-${c}`}
                 onClick={() => handleRecategorise(pattern, c, 'category')}
                 disabled={recatLoading}
-                className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
+                className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 active:bg-slate-200 rounded capitalize disabled:opacity-50"
               >
                 {c.replace(/_/g, ' ')}
               </button>
@@ -375,20 +412,28 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
         <div className="p-2 border-b border-slate-200 bg-white">
           <p className="text-xs text-slate-500 font-medium">Reassign to...</p>
         </div>
-        <div className="max-h-64 overflow-y-auto custom-scrollbar p-1">
+        <div className="p-1">
           {Object.entries(groups).map(([group, cats]) => (
             <div key={group}>
               <p className="px-3 pt-2 pb-1 text-[10px] text-slate-400 uppercase tracking-wider font-semibold">{group}</p>
-              {cats.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => handleRecategorise(pattern, c.id, 'category')}
-                  disabled={recatLoading}
-                  className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-purple-500/20 hover:text-purple-300 rounded disabled:opacity-50"
-                >
-                  {c.emoji} {c.label}
-                </button>
-              ))}
+              {cats.map(c => {
+                const isCurrent = c.id === category;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => handleRecategorise(pattern, c.id, 'category')}
+                    disabled={recatLoading}
+                    className={`w-full text-left px-3 py-2 text-sm rounded flex items-center gap-2 disabled:opacity-50 ${
+                      isCurrent
+                        ? 'bg-emerald-50 text-emerald-700 font-medium'
+                        : 'text-slate-700 hover:bg-slate-100 active:bg-slate-200'
+                    }`}
+                  >
+                    <span className="flex-1">{c.emoji} {c.label}</span>
+                    {isCurrent && <Check className="h-3.5 w-3.5 shrink-0" />}
+                  </button>
+                );
+              })}
             </div>
           ))}
         </div>
@@ -432,7 +477,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
           ) : (
             <button
               onClick={() => { setShowCustomInput(pattern); setCustomCategoryValue(''); }}
-              className="w-full text-left px-3 py-2 text-sm text-purple-400 hover:bg-purple-500/10 hover:text-purple-300 rounded flex items-center gap-1"
+              className="w-full text-left px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 active:bg-purple-100 rounded flex items-center gap-1"
             >
               <Plus className="h-3 w-3" /> Create custom category
             </button>
@@ -444,7 +489,9 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-white backdrop-blur-sm" onClick={onClose} />
+      {/* Dim overlay — an opaque white backdrop behind a white card made the
+          whole screen read as an edgeless blank sheet on mobile. */}
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative card w-full max-w-2xl max-h-[92vh] sm:max-h-[85vh] flex flex-col shadow-2xl rounded-b-none sm:rounded-2xl">
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200">
           <div className="min-w-0">
@@ -469,7 +516,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
           </div>
         )}
 
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar">
+        <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain flex-1 custom-scrollbar">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
@@ -506,9 +553,9 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                       </div>
                       
                       {merchantRecatIdx === idx && (
-                        <div className="absolute top-16 right-0 w-64 max-w-[calc(100vw-2.5rem)] bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
+                        <ReassignSheet onClose={() => setMerchantRecatIdx(null)}>
                           {renderReassignOptions(m.merchant)}
-                        </div>
+                        </ReassignSheet>
                       )}
                     </div>
                   ))}
@@ -518,7 +565,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
               {/* INDIVIDUAL TRANSACTIONS */}
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-4 font-semibold">Transactions</p>
-                <div className="bg-white rounded-xl border border-slate-200 divide-y divide-navy-800">
+                <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200">
                   {data.transactions.map((txn, idx) => {
                     const dt = new Date(txn.timestamp);
                     const isRecatOpen = recatDropdown === txn.id;
@@ -542,9 +589,9 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                         </div>
 
                         {isRecatOpen && (
-                          <div className="absolute top-12 right-4 w-64 max-w-[calc(100vw-2.5rem)] bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
+                          <ReassignSheet onClose={() => setRecatDropdown(null)}>
                             {renderReassignOptions(cleanMerchantName(txn.description || ''))}
-                          </div>
+                          </ReassignSheet>
                         )}
                       </div>
                     );
