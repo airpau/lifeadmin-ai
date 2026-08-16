@@ -6,7 +6,21 @@ export const metadata: Metadata = {
   title: "Code of Ethics — Paybacker LTD",
   description:
     "The de facto code of ethics governing Paybacker's AI-drafted consumer complaint letters: human-in-loop, source attribution, plain English, no terminal automation, GDPR posture, transparency and bias monitoring.",
-  alternates: { canonical: "https://paybacker.co.uk/legal/ethics-code" },
+  alternates: { canonical: 'https://paybacker.co.uk/legal/ethics-code' },
+  openGraph: {
+    title: 'Code of ethics — Paybacker LTD',
+    description:
+      'Human-in-the-loop, source attribution, plain English, no terminal automation. The commitments Paybacker holds itself to.',
+    url: 'https://paybacker.co.uk/legal/ethics-code',
+    siteName: 'Paybacker',
+    type: 'website',
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Code of ethics — Paybacker LTD',
+    description: 'The commitments Paybacker holds itself to when drafting consumer correspondence.',
+  },
 };
 
 const TOC = [

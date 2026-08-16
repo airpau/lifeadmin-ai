@@ -59,6 +59,13 @@ export function MarkFoot() {
             <Link href="/deals">Deals</Link>
             <Link href="/templates">Letter templates</Link>
             <Link href="/tools">Free tools</Link>
+            {/*
+              The 103 per-company complaint guides are the largest single
+              body of content on the site. Without a footer link they are
+              reachable only from the sitemap, which is a weak crawl
+              signal. This link puts the hub one hop from every page.
+            */}
+            <Link href="/complaints">Company complaints</Link>
           </div>
           <div className="footer-col">
             <h5>Company</h5>

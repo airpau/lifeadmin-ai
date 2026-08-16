@@ -14,6 +14,19 @@ export const metadata: Metadata = {
   title: 'Status — Paybacker UK Consumer Rights API',
   description: 'Live availability + latency for the Paybacker /v1/disputes API. Updated every minute.',
   alternates: { canonical: 'https://paybacker.co.uk/status' },
+  openGraph: {
+    title: 'Status — Paybacker UK Consumer Rights API',
+    description: 'Live availability and latency for the Paybacker /v1/disputes API.',
+    url: 'https://paybacker.co.uk/status',
+    siteName: 'Paybacker for Business',
+    type: 'website',
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Status — Paybacker UK Consumer Rights API',
+    description: 'Live availability and latency for the Paybacker /v1/disputes API.',
+  },
   robots: { index: true, follow: true },
 };
 

@@ -6,7 +6,21 @@ export const metadata: Metadata = {
   title: "Methodology — Paybacker LTD",
   description:
     "How Paybacker uses Find Case Law (TNA) records and other primary UK legal sources to ground AI-drafted complaint and dispute letters.",
-  alternates: { canonical: "https://paybacker.co.uk/legal/methodology" },
+  alternates: { canonical: 'https://paybacker.co.uk/legal/methodology' },
+  openGraph: {
+    title: 'Methodology — Paybacker LTD',
+    description:
+      'How every legal citation Paybacker uses is sourced from primary UK material, checked against an allowlist of official domains, and approved by a person.',
+    url: 'https://paybacker.co.uk/legal/methodology',
+    siteName: 'Paybacker',
+    type: 'website',
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Methodology — Paybacker LTD',
+    description: 'How Paybacker sources, verifies and maintains every legal citation it uses.',
+  },
 };
 
 const TOC = [

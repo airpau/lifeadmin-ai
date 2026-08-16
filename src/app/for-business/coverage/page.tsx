@@ -21,6 +21,21 @@ export const metadata: Metadata = {
   description:
     'Every UK statute, regulation, and regulator code the Paybacker /v1/disputes API can cite — by sector and use case.',
   alternates: { canonical: 'https://paybacker.co.uk/for-business/coverage' },
+  openGraph: {
+    title: 'Coverage — Paybacker UK Consumer Rights API',
+    description:
+      'Every UK statute, regulation and regulator code POST /v1/disputes can cite, by sector and use case.',
+    url: 'https://paybacker.co.uk/for-business/coverage',
+    siteName: 'Paybacker for Business',
+    type: 'website',
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Coverage — Paybacker UK Consumer Rights API',
+    description:
+      'Every UK statute, regulation and regulator code POST /v1/disputes can cite, by sector.',
+  },
 };
 
 interface Ref {

@@ -14,7 +14,8 @@ import { createClient } from '@supabase/supabase-js';
 export const metadata: Metadata = {
   title: 'Paybacker users have won back £' + '— see how much',
   description:
-    'Every dispute is a story. Paybacker helps UK consumers dispute unfair bills with AI letters citing exact UK consumer law. See the aggregate total recovered.',
+    'The running anonymised total recovered by Paybacker users. UK consumers disputing unfair bills with letters citing the exact consumer law that applies.',
+  alternates: { canonical: 'https://paybacker.co.uk/wins' },
   openGraph: {
     title: 'Paybacker — winning back unfair charges, one dispute at a time',
     description:

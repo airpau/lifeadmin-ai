@@ -385,3 +385,312 @@ export const COUNCIL_TAX_FILING: ReadonlyArray<FilingRoute> = [
     note: 'Free appeal, but only open to you if you had a legal right to make a proposal. Normally three months from the decision.',
   },
 ];
+
+// ===========================================================================
+// PERSONAL FINANCE CALCULATORS
+//
+// The tools below are calculators rather than eligibility checkers, so
+// the "sources" block does a slightly different job. It is where the
+// tax-year figures came from, so a reader can check that the numbers on
+// screen match the current GOV.UK page rather than a stale copy of it.
+//
+// Every tax figure these tools use lives in _data/uk-tax.ts. Those URLs
+// and these must stay in step. All were checked on the date in V.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Take-home pay
+// ---------------------------------------------------------------------------
+
+export const TAKE_HOME_SOURCES: ReadonlyArray<LegalSource> = [
+  {
+    lawName: 'GOV.UK — Income Tax rates and Personal Allowances',
+    section: 'Current rates and allowances, 2026 to 2027',
+    url: 'https://www.gov.uk/income-tax-rates',
+    establishes:
+      'The £12,570 personal allowance, the 20%, 40% and 45% rates, the £50,270 and £125,140 band edges, and the rule that the allowance drops by £1 for every £2 of income above £100,000, reaching zero at £125,140.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Income Tax in Scotland',
+    section: 'Current rates, 2026 to 2027',
+    url: 'https://www.gov.uk/scottish-income-tax',
+    establishes:
+      'The six Scottish bands and rates: starter 19%, basic 20%, intermediate 21%, higher 42%, advanced 45% and top 48%. Scottish rates apply to earned income only, not to savings interest or dividends.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — National Insurance rates and categories',
+    section: 'Contribution rates, 6 April 2026 to 5 April 2027',
+    url: 'https://www.gov.uk/national-insurance-rates-letters',
+    establishes:
+      'The employee Class 1 rates on category A: nothing below the primary threshold, 8% between the primary threshold and the upper earnings limit, and 2% above it.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'HMRC — Rates and thresholds for employers 2026 to 2027',
+    section: 'Class 1 National Insurance thresholds',
+    url: 'https://www.gov.uk/guidance/rates-and-thresholds-for-employers-2026-to-2027',
+    establishes:
+      'The annual National Insurance thresholds used here: lower earnings limit £6,708, primary threshold £12,570 and upper earnings limit £50,270. Also the annual student loan thresholds.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Repaying your student loan: how much you repay',
+    url: 'https://www.gov.uk/repaying-your-student-loan/what-you-pay',
+    establishes:
+      'The thresholds for Plans 1, 2, 4 and 5 and the Postgraduate Loan, the 9% and 6% deduction rates, and the rule that a postgraduate loan is repaid on top of an undergraduate plan rather than instead of it.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Adjusted net income',
+    url: 'https://www.gov.uk/guidance/adjusted-net-income',
+    establishes:
+      'That the £100,000 personal allowance taper is measured on income after pension contributions that attract relief, which is why a pension contribution can restore some or all of a lost allowance.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Workplace pensions: what you, your employer and the government pay',
+    url: 'https://www.gov.uk/workplace-pensions/what-you-your-employer-and-the-government-pay',
+    establishes:
+      'How employee pension contributions are taken, and the difference between a net pay arrangement and relief at source.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'Income Tax Act 2007',
+    section: 'Part 2 — rates of income tax, and section 35 (personal allowance)',
+    url: 'https://www.legislation.gov.uk/ukpga/2007/3/contents',
+    establishes:
+      'The statutory basis for the rates, the bands and the personal allowance that the GOV.UK pages above summarise.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Mortgages
+// ---------------------------------------------------------------------------
+
+export const MORTGAGE_SOURCES: ReadonlyArray<LegalSource> = [
+  {
+    lawName: 'FCA Handbook — MCOB 11.6',
+    section: 'Responsible lending and financing, and affordability assessment',
+    url: 'https://www.handbook.fca.org.uk/handbook/MCOB/11/6.html',
+    establishes:
+      'That a lender must assess whether a borrower can afford the mortgage, taking account of income, committed expenditure and the effect of likely future interest rate rises. This is why lenders stress-test at a rate above the one you are offered.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'FCA Handbook — MCOB 12.3',
+    section: 'Early repayment charges',
+    url: 'https://www.handbook.fca.org.uk/handbook/MCOB/12/3.html',
+    establishes:
+      'That an early repayment charge must be a reasonable pre-estimate of the cost to the lender and must be disclosed. This is the rule that decides whether an overpayment above your annual allowance costs you money.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Income Tax rates and Personal Allowances',
+    url: 'https://www.gov.uk/income-tax-rates',
+    establishes:
+      'The rates used where this tool refers to your take-home pay for the affordability note. The full calculation is in the take-home pay tool.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Overpay versus save
+// ---------------------------------------------------------------------------
+
+export const OVERPAY_SOURCES: ReadonlyArray<LegalSource> = [
+  {
+    lawName: 'GOV.UK — Tax on savings interest',
+    section: 'How much tax you pay',
+    url: 'https://www.gov.uk/apply-tax-free-interest-on-savings',
+    establishes:
+      'The Personal Savings Allowance of £1,000 for a basic rate taxpayer, £500 for a higher rate taxpayer and nil for an additional rate taxpayer, and the separate starting rate for savings of up to £5,000 for people on low other income.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Individual Savings Accounts',
+    url: 'https://www.gov.uk/individual-savings-accounts',
+    establishes:
+      'The £20,000 total ISA allowance for the 2026 to 2027 tax year, and that interest inside an ISA is not taxed and does not use up the Personal Savings Allowance.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'FCA Handbook — MCOB 12.3',
+    section: 'Early repayment charges',
+    url: 'https://www.handbook.fca.org.uk/handbook/MCOB/12/3.html',
+    establishes:
+      'The rules on early repayment charges. This tool cannot see your mortgage offer, so it cannot see whether an overpayment would trigger one. Check your annual overpayment allowance before you act on any answer here.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Repaying your student loan: make extra repayments',
+    url: 'https://www.gov.uk/repaying-your-student-loan/make-extra-repayments',
+    establishes:
+      'That extra student loan repayments are voluntary and are not refunded, which is the reason a student loan is usually a worse target for spare money than a mortgage.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Subscriptions
+// ---------------------------------------------------------------------------
+
+export const SUBSCRIPTION_SOURCES: ReadonlyArray<LegalSource> = [
+  {
+    lawName:
+      'The Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013',
+    section: 'Part 3 — right to cancel',
+    url: 'https://www.legislation.gov.uk/uksi/2013/3134/contents',
+    establishes:
+      'The 14-day right to cancel a contract made at a distance, and the requirement that a trader gives you the cancellation information before you are bound. Relevant to a subscription you signed up to online and want out of.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'Consumer Rights Act 2015',
+    section: 'Part 2 — unfair terms',
+    url: 'https://www.legislation.gov.uk/ukpga/2015/15/contents',
+    establishes:
+      'The unfair terms test, which is the route for challenging a subscription term such as an automatic renewal that was never brought to your attention.',
+    inLegalRefStore: true,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Tax on savings interest',
+    url: 'https://www.gov.uk/apply-tax-free-interest-on-savings',
+    establishes:
+      'The savings tax rules behind the "what if you saved it instead" figure, so the comparison is after tax rather than a gross number that nobody actually receives.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Bill increases
+// ---------------------------------------------------------------------------
+
+export const BILL_RISE_SOURCES: ReadonlyArray<LegalSource> = [
+  {
+    lawName: 'Ofcom General Conditions of Entitlement',
+    section: 'Condition C1 — contract requirements',
+    url: 'https://www.ofcom.org.uk/phones-and-broadband/service-quality/contracts',
+    establishes:
+      'That a provider must give at least one month’s notice of a contract modification likely to be of material detriment and offer a right to exit without penalty. Ofcom treats a rise in the core subscription price during a fixed term as likely to be of material detriment.',
+    inLegalRefStore: true,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'Ofcom statement banning inflation-linked mid-contract price rises',
+    url: 'https://www.ofcom.org.uk/phones-and-broadband/bills-and-charges/ofcom-bans-mid-contract-price-rises-linked-to-inflation',
+    establishes:
+      'That from 17 January 2025 any in-contract price rise must be stated up front in pounds and pence. A rise expressed as CPI or RPI plus a percentage is not permitted in a new contract.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'Ofgem energy price cap unit rates and standing charges',
+    url: 'https://www.ofgem.gov.uk/information-consumers/energy-advice-households/energy-price-cap-unit-rates-and-standing-charges',
+    establishes:
+      'The capped unit rate and daily standing charge for each period. An energy rise inside the cap is lawful, but you are free to leave a standard variable tariff at any time without a charge.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'FCA Handbook — ICOBS 6B',
+    section: 'Insurance renewals and pricing',
+    url: 'https://www.handbook.fca.org.uk/handbook/ICOBS/6B/2.html',
+    establishes:
+      'The rules on general insurance renewals, including the requirement to show last year’s premium alongside this year’s and the ban on quoting a renewing customer more than an equivalent new customer would pay.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'Local Government Finance Act 1992',
+    section: 'Part I — council tax: England and Wales',
+    url: 'https://www.legislation.gov.uk/ukpga/1992/14/contents',
+    establishes:
+      'The statutory basis for council tax, the valuation bands and the proposal machinery. The annual rise itself is set by the billing authority and is not challengeable, but the band your property sits in can be.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Council Tax: how to appeal your bill or band',
+    url: 'https://www.gov.uk/council-tax/how-to-appeal-your-council-tax-band-or-bill',
+    establishes:
+      'The difference between appealing the bill, for example a wrongly refused discount or exemption, and challenging the band, which is a separate process through the Valuation Office.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+];
+
+export const BILL_RISE_FILING: ReadonlyArray<FilingRoute> = [
+  {
+    name: 'Communications Ombudsman',
+    url: 'https://www.commsombudsman.org/',
+    note: 'For a broadband or mobile price rise your provider will not resolve. Available after eight weeks or on a deadlock letter.',
+  },
+  {
+    name: 'CEDR (CISAS)',
+    url: 'https://www.cedr.com/consumer/cisas/',
+    note: 'The other approved telecoms ADR scheme. Check which one your provider belongs to before you file.',
+  },
+  {
+    name: 'Energy Ombudsman',
+    url: 'https://www.energyombudsman.org/',
+    note: 'Free. Available eight weeks after you complained to your supplier, or sooner with a deadlock letter.',
+  },
+  {
+    name: 'Financial Ombudsman Service',
+    url: 'https://www.financial-ombudsman.org.uk/consumers/complaints-can-help/insurance',
+    note: 'For an insurance renewal you think has been priced unfairly, once the insurer has given its final response or eight weeks have passed.',
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Savings goal
+// ---------------------------------------------------------------------------
+
+export const SAVINGS_GOAL_SOURCES: ReadonlyArray<LegalSource> = [
+  {
+    lawName: 'GOV.UK — Individual Savings Accounts',
+    url: 'https://www.gov.uk/individual-savings-accounts',
+    establishes:
+      'The £20,000 total ISA allowance for the 2026 to 2027 tax year, across cash, stocks and shares, innovative finance and Lifetime ISAs combined.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Tax on savings interest',
+    section: 'How much tax you pay',
+    url: 'https://www.gov.uk/apply-tax-free-interest-on-savings',
+    establishes:
+      'The Personal Savings Allowance and the starting rate for savings, which decide how much of the return in this calculator you would actually keep if the money sits outside an ISA.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+  {
+    lawName: 'GOV.UK — Lifetime ISA',
+    url: 'https://www.gov.uk/lifetime-isa',
+    establishes:
+      'The Lifetime ISA rules, including the government bonus and the withdrawal charge that applies if you take the money out for anything other than a first home or retirement.',
+    inLegalRefStore: false,
+    verifiedOn: V,
+  },
+];

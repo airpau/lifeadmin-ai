@@ -4,9 +4,23 @@ import { PostShell, SIGNUP_HREF } from "../blog/_shared";
 import "../blog/styles.css";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — Paybacker LTD",
+  title: 'Privacy policy — Paybacker LTD',
   description:
-    "How Paybacker LTD collects, uses and protects your personal data under UK GDPR.",
+    'What personal data Paybacker LTD collects, the lawful basis for each use, how long it is kept, who it is shared with, and your rights under UK GDPR.',
+  alternates: { canonical: 'https://paybacker.co.uk/privacy-policy' },
+  openGraph: {
+    title: 'Privacy policy — Paybacker LTD',
+    description: 'What data Paybacker LTD holds, why, for how long, and your rights under UK GDPR.',
+    url: 'https://paybacker.co.uk/privacy-policy',
+    siteName: 'Paybacker',
+    type: 'website',
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Privacy policy — Paybacker LTD',
+    description: 'What data Paybacker LTD holds, why, for how long, and your rights under UK GDPR.',
+  },
 };
 
 const TOC = [

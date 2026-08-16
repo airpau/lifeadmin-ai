@@ -315,6 +315,113 @@
   place-items: center;
 }
 
+/* Working / breakdown table ---------------------------------------- */
+/* Used by the money calculators so a reader can check the arithmetic
+   line by line rather than trust a single total. */
+.m-land-root .tool-figures { margin: 0; display: grid; gap: 0; }
+.m-land-root .tool-figure {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.m-land-root .tool-figure:last-child { border-bottom: none; }
+.m-land-root .tool-figure dt {
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+  min-width: 0;
+}
+.m-land-root .tool-figure dt span {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+.m-land-root .tool-figure dd {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.m-land-root .tool-figure.is-emphasis { border-top: 1px solid var(--divider); }
+.m-land-root .tool-figure.is-emphasis dt { color: var(--text-primary); font-weight: 700; }
+.m-land-root .tool-figure.is-emphasis dd { font-size: 17px; font-weight: 700; }
+
+/* Repeating input rows (subscriptions, bill rises) ------------------ */
+.m-land-root .tool-rows { display: grid; gap: 14px; }
+.m-land-root .tool-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-input);
+  background: var(--surface-base);
+}
+@media (min-width: 720px) {
+  .m-land-root .tool-row { grid-template-columns: repeat(4, 1fr); align-items: end; }
+  .m-land-root .tool-row.is-three { grid-template-columns: repeat(3, 1fr); }
+}
+.m-land-root .tool-row-remove {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-orange-deep);
+  cursor: pointer;
+  text-align: left;
+  align-self: center;
+}
+.m-land-root .tool-row-remove:hover { text-decoration: underline; }
+.m-land-root .tool-add-row {
+  margin-top: 14px;
+  background: none;
+  border: 1px dashed var(--divider);
+  border-radius: var(--r-input);
+  padding: 11px 16px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-mint-deep);
+  cursor: pointer;
+  width: 100%;
+}
+.m-land-root .tool-add-row:hover { border-color: var(--accent-mint); background: var(--accent-mint-wash); }
+
+/* Hub grouping ------------------------------------------------------ */
+.m-land-root .tool-group-heading {
+  max-width: 1040px;
+  margin: 0 auto 16px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.m-land-root .tool-group + .tool-group { margin-top: 44px; }
+
+/* Tax-year stamp ---------------------------------------------------- */
+.m-land-root .tool-yearstamp {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: rgba(11, 18, 32, 0.04);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-pill);
+  margin-bottom: 16px;
+}
+
 /* Honesty / warning note ------------------------------------------- */
 .m-land-root .tool-note {
   border: 1px solid rgba(217, 119, 6, 0.3);

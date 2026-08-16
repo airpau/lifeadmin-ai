@@ -11,9 +11,23 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Pocket Agent — Paybacker on WhatsApp & Telegram',
+  title: 'Pocket Agent — Paybacker on WhatsApp and Telegram',
   description:
-    'Talk to your Paybacker financial assistant on WhatsApp or Telegram. Track subscriptions, dispute unfair bills, and recover money — all from your phone.',
+    'Run Paybacker from your phone. Track subscriptions, get price-rise alerts, and move a dispute forward by chat on WhatsApp or Telegram.',
+  alternates: { canonical: 'https://paybacker.co.uk/pocket-agent' },
+  openGraph: {
+    title: 'Pocket Agent — Paybacker on WhatsApp and Telegram',
+    description: 'Track subscriptions, get price-rise alerts and move a dispute forward by chat.',
+    url: 'https://paybacker.co.uk/pocket-agent',
+    siteName: 'Paybacker',
+    type: 'website',
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Pocket Agent — Paybacker on WhatsApp and Telegram',
+    description: 'Track subscriptions, get price-rise alerts and move a dispute forward by chat.',
+  },
 };
 
 export default function PocketAgentPage() {

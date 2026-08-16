@@ -6,7 +6,10 @@ import "../blog/styles.css";
 export const metadata: Metadata = {
   title: "Account & Data Deletion — Paybacker LTD",
   description:
-    "How to delete your Paybacker account and your personal data, what gets removed and how long it takes.",
+    'How to delete your Paybacker account and your personal data, what gets removed and how long it takes.',
+  // Blocked in robots.ts as a transactional support page. Declared
+  // noindex too, so the intent survives if robots.txt is ever relaxed.
+  robots: { index: false, follow: true },
 };
 
 const TOC = [

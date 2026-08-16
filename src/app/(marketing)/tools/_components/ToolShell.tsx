@@ -28,7 +28,21 @@ export type ToolShellProps = {
   filing: ReadonlyArray<FilingRoute>;
   faqs: ToolFaq[];
   cta: { title: string; body: string };
+  /**
+   * Overrides the closing disclaimer. The default wording is about
+   * legal advice, which is right for the consumer rights checkers. The
+   * money calculators need to disclaim financial advice instead, so
+   * they pass their own. Optional, so existing pages are untouched.
+   */
+  disclaimer?: string;
 };
+
+const DEFAULT_DISCLAIMER =
+  'Paybacker is not a law firm and this tool does not give legal advice. It is general guidance about UK consumer law, applied to the answers you gave. Rules change, and the outcome of any individual dispute depends on facts and evidence we cannot see from a form. For complex or high-value disputes, court proceedings, or anything where you are unsure, consult a qualified solicitor or Citizens Advice. We never state or imply a guaranteed outcome.';
+
+/** Shared closing wording for the personal finance calculators. */
+export const MONEY_DISCLAIMER =
+  'Paybacker is not authorised to give financial advice and this calculator does not give any. It is arithmetic applied to the figures you entered, using published tax-year rates that are stated on the page. It takes no account of your circumstances, your other commitments, your existing contracts or your goals, and nothing here is a personal recommendation to take or refrain from any financial action. Tax treatment depends on individual circumstances and can change. For advice on your own position, speak to a regulated financial adviser. For free impartial guidance, MoneyHelper and Citizens Advice are the usual starting points.';
 
 export default function ToolShell({
   slug,
@@ -41,6 +55,7 @@ export default function ToolShell({
   filing,
   faqs,
   cta,
+  disclaimer,
 }: ToolShellProps) {
   const canonical = `${TOOLS_BASE}/${slug}`;
 
@@ -226,16 +241,7 @@ export default function ToolShell({
 
       <section className="section-light tool-section" style={{ paddingTop: 0, paddingBottom: 72 }}>
         <div className="wrap">
-          <p className="tool-disclaimer">
-            Paybacker is not a law firm and this tool does not give legal
-            advice. It is general guidance about UK consumer law, applied to
-            the answers you gave. Rules change, and the outcome of any
-            individual dispute depends on facts and evidence we cannot see
-            from a form. For complex or high-value disputes, court
-            proceedings, or anything where you are unsure, consult a
-            qualified solicitor or Citizens Advice. We never state or imply a
-            guaranteed outcome.
-          </p>
+          <p className="tool-disclaimer">{disclaimer ?? DEFAULT_DISCLAIMER}</p>
         </div>
       </section>
     </main>

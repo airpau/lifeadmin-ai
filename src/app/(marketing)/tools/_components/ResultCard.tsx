@@ -9,6 +9,19 @@
 
 export type VerdictTone = 'yes' | 'maybe' | 'caution' | 'no';
 
+/**
+ * One line of the working. Exported as a mutable element type because
+ * every calculator builds its figures by pushing conditionally, so
+ * `NonNullable<Verdict['figures']>` has to be assignable to a mutable
+ * array for that pattern to type-check.
+ */
+export type VerdictFigure = {
+  label: string;
+  value: string;
+  note?: string;
+  emphasis?: boolean;
+};
+
 export type Verdict = {
   tone: VerdictTone;
   /** Short uppercase tag, e.g. "Likely eligible". */
@@ -19,6 +32,14 @@ export type Verdict = {
   amountNote?: string;
   /** What applies and why. */
   reasoning: string[];
+  /**
+   * Optional line-by-line working, used by the money calculators so a
+   * reader can check the arithmetic rather than trust the total. Not
+   * used by the eligibility checkers, which have nothing to add up.
+   */
+  figures?: VerdictFigure[];
+  /** Optional heading for the figures block. */
+  figuresHeading?: string;
   /** Concrete next actions in order. */
   nextSteps: string[];
   /** Conditions, exceptions and the ways this can fail. Never empty. */
@@ -47,6 +68,23 @@ export function ResultCard({ verdict }: { verdict: Verdict }) {
             </p>
           ) : null}
         </>
+      ) : null}
+
+      {verdict.figures && verdict.figures.length > 0 ? (
+        <div className="tool-result-block">
+          <h4>{verdict.figuresHeading ?? 'The working'}</h4>
+          <dl className="tool-figures">
+            {verdict.figures.map((f, i) => (
+              <div key={i} className={`tool-figure${f.emphasis ? ' is-emphasis' : ''}`}>
+                <dt>
+                  {f.label}
+                  {f.note ? <span>{f.note}</span> : null}
+                </dt>
+                <dd>{f.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       ) : null}
 
       {verdict.reasoning.length > 0 ? (

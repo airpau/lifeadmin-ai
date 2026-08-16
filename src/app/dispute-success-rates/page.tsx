@@ -14,7 +14,12 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'UK Dispute Success Rates · Paybacker',
-  description: 'Anonymised aggregate stats from the Paybacker UK consumer dispute outcome dataset.',
+  description:
+    'Anonymised aggregate outcomes from the Paybacker UK consumer dispute dataset. Published only where the sample is large enough to mean anything.',
+  alternates: { canonical: 'https://paybacker.co.uk/dispute-success-rates' },
+  // Deliberately noindex until the dataset is mature (>=1000 cases).
+  // Because of this the page is intentionally absent from sitemap.ts:
+  // a noindex URL in a sitemap is a Search Console error.
   robots: { index: false, follow: false },
 };
 

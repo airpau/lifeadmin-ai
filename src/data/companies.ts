@@ -19,7 +19,7 @@ export const COMPANIES: Company[] = [
   { slug: 'utilita', name: 'Utilita', category: 'energy', regulator: 'Ofgem', phone: '0345 207 2000' },
   { slug: 'bulb-energy', name: 'Bulb Energy', category: 'energy', regulator: 'Ofgem', phone: null },
   { slug: 'good-energy', name: 'Good Energy', category: 'energy', regulator: 'Ofgem', phone: '0800 254 0000' },
-  { slug: 'ecotricity', name: 'Ecotricity', category: 'energy', regulator: 'Ofgem', phone: '01onal 302 302' },
+  { slug: 'ecotricity', name: 'Ecotricity', category: 'energy', regulator: 'Ofgem', phone: null },
 
   // Water (7)
   { slug: 'thames-water', name: 'Thames Water', category: 'water', regulator: 'Ofwat', phone: '0800 316 9800' },
@@ -39,7 +39,7 @@ export const COMPANIES: Company[] = [
   { slug: 'vodafone-broadband', name: 'Vodafone Broadband', category: 'broadband', regulator: 'Ofcom', phone: '0333 304 0191' },
   { slug: 'community-fibre', name: 'CommunityFibre', category: 'broadband', regulator: 'Ofcom', phone: '0800 082 0770' },
   { slug: 'hyperoptic', name: 'Hyperoptic', category: 'broadband', regulator: 'Ofcom', phone: '0333 332 1111' },
-  { slug: 'zen-internet', name: 'Zen Internet', category: 'broadband', regulator: 'Ofcom', phone: '01onal 237 0100' },
+  { slug: 'zen-internet', name: 'Zen Internet', category: 'broadband', regulator: 'Ofcom', phone: null },
   { slug: 'now-broadband', name: 'NOW Broadband', category: 'broadband', regulator: 'Ofcom', phone: '0330 332 3050' },
   { slug: 'shell-broadband', name: 'Shell Broadband', category: 'broadband', regulator: 'Ofcom', phone: '0330 094 5800' },
   { slug: 'john-lewis-broadband', name: 'John Lewis Broadband', category: 'broadband', regulator: 'Ofcom', phone: null },
@@ -138,3 +138,25 @@ export const COMPANIES: Company[] = [
 export function getCompanyBySlug(slug: string): Company | undefined {
   return COMPANIES.find((c) => c.slug === slug);
 }
+
+/**
+ * Sibling companies in the same sector, excluding the one passed in.
+ *
+ * Used for the internal-link block at the foot of each company page. A
+ * flat set of 104 orphan pages reachable only from the sitemap crawls
+ * badly; cross-linking them inside the sector gives each page real
+ * internal PageRank and gives the reader a genuinely useful next step.
+ */
+export function companiesInSameCategory(slug: string): Company[] {
+  const company = getCompanyBySlug(slug);
+  if (!company) return [];
+  return COMPANIES.filter((c) => c.category === company.category && c.slug !== slug);
+}
+
+/** Every company slug, in declaration order. Consumed by the sitemap. */
+export const COMPANY_SLUGS: string[] = COMPANIES.map((c) => c.slug);
+
+/** Distinct sector categories present in the registry, in declaration order. */
+export const COMPANY_CATEGORIES: string[] = Array.from(
+  new Set(COMPANIES.map((c) => c.category)),
+);

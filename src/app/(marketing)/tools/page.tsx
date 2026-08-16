@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SIGNUP_HREF } from '@/app/blog/_shared';
-import { TOOLS, TOOLS_BASE } from './_data/tools';
+import { TOOLS, TOOL_GROUPS, TOOLS_BASE, toolsInGroup } from './_data/tools';
 
 /**
  * Free tools hub.
@@ -19,10 +19,14 @@ import { TOOLS, TOOLS_BASE } from './_data/tools';
  */
 
 export const metadata: Metadata = {
-  title: 'Free UK Consumer Rights Tools — No Signup Required | Paybacker',
+  title: 'Free UK Money and Consumer Rights Tools — No Signup Required | Paybacker',
   description:
-    'Free calculators and checkers for UK consumer rights: flight delay compensation, section 75 claims, parking appeals, energy overcharges, broadband price rises and council tax bands. No account, no email, nothing stored.',
+    'Twelve free UK calculators and checkers: take-home pay, mortgage repayments, savings goals, subscriptions and bill rises, plus flight delay compensation, section 75, parking appeals, energy overcharges, broadband price rises and council tax bands. No account, no email, nothing stored.',
   keywords: [
+    'free UK money tools',
+    'take home pay calculator',
+    'mortgage repayment calculator',
+    'compound interest calculator UK',
     'free consumer rights tools UK',
     'flight delay compensation calculator',
     'section 75 checker',
@@ -31,9 +35,9 @@ export const metadata: Metadata = {
     'council tax band checker',
   ],
   openGraph: {
-    title: 'Free UK Consumer Rights Tools — No Signup Required',
+    title: 'Free UK Money and Consumer Rights Tools — No Signup Required',
     description:
-      'Six free checkers covering flights, credit card claims, parking, energy, broadband and council tax. Every one cites the actual statute or regulator. No account needed.',
+      'Twelve free tools covering salary, mortgages, savings, subscriptions and bills, plus flights, credit card claims, parking, energy, broadband and council tax. Every one shows its working and cites its source. No account needed.',
     url: TOOLS_BASE,
     type: 'website',
     siteName: 'Paybacker',
@@ -53,7 +57,7 @@ const jsonLd = {
     },
     {
       '@type': 'ItemList',
-      name: 'Free UK consumer rights tools',
+      name: 'Free UK money and consumer rights tools',
       itemListElement: TOOLS.map((t, i) => ({
         '@type': 'ListItem',
         position: i + 1,
@@ -82,12 +86,14 @@ export default function ToolsHubPage() {
               <span>Free tools</span>
             </div>
             <div className="tool-free-badge">Free · no account · nothing stored</div>
-            <h1>Free UK consumer rights tools</h1>
+            <h1>Free UK money and consumer rights tools</h1>
             <p className="tool-intro">
-              Six checkers that give you a straight answer about where you
-              stand, with the statute or regulator cited and linked. Every one
-              runs in your browser. No sign-up, no email capture, no
-              bait-and-switch at the end.
+              Twelve tools that give you a straight answer. The consumer
+              rights checkers tell you where you stand, with the statute or
+              regulator cited and linked. The money calculators work out a
+              number and show you every line of the arithmetic so you can
+              check it. Every one runs in your browser. No sign-up, no email
+              capture, no bait-and-switch at the end.
             </p>
           </div>
         </div>
@@ -95,19 +101,26 @@ export default function ToolsHubPage() {
 
       <section className="section-light tool-section" style={{ paddingTop: 28 }}>
         <div className="wrap">
-          <div className="tool-grid">
-            {TOOLS.map((t) => (
-              <Link key={t.slug} className="tool-tile" href={`/tools/${t.slug}`}>
-                <div className="tool-tile-meta">
-                  <span className="tool-chip">{t.category}</span>
-                  <span className="tool-chip is-neutral">{t.basis}</span>
-                </div>
-                <h3>{t.name}</h3>
-                <p>{t.oneLiner}</p>
-                <div className="tool-tile-go">Open the tool →</div>
-              </Link>
-            ))}
-          </div>
+          {TOOL_GROUPS.map(({ group, blurb }) => (
+            <section key={group} className="tool-group">
+              <h2 className="tool-group-heading">
+                {group} — {blurb}
+              </h2>
+              <div className="tool-grid">
+                {toolsInGroup(group).map((t) => (
+                  <Link key={t.slug} className="tool-tile" href={`/tools/${t.slug}`}>
+                    <div className="tool-tile-meta">
+                      <span className="tool-chip">{t.category}</span>
+                      <span className="tool-chip is-neutral">{t.basis}</span>
+                    </div>
+                    <h3>{t.name}</h3>
+                    <p>{t.oneLiner}</p>
+                    <div className="tool-tile-go">Open the tool →</div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       </section>
 
@@ -120,10 +133,28 @@ export default function ToolsHubPage() {
               lists the legislation, government guidance or regulator page it
               relies on, with a link to the official source, and those sources
               are restricted to primary legislation, GOV.UK, statutory
-              regulators such as Ofcom, Ofgem, the Civil Aviation Authority and
-              the Valuation Office, and statutory ombudsmen. We do not cite
-              comparison sites, trade bodies, news articles or law-firm blogs.
-              A citation is only as good as its source.
+              regulators such as Ofcom, Ofgem, the Financial Conduct Authority,
+              the Civil Aviation Authority and the Valuation Office, and
+              statutory ombudsmen. We do not cite comparison sites, trade
+              bodies, news articles or law-firm blogs. A citation is only as
+              good as its source.
+            </p>
+            <p>
+              The money calculators work the same way. Every tax-year figure
+              they use, the Income Tax bands, the personal allowance and its
+              taper above £100,000, the National Insurance thresholds, all five
+              student loan plans, the Personal Savings Allowance, the ISA
+              allowance and the Scottish bands, lives in a single file with the
+              tax year stated, a verification date, and a link to the GOV.UK
+              page each number was read from. Every calculator prints the tax
+              year on screen, so a stale figure is visible to you rather than
+              hidden from you.
+            </p>
+            <p>
+              They also show their working. A total on its own asks you to
+              trust us. A line-by-line breakdown lets you check the arithmetic,
+              spot where an assumption does not match your situation, and see
+              exactly which threshold produced the answer.
             </p>
             <p>
               The calculations are deliberately conservative. Where a rule has
@@ -182,6 +213,17 @@ export default function ToolsHubPage() {
             For complex or high-value disputes, court proceedings, or anything
             you are unsure about, consult a qualified solicitor or Citizens
             Advice.
+          </p>
+          <p className="tool-disclaimer" style={{ borderTop: 'none', paddingTop: 12 }}>
+            Paybacker is not authorised to give financial advice and the money
+            calculators do not give any. They are arithmetic applied to figures
+            you enter, using published tax-year rates. They take no account of
+            your circumstances, your other commitments or your goals, and
+            nothing on this site is a personal recommendation to take or refrain
+            from any financial action. Tax treatment depends on individual
+            circumstances and can change. For advice on your own position,
+            speak to a regulated financial adviser, or to MoneyHelper or
+            Citizens Advice for free guidance.
           </p>
         </div>
       </section>

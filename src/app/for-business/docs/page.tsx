@@ -19,6 +19,21 @@ export const metadata: Metadata = {
   description:
     'How UK fintechs, insurers, energy retailers and claims platforms call POST /v1/disputes from their CRM, helpdesk, claims pipeline, or AI agent. Authentication, request and response shape, five business-workflow walkthroughs, webhooks, idempotency, errors, rate limits.',
   alternates: { canonical: 'https://paybacker.co.uk/for-business/docs' },
+  openGraph: {
+    title: 'API docs — Paybacker UK Consumer Rights API',
+    description:
+      'Authentication, request and response shape, webhooks, idempotency, error contract and rate limits for POST /v1/disputes.',
+    url: 'https://paybacker.co.uk/for-business/docs',
+    siteName: 'Paybacker for Business',
+    type: 'website',
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'API docs — Paybacker UK Consumer Rights API',
+    description:
+      'Request and response shape, authentication, error contract and rate limits for POST /v1/disputes.',
+  },
 };
 
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';

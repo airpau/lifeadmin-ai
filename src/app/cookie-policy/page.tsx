@@ -5,8 +5,23 @@ import { PostShell, SIGNUP_HREF } from '../blog/_shared';
 import '../blog/styles.css';
 
 export const metadata: Metadata = {
-  title: 'Cookie Policy',
-  description: 'How Paybacker uses cookies and similar technologies.',
+  title: 'Cookie policy — Paybacker LTD',
+  description:
+    'The cookies and similar technologies paybacker.co.uk sets, what each one is for, how long it lasts, and how to withdraw consent.',
+  alternates: { canonical: 'https://paybacker.co.uk/cookie-policy' },
+  openGraph: {
+    title: 'Cookie policy — Paybacker LTD',
+    description: 'The cookies paybacker.co.uk sets, what each is for, and how to withdraw consent.',
+    url: 'https://paybacker.co.uk/cookie-policy',
+    siteName: 'Paybacker',
+    type: 'website',
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Cookie policy — Paybacker LTD',
+    description: 'The cookies paybacker.co.uk sets, what each is for, and how to withdraw consent.',
+  },
 };
 
 const TOC = [

@@ -110,23 +110,94 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://kcxxlesishltdmfctlmo.supabase.co" />
       </head>
       <body className="min-h-full flex flex-col">
+        {/*
+          Sitewide Organization + WebSite graph.
+
+          Deliberately absent: AggregateRating and Review. We hold no
+          legitimate review data, and fabricating it is both a structured
+          data policy violation and a manual-action risk. Do not add them
+          without a real, verifiable review source.
+
+          Also absent: WebSite.potentialAction / SearchAction. There is no
+          site-wide search surface to point it at. /check is a case
+          assessment form, not a search endpoint, so declaring one would
+          be a false claim about the site.
+        */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               '@context': 'https://schema.org',
-              '@type': 'Organization',
-              name: 'Paybacker',
-              url: 'https://paybacker.co.uk',
-              logo: 'https://paybacker.co.uk/logo.png',
-              description: 'AI-powered bill-fighting platform for UK consumers. Detects price increases, drafts dispute letters citing UK consumer law, and tracks each case until your money is recovered.',
-              foundingDate: '2026-03',
-              contactPoint: {
-                '@type': 'ContactPoint',
-                email: 'hello@paybacker.co.uk',
-                contactType: 'customer service',
-                availableLanguage: 'English',
-              },
+              '@graph': [
+                {
+                  '@type': 'Organization',
+                  '@id': 'https://paybacker.co.uk/#organization',
+                  name: 'Paybacker',
+                  legalName: 'Paybacker LTD',
+                  alternateName: 'Paybacker LTD',
+                  url: 'https://paybacker.co.uk',
+                  logo: {
+                    '@type': 'ImageObject',
+                    url: 'https://paybacker.co.uk/logo.png',
+                    width: 512,
+                    height: 512,
+                  },
+                  image: 'https://paybacker.co.uk/logo.png',
+                  description:
+                    'UK consumer-rights platform. Finds unfair and forgotten charges, drafts dispute letters citing the exact UK legislation and regulator rules, and tracks each case to its outcome.',
+                  foundingDate: '2026-03',
+                  email: 'hello@paybacker.co.uk',
+                  // Companies House registration. identifier + the
+                  // England & Wales jurisdiction are the two facts a
+                  // knowledge panel needs to disambiguate a UK company.
+                  identifier: {
+                    '@type': 'PropertyValue',
+                    propertyID: 'Companies House company number',
+                    value: '15289174',
+                  },
+                  address: {
+                    '@type': 'PostalAddress',
+                    addressCountry: 'GB',
+                    addressRegion: 'England',
+                  },
+                  areaServed: {
+                    '@type': 'Country',
+                    name: 'United Kingdom',
+                  },
+                  knowsLanguage: 'en-GB',
+                  sameAs: [
+                    'https://x.com/PaybackerUK',
+                    'https://www.linkedin.com/company/112575954/',
+                    'https://www.instagram.com/paybacker.co.uk/',
+                  ],
+                  contactPoint: [
+                    {
+                      '@type': 'ContactPoint',
+                      email: 'hello@paybacker.co.uk',
+                      contactType: 'customer service',
+                      areaServed: 'GB',
+                      availableLanguage: 'English',
+                    },
+                    {
+                      '@type': 'ContactPoint',
+                      email: 'business@paybacker.co.uk',
+                      contactType: 'sales',
+                      areaServed: 'GB',
+                      availableLanguage: 'English',
+                    },
+                  ],
+                },
+                {
+                  '@type': 'WebSite',
+                  '@id': 'https://paybacker.co.uk/#website',
+                  url: 'https://paybacker.co.uk',
+                  name: 'Paybacker',
+                  description:
+                    'UK consumer rights, made usable: which law applies, what the deadline is, who to escalate to, and the letter to send.',
+                  inLanguage: 'en-GB',
+                  publisher: { '@id': 'https://paybacker.co.uk/#organization' },
+                },
+              ],
             }),
           }}
         />

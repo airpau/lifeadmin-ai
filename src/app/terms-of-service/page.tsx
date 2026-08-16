@@ -4,8 +4,23 @@ import { PostShell, SIGNUP_HREF } from "../blog/_shared";
 import "../blog/styles.css";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — Paybacker LTD",
-  description: "Terms and conditions for using the Paybacker platform.",
+  title: 'Terms of service — Paybacker LTD',
+  description:
+    'The contract between you and Paybacker LTD: what the service does and does not do, subscription and cancellation terms, and the limits of AI-drafted correspondence.',
+  alternates: { canonical: 'https://paybacker.co.uk/terms-of-service' },
+  openGraph: {
+    title: 'Terms of service — Paybacker LTD',
+    description: 'The contract between you and Paybacker LTD, including subscription and cancellation terms.',
+    url: 'https://paybacker.co.uk/terms-of-service',
+    siteName: 'Paybacker',
+    type: 'website',
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Terms of service — Paybacker LTD',
+    description: 'The contract between you and Paybacker LTD, including subscription and cancellation terms.',
+  },
 };
 
 const TOC = [

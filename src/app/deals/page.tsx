@@ -5,9 +5,23 @@ import '../(marketing)/styles.css';
 import './deals.css';
 
 export const metadata: Metadata = {
-  title: 'Compare UK Deals - Energy, Broadband, Mobile, Insurance | Paybacker',
+  title: 'Compare UK deals — energy, broadband, mobile, insurance | Paybacker',
   description:
-    'Compare 53+ deals from verified UK providers. Energy, broadband, mobile, insurance, mortgages, loans, and more. Find cheaper alternatives and switch.',
+    'Compare deals from verified UK providers across energy, broadband, mobile, insurance, mortgages and loans. Find a cheaper alternative and switch.',
+  alternates: { canonical: 'https://paybacker.co.uk/deals' },
+  openGraph: {
+    title: 'Compare UK deals — energy, broadband, mobile, insurance',
+    description: 'Compare deals from verified UK providers and find a cheaper alternative.',
+    url: 'https://paybacker.co.uk/deals',
+    siteName: 'Paybacker',
+    type: 'website',
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Compare UK deals — energy, broadband, mobile, insurance',
+    description: 'Compare deals from verified UK providers and find a cheaper alternative.',
+  },
 };
 
 const categories = [

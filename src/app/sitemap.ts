@@ -1,30 +1,39 @@
 import { MetadataRoute } from 'next';
 import { createClient } from '@supabase/supabase-js';
-import { TOOLS } from './(marketing)/tools/_data/tools';
+import {
+  BASE_URL,
+  allStaticRoutes,
+  assertSitemapNotBlocked,
+  BLOG_STATIC_SLUGS,
+} from '@/lib/site-routes';
 
+/**
+ * The sitemap is generated, not hand-maintained.
+ *
+ * Every static route comes from src/lib/site-routes.ts, which in turn
+ * derives the four dynamic families (company complaint guides, free
+ * tools, solution pages, deal categories) from the same data modules the
+ * routes render from. Adding a company to src/data/companies.ts or a
+ * tool to the tools registry puts the URL in here automatically.
+ *
+ * Blog posts are fetched from Supabase at build time with a hard 5s cap,
+ * so a saturated database degrades the sitemap rather than failing the
+ * production build.
+ */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = 'https://paybacker.co.uk';
   const now = new Date().toISOString();
+  const staticRoutes = allStaticRoutes();
 
-  // Solution landing pages (feature funnels)
-  const solutions = [
-    'energy-refunds', 'broadband-compensation', 'subscriptions',
-    'cancel-services', 'flight-delay-compensation', 'money-hub',
-    'email-scanner', 'contract-alerts',
-  ];
+  // Guard: a sitemapped URL that robots.txt blocks is a Search Console
+  // error and burns crawl budget. This should never fire.
+  const blocked = assertSitemapNotBlocked(staticRoutes.map((r) => r.path));
+  if (blocked.length > 0) {
+    console.error('[sitemap] routes are both sitemapped and robots-disallowed:', blocked);
+  }
 
-  // Deal category landing pages
-  const dealCategories = [
-    'energy', 'broadband', 'mobile', 'insurance', 'mortgages',
-    'loans', 'credit-cards', 'car-finance', 'travel',
-  ];
-
-  // Fetch all published blog posts from database (skip gracefully if env vars absent at build time)
+  // Blog posts from the database.
   let blogPosts: { slug: string; published_at: string }[] | null = null;
   if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    // 5s build-time hard cap (same defence as blog/page.tsx) so a
-    // saturated Supabase can't block sitemap generation and fail the
-    // entire production build.
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
@@ -40,104 +49,36 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .abortSignal(controller.signal);
       blogPosts = data;
     } catch {
-      // fall through — only static blog entries will appear in sitemap
+      // Static blog entries still make it in.
     } finally {
       clearTimeout(timeout);
     }
   }
 
-  // Static blog posts (hardcoded routes)
-  const staticBlogSlugs = [
-    'how-to-claim-flight-delay-compensation-uk',
-    'are-you-overpaying-on-energy',
-    'broadband-contract-ended',
+  const blogEntries: MetadataRoute.Sitemap = [
+    ...BLOG_STATIC_SLUGS.map((slug) => ({
+      url: `${BASE_URL}/blog/${slug}`,
+      lastModified: now,
+      changeFrequency: 'monthly' as const,
+      priority: 0.65,
+    })),
+    ...(blogPosts || [])
+      .filter((p) => !BLOG_STATIC_SLUGS.includes(p.slug))
+      .map((p) => ({
+        url: `${BASE_URL}/blog/${p.slug}`,
+        lastModified: p.published_at || now,
+        changeFrequency: 'monthly' as const,
+        priority: 0.6,
+      })),
   ];
 
-  // Dynamic blog posts from database
-  const dynamicBlogEntries = (blogPosts || [])
-    .filter(p => !staticBlogSlugs.includes(p.slug))
-    .map(p => ({
-      url: `${baseUrl}/blog/${p.slug}`,
-      lastModified: p.published_at || now,
-      changeFrequency: 'monthly' as const,
-      priority: 0.6,
-    }));
-
   return [
-    // Core pages
-    { url: baseUrl, lastModified: now, changeFrequency: 'weekly', priority: 1 },
-    { url: `${baseUrl}/pricing`, lastModified: now, changeFrequency: 'weekly', priority: 0.9 },
-    { url: `${baseUrl}/about`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/how-it-works`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/careers`, lastModified: now, changeFrequency: 'monthly', priority: 0.5 },
-    { url: `${baseUrl}/check`, lastModified: now, changeFrequency: 'weekly', priority: 0.95 },
-    { url: `${baseUrl}/templates`, lastModified: now, changeFrequency: 'monthly', priority: 0.85 },
-    { url: `${baseUrl}/for-business`, lastModified: now, changeFrequency: 'weekly', priority: 0.9 },
-    { url: `${baseUrl}/for-business/docs`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/for-business/coverage`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/for-business/thanks`, lastModified: now, changeFrequency: 'monthly', priority: 0.3 },
-    { url: `${baseUrl}/pocket-agent`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/dispute-success-rates`, lastModified: now, changeFrequency: 'weekly', priority: 0.7 },
-    { url: `${baseUrl}/join`, lastModified: now, changeFrequency: 'monthly', priority: 0.5 },
-    { url: `${baseUrl}/upgrade`, lastModified: now, changeFrequency: 'monthly', priority: 0.5 },
-
-    // Solution landing pages (highest SEO value)
-    ...solutions.map(slug => ({
-      url: `${baseUrl}/solutions/${slug}`,
+    ...staticRoutes.map((r) => ({
+      url: `${BASE_URL}${r.path}`,
       lastModified: now,
-      changeFrequency: 'weekly' as const,
-      priority: 0.9,
+      changeFrequency: r.changeFrequency,
+      priority: r.priority,
     })),
-
-    // Deal category pages
-    ...dealCategories.map(cat => ({
-      url: `${baseUrl}/deals/${cat}`,
-      lastModified: now,
-      changeFrequency: 'weekly' as const,
-      priority: 0.8,
-    })),
-
-    // SEO landing pages (high-intent keywords)
-    { url: `${baseUrl}/dispute-energy-bill`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
-    { url: `${baseUrl}/flight-delay-compensation`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
-    { url: `${baseUrl}/cancel-gym-membership`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
-    { url: `${baseUrl}/council-tax-challenge`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
-    { url: `${baseUrl}/debt-collection-response`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
-    { url: `${baseUrl}/debt-collection-letter`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
-    { url: `${baseUrl}/nhs-complaint`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
-    { url: `${baseUrl}/hmrc-tax-rebate`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
-    { url: `${baseUrl}/dvla-vehicle`, lastModified: now, changeFrequency: 'monthly', priority: 0.9 },
-    { url: `${baseUrl}/broadband-overcharging`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/hidden-subscriptions`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/insurance-complaint`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/mobile-contract-dispute`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-    { url: `${baseUrl}/parking-appeal`, lastModified: now, changeFrequency: 'monthly', priority: 0.8 },
-
-    // Free tools directory (no-signup SEO acquisition surface)
-    { url: `${baseUrl}/tools`, lastModified: now, changeFrequency: 'weekly', priority: 0.9 },
-    ...TOOLS.map(t => ({
-      url: `${baseUrl}/tools/${t.slug}`,
-      lastModified: now,
-      changeFrequency: 'monthly' as const,
-      priority: 0.9,
-    })),
-
-    // Deals hub
-    { url: `${baseUrl}/deals`, lastModified: now, changeFrequency: 'weekly', priority: 0.8 },
-
-    // Blog
-    { url: `${baseUrl}/blog`, lastModified: now, changeFrequency: 'weekly', priority: 0.7 },
-    { url: `${baseUrl}/blog/how-to-claim-flight-delay-compensation-uk`, lastModified: now, changeFrequency: 'monthly', priority: 0.7 },
-    { url: `${baseUrl}/blog/are-you-overpaying-on-energy`, lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
-    { url: `${baseUrl}/blog/broadband-contract-ended`, lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
-    ...dynamicBlogEntries,
-
-    // Legal
-    { url: `${baseUrl}/privacy-policy`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
-    { url: `${baseUrl}/terms-of-service`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
-    { url: `${baseUrl}/cookie-policy`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
-    { url: `${baseUrl}/ico-notice`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
-    { url: `${baseUrl}/legal/methodology`, lastModified: now, changeFrequency: 'monthly', priority: 0.3 },
-    { url: `${baseUrl}/legal/ethics-code`, lastModified: now, changeFrequency: 'monthly', priority: 0.3 },
+    ...blogEntries,
   ];
 }
