@@ -132,7 +132,7 @@ const PRODUCT_FEATURE: SocialTemplate[] = [
     image_prompt: "Dark navy background, mint green glowing chat bubble with financial graph, abstract AI conversation concept, clean fintech design",
   },
   {
-    content: "What a solicitor charges £150 to £300 for, Paybacker does for free in your Telegram at 3am. Formal complaint letter. Exact UK legislation cited. Ready to send. No waiting, no billing by the hour.\n\nTry it free at paybacker.co.uk",
+    content: "Spotted a sneaky price rise? Paybacker drafts a formal complaint letter in your Telegram at 3am. Exact UK legislation cited. Ready to send. No hold music, no waiting.\n\nTry it free at paybacker.co.uk",
     hashtags: "#TelegramBot #AI #ConsumerRights #MoneySaving #UKLaw #PayBacker",
     image_prompt: "Dark navy background, mint green glowing legal document concept, abstract AI writing at night, modern fintech aesthetic",
   },

@@ -1403,7 +1403,7 @@ export default function HomepageV3PreviewPage() {
             <h2>
               Three steps. Ten minutes.
               <br />
-              Usually four-figure savings.
+              Your bills, back under control.
             </h2>
             <p className="sub">
               You don&rsquo;t have to connect anything to see it work. Try the
@@ -1479,7 +1479,7 @@ export default function HomepageV3PreviewPage() {
           <Reveal className="section-head section-head--center">
             <span className="eyebrow on-ink">Stacked</span>
             <h2>Architecture + competitor comparison</h2>
-            <p>How Paybacker beats every single incumbent.</p>
+            <p>How Paybacker compares.</p>
           </Reveal>
 
           {/* 3-panel architecture diagram */}
@@ -1572,7 +1572,7 @@ export default function HomepageV3PreviewPage() {
                   <td className="us">Full</td>
                 </tr>
                 <tr>
-                  <td>Legal-grade dispute letters</td>
+                  <td>Dispute letters citing UK law</td>
                   <td><span className="x">—</span></td>
                   <td><span className="x">—</span></td>
                   <td><span className="x">—</span></td>

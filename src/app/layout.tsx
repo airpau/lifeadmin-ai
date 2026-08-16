@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     default: 'Paybacker — Fight Unfair Bills. Cancel Sneaky Subs. Recover Your Money.',
     template: '%s | Paybacker',
   },
-  description: 'The only UK app that detects price increases, drafts the dispute letter citing the exact law, and tracks until you get your money back. Founder has personally recovered £2,000+ — see how.',
+  description: 'The UK app that spots price increases, drafts the dispute letter citing the exact law, and tracks your dispute through to the end.',
   keywords: ['complaint letter generator', 'UK consumer rights', 'subscription tracker', 'cancel subscriptions', 'energy bill dispute', 'debt dispute letter', 'flight delay compensation', 'parking charge appeal'],
   authors: [{ name: 'Paybacker LTD' }],
   creator: 'Paybacker LTD',
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
     url: 'https://paybacker.co.uk',
     siteName: 'Paybacker',
     title: 'Paybacker — Fight Unfair Bills. Cancel Sneaky Subs. Recover Your Money.',
-    description: 'The only UK app that detects price increases, drafts the dispute letter citing the exact law, and tracks until you get your money back. Founder has personally recovered £2,000+ — see how.',
+    description: 'The UK app that spots price increases, drafts the dispute letter citing the exact law, and tracks your dispute through to the end.',
     images: [
       {
         url: '/logo.png',
@@ -77,7 +77,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary',
     title: 'Paybacker — Fight Unfair Bills. Recover Your Money.',
-    description: 'AI dispute letters citing the exact UK law. Founder has recovered £2,000+ on his own bills using it.',
+    description: 'AI dispute letters citing the exact UK law, drafted in 30 seconds and tracked to the end.',
     images: ['/logo.png'],
   },
   alternates: {

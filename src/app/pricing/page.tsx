@@ -139,22 +139,18 @@ function MarkFoot() {
 // "On a typical £216 refund" math table — figures pre-computed from the
 // percentage ranges so we don't claim anything stronger than the
 // 15–30% band that's already on the homepage.
-// Comparison: Paybacker vs solicitors vs claims management companies.
-// Numbers anchored to public norms — claims firms typically take 25–35% of
-// recovered amounts (FCA caps consumer-credit-claims management at 30% +
-// VAT under FG22/5); contingency-fee solicitors usually charge 25%+VAT
-// or £200–400/hr private-client rates.
-// TODO(founder): if there's a specific competitor we've benchmarked
-// against directly (DoNotPay, Resolver Plus, etc.), swap the generic
-// rows below for that named comparison.
+// What you keep on a £216 recovery. We deliberately do not benchmark
+// against legal services or claims management companies: Paybacker is a
+// consumer tool, not a substitute for advice, and the comparison invited
+// a regulatory reading we don't want. The only claim made here is our
+// own: a flat subscription and no cut of what you get back.
 const MATH_ROWS: ReadonlyArray<{
   label: string;
   keep: string;
   note: string;
   highlight: boolean;
 }> = [
-  { label: 'Solicitor (25% + VAT contingency)', keep: '£151.20', note: 'lost £64.80 + hourly fees risk', highlight: false },
-  { label: 'Claims management company (25–35%)', keep: '£140–162', note: 'lost £54–76 (FCA cap 30% + VAT)', highlight: false },
+  { label: 'Services charging a % success fee (25–35%)', keep: '£140–162', note: 'lost £54–76 to fees', highlight: false },
   { label: 'Paybacker (0% success fee)', keep: '£216.00', note: 'you keep 100%', highlight: true },
 ];
 
@@ -188,7 +184,7 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
   ],
   [
     'How do you make money if you don\u2019t take a cut of refunds?',
-    'Flat subscription revenue. We\u2019re deliberately small and deliberately cheap — we\u2019d rather grow slowly and keep the incentives clean than take 25% of your refund like everyone else.',
+    'Flat subscription revenue. We\u2019re deliberately small and deliberately cheap — we\u2019d rather grow slowly and keep the incentives clean than take a cut of your refund.',
   ],
   [
     'Is my bank data safe?',
@@ -200,7 +196,7 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
   ],
   [
     'What if a dispute letter doesn\u2019t get me a refund?',
-    'Most letters do succeed. When they don\u2019t, we provide next-step guidance (Ombudsman, CMA, small-claims) and all the evidence logged. You never pay per-dispute.',
+    'Many disputes are resolved after the first letter, though every case is different. When a dispute isn\u2019t resolved, we provide next-step guidance (Ombudsman, CMA, small-claims) and all the evidence logged. You never pay per-dispute.',
   ],
 ];
 
@@ -286,7 +282,7 @@ export default function PricingPage() {
                 You keep 100% of what we recover.
               </h2>
               <p style={{ fontSize: 16.5, lineHeight: 1.6, color: 'var(--text-secondary)', margin: 0 }}>
-                <strong>No success fee. Ever.</strong> Compare to claims-management companies (25–35% cut, capped by the FCA at 30% + VAT for consumer-credit claims) and contingency-fee solicitors (25% + VAT, or £200–400/hr private-client rates). Paybacker is a flat monthly subscription — every penny we recover stays in your pocket.
+                <strong>No success fee. Ever.</strong> Plenty of services take a percentage of whatever you recover. Paybacker is a flat monthly subscription, so every penny you get back stays in your pocket.
               </p>
             </div>
             <div

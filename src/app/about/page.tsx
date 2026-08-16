@@ -155,13 +155,13 @@ const TIMELINE: ReadonlyArray<readonly [string, string, string]> = [
   [
     'Today',
     'Bridging the gap',
-    'We\u2019re the layer between you and the companies that bank on you not bothering. Small team, big backlog, and a simple belief: working people shouldn\u2019t need a solicitor to get their own money back.',
+    'We\u2019re the layer between you and the companies that bank on you not bothering. Small team, big backlog, and a simple belief: getting your own money back shouldn\u2019t be hard work.',
   ],
 ];
 
 const STATS: ReadonlyArray<readonly [string, string, string]> = [
   ['£1,000+', 'Overcharged per UK household, per year', 'Forgotten subs, silent rises, unfair bills'],
-  ['£250+', 'Per hour for a consumer solicitor', 'Not worth it for a £47 broadband hike'],
+  ['30 days', 'To challenge most unfair charges', 'Miss the window and it gets much harder'],
   ['0%', 'Of your refund — ever', 'Flat subscription, we never take a cut'],
   ['30s', 'To draft a dispute letter', 'Cited Consumer Rights Act, section by section'],
 ];
@@ -211,8 +211,8 @@ export default function AboutPage() {
               maxWidth: 1000,
             }}
           >
-            <span style={{ display: 'block', color: 'var(--text-primary)' }}>Legal action is</span>
-            <span style={{ display: 'block', color: 'var(--accent-mint-deep)' }}>too expensive.</span>
+            <span style={{ display: 'block', color: 'var(--text-primary)' }}>Unfair bills win</span>
+            <span style={{ display: 'block', color: 'var(--accent-mint-deep)' }}>when nobody pushes back.</span>
             <span style={{ display: 'block', color: 'var(--accent-orange-deep)' }}>Suppliers know it.</span>
           </h1>
           <p
@@ -224,7 +224,7 @@ export default function AboutPage() {
               margin: '0 0 36px',
             }}
           >
-            Paybacker bridges the gap. We help normal working people save money proactively — spotting the overcharges, silent price rises and forgotten subscriptions that a solicitor would never be worth hiring for, and fighting them with AI-drafted letters that cite UK consumer law.
+            Paybacker bridges the gap. We help normal working people save money proactively — spotting the overcharges, silent price rises and forgotten subscriptions that quietly drain your account, and challenging them with AI-drafted letters that cite UK consumer law.
           </p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <Link className="btn btn-mint" href={SIGNUP_HREF}>
@@ -454,9 +454,8 @@ export default function AboutPage() {
                 &ldquo;that&rsquo;s just how it works.&rdquo; It&rsquo;s
                 <em> not</em> just how it works. Half the time what they
                 were doing was flat-out against UK consumer law. But the
-                only way to actually fight back was to pay a solicitor
-                &pound;250 an hour to write a letter that might recover
-                &pound;47.
+                only way to actually push back was to spend hours writing
+                letters nobody answers, over a &pound;47 overcharge.
               </p>
               <p>
                 So the system quietly runs on that maths. Companies know
@@ -469,7 +468,7 @@ export default function AboutPage() {
               </p>
               <p>
                 I was done with it. AI can now read the Consumer Rights
-                Act faster than any paralegal, cite the exact statute, and
+                Act in seconds, cite the exact statute, and
                 draft a letter that makes a supplier take you seriously
                 in 30 seconds. The expensive part of fighting back
                 &mdash; the reading and the writing &mdash; just got cheap.

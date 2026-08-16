@@ -98,7 +98,7 @@ export async function GET(
   const timeClause = timeWindow ? ` and won ${timeWindow}` : ' and won';
 
   const tweet = `I just got ${moneyClause} from my ${noun}! 🎉 Disputed it with @PaybackerApp${timeClause}. #ConsumerRights #Paybacker`;
-  const longBody = `Just used @PaybackerApp to dispute a charge with my ${noun} — and won! Got ${moneyClause}${timeWindow ? ` ${timeWindow}` : ''}. No lawyers, no stress, just a few taps. If you've ever been overcharged, you should try it. #ConsumerRights #Paybacker`;
+  const longBody = `Just used @PaybackerApp to dispute a charge with my ${noun} — and won! Got ${moneyClause}${timeWindow ? ` ${timeWindow}` : ''}. No stress, no hold music, just a few taps. If you've ever been overcharged, you should try it. #ConsumerRights #Paybacker`;
 
   const tweetParams = new URLSearchParams({ text: tweet });
   const waParams = new URLSearchParams({ text: `${tweet} ${SHARE_URL}` });

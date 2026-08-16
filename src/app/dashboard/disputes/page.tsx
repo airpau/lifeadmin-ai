@@ -1374,8 +1374,8 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
     { icon: '💪', text: 'Making your complaint impossible to ignore...' },
     { icon: '🎯', text: 'Citing the sections they hope you never read...' },
     { icon: '📝', text: 'Politely but firmly demanding what you are owed...' },
-    { icon: '🧠', text: 'Our AI has read more consumer law than their entire legal team...' },
-    { icon: '⏱️', text: 'What would take a solicitor 2 hours takes us 30 seconds...' },
+    { icon: '🧠', text: 'Reading the relevant UK consumer law for your case...' },
+    { icon: '⏱️', text: 'Drafting your letter, citing the exact legislation...' },
     { icon: '🏆', text: 'Putting the "back" in Paybacker...' },
   ];
 

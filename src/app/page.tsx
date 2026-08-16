@@ -19,14 +19,14 @@ import HomepageContent from './preview/homepage/page';
  */
 
 export const metadata: Metadata = {
-  title: 'Paybacker — Your AI consumer champion for unfair UK bills. Keep 100%.',
+  title: 'Paybacker — Your AI financial helper for unfair UK bills. Keep 100%.',
   description:
-    'Solicitors charge £250/hour. Claims firms take 30%. Paybacker drafts UK-law-cited complaint letters in 30 seconds, runs every dispute end-to-end through provider escalation and Ombudsman, and you keep 100% of every refund. £4.99/month. Free tier available.',
+    'Paybacker is your AI financial helper. It tracks bills and subscriptions, spots overcharges and quiet price rises, drafts dispute letters citing UK consumer law in 30 seconds, and follows every dispute through to the end. You keep 100% of anything you get back. £4.99/month. Free tier available.',
   alternates: { canonical: 'https://paybacker.co.uk' },
   openGraph: {
-    title: 'Paybacker — Your AI consumer champion for unfair UK bills. Keep 100%.',
+    title: 'Paybacker — Your AI financial helper for unfair UK bills. Keep 100%.',
     description:
-      'AI complaint letters citing the exact UK statute, escalated end-to-end through Ombudsman if needed. Solicitors charge £250/hr. Claims firms take 30%. We charge £4.99/mo and you keep every penny.',
+      'Your AI financial helper for UK bills. Spots overcharges and price rises, drafts dispute letters citing the exact UK statute in 30 seconds, and follows each dispute to the end. You keep 100% of anything you get back.',
     url: 'https://paybacker.co.uk',
     siteName: 'Paybacker',
     type: 'website',
@@ -34,9 +34,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary',
-    title: 'Paybacker — Your AI consumer champion for unfair UK bills.',
+    title: 'Paybacker — Your AI financial helper for unfair UK bills.',
     description:
-      'AI complaint letters citing the exact UK statute. Solicitors: £250/hr. Claims firms: 30%. Paybacker: £4.99/mo, you keep 100%.',
+      'Spots overcharges and price rises, drafts dispute letters citing the exact UK statute in 30 seconds, and tracks each dispute to the end. Free tier available.',
     images: ['/logo.png'],
   },
 };

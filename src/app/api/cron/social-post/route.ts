@@ -148,7 +148,12 @@ Hero messaging to build posts around:
 - "Paybacker's AI bot lives in your Telegram. It spotted £162 in overcharges in 30 seconds."
 - Evening money wrap-up pushed to your phone at 9pm — no app to open, no login
 - Ask it anything in plain English: "have my bills gone up this year?" — it reads your real transactions and answers instantly
-- What a solicitor charges £150 to £300 for, done for free in your Telegram at 3am
+- A dispute letter citing the exact UK consumer law, drafted in 30 seconds, free, in your Telegram at 3am
+
+Hard rules for every post:
+- Never compare Paybacker to solicitors, lawyers, claims firms or legal services
+- Never promise an outcome or quote a success rate
+- Focus on what the product does, not who it is cheaper than
 
 Other Paybacker features you can mention:
 - Free AI complaint letters citing UK consumer law (energy, broadband, flights, debt, parking, council tax)
