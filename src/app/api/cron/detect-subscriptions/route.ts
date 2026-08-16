@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { deriveRecurringGroup } from '@/lib/subscription-key';
+import {
+  qualifyRecurringSeries,
+  isHighVarianceMerchant,
+  isExcludedTransactionCategory,
+  isCouncilTaxMerchant,
+  LOOKBACK_DAYS,
+} from '@/lib/subscriptions/recurring-qualification';
 
 export const maxDuration = 120;
 
@@ -25,27 +32,190 @@ function normaliseProviderName(name: string): string {
     .trim();
 }
 
-/**
- * Council tax / local authority blocklist.
- * Any merchant whose normalised name matches one of these patterns
- * will NEVER be classified as a subscription — they belong in Expected Bills.
- */
-const COUNCIL_TAX_PATTERNS: RegExp[] = [
-  /borough council/i,
-  /city council/i,
-  /district council/i,
-  /county council/i,
-  /council tax/i,
-  /london borough/i,
-  /\btest valley\b/i,
-  /\bwinchester\b.*\bcouncil\b/i,
-  /\bwestminster\b.*\bcouncil\b/i,
-  /\bhounslow\b/i,
-  /\b(lbh|lbw|lbc)\b/i,            // common council abbreviations
-];
+// Council tax / local authority blocklist now lives in
+// src/lib/subscriptions/recurring-qualification.ts (COUNCIL_TAX_PATTERNS /
+// isCouncilTaxMerchant) so every writer shares one list.
 
-function isCouncilTaxMerchant(merchantName: string): boolean {
-  return COUNCIL_TAX_PATTERNS.some(re => re.test(merchantName));
+// ─── Retro re-validation of legacy bank-detected subscriptions ────────
+//
+// Rows created by the OLD loose heuristics (2 payments 2-12 days apart
+// matched "weekly", then got rewritten to "monthly") are still sitting in
+// users' accounts. This pass re-runs the NEW qualification core against
+// each merchant's real transaction series and, when a row no longer
+// qualifies, flags it `needs_review = true` with a short note.
+//
+// Deliberately non-destructive: NEVER deletes a row, NEVER changes
+// `status`, `amount`, `category` or `billing_cycle`. The user decides.
+
+/** Max rows re-validated per cron run. */
+const REVALIDATION_ROW_CAP = 500;
+
+/** Marker so a row is only ever auto-flagged once. */
+const REVALIDATION_NOTE_PREFIX = '[auto-review]';
+
+/**
+ * Notes text written by the auto-detectors themselves. Anything else in
+ * `notes` is treated as user-authored content.
+ */
+const AUTO_SEED_NOTES = new Set([
+  'detected from bank transactions',
+  'detected from bank transactions - please review',
+  'auto-detected from bank transactions',
+]);
+
+interface RevalidationRow {
+  id: string;
+  user_id: string;
+  provider_name: string;
+  recurring_group: string | null;
+  bank_description: string | null;
+  notes: string | null;
+  subcategory: string | null;
+  account_email: string | null;
+  login_url: string | null;
+  contract_end_source: string | null;
+}
+
+/**
+ * `subscriptions` has no explicit "user edited this row" column, so we use
+ * a conservative proxy: a row counts as user-touched if it carries any
+ * content only a human could have put there — a note that isn't one of the
+ * detector's own seed strings, a hand-picked subcategory, an account email
+ * or login URL, or a user-sourced contract end date. Over-skipping is the
+ * safe direction: the worst case is a stale false positive stays unflagged.
+ */
+function looksUserEdited(row: RevalidationRow): boolean {
+  if (row.subcategory || row.account_email || row.login_url) return true;
+  if (row.contract_end_source === 'user' || row.contract_end_source === 'manual') return true;
+
+  const notes = (row.notes || '').trim();
+  if (!notes) return false;
+  // Already auto-flagged by a previous run — don't touch it again.
+  if (notes.includes(REVALIDATION_NOTE_PREFIX)) return true;
+  return !AUTO_SEED_NOTES.has(notes.toLowerCase());
+}
+
+interface RevalidationResults {
+  checked: number;
+  flagged: number;
+  skipped_user_edited: number;
+  skipped_no_transactions: number;
+}
+
+async function revalidateBankSubscriptions(
+  supabase: SupabaseClient
+): Promise<RevalidationResults> {
+  const out: RevalidationResults = {
+    checked: 0,
+    flagged: 0,
+    skipped_user_edited: 0,
+    skipped_no_transactions: 0,
+  };
+
+  // Candidates: bank-sourced, still live, not already flagged. Dismissed /
+  // cancelled / archived rows are left completely alone.
+  const { data: rows, error } = await supabase
+    .from('subscriptions')
+    .select(
+      'id, user_id, provider_name, recurring_group, bank_description, notes, subcategory, account_email, login_url, contract_end_source'
+    )
+    .in('source', ['bank', 'bank_auto'])
+    .eq('status', 'active')
+    .is('dismissed_at', null)
+    .is('archived_at', null)
+    .is('cancelled_at', null)
+    .or('needs_review.is.null,needs_review.eq.false')
+    .order('created_at', { ascending: true })
+    .limit(REVALIDATION_ROW_CAP);
+
+  if (error || !rows || rows.length === 0) {
+    if (error) console.error('[detect-subscriptions] revalidation query failed:', error);
+    return out;
+  }
+
+  // Group by user so we fetch each user's transaction history once.
+  const byUser = new Map<string, RevalidationRow[]>();
+  for (const row of rows as RevalidationRow[]) {
+    if (!byUser.has(row.user_id)) byUser.set(row.user_id, []);
+    byUser.get(row.user_id)!.push(row);
+  }
+
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString();
+  const today = new Date().toISOString().slice(0, 10);
+
+  for (const [userId, userRows] of byUser) {
+    const { data: txs } = await supabase
+      .from('bank_transactions')
+      .select('merchant_name, description, amount, timestamp, category, user_category')
+      .eq('user_id', userId)
+      .lt('amount', 0) // outgoing only
+      .gte('timestamp', since)
+      .order('timestamp', { ascending: true })
+      .limit(5000);
+
+    // Index the series by the same canonical key the subscriptions carry.
+    const seriesByKey = new Map<string, Array<{ date: string; amount: number }>>();
+    for (const tx of txs || []) {
+      if (isExcludedTransactionCategory(tx.user_category || tx.category)) continue;
+      const key = deriveRecurringGroup(tx.merchant_name || tx.description);
+      if (!key) continue;
+      if (!seriesByKey.has(key)) seriesByKey.set(key, []);
+      seriesByKey.get(key)!.push({
+        date: tx.timestamp,
+        amount: Math.abs(parseFloat(String(tx.amount)) || 0),
+      });
+    }
+
+    for (const row of userRows) {
+      if (looksUserEdited(row)) {
+        out.skipped_user_edited++;
+        continue;
+      }
+
+      const key = row.recurring_group || deriveRecurringGroup(row.provider_name);
+      const series = key ? seriesByKey.get(key) : undefined;
+
+      // No matching transactions in the window (disconnected bank, renamed
+      // merchant, email-sourced row mislabelled as bank). We can't judge it,
+      // so we say nothing.
+      if (!series || series.length === 0) {
+        out.skipped_no_transactions++;
+        continue;
+      }
+
+      out.checked++;
+
+      const result = qualifyRecurringSeries(series, {
+        highVariance: isHighVarianceMerchant(row.provider_name, row.bank_description),
+      });
+
+      if (result.qualifies) continue;
+
+      const reason = isCouncilTaxMerchant(row.provider_name)
+        ? 'council_tax_belongs_in_expected_bills'
+        : result.reason;
+
+      const note =
+        `${REVALIDATION_NOTE_PREFIX} ${today}: re-checked against your bank history and this no longer ` +
+        `looks like a recurring subscription (${reason}). Nothing has been changed — confirm it's yours or remove it.`;
+      const nextNotes = [(row.notes || '').trim(), note].filter(Boolean).join('\n');
+
+      // needs_review + note ONLY. Status, amount, cycle and category are
+      // left exactly as they are.
+      const { error: updateErr } = await supabase
+        .from('subscriptions')
+        .update({ needs_review: true, notes: nextNotes })
+        .eq('id', row.id);
+
+      if (updateErr) {
+        console.error(`[detect-subscriptions] revalidation update failed for ${row.id}:`, updateErr);
+      } else {
+        out.flagged++;
+      }
+    }
+  }
+
+  return out;
 }
 
 /**
@@ -208,6 +378,17 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  console.log(`[detect-subscriptions] Results:`, results);
-  return NextResponse.json({ ok: true, ...results });
+  // Step 3: Retro re-validation of legacy bank-detected subscriptions.
+  // Runs after detection so freshly-inserted rows in this run are already
+  // excluded (they carry needs_review from their own writer, or qualify).
+  let revalidation: RevalidationResults;
+  try {
+    revalidation = await revalidateBankSubscriptions(supabase);
+  } catch (e) {
+    console.error('[detect-subscriptions] revalidation pass failed:', e);
+    revalidation = { checked: 0, flagged: 0, skipped_user_edited: 0, skipped_no_transactions: 0 };
+  }
+
+  console.log(`[detect-subscriptions] Results:`, results, 'revalidation:', revalidation);
+  return NextResponse.json({ ok: true, ...results, revalidation });
 }

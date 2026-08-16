@@ -16,7 +16,7 @@ import { isCreditProduct } from '@/lib/credit-product-detector';
 import ComparisonCard from '@/components/subscriptions/ComparisonCard';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
-import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
+import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, categoryMatchesFilterGroup, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 
@@ -494,21 +494,11 @@ export default function SubscriptionsPage() {
     let result = [...baseSubscriptions];
 
     if (filterCategory !== 'All') {
-      const group = SUBSCRIPTION_FILTER_CATEGORIES.find(g => g.value === filterCategory);
-      if (group) {
-        if (group.matches.length === 0) {
-          // 'other' catch-all: everything not covered by named groups
-          const allGroupedCategories = SUBSCRIPTION_FILTER_CATEGORIES
-            .filter(g => g.matches.length > 0)
-            .flatMap(g => g.matches);
-          result = result.filter(s => !s.category || !allGroupedCategories.includes(s.category));
-        } else {
-          result = result.filter(s => s.category != null && group.matches.includes(s.category));
-        }
-      } else {
-        // Fallback: exact category match (e.g. legacy URL params)
-        result = result.filter(s => s.category === filterCategory);
-      }
+      // Membership (including the 'other' catch-all and legacy exact-match
+      // URL params) lives in category-config so chips can never silently
+      // drop a category, and so loan/loans-style alias drift can't split
+      // identical subscriptions across two buckets.
+      result = result.filter(s => categoryMatchesFilterGroup(s.category, filterCategory));
     }
 
     result.sort((a, b) => {
@@ -2361,7 +2351,10 @@ export default function SubscriptionsPage() {
                     </div>
                   </div>
                   
-                  <div className="flex-1 flex flex-col md:flex-row md:items-start justify-between gap-4 overflow-hidden">
+                  {/* `min-w-0` (not `overflow-hidden`) — the clip used to
+                      swallow the inline recategorise picker anchored inside
+                      this subtree. Children truncate individually instead. */}
+                  <div className="flex-1 flex flex-col md:flex-row md:items-start justify-between gap-4 min-w-0">
                     <div className="flex-1 min-w-0 relative">
                       <div className="flex items-center gap-3 mb-2">
                         {sub.logo_url ? (
@@ -2392,34 +2385,54 @@ export default function SubscriptionsPage() {
                           </span>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 mb-2">
-                        <div className="relative group inline-block" onClick={e => e.stopPropagation()}>
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 mb-2 min-w-0">
+                        <div className="relative group inline-block min-w-0 max-w-full" onClick={e => e.stopPropagation()}>
                           <button
                             onClick={() => setInlineRecatSub(inlineRecatSub === sub.id ? null : sub.id)}
-                            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors font-medium border ${sub.category ? `${getCategoryColor(sub.category)} ${getCategoryBgColor(sub.category)} border-transparent hover:border-opacity-30` : 'text-slate-600 bg-white border-slate-200 hover:border-slate-200'}`}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors font-medium border max-w-full ${sub.category ? `${getCategoryColor(sub.category)} ${getCategoryBgColor(sub.category)} border-transparent hover:border-opacity-30` : 'text-slate-600 bg-white border-slate-200 hover:border-slate-200'}`}
                           >
                             {(() => {
                                const Icon = sub.category ? getCategoryIcon(sub.category) : MoreHorizontal;
-                               return <Icon className="w-3 h-3" />;
+                               return <Icon className="w-3 h-3 shrink-0" />;
                             })()}
-                            <span>{sub.category ? getCategoryLabel(sub.category) : 'Uncategorised'}</span>
+                            <span className="truncate">{sub.category ? getCategoryLabel(sub.category) : 'Uncategorised'}</span>
                           </button>
                           {inlineRecatSub === sub.id && (
-                            <div className="absolute top-full left-0 mt-1 w-48 max-w-[calc(100vw-2.5rem)] bg-white border border-slate-200 rounded-lg shadow-xl z-20 max-h-64 overflow-y-auto">
-                              {SORTED_CATEGORIES.map(cat => (
-                                <button
-                                  key={cat.value}
-                                  onClick={() => handleInlineRecategorise(sub, cat.value)}
-                                  className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex items-center gap-2 ${sub.category === cat.value ? 'text-emerald-600 bg-emerald-500/5' : 'text-slate-600'}`}
-                                >
-                                  {(() => {
-                                     const Icon = getCategoryIcon(cat.value);
-                                     return <Icon className="w-3.5 h-3.5 opacity-70" />;
-                                  })()}
-                                  {cat.label}
-                                </button>
-                              ))}
-                            </div>
+                            <>
+                              {/* Backdrop only on mobile — the sheet is fixed,
+                                  so no ancestor overflow can clip it. Matches
+                                  the pattern in money-hub/transactions. */}
+                              <div
+                                className="fixed inset-0 z-[60] bg-slate-900/30 sm:bg-transparent"
+                                onClick={() => setInlineRecatSub(null)}
+                              />
+                              <div
+                                className={
+                                  'fixed inset-x-0 bottom-0 z-[70] max-h-[70vh] overflow-y-auto overscroll-contain ' +
+                                  'rounded-t-2xl border border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl ' +
+                                  // sm+: anchored under the pill (the wrapper is relative).
+                                  'sm:absolute sm:inset-x-auto sm:left-0 sm:bottom-auto sm:top-full sm:mt-1 sm:w-48 ' +
+                                  'sm:max-w-[calc(100vw-2.5rem)] sm:max-h-64 sm:rounded-lg sm:pb-0 sm:shadow-xl'
+                                }
+                              >
+                                <div className="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 sm:hidden">
+                                  Recategorise
+                                </div>
+                                {SORTED_CATEGORIES.map(cat => (
+                                  <button
+                                    key={cat.value}
+                                    onClick={() => handleInlineRecategorise(sub, cat.value)}
+                                    className={`w-full text-left px-3 py-2.5 text-xs hover:bg-slate-50 flex items-center gap-2 sm:py-2 ${sub.category === cat.value ? 'text-emerald-600 bg-emerald-500/5' : 'text-slate-600'}`}
+                                  >
+                                    {(() => {
+                                       const Icon = getCategoryIcon(cat.value);
+                                       return <Icon className="w-3.5 h-3.5 opacity-70 shrink-0" />;
+                                    })()}
+                                    {cat.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
                           )}
                         </div>
 
