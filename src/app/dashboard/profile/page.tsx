@@ -479,6 +479,11 @@ export default function ProfilePage() {
   const [passwordMessage, setPasswordMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
   const [section, setSection] = useState<'profile' | 'accounts' | 'subscription' | 'notifications' | 'privacy' | 'danger'>('profile');
+  // /api/auth/google and /api/auth/microsoft bounce here with
+  // ?email_limit_reached=1 when the user is over their plan's email cap.
+  // Nothing read that param before, so the user landed on a normal
+  // profile page with no explanation of why the connection failed.
+  const [emailLimitReached, setEmailLimitReached] = useState(false);
 
   const supabase = createClient();
   const router = useRouter();
@@ -569,6 +574,18 @@ export default function ProfilePage() {
       })
       .catch(() => {});
   }, [supabase, searchParams]);
+
+  // Surface the email-connection cap the OAuth routes redirected us for,
+  // then strip the param so a refresh doesn't re-show the banner.
+  useEffect(() => {
+    if (searchParams.get('email_limit_reached') === '1') {
+      setEmailLimitReached(true);
+      setSection('accounts');
+      const url = new URL(window.location.href);
+      url.searchParams.delete('email_limit_reached');
+      window.history.replaceState({}, '', url.pathname + url.search);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetch('/api/telegram/link-code')
@@ -814,6 +831,32 @@ export default function ProfilePage() {
         <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4" />
           {billingMessage}
+        </div>
+      )}
+
+      {/* Email connection cap — set by /api/auth/google and
+          /api/auth/microsoft via ?email_limit_reached=1 */}
+      {emailLimitReached && (
+        <div className="mb-6 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-amber-300">
+                Email account not connected
+              </p>
+              <p className="text-sm text-amber-200/80 mt-1">
+                {profile?.subscription_tier === 'essential'
+                  ? "You've used all 3 email connections included with Essential. Pro gives you unlimited email accounts."
+                  : "You've used your free email connection. Essential includes 3 email accounts, and Pro is unlimited."}
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/pricing"
+            className="shrink-0 inline-flex items-center justify-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-900 text-sm font-semibold transition-colors"
+          >
+            {profile?.subscription_tier === 'essential' ? 'Upgrade to Pro' : 'See plans'}
+          </Link>
         </div>
       )}
 

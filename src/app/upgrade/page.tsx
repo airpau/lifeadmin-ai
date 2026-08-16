@@ -48,7 +48,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { PRICE_IDS } from '@/lib/stripe';
+import { PRICE_IDS, priceIdToTier, priceIdToCycle } from '@/lib/stripe';
 import { ArrowLeft, CheckCircle2, CreditCard, Loader2, ShieldCheck, AlertTriangle, Lock } from 'lucide-react';
 
 type Plan = 'essential' | 'pro';
@@ -99,11 +99,31 @@ function UpgradeInner() {
   const params = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
 
-  const planParam = (params.get('plan') ?? 'pro') as Plan;
-  const cycleParam = (params.get('cycle') ?? 'monthly') as Cycle;
-  const plan: Plan = planParam === 'essential' ? 'essential' : 'pro';
-  const cycle: Cycle = cycleParam === 'yearly' ? 'yearly' : 'monthly';
-  const priceId = priceIdFor(plan, cycle);
+  // Param resolution — deliberately does NOT default to Pro.
+  //
+  // The old version read `plan` and fell back to 'pro' when it was
+  // missing, so /api/stripe/checkout's 409 redirect (which used to emit
+  // only `priceId`) landed every Essential upgrade on the Pro card.
+  // Order of preference: explicit ?plan= → derive from ?priceId= →
+  // unresolved (render the plan chooser rather than guess).
+  const planParam = params.get('plan');
+  const priceIdParam = params.get('priceId');
+  const cycleParam = params.get('cycle');
+
+  const resolvedPlan: Plan | null =
+    planParam === 'essential' || planParam === 'pro'
+      ? planParam
+      : priceIdToTier(priceIdParam);
+
+  const cycle: Cycle =
+    cycleParam === 'yearly' || cycleParam === 'monthly'
+      ? cycleParam
+      : (priceIdToCycle(priceIdParam) ?? 'monthly');
+
+  // Hooks below need a concrete plan; they're gated on `resolvedPlan`
+  // being non-null before any network call fires.
+  const plan: Plan = resolvedPlan ?? 'pro';
+  const priceId = resolvedPlan ? priceIdFor(resolvedPlan, cycle) : undefined;
 
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -118,7 +138,11 @@ function UpgradeInner() {
     supabase.auth.getUser().then(({ data }) => {
       if (cancelled) return;
       if (!data.user) {
-        router.replace(`/auth/signup?plan=${plan}&cycle=${cycle}`);
+        router.replace(
+          resolvedPlan
+            ? `/auth/signup?plan=${resolvedPlan}&cycle=${cycle}`
+            : '/auth/signup',
+        );
         return;
       }
       setAuthed(true);
@@ -126,7 +150,7 @@ function UpgradeInner() {
       if (!cancelled) setAuthed(false);
     });
     return () => { cancelled = true; };
-  }, [supabase, router, plan, cycle]);
+  }, [supabase, router, resolvedPlan, cycle]);
 
   // Load preview + payment method in parallel.
   useEffect(() => {
@@ -206,13 +230,42 @@ function UpgradeInner() {
     }
   };
 
-  if (!priceId) {
+  // Plan could not be resolved from ?plan= or ?priceId=. Rather than
+  // silently defaulting to Pro (and risking the user confirming a charge
+  // for a plan they never chose), ask them which one they want.
+  if (!resolvedPlan || !priceId) {
     return (
       <Shell>
-        <ErrorCard
-          title="Unknown plan"
-          message="That upgrade link is missing a valid plan. Head back to pricing to start over."
-        />
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-8">
+          <h1 className="text-xl font-semibold text-slate-900 mb-2">Which plan would you like?</h1>
+          <p className="text-sm text-slate-600 mb-6">
+            We could not tell which plan this link was for, so nothing has been charged.
+            Pick one below and we will show you the full breakdown before you pay.
+          </p>
+          <div className="space-y-3">
+            {(['essential', 'pro'] as Plan[]).map((p) => (
+              <Link
+                key={p}
+                href={`/upgrade?plan=${p}&cycle=${cycle}`}
+                className="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-200 hover:border-slate-400 transition-colors"
+              >
+                <span className="text-sm font-semibold text-slate-900">
+                  Paybacker {PLAN_HEADLINE[p].cadence}
+                </span>
+                <span className="text-sm text-slate-600">
+                  {cycle === 'yearly' ? PLAN_HEADLINE[p].yearly : PLAN_HEADLINE[p].monthly}
+                  {cycle === 'yearly' ? '/year' : '/month'}
+                </span>
+              </Link>
+            ))}
+          </div>
+          <Link
+            href="/pricing"
+            className="block text-center text-xs text-slate-500 hover:text-slate-700 mt-6"
+          >
+            Compare all plans
+          </Link>
+        </div>
       </Shell>
     );
   }

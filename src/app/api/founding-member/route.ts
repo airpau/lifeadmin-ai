@@ -14,8 +14,31 @@ function getAdmin() {
   );
 }
 
-// GET: Check trial availability (always active for new users)
+/**
+ * Founding-member grants are OFF unless explicitly enabled.
+ *
+ * Why: POST here hands any authenticated user `subscription_tier = 'pro'`
+ * plus `founding_member = true`, and `founding_member = true` permanently
+ * exempts a profile from webhook demotion (every profile write in
+ * /api/webhooks/stripe carries `.neq('founding_member', true)`). Left
+ * open, anyone who signs up can grant themselves un-demotable Pro. The
+ * campaign this endpoint was built for has long since ended.
+ *
+ * Set FOUNDING_MEMBER_ENABLED=true to re-open it for a future campaign.
+ * Existing founding members are untouched — this only blocks NEW grants.
+ */
+const FOUNDING_MEMBER_ENABLED = process.env.FOUNDING_MEMBER_ENABLED === 'true';
+
+// GET: Check trial availability
 export async function GET() {
+  if (!FOUNDING_MEMBER_ENABLED) {
+    return NextResponse.json({
+      active: false,
+      offer: null,
+      reason: 'The founding member offer has closed.',
+    });
+  }
+
   return NextResponse.json({
     active: true,
     tier: FREE_TRIAL_TIER,
@@ -27,6 +50,20 @@ export async function GET() {
 // POST: Start free trial
 export async function POST(request: NextRequest) {
   try {
+    // Closed by default — see FOUNDING_MEMBER_ENABLED note above.
+    // 410 Gone, not 403, because the offer itself has ended rather than
+    // this particular user being refused.
+    if (!FOUNDING_MEMBER_ENABLED) {
+      return NextResponse.json(
+        {
+          error: 'The founding member offer has closed.',
+          message: 'Our founding member offer has now closed, but you can still start free and upgrade any time.',
+          upgradeUrl: '/pricing',
+        },
+        { status: 410 },
+      );
+    }
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 

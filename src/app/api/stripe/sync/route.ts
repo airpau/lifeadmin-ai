@@ -1,30 +1,18 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { priceIdToTier, TIER_RANK } from '@/lib/stripe';
 
 export const runtime = 'nodejs';
 
 const STRIPE_BASE = 'https://api.stripe.com/v1';
 
-const PRICE_ID_TO_TIER: Record<string, string> = {
-  'price_1TDVvS7qw7mEWYpyN80zzAXM': 'essential',
-  'price_1TDVvS7qw7mEWYpynfpI5x9M': 'essential',
-  'price_1TDVvT7qw7mEWYpySmjZJTpG': 'pro',
-  'price_1TDVvT7qw7mEWYpyrLHr6L45': 'pro',
-  'price_1TDPoH8FbRNalJNU4KeEPNs7': 'essential',
-  'price_1TDPoI8FbRNalJNUSVBFOpyA': 'essential',
-  'price_1TDPoI8FbRNalJNUDAepvxYt': 'pro',
-  'price_1TDPoI8FbRNalJNUEVzsBMvB': 'pro',
-  'price_1TEdJN8FbRNalJNUQxTQpM8Y': 'essential',
-  'price_1TEdJN8FbRNalJNUymPQdKvT': 'essential',
-  'price_1TEdJN8FbRNalJNU0o6F4WZZ': 'pro',
-  'price_1TEdJO8FbRNalJNUEb0U09ln': 'pro',
-  // Live founding member prices
-  'price_1TEsJe7qw7mEWYpyVIt4i2Iy': 'essential',
-  'price_1TEsJf7qw7mEWYpysxw2lnL3': 'essential',
-  'price_1TEsJf7qw7mEWYpy4alOarY6': 'pro',
-  'price_1TEsJf7qw7mEWYpyJmrhcy8b': 'pro',
-};
+// Tier resolution moved to the canonical `priceIdToTier` in @/lib/stripe
+// (2026-08). This route and /api/webhooks/stripe each used to carry their
+// own hardcoded price→tier map that defaulted an unknown price ID to
+// 'essential'. A single stale env var would therefore have written every
+// Pro subscriber down to Essential on their next dashboard mount. Unknown
+// price IDs now resolve to null and the tier write is skipped entirely.
 
 function formatDate(timestamp: number | null | undefined): string | null {
   if (!timestamp) return null;
@@ -99,7 +87,39 @@ export async function POST() {
     const sub = await stripeGet(`/subscriptions/${allSubs[0].id}`);
 
     const currentPriceId = sub.items?.data?.[0]?.price?.id || '';
-    const currentTier = PRICE_ID_TO_TIER[currentPriceId] || 'essential';
+    const currentTier = priceIdToTier(currentPriceId);
+
+    const storedTier = (profile.subscription_tier as string) || 'free';
+
+    // Decide whether the tier is safe to write. Two reasons to skip:
+    //
+    //   1. Unrecognised price ID → never guess. The old code defaulted to
+    //      'essential', which would demote a Pro subscriber.
+    //   2. Resolved tier ranks LOWER than the stored tier → that's a
+    //      demotion, and per CLAUDE.md demotion is webhook-driven only.
+    //
+    // In both cases we still refresh status + subscription id, and we
+    // still return pendingChange so the profile page can show a
+    // scheduled downgrade / cancellation banner.
+    let skipTierWrite: string | null = null;
+    if (!currentTier) {
+      skipTierWrite = 'Unrecognised Stripe price ID — stored tier preserved';
+      console.error('Stripe sync: unrecognised price ID — tier write skipped', {
+        userId: user.id,
+        priceId: currentPriceId,
+        subscriptionId: sub.id,
+      });
+    } else if ((TIER_RANK[currentTier] ?? 0) < (TIER_RANK[storedTier] ?? 0)) {
+      skipTierWrite = 'Stored tier is higher — demotion is webhook-driven only';
+      console.warn('Stripe sync: resolved tier is lower than stored tier — write skipped', {
+        userId: user.id,
+        storedTier,
+        resolvedTier: currentTier,
+        subscriptionId: sub.id,
+      });
+    }
+
+    const tierToReport = skipTierWrite ? storedTier : currentTier!;
 
     console.log(`Sync: sub=${sub.id} status=${sub.status} cancel_at_period_end=${sub.cancel_at_period_end} cancel_at=${sub.cancel_at} current_period_end=${sub.current_period_end}`);
 
@@ -121,7 +141,7 @@ export async function POST() {
         if (schedule.phases && schedule.phases.length > 1) {
           const nextPhase = schedule.phases[1];
           const nextPriceId = nextPhase.items?.[0]?.price;
-          const nextTier = PRICE_ID_TO_TIER[nextPriceId] || null;
+          const nextTier = priceIdToTier(nextPriceId);
           if (nextTier && nextTier !== currentTier) {
             const date = formatDate(nextPhase.start_date);
             if (date) pendingChange = { type: 'downgrade', tier: nextTier, date };
@@ -135,7 +155,7 @@ export async function POST() {
     // Check for pending_update
     if (!pendingChange && sub.pending_update) {
       const pendingPriceId = sub.pending_update.subscription_items?.[0]?.price;
-      const pendingTier = pendingPriceId ? PRICE_ID_TO_TIER[pendingPriceId] : null;
+      const pendingTier = priceIdToTier(pendingPriceId);
       if (pendingTier && pendingTier !== currentTier) {
         const date = formatDate(sub.current_period_end || sub.cancel_at);
         if (date) pendingChange = { type: 'downgrade', tier: pendingTier, date };
@@ -149,7 +169,7 @@ export async function POST() {
     // because this update failed every time without anyone noticing).
     const admin = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
     const { error: updateError } = await admin.from('profiles').update({
-      subscription_tier: currentTier,
+      ...(skipTierWrite ? {} : { subscription_tier: currentTier }),
       subscription_status: sub.status,
       stripe_subscription_id: sub.id,
       updated_at: new Date().toISOString(),
@@ -158,11 +178,11 @@ export async function POST() {
     if (updateError) {
       console.error('Stripe sync: profile UPDATE FAILED:', updateError.message, {
         userId: user.id,
-        attemptedTier: currentTier,
+        attemptedTier: tierToReport,
         stripeSubId: sub.id,
       });
       return NextResponse.json(
-        { error: `Profile update failed: ${updateError.message}`, attemptedTier: currentTier },
+        { error: `Profile update failed: ${updateError.message}`, attemptedTier: tierToReport },
         { status: 500 },
       );
     }
@@ -175,11 +195,12 @@ export async function POST() {
 
     return NextResponse.json({
       synced: true,
-      tier: currentTier,
+      tier: tierToReport,
       status: sub.status,
       pendingChange,
       currentPeriodEnd,
       subscriptionId: sub.id,
+      ...(skipTierWrite ? { tierWriteSkipped: skipTierWrite } : {}),
     });
   } catch (err: any) {
     console.error('Stripe sync error:', err.message);

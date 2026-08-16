@@ -118,6 +118,37 @@ function blockBar(spent: number, limit: number, width = 10): string {
   return `[${bar}] ${Math.round(pct * 100)}%`;
 }
 
+/**
+ * Paywall gate for Pocket Agent tools.
+ *
+ * The Telegram bot is free on every tier, which is deliberate — Telegram
+ * costs us nothing to send. But "free channel" must not mean "free
+ * features": several tools here front paid-only capabilities that are
+ * gated on the web app (cancellation emails, Money Hub Top Merchants,
+ * budgets, savings goals). Without this check a Free user could reach
+ * them through the bot and bypass the paywall entirely.
+ *
+ * Returns null when allowed, or a ready-to-send ToolResult when not.
+ * Uses getEffectiveTier so an active onboarding trial still gets through.
+ */
+async function requireTier(
+  userId: string,
+  minimum: 'essential' | 'pro',
+  featureLabel: string,
+): Promise<ToolResult | null> {
+  const tier = await getEffectiveTier(userId);
+  const rank: Record<string, number> = { free: 0, essential: 1, pro: 2 };
+  if ((rank[tier] ?? 0) >= rank[minimum]) return null;
+
+  const planName = minimum === 'pro' ? 'Pro' : 'Essential';
+  return {
+    text:
+      `${featureLabel} is part of Paybacker ${planName}. ` +
+      `Upgrade and I can do this for you right here in the chat.\n\n` +
+      `https://paybacker.co.uk/pricing`,
+  };
+}
+
 export async function executeToolCall(
   toolName: string,
   toolInput: Record<string, unknown>,
@@ -1556,6 +1587,19 @@ async function draftDisputeLetter(
     reply_tone?: ReplyTone;
   },
 ): Promise<ToolResult> {
+  // Same 3-letters/month cap the web route enforces. This handler drafts
+  // a full AI letter, so leaving it ungated let a Free user generate
+  // unlimited letters through the bot while /api/complaints/generate
+  // capped them at 3. checkUsageLimit reads the same usage_logs counter.
+  const usage = await checkUsageLimit(userId, 'complaint_generated');
+  if (!usage.allowed) {
+    return {
+      text:
+        `You've used ${usage.used} of ${usage.limit} free letters this month on the ${usage.tier} plan. ` +
+        `Upgrade to Essential or Pro for unlimited letters: https://paybacker.co.uk/pricing`,
+    };
+  }
+
   // Get user's name and address for the letter
   const { data: profile } = await supabase
     .from('profiles')
@@ -1663,6 +1707,10 @@ async function draftDisputeLetter(
     });
     letterText = unified.letter;
   }
+
+  // Only count the letter once it actually generated — a failed Claude
+  // call must not burn one of a Free user's three monthly letters.
+  await incrementUsage(userId, 'complaint_generated');
 
   const pendingAction: PendingAction = {
     type: 'dispute_letter',
@@ -1966,6 +2014,9 @@ async function setBudget(
   category: string,
   monthlyLimit: number,
 ): Promise<ToolResult> {
+  const gate = await requireTier(userId, 'essential', 'Money Hub Budgets');
+  if (gate) return gate;
+
   const { error } = await supabase.from('money_hub_budgets').upsert(
     {
       user_id: userId,
@@ -3522,6 +3573,9 @@ async function createSavingsGoal(
   userId: string,
   params: { goal_name: string; target_amount: number; target_date?: string; emoji?: string },
 ): Promise<ToolResult> {
+  const gate = await requireTier(userId, 'essential', 'Savings Goals');
+  if (gate) return gate;
+
   const { error } = await supabase.from('money_hub_savings_goals').insert({
     user_id: userId,
     goal_name: params.goal_name,
@@ -5859,6 +5913,9 @@ async function generateCancellationEmail(
     account_email?: string;
   },
 ): Promise<ToolResult> {
+  const gate = await requireTier(userId, 'essential', 'AI cancellation emails');
+  if (gate) return gate;
+
   const { data: profile } = await supabase
     .from('profiles')
     .select('full_name, first_name, last_name, email')
@@ -7024,6 +7081,9 @@ async function getTopMerchants(
   userId: string,
   params: { month?: string; limit?: number },
 ): Promise<ToolResult> {
+  const gate = await requireTier(userId, 'pro', 'Money Hub Top Merchants');
+  if (gate) return gate;
+
   const limit = params.limit ?? 10;
   let query = supabase
     .from('bank_transactions')

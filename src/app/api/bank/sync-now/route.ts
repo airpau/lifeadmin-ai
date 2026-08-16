@@ -65,14 +65,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Pro-only feature (or test user)
-  const isTestUser = user.email === 'sheva.tests.2026@outlook.com';
+  // Pro-only feature.
+  //
+  // The hardcoded `user.email === 'sheva.tests.2026@outlook.com'` bypass
+  // was a production backdoor — anyone controlling that mailbox got
+  // Pro-gated Open Banking syncs against the shared API ceiling. It is
+  // now limited to non-production environments only.
+  const isTestUser =
+    process.env.NODE_ENV !== 'production' &&
+    user.email === 'sheva.tests.2026@outlook.com';
   const plan = await getUserPlan(user.id);
   if (plan.tier !== 'pro' && !isTestUser) {
     const msg = plan.tier === 'essential'
       ? 'Manual sync is a Pro feature. Upgrade to Pro for on-demand syncing.'
       : 'Manual sync requires an Essential or Pro plan.';
-    return NextResponse.json({ error: msg, upgradeRequired: true }, { status: 403 });
+    return NextResponse.json({ error: msg, upgradeRequired: true, upgradeUrl: '/pricing' }, { status: 403 });
   }
 
   const config = TIER_CONFIG.pro;

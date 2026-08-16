@@ -370,6 +370,7 @@ export default function PricingCTA({ plan, className, children, style, billingCy
         url?: string;
         upgraded?: boolean;
         redirectUrl?: string;
+        requiresConfirmation?: boolean;
         alreadySubscribed?: boolean;
         error?: string;
       };
@@ -379,11 +380,21 @@ export default function PricingCTA({ plan, className, children, style, billingCy
         throw new Error(`Checkout returned ${res.status}: ${text.slice(0, 200)}`);
       }
 
-      // Three response shapes:
+      // Response shapes:
+      //   409 { requiresConfirmation, redirectUrl } → the route refuses to
+      //        charge without an explicit confirm. Send the user to the
+      //        /upgrade confirmation page (prorated breakdown + card on
+      //        file). This is the NORMAL path for a logged-in user — we do
+      //        NOT send `confirmed: true` from here, because /upgrade is
+      //        what prevents a silent charge.
       //   { url } → fresh Checkout session, redirect to Stripe
       //   { upgraded: true, redirectUrl } → already-charged via proration,
       //                                     bounce to dashboard with banner
       //   { alreadySubscribed } → friendly toast, no redirect
+      if (res.status === 409 && data.redirectUrl) {
+        window.location.assign(data.redirectUrl);
+        return;
+      }
       if (data.url) {
         try { sessionStorage.setItem('awin_checkout', JSON.stringify({ tier: plan })); } catch { /* sessionStorage may be blocked */ }
         window.location.href = data.url;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { PRICE_IDS } from '@/lib/stripe';
+import { priceIdToTier, priceIdToCycle } from '@/lib/stripe';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -71,11 +71,27 @@ export async function POST(request: NextRequest) {
     // resurrects the old race-condition path, the worst case is the
     // user is redirected to /upgrade — never silently charged.
     if (!confirmed) {
+      // /upgrade reads `plan` + `cycle`, NOT `priceId`. Emitting only
+      // priceId here meant the page fell back to its 'pro' default, so
+      // an Essential upgrade landed on the Pro confirmation card. Resolve
+      // the plan from the canonical PRICE_IDS map instead. We still pass
+      // priceId through so /upgrade can recover if the map ever misses.
+      const resolvedPlan = priceIdToTier(priceId);
+      const resolvedCycle =
+        billingCycle === 'monthly' || billingCycle === 'yearly'
+          ? billingCycle
+          : priceIdToCycle(priceId);
+
+      const params = new URLSearchParams();
+      if (resolvedPlan) params.set('plan', resolvedPlan);
+      if (resolvedCycle) params.set('cycle', resolvedCycle);
+      params.set('priceId', priceId);
+
       return NextResponse.json(
         {
           error: 'Charge requires explicit confirmation. Redirecting…',
           requiresConfirmation: true,
-          redirectUrl: `/upgrade?priceId=${encodeURIComponent(priceId)}${billingCycle ? `&cycle=${billingCycle}` : ''}`,
+          redirectUrl: `/upgrade?${params.toString()}`,
         },
         { status: 409 },
       );
@@ -183,20 +199,26 @@ export async function POST(request: NextRequest) {
         // charged the prorated upgrade correctly but our profile row
         // stayed on 'essential'. Compare against PRICE_IDS from
         // @/lib/stripe instead — that's the authoritative source.
-        const isProPrice =
-          priceId === PRICE_IDS.pro_monthly || priceId === PRICE_IDS.pro_yearly;
-        const isEssentialPrice =
-          priceId === PRICE_IDS.essential_monthly || priceId === PRICE_IDS.essential_yearly;
-        const newTier: 'pro' | 'essential' | 'free' = isProPrice
-          ? 'pro'
-          : isEssentialPrice
-            ? 'essential'
-            : 'free';
+        //
+        // 2026-08 follow-up: resolution now goes through the canonical
+        // priceIdToTier() so checkout, sync and the webhook can never
+        // disagree. An unrecognised price returns null — we then write
+        // the status/sub id but deliberately LEAVE the tier alone rather
+        // than defaulting it (the old `: 'free'` fallback could wipe a
+        // paying subscriber's tier if a price ID ever went missing).
+        const newTier = priceIdToTier(priceId);
+
+        if (!newTier) {
+          console.error('Checkout: unrecognised priceId — tier write skipped', {
+            priceId,
+            userId: user.id,
+          });
+        }
 
         await supabase
           .from('profiles')
           .update({
-            subscription_tier: newTier,
+            ...(newTier ? { subscription_tier: newTier } : {}),
             subscription_status: updated.status ?? 'active',
             stripe_subscription_id: currentSub.id,
           })

@@ -9,6 +9,7 @@ import {
 } from '@/lib/yapily';
 import { UPCOMING_FEATURE_SCOPES } from '@/lib/yapily/upcoming';
 import { TIER_CONFIG, type BankTier } from '@/lib/bank-tier-config';
+import { getEffectiveTier } from '@/lib/plan-limits';
 
 /**
  * GET /api/auth/yapily?institutionId=xxx
@@ -42,14 +43,11 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Check tier-based connection limits ──
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('subscription_tier')
-    .eq('id', user.id)
-    .single();
-
-  const tier = (profile?.subscription_tier || 'free') as BankTier;
-  const tierConfig = TIER_CONFIG[tier];
+  // Use getEffectiveTier, not the raw profile column: it applies the
+  // onboarding-trial override, so a trial-Pro user isn't capped at the
+  // Free limit while their trial is still running.
+  const tier = (await getEffectiveTier(user.id)) as BankTier;
+  const tierConfig = TIER_CONFIG[tier] ?? TIER_CONFIG.free;
 
   const { data: existingConnections } = await supabase
     .from('bank_connections')
@@ -61,17 +59,19 @@ export async function GET(request: NextRequest) {
   const connectionCount = existingConnections?.length || 0;
 
   if (connectionCount >= tierConfig.maxConnections) {
-    const upgradeMessage =
-      tier === 'free'
-        ? 'Free plan allows 1 bank connection. Upgrade to Essential for 2, or Pro for unlimited.'
-        : tier === 'essential'
-          ? 'Essential plan allows 2 bank connections. Upgrade to Pro for unlimited banks.'
-          : 'Connection limit reached.';
+    // Message comes from TIER_CONFIG so it can never drift from the real
+    // caps again. The hardcoded copy here used to say "Free plan allows 1
+    // bank connection. Upgrade to Essential for 2" — the actual limits
+    // are Free 2, Essential 3, Pro unlimited.
+    const upgradeMessage = tierConfig.upgradeMessage
+      ? `You've connected ${connectionCount} of ${tierConfig.maxConnections} banks on the ${tier} plan. ${tierConfig.upgradeMessage}`
+      : 'Connection limit reached.';
 
     return NextResponse.json(
       {
         error: upgradeMessage,
         upgradeRequired: true,
+        upgradeUrl: '/pricing',
         tier,
         maxConnections: tierConfig.maxConnections,
       },

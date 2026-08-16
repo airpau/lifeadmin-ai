@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { notifyAgents } from '@/lib/agent-notify';
 import { trackSubscription } from '@/lib/meta-conversions';
 import { captureServer } from '@/lib/posthog-server';
+import { priceIdToTier } from '@/lib/stripe';
 
 export const runtime = 'nodejs';
 
@@ -18,31 +19,18 @@ function getStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY!, { typescript: true });
 }
 
-const PRICE_ID_TO_TIER: Record<string, string> = {
-  // Old test prices
-  'price_1TDVvS7qw7mEWYpyN80zzAXM': 'essential',
-  'price_1TDVvS7qw7mEWYpynfpI5x9M': 'essential',
-  'price_1TDVvT7qw7mEWYpySmjZJTpG': 'pro',
-  'price_1TDVvT7qw7mEWYpyrLHr6L45': 'pro',
-  // Old live prices (archived)
-  'price_1TDPoH8FbRNalJNU4KeEPNs7': 'essential',
-  'price_1TDPoI8FbRNalJNUSVBFOpyA': 'essential',
-  'price_1TDPoI8FbRNalJNUDAepvxYt': 'pro',
-  'price_1TDPoI8FbRNalJNUEVzsBMvB': 'pro',
-  // Founding member prices (test mode)
-  'price_1TEdJN8FbRNalJNUQxTQpM8Y': 'essential',
-  'price_1TEdJN8FbRNalJNUymPQdKvT': 'essential',
-  'price_1TEdJN8FbRNalJNU0o6F4WZZ': 'pro',
-  'price_1TEdJO8FbRNalJNUEb0U09ln': 'pro',
-  // Founding member prices (live mode - current)
-  'price_1TEsJe7qw7mEWYpyVIt4i2Iy': 'essential',
-  'price_1TEsJf7qw7mEWYpysxw2lnL3': 'essential',
-  'price_1TEsJf7qw7mEWYpy4alOarY6': 'pro',
-  'price_1TEsJf7qw7mEWYpyJmrhcy8b': 'pro',
-};
-
-function getPlanTier(priceId: string): string {
-  return PRICE_ID_TO_TIER[priceId] ?? 'essential';
+// Tier resolution lives in the canonical `priceIdToTier` in @/lib/stripe
+// (2026-08). This route used to carry its own hardcoded price→tier map
+// that defaulted an unknown price ID to 'essential' — one stale env var
+// would have written every Pro subscriber down to Essential. Unknown
+// price IDs now return null and every call site SKIPS the tier write
+// rather than guessing.
+function getPlanTier(priceId: string): 'essential' | 'pro' | null {
+  const tier = priceIdToTier(priceId);
+  if (!tier) {
+    console.error('[stripe webhook] unrecognised price ID — tier write skipped', { priceId });
+  }
+  return tier;
 }
 
 async function scheduleLegacySubscriptionsForCancellation(
@@ -129,9 +117,7 @@ export async function POST(request: NextRequest) {
             try {
               const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1, expand: ['data.price'] });
               const priceId = lineItems.data[0]?.price?.id;
-              if (priceId && PRICE_ID_TO_TIER[priceId]) {
-                intendedTier = PRICE_ID_TO_TIER[priceId] as 'essential' | 'pro';
-              }
+              intendedTier = priceIdToTier(priceId);
               const recurring = lineItems.data[0]?.price?.recurring?.interval;
               if (recurring === 'month') intendedInterval = 'monthly';
               if (recurring === 'year') intendedInterval = 'yearly';
@@ -179,20 +165,26 @@ export async function POST(request: NextRequest) {
           break;
         }
 
-        let tier = 'essential';
+        // `resolvedTier` is null when the price ID is unrecognised. In
+        // that case we still record the customer/subscription ids and
+        // status, but we do NOT write a guessed subscription_tier — the
+        // old `?? 'essential'` default could demote a Pro subscriber.
+        let resolvedTier: 'essential' | 'pro' | null = null;
         let billingInterval: 'month' | 'year' = 'month';
         if (session.subscription) {
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
           const priceId = subscription.items.data[0]?.price.id || '';
-          tier = getPlanTier(priceId);
+          resolvedTier = getPlanTier(priceId);
           billingInterval = subscription.items.data[0]?.price.recurring?.interval === 'year' ? 'year' : 'month';
-          console.log(`Webhook: subscription priceId=${priceId} tier=${tier} status=${subscription.status}`);
+          console.log(`Webhook: subscription priceId=${priceId} tier=${resolvedTier ?? 'UNKNOWN'} status=${subscription.status}`);
         }
+        // Label used for analytics / Awin only — never written to the DB.
+        const tier = resolvedTier ?? 'essential';
 
         const { error: updateError, data: updated } = await supabase
           .from('profiles')
           .update({
-            subscription_tier: tier,
+            ...(resolvedTier ? { subscription_tier: resolvedTier } : {}),
             subscription_status: 'active',
             stripe_customer_id: session.customer as string,
             stripe_subscription_id: session.subscription as string,
@@ -324,8 +316,9 @@ export async function POST(request: NextRequest) {
         console.log(`Webhook subscription.created: status=${subscription.status} customer=${customerId} userId=${userId} tier=${tier}`);
 
         if (subscription.status === 'trialing' || subscription.status === 'active') {
+          // Unknown price ID → skip the tier write rather than default it.
           const updateData = {
-            subscription_tier: tier,
+            ...(tier ? { subscription_tier: tier } : {}),
             subscription_status: subscription.status,
             stripe_subscription_id: subscription.id,
             updated_at: new Date().toISOString(),
@@ -347,9 +340,12 @@ export async function POST(request: NextRequest) {
         const priceId = subscription.items.data[0]?.price.id || '';
         const tier = getPlanTier(priceId);
         const status = subscription.status;
-        const newTier = status === 'canceled' ? 'free' : tier;
+        // 'free' on cancellation is an explicit demotion signal, not a
+        // price lookup. Otherwise: null (unknown price) means skip.
+        const newTier: 'free' | 'essential' | 'pro' | null =
+          status === 'canceled' ? 'free' : tier;
 
-        console.log(`Webhook subscription.updated: status=${status} customer=${customerId} tier=${tier}`);
+        console.log(`Webhook subscription.updated: status=${status} customer=${customerId} tier=${newTier ?? 'UNKNOWN — tier write skipped'}`);
 
         // Read the old tier so we can decide whether this is a downgrade.
         const { data: existing } = await supabase
@@ -362,7 +358,7 @@ export async function POST(request: NextRequest) {
         const { error } = await supabase
           .from('profiles')
           .update({
-            subscription_tier: newTier,
+            ...(newTier ? { subscription_tier: newTier } : {}),
             subscription_status: status,
             updated_at: new Date().toISOString(),
           })
@@ -373,7 +369,7 @@ export async function POST(request: NextRequest) {
         else console.log('Webhook: subscription.updated OK');
 
         // Grace-period hook — fires when tier drops to a lower one.
-        if (!error && existing?.id && existing.subscription_tier) {
+        if (!error && newTier && existing?.id && existing.subscription_tier) {
           try {
             const { openDowngradeEvent } = await import('@/lib/plan-downgrade');
             await openDowngradeEvent(supabase as any, existing.id, existing.subscription_tier as any, newTier as any);
