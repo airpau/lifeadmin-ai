@@ -29,6 +29,9 @@ import {
   recordAlertSuppressed,
   shouldSuppressAlert,
 } from './alert-loop';
+import { decideSend, recordMarketingSend } from './send-policy';
+import type { DigestSection } from './alert-queue';
+import { createClient } from '@supabase/supabase-js';
 
 let cached: WhatsAppProvider | null = null;
 
@@ -65,8 +68,85 @@ export interface AlertContext {
   /** true → the caller does NOT log its own whatsapp_message_log row (the
    *  unified dispatcher), so record one here for receipts + attribution. */
   logMessage?: boolean;
+  /**
+   * Plain-text equivalent of the template body. When supplied AND the
+   * user is inside the 24h customer-service window we send this as a
+   * FREE in-window text instead of paying Meta for the template.
+   * Also used as the digest line when the send is deferred.
+   */
+  textFallback?: string;
+  /**
+   * Genuinely urgent — bypasses quiet hours and the daily paid-template
+   * cap. Use sparingly (£500+ debits, trial about to auto-charge, the
+   * consolidated briefs themselves).
+   */
+  allowUrgent?: boolean;
+  /** Stable dedup key used if the send is deferred to the evening digest. */
+  dedupKey?: string;
+  /** Digest section override (derived from eventType otherwise). */
+  digestSection?: DigestSection;
+  /** £ magnitude used to rank "top items" within a digest section. */
+  amount?: number;
 }
 
+function policyAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+/**
+ * Record a send in whatsapp_message_log so the daily paid-template cap
+ * has something to count. Several call sites also log their own row for
+ * the same message; the counter dedups on provider_message_id, so a
+ * duplicate row is harmless. Skipped when the unified dispatcher has
+ * already been asked to log (ctx.logMessage).
+ */
+async function logFacadeSend(args: {
+  userId: string | null;
+  phone: string;
+  messageType: 'template' | 'text';
+  templateName: string | null;
+  providerMessageId?: string;
+  eventType?: string;
+  preview?: string;
+}): Promise<void> {
+  const sb = policyAdmin();
+  if (!sb) return;
+  await sb
+    .from('whatsapp_message_log')
+    .insert({
+      user_id: args.userId,
+      whatsapp_phone: args.phone.replace(/^whatsapp:/, ''),
+      direction: 'outbound',
+      message_type: args.messageType,
+      template_name: args.templateName,
+      provider: process.env.WHATSAPP_PROVIDER || 'twilio',
+      provider_message_id: args.providerMessageId ?? null,
+      notification_type: args.eventType ?? null,
+      message_text: args.preview ? args.preview.slice(0, 500) : null,
+    })
+    .then(undefined, () => {
+      /* logging must never break the send path */
+    });
+}
+
+/**
+ * THE CHOKEPOINT. Every WhatsApp template send in the codebase goes
+ * through here, so the cost/fatigue policy in ./send-policy.ts is
+ * applied uniformly:
+ *
+ *   - free in-window text preferred over a paid template
+ *   - max 2 paid templates per user per day (auth/OTP + allowUrgent exempt)
+ *   - quiet hours 22:00-07:30 Europe/London deferred
+ *   - MARKETING templates blocked without a recorded opt-in
+ *
+ * Deferred sends are queued for the 18:00 evening digest and return a
+ * synthetic result with providerMessageId `deferred:<reason>` — callers
+ * that treat a resolved promise as "delivered" keep working, because the
+ * item genuinely will be delivered (batched) later the same day.
+ */
 export async function sendWhatsAppTemplate(
   opts: SendTemplateOptions,
   ctx?: AlertContext,
@@ -98,12 +178,94 @@ export async function sendWhatsAppTemplate(
     }
   }
 
+  // Cost / fatigue policy — window-first, daily cap, quiet hours, marketing.
+  const providerName = (process.env.WHATSAPP_PROVIDER ?? 'twilio') as WhatsAppProviderName;
+  const decision = await decideSend({
+    phone: opts.to,
+    templateName: opts.templateName,
+    parameters: opts.parameters ?? [],
+    userId: ctx?.userId ?? null,
+    eventType: ctx?.eventType,
+    textFallback: ctx?.textFallback,
+    allowUrgent: ctx?.allowUrgent,
+    dedupKey: ctx?.dedupKey,
+    digestSection: ctx?.digestSection,
+    amount: ctx?.amount,
+  });
+
+  if (decision.action === 'block') {
+    console.warn(
+      `[whatsapp] blocked ${opts.templateName} for ${decision.userId ?? 'unknown user'}: ${decision.reason}`,
+    );
+    return {
+      provider: providerName,
+      providerMessageId: `blocked:${decision.reason}`,
+      acceptedAt: new Date(),
+    };
+  }
+
+  if (decision.action === 'defer') {
+    return {
+      provider: providerName,
+      providerMessageId: `deferred:${decision.reason}`,
+      acceptedAt: new Date(),
+    };
+  }
+
+  if (decision.action === 'text' && decision.text) {
+    // FREE send inside the 24h customer-service window — no Meta fee and
+    // it does NOT count against the daily paid-template cap.
+    const textResult = await getWhatsAppProvider().sendText({
+      to: opts.to,
+      text: decision.text,
+    });
+    await logFacadeSend({
+      userId: decision.userId,
+      phone: opts.to,
+      messageType: 'text',
+      templateName: null,
+      providerMessageId: textResult.providerMessageId,
+      eventType: ctx?.eventType,
+      preview: decision.text,
+    });
+    // Still measured by the self-learning loop. logMessage stays false so
+    // recordAlertSent doesn't write a 'template' row for a free text send.
+    void recordAlertSent({
+      userId: decision.userId,
+      eventType: ctx?.eventType,
+      providerMessageId: textResult.providerMessageId,
+      phone: opts.to,
+      templateName: opts.templateName,
+      logMessage: false,
+    });
+    return textResult;
+  }
+
   const result = await getWhatsAppProvider().sendTemplate(opts);
+
+  if (!ctx?.logMessage) {
+    // Nobody else is guaranteed to log this paid send — record it so the
+    // daily cap can count it. Duplicate rows from callers that log their
+    // own are deduped by provider_message_id in the counter.
+    await logFacadeSend({
+      userId: decision.userId,
+      phone: opts.to,
+      messageType: 'template',
+      templateName: opts.templateName,
+      providerMessageId: result.providerMessageId,
+      eventType: ctx?.eventType,
+      preview: (opts.parameters ?? []).join(' | '),
+    });
+  }
+
+  if (decision.userId && decision.reason.startsWith('marketing')) {
+    void recordMarketingSend(decision.userId);
+  }
 
   // Measure the send (fire-and-forget; never blocks or throws). Non-alert
   // templates (welcome/opt-out/OTP/agent-reply) are ignored inside the helper.
   void recordAlertSent({
-    userId: ctx?.userId ?? null,
+    userId: ctx?.userId ?? decision.userId,
     eventType: ctx?.eventType,
     providerMessageId: result.providerMessageId,
     phone: opts.to,

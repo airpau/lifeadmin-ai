@@ -21,11 +21,14 @@
  *   - amount > MIN_AMOUNT (£10)
  *   - user_category NOT in (transfer / refund / fee_refund / interest)
  *   - description does not contain "REFUND" / "REVERSAL" / "RETURN"
- *   - txn timestamp within the last 8 hours (cron runs 5x daily,
- *     30 minutes after each bank-sync; 8h covers the longest gap
- *     between runs (20:00→03:00 UTC = 7h) plus 1h slack)
+ *   - txn timestamp within the last LOOKBACK_HOURS (see const below)
  *   - notification_log dedup keyed on the txn id so re-runs don't
  *     double-send
+ *
+ * 2026-08-16 — WhatsApp leg now ENQUEUES to the 18:00 evening digest
+ * instead of firing a billed template per credit. Cadence dropped from
+ * 5x/day to 2x/day in vercel.json accordingly, and the lookback widened
+ * to cover the longer gap between runs.
  *
  * Bank-sync cadence (vercel.json `bank-sync` schedule) is the upstream
  * bottleneck: a 9am salary won't be detected until the next sync. We
@@ -37,6 +40,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import { isPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
+import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -49,6 +54,13 @@ function getAdmin() {
 }
 
 const MIN_AMOUNT = 10; // £10 minimum to ping
+
+/**
+ * Detection lookback. The cron now runs twice daily (08:00 and 17:00 UTC),
+ * so the longest gap between runs is 15h (17:00 → 08:00). 16h gives an
+ * hour of slack; notification_log dedup makes the overlap harmless.
+ */
+const LOOKBACK_HOURS = 16;
 
 const EXCLUDED_CATS = new Set([
   'transfer', 'transfers', 'internal_transfer', 'self_transfer',
@@ -114,11 +126,10 @@ export async function POST(request: NextRequest) {
 
 async function runCron() {
   const supabase = getAdmin();
-  // 8h window — wider than the longest gap between income-received
-  // cron runs (7h, between 20:00 and 03:00 UTC) plus 1h slack.
-  // notification_log dedup prevents double-sends for transactions
+  // Wider than the longest gap between income-received cron runs plus
+  // slack. notification_log dedup prevents double-sends for transactions
   // that overlap multiple windows.
-  const since = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
 
   // 1. Find candidate income transactions in the window.
   const { data: candidates, error } = await supabase
@@ -181,6 +192,11 @@ async function runCron() {
     .in('reference_key', refKeys);
   const sentKeys = new Set((alreadySent ?? []).map((r) => r.reference_key));
 
+  // Only users on WhatsApp get a digest row — Telegram users already
+  // receive the full rich alert below and would otherwise accumulate
+  // queue rows the digest cron just cancels.
+  const whatsappUsers = await loadUsersWithActiveWhatsApp(supabase);
+
   let sent = 0;
   const errors: string[] = [];
 
@@ -237,20 +253,30 @@ async function runCron() {
       }
       const balanceLabel = 'see Money Hub';
 
+      // WhatsApp leg — ENQUEUED, not sent (2026-08-16 cost/fatigue rework).
+      // A credit landing is worth knowing about but is never urgent enough
+      // to justify an individually-billed template per transaction. The
+      // 18:00 evening digest rolls every credit into one "Money in" section.
+      // Telegram, push, in-app and email behaviour below is UNCHANGED.
+      if (whatsappUsers.has(tx.user_id)) {
+        await enqueueDigestItem(supabase, {
+          userId: tx.user_id,
+          eventType: 'income_received',
+          section: 'money_in',
+          line: `${amount} from ${merchant}`,
+          amount: Number(tx.amount),
+          templateName: 'paybacker_payment_received',
+          parameters: [firstName, merchant, amount, balanceLabel],
+          // Transaction id keys the queue row, matching the notification_log
+          // reference_key, so an item can't be enqueued twice across runs.
+          dedupKey: refKey,
+        });
+      }
+
       const result = await sendNotification(supabase, {
         userId: tx.user_id,
         event: 'income_received',
         telegram: { text: `${headline}\n\n${detail}` },
-        whatsapp: {
-          // Approved utility template (2026-05-29). Works in AND out of
-          // the 24h window. Template vars are short strings only — no
-          // newlines (Twilio 21656). The wider in-window text below
-          // is preserved for any future dispatcher pass that prefers
-          // free-form when available.
-          templateName: 'paybacker_payment_received',
-          templateParameters: [firstName, merchant, amount, balanceLabel],
-          text: `${headline}\n\n${detail.replace(/\*/g, '')}`,
-        },
         push: {
           title: headline.replace(/\*/g, ''),
           body: `From ${merchant}`,
@@ -258,6 +284,7 @@ async function runCron() {
         },
         // Email opt-in only — see EVENT_CATALOG default.
       });
+      void result;
       // Always stamp the dedup log — the in-app notification (above)
       // IS the delivery for users without a Pocket Agent connected,
       // so even when sendNotification's channels all skip we still

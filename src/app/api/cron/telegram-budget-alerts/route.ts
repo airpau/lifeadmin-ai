@@ -12,8 +12,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
-import { sendNotification } from '@/lib/notifications/dispatch';
 import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
+import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -208,9 +208,11 @@ export async function GET(request: NextRequest) {
   }
 
   // ----------------------------------------------------------------
-  // WhatsApp pass — same budget-threshold detection, sent as the
-  // Meta-approved `paybacker_budget_alert` template. Pocket Agent mutex
-  // guarantees these users are NOT in the Telegram loop above.
+  // WhatsApp pass — same budget-threshold detection, ENQUEUED for the
+  // 18:00 evening digest rather than sent as an individually-billed
+  // `paybacker_budget_alert` template (2026-08-16 cost/fatigue rework).
+  // Pocket Agent mutex guarantees these users are NOT in the Telegram
+  // loop above, which is unchanged.
   // ----------------------------------------------------------------
   let waSent = 0;
   const { data: waSessions } = await supabase
@@ -279,21 +281,33 @@ export async function GET(request: NextRequest) {
           else if (pct >= 80 && pct < 100 && !alreadySent.has(`${budget.category}_80`)) threshold = 80;
           if (!threshold) continue;
 
-          const result = await sendNotification(supabase, {
+          // 2026-08-16 — ENQUEUE per category instead of firing a billed
+          // `paybacker_budget_alert` template each. A user with five
+          // budgets could previously get five separate WhatsApp messages
+          // in one run. They now arrive as one "Budgets" section in the
+          // 18:00 evening digest. Telegram behaviour above is UNCHANGED.
+          const remaining = Math.max(0, limit - spent);
+          const outcome = await enqueueDigestItem(supabase, {
             userId: session.user_id,
-            event: 'budget_alert',
-            whatsapp: {
-              templateName: 'paybacker_budget_alert',
-              templateParameters: [
-                budget.category,
-                `${Math.round(pct)}`,
-                `£${Math.max(0, limit - spent).toFixed(2)}`,
-                endDateStr,
-              ],
-            },
+            eventType: 'budget_alert',
+            section: 'budgets',
+            line:
+              `${budget.category} at ${Math.round(pct)}% — ` +
+              `£${remaining.toFixed(2)} left until ${endDateStr}`,
+            amount: spent,
+            templateName: 'paybacker_budget_alert',
+            parameters: [
+              budget.category,
+              `${Math.round(pct)}`,
+              `£${remaining.toFixed(2)}`,
+              endDateStr,
+            ],
+            // Mirrors the budget_alert_log dedup tuple so the same
+            // (category, threshold, month) can never be queued twice.
+            dedupKey: `budget_${session.user_id}_${budget.category}_${threshold}_${monthStr}`,
           });
 
-          if (result.delivered.includes('whatsapp')) {
+          if (outcome !== 'error') {
             waSent++;
             await supabase
               .from('budget_alert_log')

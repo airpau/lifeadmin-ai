@@ -20,6 +20,7 @@
  */
 
 import { sendWhatsAppText, sendWhatsAppTemplate } from '@/lib/whatsapp';
+import { isWithinSessionWindow } from './session-window';
 
 /**
  * Curated rotation of UK consumer-finance "Tip of the Day" lines for the
@@ -116,19 +117,10 @@ export async function isInsideWhatsAppServiceWindow(
   supabase: AdminClient,
   userId: string,
 ): Promise<boolean> {
-  try {
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data } = await supabase
-      .from('whatsapp_message_log')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('direction', 'inbound')
-      .gte('created_at', since)
-      .limit(1);
-    return Array.isArray(data) && data.length > 0;
-  } catch {
-    return false;
-  }
+  // Delegates to the single source in session-window.ts (2026-08-16).
+  // Same semantics as the old inline copy: most-recent inbound within
+  // 24h for this user, fail-closed on any error.
+  return isWithinSessionWindow({ userId }, supabase);
 }
 
 /**
@@ -306,6 +298,89 @@ export async function dispatchWhatsAppMorningBrief(
   }
 }
 
+/**
+ * Shared "brief-like" delivery: one multi-line body, delivered free as
+ * in-window text when possible, otherwise wrapped in the approved
+ * single-variable `paybacker_pocket_agent_reply` UTILITY template.
+ *
+ * Used by the admin test-send path and by the 18:00 evening digest cron
+ * (/api/cron/whatsapp-evening-digest) so both share exactly one set of
+ * newline-sanitising and length-capping rules. The 07:30 morning brief
+ * keeps its own `paybacker_morning_summary` 3-var template path in
+ * `dispatchWhatsAppMorningBrief` — its body is fixed by Meta approval.
+ *
+ * Never throws.
+ */
+export async function deliverBriefLike(
+  supabase: AdminClient,
+  userId: string,
+  phone: string,
+  markdownBody: string,
+  options: { allowUrgent?: boolean; eventType?: string } = {},
+): Promise<DispatchOutcome> {
+  const inWindow = await isInsideWhatsAppServiceWindow(supabase, userId);
+
+  if (inWindow) {
+    try {
+      const result = await sendWhatsAppText({
+        to: phone,
+        text: toWhatsAppPlainText(markdownBody),
+      });
+      return {
+        status: 'sent',
+        channel: 'in_window',
+        providerMessageId: result.providerMessageId,
+      };
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error(`[whatsapp/brief] in-window text failed for ${userId}:`, errMsg);
+      // Fall through to the template path — the window may have expired
+      // between our check and the send (Twilio 63016).
+    }
+  }
+
+  // Out-of-window: wrap in paybacker_pocket_agent_reply. Twilio rejects
+  // raw newlines inside ContentVariables (error 21656), so flatten to
+  // " · " and strip control characters.
+  const sanitised = markdownBody
+    .replace(/\r\n/g, '\n')
+    .replace(/\n+/g, ' · ')
+    .replace(/[\x00-\x09\x0B-\x1F\x7F]/g, ' ')
+    .replace(/ {4,}/g, '   ')
+    .trim();
+  // Meta body limit is 1024; the wrapper costs ~60 chars.
+  const capped = sanitised.length > 950 ? `${sanitised.slice(0, 947)}…` : sanitised;
+
+  try {
+    const result = await sendWhatsAppTemplate(
+      {
+        to: phone,
+        templateName: 'paybacker_pocket_agent_reply',
+        parameters: [capped],
+      },
+      {
+        userId,
+        eventType: options.eventType,
+        // The consolidated brief IS the cost control — it must never be
+        // deferred by the daily cap it exists to enforce.
+        allowUrgent: options.allowUrgent ?? true,
+      },
+    );
+    return {
+      status: 'sent',
+      channel: 'template',
+      providerMessageId: result.providerMessageId,
+    };
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    if (isIntentionalTemplateSkip(e)) {
+      return { status: 'skipped', reason: errMsg, channel: 'template' };
+    }
+    console.error(`[whatsapp/brief] template send failed for ${userId}:`, errMsg);
+    return { status: 'error', reason: errMsg, channel: 'template' };
+  }
+}
+
 export interface SendMorningBriefOptions {
   /** Override the brief body. Defaults to a tiny smoke-test body. */
   bodyOverride?: string;
@@ -475,51 +550,9 @@ export async function sendMorningBriefToUser(
   // template for out-of-window test sends so the body decides its own
   // greeting (e.g. "Afternoon Paul" via the time-aware logic above).
   const phone: string = session.whatsapp_phone;
-  const inWindow = await isInsideWhatsAppServiceWindow(supabase, userId);
-
-  if (inWindow) {
-    try {
-      const result = await sendWhatsAppText({ to: phone, text: body });
-      return {
-        ok: true,
-        status: 'sent',
-        channel: 'in_window',
-        providerMessageId: result.providerMessageId,
-      };
-    } catch (e) {
-      const errMsg = e instanceof Error ? e.message : String(e);
-      return { ok: false, status: 'error', reason: errMsg, channel: 'in_window' };
-    }
-  }
-
-  // Out-of-window: wrap the test body in paybacker_pocket_agent_reply.
-  // Single var template, no morning constraint. Sanitise newlines for
-  // the same Twilio 21656 reason as the morning brief path.
-  const sanitised = body
-    .replace(/\r\n/g, '\n')
-    .replace(/\n+/g, ' · ')
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x09\x0B-\x1F\x7F]/g, ' ')
-    .replace(/ {4,}/g, '   ')
-    .trim();
-  // Cap to fit within the wrapped template body (Meta 1024-char limit,
-  // wrapper is "Pocket Agent:\n\n{{1}}\n\n— reply STOP to opt out." ≈ 60 chars).
-  const capped = sanitised.length > 950 ? `${sanitised.slice(0, 947)}…` : sanitised;
-  try {
-    const result = await sendWhatsAppTemplate({
-      to: phone,
-      templateName: 'paybacker_pocket_agent_reply',
-      parameters: [capped],
-    });
-    return {
-      ok: true,
-      status: 'sent',
-      channel: 'template',
-      providerMessageId: result.providerMessageId,
-    };
-  } catch (e) {
-    const errMsg = e instanceof Error ? e.message : String(e);
-    return { ok: false, status: 'error', reason: errMsg, channel: 'template' };
-  }
+  const outcome = await deliverBriefLike(supabase, userId, phone, body, {
+    eventType: 'morning_summary',
+  });
+  return { ok: outcome.status === 'sent', ...outcome };
 }
 

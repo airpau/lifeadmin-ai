@@ -13,17 +13,22 @@
  * fires at arbitrary times and SHOULD check before sending free-form;
  * those paths already prefer templates and so are safe by construction,
  * but this helper exists for any future free-form alert path.
+ *
+ * 2026-08-16: this module is now the SINGLE SOURCE for the window check.
+ * Three near-duplicate implementations existed (here, morning-brief.ts,
+ * pocket-agent/dispatch.ts). The other two now delegate here, preserving
+ * their previous behaviour (fail-closed on error, userId-scoped lookup).
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
-function admin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
+function admin(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { persistSession: false } });
 }
 
 /**
@@ -39,27 +44,35 @@ function admin() {
  */
 export async function isWithinSessionWindow(
   userIdOrPhone: { userId?: string; phone?: string },
+  client?: SupabaseClient,
 ): Promise<boolean> {
-  const sb = admin();
-  const cutoff = new Date(Date.now() - WINDOW_MS).toISOString();
+  try {
+    const sb = client ?? admin();
+    if (!sb) return false;
+    if (!userIdOrPhone.userId && !userIdOrPhone.phone) return false;
+    const cutoff = new Date(Date.now() - WINDOW_MS).toISOString();
 
-  let q = sb
-    .from('whatsapp_message_log')
-    .select('created_at')
-    .eq('direction', 'inbound')
-    .gte('created_at', cutoff)
-    .order('created_at', { ascending: false })
-    .limit(1);
+    let q = sb
+      .from('whatsapp_message_log')
+      .select('created_at')
+      .eq('direction', 'inbound')
+      .gte('created_at', cutoff)
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-  if (userIdOrPhone.userId) q = q.eq('user_id', userIdOrPhone.userId);
-  if (userIdOrPhone.phone) q = q.eq('whatsapp_phone', userIdOrPhone.phone);
+    if (userIdOrPhone.userId) q = q.eq('user_id', userIdOrPhone.userId);
+    if (userIdOrPhone.phone) q = q.eq('whatsapp_phone', userIdOrPhone.phone);
 
-  const { data, error } = await q.maybeSingle();
-  if (error) {
-    // Fail closed — Postgres hiccup shouldn't let us send free-form
-    // messages that Meta will then 400. Caller falls back to template.
-    console.warn('[whatsapp/session-window] lookup failed', error.message);
+    const { data, error } = await q;
+    if (error) {
+      // Fail closed — Postgres hiccup shouldn't let us send free-form
+      // messages that Meta will then 400. Caller falls back to template.
+      console.warn('[whatsapp/session-window] lookup failed', error.message);
+      return false;
+    }
+    return Array.isArray(data) && data.length > 0;
+  } catch (e) {
+    console.warn('[whatsapp/session-window] lookup threw', (e as Error)?.message ?? e);
     return false;
   }
-  return Boolean(data);
 }

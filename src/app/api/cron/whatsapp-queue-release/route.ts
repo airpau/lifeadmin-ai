@@ -7,6 +7,14 @@
  * quiet-hours, tier and suppression checks, so a released alert goes through the
  * same gates as any other send.
  *
+ * 2026-08-16: this cron now SKIPS digest-destined rows (dedup_key prefixed
+ * 'digest:'). Those belong to /api/cron/whatsapp-evening-digest, which
+ * batches them into ONE 18:00 message per user — releasing them one at a
+ * time here would undo the batching that the whole rework exists for.
+ * Send-time-optimisation rows written by src/lib/whatsapp/send-time.ts
+ * (maybeDeferAlert) keep their original un-prefixed keys and are released
+ * exactly as before.
+ *
  * Auth: authorizeAdminOrCron (Bearer CRON_SECRET or founder session).
  */
 
@@ -16,6 +24,7 @@ import { authorizeAdminOrCron } from '@/lib/admin-auth';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import type { NotificationEventType } from '@/lib/notifications/events';
 import type { WhatsAppPayload } from '@/lib/notifications/dispatch';
+import { DIGEST_DEDUP_PREFIX } from '@/lib/whatsapp/alert-queue';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,6 +52,10 @@ export async function GET(req: NextRequest) {
     .select('id, user_id, event_type, payload')
     .eq('status', 'pending')
     .lte('release_after', new Date().toISOString())
+    // Leave digest-destined rows for /api/cron/whatsapp-evening-digest.
+    // Rows with a NULL dedup_key are legacy send-time deferrals and must
+    // still be released here, hence the explicit is-null branch.
+    .or(`dedup_key.is.null,dedup_key.not.like.${DIGEST_DEDUP_PREFIX}*`)
     .order('release_after', { ascending: true })
     .limit(MAX_PER_RUN);
 

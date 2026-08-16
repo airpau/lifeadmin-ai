@@ -177,3 +177,82 @@ export async function enqueueDigestItem(
     return 'error';
   }
 }
+
+// ─────────────────────────── digest assembly ───────────────────────────
+
+export interface QueuedDigestRow {
+  id: string;
+  user_id: string;
+  event_type: string | null;
+  template_name: string | null;
+  payload: {
+    section?: DigestSection;
+    line?: string;
+    amount?: number | null;
+    [k: string]: unknown;
+  } | null;
+}
+
+const SECTION_ORDER: DigestSection[] = [
+  'money_in',
+  'money_out',
+  'budgets',
+  'renewals',
+  'other',
+];
+
+const SECTION_TITLES: Record<DigestSection, string> = {
+  money_in: 'Money in',
+  money_out: 'Money out',
+  budgets: 'Budgets',
+  renewals: 'Renewals',
+  other: 'Other',
+};
+
+/** Max lines shown per section — the rest are rolled into a "+N more". */
+const MAX_LINES_PER_SECTION = 3;
+
+/**
+ * Group one user's queued items into a single sectioned evening-digest
+ * body, in the same voice as the morning brief. Sections with nothing in
+ * them are omitted entirely. Items are ranked by £ magnitude so the top
+ * items surface first.
+ */
+export function buildEveningDigestBody(
+  firstName: string,
+  rows: QueuedDigestRow[],
+): string {
+  const bySection = new Map<DigestSection, Array<{ line: string; amount: number }>>();
+  for (const row of rows) {
+    const section =
+      row.payload?.section ?? sectionForEvent(row.event_type, row.template_name);
+    const line =
+      (typeof row.payload?.line === 'string' && row.payload.line.trim()) ||
+      `${row.event_type ?? row.template_name ?? 'Update'}`;
+    const amount = Number(row.payload?.amount) || 0;
+    if (!bySection.has(section)) bySection.set(section, []);
+    bySection.get(section)!.push({ line, amount });
+  }
+
+  const parts: string[] = [
+    `*Evening round-up, ${firstName}*`,
+    `${rows.length} update${rows.length === 1 ? '' : 's'} from today.`,
+  ];
+
+  for (const section of SECTION_ORDER) {
+    const items = bySection.get(section);
+    if (!items || items.length === 0) continue;
+    items.sort((a, b) => b.amount - a.amount);
+    const shown = items.slice(0, MAX_LINES_PER_SECTION);
+    const header = `*${SECTION_TITLES[section]}* (${items.length})`;
+    const lines = shown.map((it) => `• ${it.line}`);
+    if (items.length > shown.length) {
+      lines.push(`• +${items.length - shown.length} more in your dashboard`);
+    }
+    parts.push('', header, ...lines);
+  }
+
+  parts.push('', 'See the detail at paybacker.co.uk/dashboard');
+  return parts.join('\n');
+}
+

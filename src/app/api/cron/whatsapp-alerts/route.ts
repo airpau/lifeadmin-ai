@@ -24,6 +24,26 @@
  *   • paybacker_welcome               — /api/whatsapp/webhook (on link-code redeem)
  *
  * Triggered by vercel.json every 6 hours.
+ *
+ * ────────────────────────────────────────────────────────────────────
+ * 2026-08-16 — WhatsApp cost/fatigue rework
+ * ────────────────────────────────────────────────────────────────────
+ * Three of the four blocks (unusual_charge, outcome_check,
+ * payment_outgoing) no longer send an individually-billed WhatsApp
+ * template. They ENQUEUE a one-line item into `whatsapp_alert_queue`,
+ * which /api/cron/whatsapp-evening-digest delivers as ONE sectioned
+ * message at 18:00. Telegram + push legs are UNCHANGED.
+ *
+ * `trial_ending` stays immediate — a trial about to auto-charge is
+ * genuinely time-critical — but still passes through the capped send
+ * facade in src/lib/whatsapp/index.ts.
+ *
+ * NOTE: /api/cron/whatsapp-intraday was a competing consolidated
+ * orchestrator that claimed to replace this cron and
+ * whatsapp-daily-checks, but was never registered in vercel.json while
+ * both crons it replaced stayed scheduled. It has been DELETED — its
+ * one-alert-per-slot design would have produced up to 10 billed
+ * templates a day, which is the problem this rework exists to solve.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -31,6 +51,7 @@ import { createClient } from '@supabase/supabase-js';
 import { canUseWhatsApp } from '@/lib/plan-limits';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import { getEffectiveThreshold } from '@/lib/intelligence/detection-thresholds';
+import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -236,22 +257,32 @@ export async function GET(req: NextRequest) {
               `*£${currentAmount.toFixed(2)}* — ${percentHigher}% higher than your usual £${avg.toFixed(2)}.\n\n` +
               `Reply *DISPUTE* to draft a complaint letter, or *EXPLAIN* if it looks expected.`,
           },
-          whatsapp: {
-            templateName: 'paybacker_alert_unusual_charge',
-            templateParameters: [
-              merchantLabel,
-              `£${currentAmount.toFixed(2)}`,
-              `£${avg.toFixed(2)}`,
-              String(percentHigher),
-            ],
-          },
           push: {
             title: 'Unusual charge detected',
             body: `${merchantLabel}: £${currentAmount.toFixed(2)} (+${percentHigher}%)`,
           },
         });
 
-        if (result.delivered.length > 0) {
+        // WhatsApp leg → evening digest (2026-08-16).
+        const queued = await enqueueDigestItem(sb, {
+          userId,
+          eventType: 'unusual_charge',
+          section: 'money_out',
+          line:
+            `${merchantLabel} charged £${currentAmount.toFixed(2)} vs your usual ` +
+            `£${avg.toFixed(2)} (${percentHigher}% higher)`,
+          amount: currentAmount,
+          templateName: 'paybacker_alert_unusual_charge',
+          parameters: [
+            merchantLabel,
+            `£${currentAmount.toFixed(2)}`,
+            `£${avg.toFixed(2)}`,
+            String(percentHigher),
+          ],
+          dedupKey: `unusual_charge_${charge.id}`,
+        });
+
+        if (result.delivered.length > 0 || queued !== 'error') {
           counts.unusual_charge++;
           await sb.from('notification_log').insert({
             user_id: userId,
@@ -324,18 +355,27 @@ export async function GET(req: NextRequest) {
               `Reply *WON*, *PARTIAL*, *REJECTED*, or *ONGOING* and I will update your case. ` +
               `For a follow-up letter, reply CHASE; to refer to the regulator, reply ESCALATE.`,
           },
-          whatsapp: {
-            templateName: 'paybacker_outcome_check',
-            // {{1}} = merchant, {{2}} = action label (e.g. "energy dispute")
-            templateParameters: [dispute.provider_name, `${actionLabel} dispute`],
-          },
           push: {
             title: `${dispute.provider_name} — any reply yet?`,
             body: `${daysSince}-day follow-up on your open dispute`,
           },
         });
 
-        if (result.delivered.length > 0) {
+        // WhatsApp leg → evening digest (2026-08-16).
+        const queued = await enqueueDigestItem(sb, {
+          userId,
+          eventType: 'outcome_check',
+          section: 'other',
+          line:
+            `${dispute.provider_name} ${actionLabel} dispute — ${daysSince} days since you sent it. ` +
+            `Reply WON, PARTIAL, REJECTED or ONGOING to update it.`,
+          templateName: 'paybacker_outcome_check',
+          // {{1}} = merchant, {{2}} = action label (e.g. "energy dispute")
+          parameters: [dispute.provider_name, `${actionLabel} dispute`],
+          dedupKey: `outcome_check_${dispute.id}`,
+        });
+
+        if (result.delivered.length > 0 || queued !== 'error') {
           counts.outcome_check++;
           await sb.from('notification_log').insert({
             user_id: userId,
@@ -418,23 +458,33 @@ export async function GET(req: NextRequest) {
               `To *${merchant}*. ${category} spend this month: £${monthlyTotal.toFixed(0)}.\n\n` +
               `Reply DISPUTE if this doesn't look right.`,
           },
-          whatsapp: {
-            templateName: 'paybacker_payment_outgoing',
-            templateParameters: [
-              firstName,
-              absAmount.toFixed(2),
-              merchant,
-              category,
-              monthlyTotal.toFixed(0),
-            ],
-          },
           push: {
             title: `£${absAmount.toFixed(2)} sent`,
             body: `To ${merchant}`,
           },
         });
 
-        if (result.delivered.length > 0) {
+        // WhatsApp leg → evening digest (2026-08-16). Same dedup key
+        // shape as /api/cron/large-debit-alert so the two detection
+        // paths can't both queue the same transaction.
+        const queued = await enqueueDigestItem(sb, {
+          userId,
+          eventType: 'payment_outgoing',
+          section: 'money_out',
+          line: `£${absAmount.toFixed(2)} to ${merchant} (${category})`,
+          amount: absAmount,
+          templateName: 'paybacker_payment_outgoing',
+          parameters: [
+            firstName,
+            absAmount.toFixed(2),
+            merchant,
+            category,
+            monthlyTotal.toFixed(0),
+          ],
+          dedupKey: refKey,
+        });
+
+        if (result.delivered.length > 0 || queued !== 'error') {
           counts.payment_outgoing++;
           await sb.from('notification_log').insert({
             user_id: userId,

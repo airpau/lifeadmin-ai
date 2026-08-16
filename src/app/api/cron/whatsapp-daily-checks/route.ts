@@ -32,11 +32,30 @@
  *      tuple to dedup re-runs / multi-day windows.
  *
  * CRON_SECRET Bearer auth (CLAUDE.md rule for every cron route).
+ *
+ * ────────────────────────────────────────────────────────────────────
+ * 2026-08-16 — WhatsApp cost/fatigue rework
+ * ────────────────────────────────────────────────────────────────────
+ * outcome_check, savings_milestone and recovery_weekly now ENQUEUE a
+ * one-line item into `whatsapp_alert_queue` instead of firing their own
+ * billed template. /api/cron/whatsapp-evening-digest delivers them as
+ * ONE sectioned message at 18:00.
+ *
+ * Two deliberate exceptions:
+ *   - `trial_ending` stays immediate (a trial about to auto-charge is
+ *     genuinely time-critical) but still passes through the capped send
+ *     facade in src/lib/whatsapp/index.ts.
+ *   - `better_deal_found` is a MARKETING-category template. It keeps its
+ *     direct facade send — which now enforces the marketing opt-in +
+ *     24h frequency gate — rather than being folded into a UTILITY
+ *     digest. Mixing a marketing offer into a utility message would
+ *     break the lawful basis the two categories rest on.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { sendWhatsAppTemplate } from '@/lib/whatsapp';
+import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -119,14 +138,18 @@ async function runOutcomeCheck(sb: SupabaseClient, today: string): Promise<numbe
     const session = await getActiveSession(sb, d.user_id);
     if (!session) continue;
     try {
-      await sendWhatsAppTemplate({
-        to: session.whatsapp_phone,
+      // → evening digest. Body: "Your {{1}} {{2}} hit 7 days. Have they
+      // responded? …" — merchant as {{1}}, noun ("complaint") as {{2}}.
+      const outcome = await enqueueDigestItem(sb, {
+        userId: d.user_id,
+        eventType: 'outcome_check',
+        section: 'other',
+        line: `${d.provider_name ?? 'A recent'} complaint hit 7 days — have they responded? Reply WON, PARTIAL, REJECTED or ONGOING.`,
         templateName: 'paybacker_outcome_check',
-        // Body: "Your {{1}} {{2}} hit 7 days. Have they responded? …"
-        // We pass the merchant as {{1}} and a noun ("complaint") as {{2}}.
-        // No newlines in vars (Twilio 21656 rule).
         parameters: [d.provider_name ?? 'recent', 'complaint'],
+        dedupKey: `outcome_check_${d.id}`,
       });
+      if (outcome === 'error') continue;
       await sb
         .from('disputes')
         .update({ outcome_check_sent_at: new Date().toISOString() })
@@ -180,13 +203,27 @@ async function runTrialEnding(sb: SupabaseClient, today: string): Promise<number
     );
     const amount = `£${Number(s.amount).toFixed(2)}`;
     try {
-      await sendWhatsAppTemplate({
-        to: session.whatsapp_phone,
-        templateName: 'paybacker_alert_trial_ending',
-        // Body: "Your {{1}} trial ends in {{2}} days — you will be charged £{{3}}…"
-        // {{3}} is just the number, the template has the £ baked in.
-        parameters: [s.provider_name, String(daysLeft), Number(s.amount).toFixed(2)],
-      });
+      // IMMEDIATE by design — a trial about to auto-charge is genuinely
+      // time-critical. Still capped/window-routed by the send facade;
+      // textFallback lets it go out free when the user is in-window.
+      await sendWhatsAppTemplate(
+        {
+          to: session.whatsapp_phone,
+          templateName: 'paybacker_alert_trial_ending',
+          // Body: "Your {{1}} trial ends in {{2}} days — you will be charged £{{3}}…"
+          // {{3}} is just the number, the template has the £ baked in.
+          parameters: [s.provider_name, String(daysLeft), Number(s.amount).toFixed(2)],
+        },
+        {
+          userId: s.user_id,
+          eventType: 'trial_ending',
+          dedupKey: refKey,
+          amount: Number(s.amount) || 0,
+          textFallback:
+            `Your ${s.provider_name} trial ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'} — ` +
+            `you will be charged ${amount}. Reply CANCEL to draft a cancellation email before then.`,
+        },
+      );
       await logSend(sb, s.user_id, 'trial_ending', refKey);
       sent += 1;
     } catch (e) {
@@ -226,17 +263,24 @@ async function runSavingsMilestones(sb: SupabaseClient, today: string): Promise<
     const session = await getActiveSession(sb, g.user_id);
     if (!session) continue;
     try {
-      await sendWhatsAppTemplate({
-        to: session.whatsapp_phone,
+      // → evening digest. Body: "Goal \"{{1}}\" just hit {{2}}% — £{{3}}
+      // saved of £{{4}}…"
+      const outcome = await enqueueDigestItem(sb, {
+        userId: g.user_id,
+        eventType: 'savings_milestone',
+        section: 'other',
+        line: `Goal "${g.name}" hit ${crossed}% — £${current.toFixed(2)} saved of £${target.toFixed(2)}`,
+        amount: current,
         templateName: 'paybacker_savings_goal_milestone',
-        // Body: "Goal \"{{1}}\" just hit {{2}}% — £{{3}} saved of £{{4}}…"
         parameters: [
           g.name,
           String(crossed),
           current.toFixed(2),
           target.toFixed(2),
         ],
+        dedupKey: refKey,
       });
+      if (outcome === 'error') continue;
       await logSend(sb, g.user_id, 'savings_milestone', refKey);
       sent += 1;
     } catch (e) {
@@ -302,17 +346,25 @@ async function runBetterDealFound(sb: SupabaseClient, today: string): Promise<nu
       const savingYearly = Math.round(savingMonthly * 12);
       if (savingYearly < 30) continue; // skip noisy small wins
       try {
-        await sendWhatsAppTemplate({
-          to: session.whatsapp_phone,
-          templateName: 'paybacker_better_deal_found',
-          // Body: "We found a cheaper {{1}} deal — could save you about
-          // £{{2}}/year. See it here: {{3}} — switch in a couple of taps."
-          parameters: [
-            category,
-            String(savingYearly),
-            best.switch_url ?? 'paybacker.co.uk/dashboard/deals',
-          ],
-        });
+        // MARKETING category — the send facade blocks this unless
+        // whatsapp_sessions.marketing_opt_in_at is set and the last
+        // marketing send was over 24h ago. Deliberately NOT enqueued
+        // into the utility evening digest (different lawful basis).
+        const res = await sendWhatsAppTemplate(
+          {
+            to: session.whatsapp_phone,
+            templateName: 'paybacker_better_deal_found',
+            // Body: "We found a cheaper {{1}} deal — could save you about
+            // £{{2}}/year. See it here: {{3}} — switch in a couple of taps."
+            parameters: [
+              category,
+              String(savingYearly),
+              best.switch_url ?? 'paybacker.co.uk/dashboard/deals',
+            ],
+          },
+          { userId: sub.user_id, eventType: 'targeted_deal', dedupKey: refKey },
+        );
+        if (res.providerMessageId.startsWith('blocked:')) continue;
         await logSend(sb, sub.user_id, 'better_deal_found', refKey);
         sent += 1;
       } catch (e) {
@@ -362,13 +414,19 @@ async function runWeeklyRecovery(sb: SupabaseClient, today: string): Promise<num
     if (!session) continue;
     const lifetime = lifetimeByUser.get(userId) ?? 0;
     try {
-      await sendWhatsAppTemplate({
-        to: session.whatsapp_phone,
+      // → evening digest. Body: "This week Paybacker recovered £{{1}} for
+      // you. Lifetime total: £{{2}}. See the breakdown at paybacker.co.uk/…"
+      const outcome = await enqueueDigestItem(sb, {
+        userId,
+        eventType: 'recovery_weekly',
+        section: 'money_in',
+        line: `Recovered £${weekAmount.toFixed(2)} for you this week. Lifetime total £${lifetime.toFixed(2)}.`,
+        amount: weekAmount,
         templateName: 'paybacker_recovery_total_weekly',
-        // Body: "This week Paybacker recovered £{{1}} for you. Lifetime
-        // total: £{{2}}. See the breakdown at paybacker.co.uk/…"
         parameters: [weekAmount.toFixed(2), lifetime.toFixed(2)],
+        dedupKey: refKey,
       });
+      if (outcome === 'error') continue;
       await logSend(sb, userId, 'recovery_weekly', refKey);
       sent += 1;
     } catch (e) {

@@ -20,6 +20,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { isWithinSessionWindow } from '@/lib/whatsapp/session-window';
 
 // Loose typing — the cron passes a Supabase client with a different
 // generic instantiation than this lib's createClient inference would
@@ -511,23 +512,10 @@ async function logWhatsAppOutbound(args: {
  * path than silently drop a send because the lookup failed.
  */
 async function isInsideServiceWindow(userId: string): Promise<boolean> {
-  try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) return false;
-    const sb = createClient(url, key);
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data } = await sb
-      .from('whatsapp_message_log')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('direction', 'inbound')
-      .gte('created_at', since)
-      .limit(1);
-    return Array.isArray(data) && data.length > 0;
-  } catch {
-    return false;
-  }
+  // Delegates to the single source in src/lib/whatsapp/session-window.ts
+  // (2026-08-16). Behaviour is unchanged: user-scoped inbound lookup over
+  // the last 24h, false on any error.
+  return isWithinSessionWindow({ userId });
 }
 
 /**
