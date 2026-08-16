@@ -1,7 +1,7 @@
 {
   "name": "@paybacker/mcp",
-  "version": "0.1.0",
-  "description": "Paybacker MCP server — let Claude Desktop read your transactions, subscriptions, budgets and net worth from paybacker.co.uk",
+  "version": "0.2.0",
+  "description": "Paybacker MCP server — let Claude Desktop read your accounts, transactions, subscriptions, budgets and net worth from paybacker.co.uk",
   "license": "MIT",
   "author": "Paybacker LTD <hello@paybacker.co.uk>",
   "homepage": "https://paybacker.co.uk",

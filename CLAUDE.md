@@ -7,7 +7,7 @@
 
 This project uses a unified system across three Claude interfaces (Code, Desktop, Browser Extension). At the START of every session:
 
-1. **Call `get_project_briefing` (paybacker MCP)** — one call returns all shared-context files, git status, open PRs, and recent business_log rows. This is the fastest way to pick up where the last session left off.
+1. **Read shared context via the canonical MCP server at `src/app/api/mcp/route.ts`** (hosted, `POST https://paybacker.co.uk/api/mcp`, auth `Bearer $MCP_BEARER_TOKEN`). Call `read_context` for each of `active-sessions.md`, `handoff-notes.md`, `task-queue.md`, then `list_open_prs` and `read_business_log`. **There is no `get_project_briefing` tool on this server** — that tool only exists in the legacy local `/mcp-server/` build, which is not the canonical surface. Don't chase it.
 2. If the MCP is unavailable, fall back to reading manually: `shared-context/active-sessions.md`, `shared-context/handoff-notes.md`, `shared-context/task-queue.md`, then `gh pr list -R airpau/lifeadmin-ai --state open` and the `business_log` table.
 
 At the END of every session:
@@ -16,7 +16,11 @@ At the END of every session:
 3. Update `shared-context/task-queue.md` with any new/completed tasks
 4. Commit and push all changes
 
-The MCP server at `/mcp-server/` provides tools for all interfaces to read/write shared context, post to social media, check infrastructure, and manage tasks. The new `get_project_briefing` tool bundles the read-side of that into a single call so every new chat starts with full context without burning tokens on repeated reads.
+**Canonical MCP surfaces (verified 2026-08-16):**
+
+- **Founder/ops MCP** — `src/app/api/mcp/route.ts`, hosted at `https://paybacker.co.uk/api/mcp`. 30 tools (shared context, tasks, business log, GitHub/Vercel/Stripe/PostHog reads). Auth: single `MCP_BEARER_TOKEN` env var. `GET` with no auth returns a health JSON. **This is the one to use.**
+- **Per-user finance MCP** — `packages/paybacker-mcp` (stdio, `@paybacker/mcp`) wrapping the REST endpoints under `src/app/api/mcp/{accounts,transactions,subscriptions,budget,net-worth,disputes,search}`. Auth: per-user `pbk_…` token from `mcp_tokens`, Pro-gated. **Not published to npm** — point Claude Desktop at the local `packages/paybacker-mcp/dist/server.js` path, not `npx -y @paybacker/mcp`.
+- **`/mcp-server/`** — legacy local stdio build (24 tools, includes mutating ones like `git_push` / `post_to_facebook`). Superseded; don't wire new work to it.
 
 ---
 

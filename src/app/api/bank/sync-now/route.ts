@@ -132,12 +132,21 @@ export async function POST(request: NextRequest) {
     // No body — sync all connections
   }
 
-  // Fetch active bank connection(s).
+  // Fetch syncable bank connection(s).
+  //
+  // This deliberately mirrors the daily cron's filter (see
+  // api/cron/bank-sync/route.ts) rather than matching only 'active'.
+  // Consent statuses roll as Open Banking consent ages, so a connection
+  // spends real time in token_expired / expiring_soon. Filtering to
+  // 'active' meant Sync now silently fired no Yapily call at all on
+  // exactly the connections a user is trying to repair: they saw a
+  // dead button and no explanation. Attempting the sync is also what
+  // surfaces the 403, which drives the re-consent prompt.
   let connectionsQuery = supabase
     .from('bank_connections')
     .select('*')
     .eq('user_id', user.id)
-    .eq('status', 'active')
+    .in('status', ['active', 'token_expired', 'expiring_soon'])
     .eq('provider', 'yapily');
 
   if (connectionId) {
@@ -147,7 +156,10 @@ export async function POST(request: NextRequest) {
   const { data: connections } = await connectionsQuery;
 
   if (!connections || connections.length === 0) {
-    return NextResponse.json({ error: 'No active bank connections found.' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'No bank connections found to sync. Connect a bank account to get started.' },
+      { status: 400 },
+    );
   }
 
   // Enforce 6-hour cooldown on the target connection(s)

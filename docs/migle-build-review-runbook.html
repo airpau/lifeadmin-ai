@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paybacker — Yapily Build Review Runbook (Migle, Wed)</title>
+<style>
+  :root{
+    --navy:#0f172a; --navy2:#1e293b; --gold:#f59e0b; --mint:#34d399;
+    --red:#ef4444; --amber:#f59e0b; --ink:#0f172a; --muted:#64748b;
+    --line:#e2e8f0; --bg:#f8fafc; --card:#ffffff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;color:var(--ink);background:var(--bg);}
+  header{background:var(--navy);color:#fff;padding:28px 32px;}
+  header h1{margin:0 0 6px;font-size:24px;letter-spacing:-.02em}
+  header p{margin:0;color:#94a3b8;font-size:14px}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 32px 80px}
+  h2{font-size:19px;margin:34px 0 12px;padding-bottom:8px;border-bottom:2px solid var(--navy);letter-spacing:-.01em}
+  h3{font-size:15px;margin:0 0 4px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:12px 0;}
+  .point{border-left:4px solid var(--mint)}
+  .point.partial{border-left-color:var(--amber)}
+  .point .hd{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .num{background:var(--navy);color:#fff;width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex:0 0 auto}
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em}
+  .ok{background:#d1fae5;color:#065f46}
+  .part{background:#fef3c7;color:#92400e}
+  .bad{background:#fee2e2;color:#991b1b}
+  .row{display:grid;grid-template-columns:88px 1fr;gap:6px 14px;margin:8px 0}
+  .row dt{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;padding-top:2px}
+  .row dd{margin:0}
+  code,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:#f1f5f9;padding:1px 5px;border-radius:4px;border:1px solid var(--line);word-break:break-all}
+  pre{background:var(--navy);color:#e2e8f0;padding:12px 14px;border-radius:8px;overflow-x:auto;font-size:12.5px;line-height:1.5;margin:8px 0}
+  pre code{background:none;border:none;color:inherit;padding:0}
+  .say{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin:8px 0;font-style:italic;color:#78350f}
+  .say b{font-style:normal;display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#a16207;margin-bottom:4px}
+  .warn{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;margin:8px 0;color:#7f1d1d;font-size:14px}
+  .warn b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#b91c1c;margin-bottom:4px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px}
+  th{background:var(--navy);color:#fff;text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:nth-child(even) td{background:#f8fafc}
+  ul,ol{margin:6px 0;padding-left:20px}
+  li{margin:3px 0}
+  .chk{list-style:none;padding-left:0}
+  .chk li{padding-left:26px;position:relative;margin:8px 0}
+  .chk li:before{content:"☐";position:absolute;left:0;font-size:17px;color:var(--muted)}
+  .chk li.crit:before{content:"⬛";color:var(--red)}
+  a{color:#1d4ed8}
+  .tabs td:first-child{font-weight:700;white-space:nowrap}
+  .foot{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Yapily Build Review — Demo Runbook</h1>
+  <p>Reviewer: Migle · Call: Wednesday · Branch <code style="background:#1e293b;color:#94a3b8;border-color:#334155">origin/master</code> @ <code style="background:#1e293b;color:#94a3b8;border-color:#334155">0fcdf5ed</code> · 11 checklist points</p>
+</header>
+<div class="wrap">
+
+<h2>UPDATE — Migle: app demo only, she reviews Yapily logs her side</h2>
+<div class="card" style="border-left:4px solid var(--gold)">
+  <p style="margin-top:0"><i>"We only need to see the application demo; there's no need to show the code. I'll review the logs on our side."</i></p>
+  <p>This changes the game in your favour — no code walkthrough, no test-runner on screen. But it adds one hard requirement: <b>every step must fire a real Yapily API call from production during (or just before) the demo</b>, because her evidence is their request logs, not your screen. A step you only <i>describe</i> won't appear in her logs and won't count.</p>
+  <p>The order of play below is sequenced so the app UI and her logs tell the same story. Code references elsewhere in this doc are now for <b>your prep only</b>.</p>
+
+  <h3 style="margin-top:16px">Order of play (rehearse this exact sequence tomorrow, side by side)</h3>
+  <table>
+  <tr><th>#</th><th>You do (app only)</th><th>Covers</th><th>What appears in Yapily's logs</th></tr>
+  <tr><td>1</td><td><b>Before anything else:</b> start a bank connection, then close the tab at the bank screen without finishing. Do this at the top of the call and move on.</td><td>4</td><td><code>POST /hosted/consent-requests</code>, then from minute 3: <code>GET /hosted/consent-requests/{id}</code> repeating on the backoff curve (5s → 10s → 20s… cap 180s) until abandoned at 15 min. By the time you reach step 4 in her list, the polling trail already exists.</td></tr>
+  <tr><td>2</td><td>Open Money Hub → <b>Connect bank</b> → show the picker with each bank's "Supports transactions · balances · direct debits" line. Pick your bank but don't proceed yet.</td><td>10</td><td><code>GET /institutions</code> — capability shown to the user <i>before</i> any endpoint is invoked.</td></tr>
+  <tr><td>3</td><td>On the existing <b>dead connection</b> (don't reconnect it beforehand — it's your live evidence): click <b>Sync now</b>. Show the expired banner + Reconnect prompt.</td><td>6</td><td>Transactions/accounts call → <b>403</b>, then <code>GET /consents/{id}</code> to verify, then our side marks it expired. Exactly her spec: 403 → verify → prompt re-consent.</td></tr>
+  <tr><td>4</td><td>Delete that dead connection with the trash icon → confirm in the modal.</td><td>8</td><td><code>DELETE /consents/{id}</code>. Delete is available on any active connection at any time.</td></tr>
+  <tr><td>5</td><td>Start a fresh connect and <b>cancel at the bank's screen</b>. Land back on Money Hub → the new error banner renders ("You cancelled the authorisation…") with one-click retry.</td><td>3</td><td><code>POST /hosted/consent-requests</code> + the consent ending in a cancelled/rejected state. Our side: error params captured, persisted, user notified (PR #515).</td></tr>
+  <tr><td>6</td><td>Click <b>Try connecting again</b> from the banner and complete authorisation at your bank for real. Land on <code>?connected=true</code>, show the connection card with account names.</td><td>1, 2, 5</td><td><code>POST /hosted/consent-requests</code> → <b>201</b>, <code>GET /hosted/consent-requests/{id}</code>, <code>GET /accounts</code> → <b>200</b>. Consent stored, accountIds stored.</td></tr>
+  <tr><td>7</td><td>Let the initial sync run / hit Sync now. Show transactions populating Money Hub.</td><td>11</td><td><code>GET /accounts/{id}/transactions?from=…&before=…&limit=…</code> — and if a date-only page occurs, the offset continuation (<code>offset=</code>) as well.</td></tr>
+  <tr><td>8</td><td><b>Renewal:</b> before the call I'll set the new connection's <code>consent_expires_at</code> to ~5 days out in the DB so the 90-day banner shows. On the call: show the banner, click <b>Renew</b>, show it clear.</td><td>9</td><td><code>POST /consents/{id}/extend</code>. Be open with her: "I've wound the expiry forward so you can see the prompt — the extend call is real."</td></tr>
+  <tr><td>9</td><td><b>Error classes:</b> she's already seen 403 (step 3 above) and the cancel path live. Tell her the remaining classes (400/401/409/429/5xx) are pinned by unit tests and the retry/backoff behaviour respects Retry-After — and that her logs from our nightly syncs will show the real 403s from late July.</td><td>7</td><td>The historical 403s + our <code>GET /consents</code> verifications are already in their logs from 28 Jul – 2 Aug.</td></tr>
+  </table>
+
+  <p><b>Sequencing notes:</b> the dead connection is demo material — <span style="color:#b91c1c;font-weight:600">do not reconnect your bank before the call</span>; the reconnect IS steps 1/2/5. Start the abandoned consent (row 1) at the top of the call so its polling trail is in her logs by the time she asks about step 4.</p>
+</div>
+
+<h2>Bottom line before you read anything else</h2>
+<div class="card">
+  <p style="margin-top:0"><b>All 11 points are implemented.</b> Nine were already done on <code>origin/master</code> — hosted consent, the 3-minute fallback poller with genuine exponential backoff, per-HTTP-class error handling with a passing test for every class, Yapily-side consent deletion, institution feature gating. The two that were partial (points 3 and 11) are closed in <b>PR #515</b>.</p>
+  <p>Test suite went from 34 to <b>44 passing</b>, and pagination — previously untested — now has 10 cases.</p>
+  <p>What's left is <b>not code</b>. It's two configuration items in pre-flight. Handle those and this is a demonstration, not a defence.</p>
+</div>
+
+<h2>How to run the call</h2>
+<div class="card">
+  <p style="margin-top:0"><b>Format:</b> you share screen and walk her list 1→11 in her order. Don't reorder to lead with strengths — a reviewer working her own list in sequence gets a cleaner picture, and reordering reads as steering.</p>
+  <ol>
+    <li><b>Open in 60 seconds, then stop talking.</b> Something like: <i>"I've been through all eleven against the build. Two were partial when I got your document — failed-redirect messaging and transaction pagination — and both are now merged with tests. I'll walk them in your order and you stop me wherever you want."</i> That does three jobs: says you did the work, volunteers what was weak before she asks, and hands her control.</li>
+    <li><b>Then just go 1 to 11.</b> The script below has what to click and what to say for each.</li>
+    <li><b>Lead each point with the artefact, not the explanation.</b> Show the response, the log line, the test output — then explain. Reviewers trust what they watch happen far more than what they're told.</li>
+    <li><b>On points 3 and 11, say they were the gaps.</b> Don't present them as though they were always done. <i>"This one was open when you sent the list — here's the fix and the test that pins it."</i> Volunteering closed gaps buys credibility for the nine you're claiming outright.</li>
+    <li><b>When you don't know, say so and write it down.</b> Reviewers are calibrating whether your "yes" means anything. One "I'd have to check" makes the other ten answers worth more.</li>
+    <li><b>Close by asking what would fail this.</b> <i>"Is there anything on that list you'd want to see differently before you'd sign it off?"</i> Better to hear it now than in a written follow-up.</li>
+  </ol>
+  <p><b>Three things to have open but not volunteer</b> unless she asks: the <code>withConsentRetry</code> dead code (point 6), no notification on abandoned consents (point 4), and the four untested areas listed at the bottom. All are honest answers to a direct question; none needs raising unprompted.</p>
+</div>
+
+<h2>Pre-flight — do these before Wednesday</h2>
+<div class="card">
+<ul class="chk">
+  <li class="crit"><b>Confirm <code>YAPILY_HOSTED_PAGES_ENABLED=true</code> in Vercel production.</b> This is the single highest-risk item. The flag defaults to <b>off</b>, and it is read in exactly one place (<code>src/lib/yapily.ts:730</code>) at exactly one call site (<code>src/app/api/auth/yapily/route.ts:142</code>). If it is not the literal string <code>"true"</code>, clicking "Connect bank" runs the <b>legacy</b> <code>POST /account-auth-requests</code> flow — and points 1, 2, 3 and 4 become undemonstrable in production even though the code is all there. Verify with:
+    <pre><code>curl -s -H "Authorization: Bearer $CRON_SECRET" \
+  https://paybacker.co.uk/api/admin/env-check | jq '.vars[] | select(.name|test("YAPILY"))'</code></pre>
+  </li>
+  <li class="crit"><b>Reconnect your bank.</b> Yapily has been returning <code>403 — "Consent must has been revoked"</code> on every <code>/api/cron/bank-sync</code> run since 28 July (account <code>PNae6W0h3CyGMZimjdXrvw</code>, last seen 2 Aug 20:00). Points 5, 6, 9 and 11 all need a live <b>AUTHORIZED</b> consent with real accounts and transactions behind it. Do this first — everything else depends on it.</li>
+  <li><b>Have <code>CRON_SECRET</code> to hand</b> in a terminal or Postman. Five of the best evidence endpoints are Bearer-gated.</li>
+  <li class="crit"><b>Merge and deploy PR #515.</b> This is what closes points 3 and 11. Nothing in this runbook's claims for those two points is true until it's live. <a href="https://github.com/airpau/lifeadmin-ai/pull/515">github.com/airpau/lifeadmin-ai/pull/515</a></li>
+  <li><b>Don't let her click the onboarding bank CTA.</b> <code>src/app/onboarding/page.tsx:427</code> and <code>:582</code> link to <code>/api/auth/yapily</code> with no <code>institutionId</code>, which returns raw JSON <code>{"error":"institutionId query parameter is required"}</code> and HTTP 400. Not a checklist item, but it's ugly and it's the kind of thing a reviewer clicks first. Demo from <code>/dashboard/money-hub</code> instead.</li>
+</ul>
+</div>
+
+<h2>Tab plan</h2>
+<p>Nine tabs, left to right, in the order you'll use them. Points share tabs where the evidence is the same — don't open eleven, you'll lose your place.</p>
+<table class="tabs">
+<tr><th>Tab</th><th>URL</th><th>Serves points</th></tr>
+<tr><td>1 · Live app</td><td><code>https://paybacker.co.uk/dashboard/money-hub</code> — open DevTools → Network before you start</td><td>1, 2, 3, 5, 8, 9</td></tr>
+<tr><td>2 · Engine code</td><td><code>github.com/airpau/lifeadmin-ai/blob/0fcdf5ed/src/lib/yapily.ts</code></td><td>1, 6, 7, 10, 11</td></tr>
+<tr><td>3 · Tests</td><td><code>github.com/airpau/lifeadmin-ai/blob/0fcdf5ed/src/lib/yapily.test.ts</code></td><td>7 (and 1, 8)</td></tr>
+<tr><td>4 · Poller code</td><td><code>.../blob/0fcdf5ed/src/app/api/cron/yapily-consent-abandonment/route.ts</code></td><td>4</td></tr>
+<tr><td>5 · Institutions</td><td><code>https://paybacker.co.uk/api/yapily/institutions</code> (public, no auth)</td><td>10</td></tr>
+<tr><td>6 · Supabase SQL</td><td>Supabase → SQL editor, project <code>kcxxlesishltdmfctlmo</code></td><td>2, 4, 8</td></tr>
+<tr><td>7 · Vercel logs</td><td>Vercel → lifeadmin-ai → Observability → Runtime Logs</td><td>3, 6, 7</td></tr>
+<tr><td>8 · Terminal</td><td>For the Bearer-gated <code>curl</code>s below</td><td>4, 5, 9, 11</td></tr>
+<tr><td>9 · This runbook</td><td>Second screen if you have one</td><td>—</td></tr>
+</table>
+
+<h2>Point-by-point script</h2>
+
+<!-- 1 -->
+<div class="card point">
+  <div class="hd"><span class="num">1</span><h3>Create Hosted Consent Request</h3><span class="badge ok">Implemented</span></div>
+  <dl class="row">
+    <dt>Expected</dt><dd><code>POST /hosted/consent-requests</code> → HTTP 201</dd>
+    <dt>Code</dt><dd><code>src/lib/yapily.ts:664-706</code> (body 665-690, request 692-698, guards 700-706) · called from <code>src/app/api/auth/yapily/route.ts:157-165</code></dd>
+    <dt>Show on</dt><dd>Tab 1 with Network open, then Tab 2</dd>
+  </dl>
+  <p><b>Do:</b> On Money Hub click <b>Connect bank</b> → pick a bank. In the Network panel show the call to <code>/api/auth/yapily?institutionId=…</code> returning <code>{hostedUrl, consentRequestId}</code> — that response only exists because Yapily returned a created hosted consent. Then flip to Tab 2 and scroll to line 664 to show the request being built.</p>
+  <div class="say"><b>Say</b>We build the consent request server-side and never expose the application secret to the browser. Institution ID is optional in our call — if we omit it Yapily renders its own bank picker, which is the path we use for the "I don't see my bank" case. Language and location default to EN/GB, and feature scope is nested under <code>accountRequest</code>.</div>
+  <p><b>If she asks about the literal 201:</b> the client accepts any 2xx (<code>yapily.ts:152</code>) rather than pinning to 201, so a Yapily-side change from 201 to 200 wouldn't break us. The unit tests at <code>yapily.test.ts:117-295</code> cover the body shape, the optional-institution case, the featureScope nesting, and the two failure modes.</p>
+</div>
+
+<!-- 2 -->
+<div class="card point">
+  <div class="hd"><span class="num">2</span><h3>Successful redirect handling &amp; consent storage</h3><span class="badge ok">Implemented</span></div>
+  <dl class="row">
+    <dt>Code</dt><dd><code>src/app/api/yapily/callback/route.ts:148-184</code> → persist <code>:226-245</code> → <code>src/lib/yapily/connection-store.ts:170-260</code></dd>
+    <dt>Storage</dt><dd><code>bank_connections</code>: <code>consent_token</code> (AES-encrypted at rest), <code>yapily_consent_id</code>, <code>consent_granted_at</code>, <code>consent_expires_at</code>, <code>status</code>, <code>institution_id</code>, <code>account_ids</code></dd>
+    <dt>Show on</dt><dd>Tab 1 (finish the connect → lands on <code>?connected=true</code>), then Tab 6</dd>
+  </dl>
+  <p><b>Do:</b> Complete the bank authorisation from point 1. You land on <code>/dashboard/money-hub?connected=true</code> with the connection card rendered. Then in Supabase run:</p>
+  <pre><code>select institution_id, status, yapily_consent_id,
+       consent_granted_at, consent_expires_at,
+       array_length(account_ids,1) as accounts
+from bank_connections
+order by created_at desc limit 3;</code></pre>
+  <div class="say"><b>Say</b>The callback re-fetches the hosted consent server-side rather than trusting the redirect query string, gates on the returned status, and only then writes. The consent token is encrypted at rest — it never appears in logs or in any client payload.</div>
+</div>
+
+<!-- 3 -->
+<div class="card point">
+  <div class="hd"><span class="num">3</span><h3>Failed redirect handling &amp; logging</h3><span class="badge ok">Closed in PR #515</span></div>
+  <dl class="row">
+    <dt>Capture</dt><dd>Error params <code>callback/route.ts:48,59-61</code>; full query persisted to <code>yapily_pending_consent_requests.error_detail</code> (jsonb) <code>:63-84</code>; redirect <code>:86-88</code></dd>
+    <dt>Notify</dt><dd><b>New.</b> <code>money-hub/page.tsx</code> maps all 14 codes the callback emits, plus the upstream <code>reason</code> passthrough, into a dismissible <code>role="alert"</code> banner with a <b>Try connecting again</b> action that reopens the bank picker in place. Params stripped via <code>history.replaceState</code> so a refresh doesn't re-raise it.</dd>
+    <dt>Was</dt><dd>Capture and logging were solid; nothing rendered. The user landed on a normal-looking page with a dirty URL and no explanation.</dd>
+  </dl>
+  <p><b>Do:</b> Simulate a cancellation and show the banner render, then the persisted row:</p>
+  <pre><code>curl -si "https://paybacker.co.uk/api/yapily/callback?error=access_denied&consentRequestId=demo&state=$STATE" | head -20</code></pre>
+  <p>Then in Supabase show the row:</p>
+  <pre><code>select consent_request_id, status, error_detail, updated_at
+from yapily_pending_consent_requests
+where error_detail is not null
+order by updated_at desc limit 5;</code></pre>
+  <div class="say"><b>Say</b>This was one of the two that was open when you sent the list. Capture and logging were already there — every failed consent lands in that table with the full upstream error payload, so we can reconstruct any user's failure after the fact. What was missing was the last hop: telling the user. That's now a banner that distinguishes all fourteen failure modes, so someone who cancelled at their bank gets "you cancelled, try again whenever" rather than a generic error, with a one-click retry.</div>
+</div>
+
+<!-- 4 -->
+<div class="card point">
+  <div class="hd"><span class="num">4</span><h3>Fallback polling mechanism</h3><span class="badge ok">Implemented — strong point</span></div>
+  <dl class="row">
+    <dt>Code</dt><dd><code>src/app/api/cron/yapily-consent-abandonment/route.ts</code> — 3-min floor <code>:67</code>, terminal states <code>:81-88</code>, backoff <code>:98-100</code>, AUTHORIZED recovery <code>:175-238</code>, abandon at 15 min <code>:274-294</code></dd>
+    <dt>Schedule</dt><dd><code>vercel.json:72</code> → <code>* * * * *</code> (every minute)</dd>
+    <dt>Show on</dt><dd>Tab 4, then Tab 8, then Tab 6</dd>
+  </dl>
+  <p>This one answers her spec almost line for line — lead with it.</p>
+  <ul>
+    <li><b>3-minute trigger:</b> line 67 — rows aren't eligible until 3 minutes after creation.</li>
+    <li><b>Terminal states:</b> lines 81-88 match her list exactly — <code>AUTHORIZED</code>, <code>REJECTED</code>, <code>REVOKED</code>, <code>FAILED</code>, <code>EXPIRED</code> — plus the <code>AUTHORISED</code> British spelling variant Yapily sometimes returns.</li>
+    <li><b>Exponential backoff:</b> line 98-100 — <code>5000 × 2^attempts</code>, capped at 180s. Genuinely exponential, not a fixed retry.</li>
+  </ul>
+  <p><b>Do:</b> Run it live and show the counters:</p>
+  <pre><code>curl -s -H "Authorization: Bearer $CRON_SECRET" \
+  https://paybacker.co.uk/api/cron/yapily-consent-abandonment | jq</code></pre>
+  <p>Then show the backoff curve in the data — this is the money shot:</p>
+  <pre><code>select consent_request_id, status, poll_attempts, next_poll_at,
+       next_poll_at - now() as due_in
+from yapily_pending_consent_requests
+where status = 'pending' order by next_poll_at;</code></pre>
+  <div class="say"><b>Say</b>The poller runs every minute but won't touch a request until it's three minutes old, so a normal redirect always wins the race. Intermediate states back off exponentially from five seconds to a three-minute ceiling. An AUTHORIZED result recovers the connection exactly as if the redirect had arrived — same code path, so there's no second-class recovery flow. At fifteen minutes we mark it abandoned.</div>
+  <p><b>Known follow-up if she probes:</b> an abandoned row currently sends the user no notification. The email and WhatsApp machinery already exists in <code>consent-renewal/route.ts:74-194</code> and would be reused.</p>
+</div>
+
+<!-- 5 -->
+<div class="card point">
+  <div class="hd"><span class="num">5</span><h3>Retrieve accounts for authorized consent</h3><span class="badge ok">Implemented</span></div>
+  <dl class="row">
+    <dt>Code</dt><dd><code>src/lib/yapily.ts:309-323</code> (consent header) · callback <code>:192-219</code> · storage <code>connection-store.ts:189,252</code></dd>
+    <dt>Show on</dt><dd>Tab 1 (connection card), then Tab 8</dd>
+  </dl>
+  <p><b>Do:</b> Show the connection card on Money Hub listing the account names, then prove it against the live API:</p>
+  <pre><code>curl -s -H "Authorization: Bearer $CRON_SECRET" \
+  "https://paybacker.co.uk/api/yapily/debug-tx-test?connectionId=$CONN_ID" | jq</code></pre>
+  <p>That single call echoes the stored connection row, the live <code>/accounts</code> response, and the stored <code>account_ids</code> side by side — one artefact covering the whole point.</p>
+  <div class="say"><b>Say</b>Accounts are fetched with the consent token in the <code>consent</code> header and we store the account IDs plus a hash of the account identification, so we can re-key a reconnected consent to the same account rather than duplicating the user's history.</div>
+</div>
+
+<!-- 6 -->
+<div class="card point">
+  <div class="hd"><span class="num">6</span><h3>Handle expired or invalid consent</h3><span class="badge ok">Implemented</span></div>
+  <dl class="row">
+    <dt>Code</dt><dd>403 branch <code>src/lib/yapily.ts:1010-1050</code> <code>triageConsentFailure</code> → <code>resolveConsentState:931-953</code> → <code>getConsent:574-579</code> (<code>GET /consents/{id}</code>)</dd>
+    <dt>Callers</dt><dd><code>api/cron/bank-sync/route.ts:406</code> · <code>api/bank/sync-now/route.ts:375</code></dd>
+    <dt>Re-consent</dt><dd>status → <code>expired</code> (<code>bank-sync:451-455</code>) → <code>/api/connections/health</code> → <code>ConnectionHealthBanner.tsx:168-176</code> "Reconnect"</dd>
+    <dt>Show on</dt><dd>Tab 7</dd>
+  </dl>
+  <p><b>Do:</b> You have real production evidence for this — use it. In Vercel Runtime Logs search <code>Consent must has been revoked</code>. You'll get genuine 403s from bank-sync with Yapily <code>tracingId</code>s attached, and the follow-on line <code>[bank-sync] conn=… consent=… status=… — treating as expired</code>. Then show the Reconnect banner in the app.</p>
+  <div class="say"><b>Say</b>A 403 isn't treated as a generic failure. We triage it — call the consent endpoint to find out whether it's extendable or genuinely terminal, and only then decide between silently extending and prompting the user to reconnect. Every Yapily error carries the tracingId through to our logs so we can hand you a reference.</div>
+  <p><b>If she asks about retry-in-band:</b> be straight — <code>withConsentRetry</code> (<code>yapily.ts:954-982</code>) implements extend-then-retry-once but currently has no call sites. The live path extends and picks it up on the next cron run, which costs at most one sync cycle. Either wire it in or delete it; leaving it reads as capability that isn't wired.</p>
+</div>
+
+<!-- 7 -->
+<div class="card point">
+  <div class="hd"><span class="num">7</span><h3>Error handling validation</h3><span class="badge ok">Implemented — strongest point</span></div>
+  <dl class="row">
+    <dt>Code</dt><dd><code>src/lib/yapily.ts:68-79</code> <code>classifyYapilyError</code> · retry gate <code>:83-85</code> · retry loop with <code>Retry-After</code> <code>:126-148</code> · tracingId attach <code>:152-183</code></dd>
+    <dt>Mapping</dt><dd>400/422 → bad_request · 401 → auth · 403 → consent · 404 → not_found · 409 → conflict · 429 → rate_limit · 5xx → server</dd>
+    <dt>Show on</dt><dd>Tab 3</dd>
+  </dl>
+  <p>Her spec asks for "at least one simulated example per error class." You have a passing unit test for <b>every</b> class. Run it on screen:</p>
+  <pre><code>node --experimental-strip-types --test src/lib/yapily.test.ts</code></pre>
+  <p>Then walk <code>yapily.test.ts:475-602</code> — 400, 401, 403, 404, 409, 422, 429, 500, 503, plus the retryability matrix: 429 backs off and succeeds; 429 exhausts the budget at exactly 3 calls; 500 recovers on retry; 400 is never retried (asserted at exactly 1 call); 403 and 409 are never retried; tracingId is plucked from the response header when the body is unparseable.</p>
+  <div class="say"><b>Say</b>Rather than simulate these ad hoc, we pinned them as tests, so the behaviour can't regress silently. Retryable and non-retryable are separated deliberately — retrying a 403 just burns your rate limit and delays the user's reconnect prompt.</div>
+</div>
+
+<!-- 8 -->
+<div class="card point">
+  <div class="hd"><span class="num">8</span><h3>Consent deletion functionality</h3><span class="badge ok">Implemented</span></div>
+  <dl class="row">
+    <dt>UI</dt><dd><code>money-hub/page.tsx:1159</code> (trash icon, always available on active connections) → <code>DisconnectBankModal.tsx:77</code></dd>
+    <dt>API</dt><dd><code>api/bank/disconnect/route.ts:70-110</code> → <code>deleteConsent</code> <code>:78</code> → <code>yapily.ts:744-778</code> = <code>DELETE /consents/{id}</code>, 404 treated as success <code>:756</code></dd>
+    <dt>Resilience</dt><dd>Failed revokes queue and drain at <code>consent-renewal/route.ts:197-250</code>, escalate to support at 7 attempts <code>:243-249</code></dd>
+    <dt>Show on</dt><dd>Tab 1, then Tab 6</dd>
+  </dl>
+  <p><b>Do:</b> Show the trash icon is present on an active connection with no state gating — she'll specifically check "at any time." Walk the modal. <b>Only actually delete if you have a spare connection</b>, since you need the live one for points 9 and 11.</p>
+  <div class="say"><b>Say</b>Disconnect revokes upstream at Yapily, not just locally — the user's consent genuinely dies at the bank. And because a network failure at that moment would otherwise leave a live consent with no local record, failed revokes go into a retry queue that drains daily and escalates to support after seven attempts.</div>
+  <p><b>Caveat to volunteer:</b> legacy rows with a null <code>yapily_consent_id</code> skip the upstream revoke (<code>disconnect/route.ts:74</code>) — pre-Yapily TrueLayer-era rows only.</p>
+</div>
+
+<!-- 9 -->
+<div class="card point">
+  <div class="hd"><span class="num">9</span><h3>Consent renewal (90-day reconfirmation)</h3><span class="badge ok">Implemented</span></div>
+  <dl class="row">
+    <dt>Banner</dt><dd><code>ConsentRenewalBanner.tsx</code> ← imported <code>ConnectionHealthBanner.tsx:20</code>, rendered <code>:104-118</code>, mounted app-wide <code>dashboard/layout.tsx:253</code></dd>
+    <dt>Endpoint</dt><dd><code>api/bank/renew-consent/route.ts:102</code> → <code>reconfirmConsent</code> = <code>POST /consents/{id}/extend</code> (<code>yapily.ts:548-559</code>)</dd>
+    <dt>Cron</dt><dd><code>api/cron/consent-renewal/route.ts:43-72</code> daily 07:00 UTC + WhatsApp <code>:74-133</code> + email all tiers <code>:135-194</code></dd>
+    <dt>Show on</dt><dd>Tab 8, then Tab 1</dd>
+  </dl>
+  <p><b>Do:</b> Show the 90-day stamp is set at connect time (<code>callback:224</code>), then the health payload driving the prompt:</p>
+  <pre><code>curl -s -b "$SESSION_COOKIE" https://paybacker.co.uk/api/connections/health | jq '.expiring_bank'</code></pre>
+  <p>The banner appears on any <code>/dashboard/*</code> page once a connection is inside 7 days of expiry, and its button calls <code>POST /api/bank/renew-consent</code>.</p>
+  <div class="say"><b>Say</b>We stamp the 90-day expiry at connect, a daily cron flags anything inside seven days, and the user gets both an in-app banner and an email — WhatsApp too on our Pro tier. Approving extends the existing consent rather than minting a new one, so the user keeps their transaction history and their connection ID doesn't change.</div>
+  <p><b>Two things to volunteer:</b> renewal is gated to <code>status ∈ {expiring_soon, expired}</code> (<code>renew-consent:74-81</code>), so a user can't proactively extend a healthy consent — deliberate, but she may prefer it open. And the doc comment at <code>:84</code> still names the old <code>PUT /account-auth-requests/{id}</code> endpoint; the code is correct, the comment is stale.</p>
+</div>
+
+<!-- 10 -->
+<div class="card point">
+  <div class="hd"><span class="num">10</span><h3>Endpoint capability verification (UK banks)</h3><span class="badge ok">Implemented</span></div>
+  <dl class="row">
+    <dt>Code</dt><dd><code>getInstitutions</code> <code>yapily.ts:206-222</code> (1h cache) · <code>getInstitutionFeatures</code> <code>:235-245</code> · scope intersection at consent time <code>auth/yapily/route.ts:117-139</code> · pre-call gating <code>cron/sync-upcoming/route.ts:154-188</code></dd>
+    <dt>Show on</dt><dd>Tab 5, then Tab 1, then Tab 8</dd>
+  </dl>
+  <p><b>Do:</b> Open Tab 5 — <code>/api/yapily/institutions</code> returns each bank with its <code>features</code> array, live from Yapily. Then on Money Hub open the bank picker and point at the capability line under each bank ("Supports transactions · balances · direct debits", <code>BankPickerModal.tsx:21-45</code>) — the user sees capability <i>before</i> choosing. Then show the gating counter:</p>
+  <pre><code>curl -s -H "Authorization: Bearer $CRON_SECRET" \
+  https://paybacker.co.uk/api/cron/sync-upcoming | jq '.endpointsSkippedUnsupported'</code></pre>
+  <div class="say"><b>Say</b>We capture the institution ID at consent time and intersect our requested feature scope with what that institution actually supports, so we never request a scope the bank will reject. At sync time we check features again before calling scheduled payments, periodic payments or direct debits — that counter is how many endpoint calls we skipped rather than fired blind and caught a 403.</div>
+</div>
+
+<!-- 11 -->
+<div class="card point">
+  <div class="hd"><span class="num">11</span><h3>Pagination for transactions</h3><span class="badge ok">Closed in PR #515</span></div>
+  <dl class="row">
+    <dt>Window</dt><dd><code>getTransactionsPage</code> sets <code>from</code>, <code>before</code> and <code>limit</code>; legacy <code>to</code> is mirrored onto <code>before</code></dd>
+    <dt>Walk</dt><dd><code>getAllTransactions</code> honours the <b>server-applied</b> page size over the requested limit, dedupes on <code>(id, date)</code>, stops once a page falls below <code>from</code>, 50-page cap</dd>
+    <dt>New</dt><dd><b>Offset continuation.</b> Because <code>before</code> is exclusive, a full page sharing one timestamp left nowhere to advance to and the walk used to stop. It now follows <code>meta.pagination.next.offset</code> within the same window and recovers the rows behind the shared timestamp. Guards: stops if the offset doesn't advance, if the window drops below <code>from</code>, or at the page cap.</dd>
+    <dt>Tests</dt><dd>10 new cases — pagination had <b>none</b> before</dd>
+  </dl>
+  <p><b>Do:</b> Show <code>from</code>/<code>before</code> first — that's her literal ask. Then run the call that makes the walk observable:</p>
+  <pre><code>curl -s -H "Authorization: Bearer $CRON_SECRET" \
+  "https://paybacker.co.uk/api/yapily/debug-tx-test?connectionId=$CONN_ID&raw=1" | jq</code></pre>
+  <p>It returns a single page <i>with</i> its <code>meta.pagination</code> alongside the full paginated count, so the delta between "first page" and "full window" is visible in one artefact.</p>
+  <div class="say"><b>Say</b>This was the second of the two that was open. We window with <code>from</code> and <code>before</code> and walk the pages. The subtle problem was that <code>before</code> is exclusive — so if a whole page came back sharing one timestamp, which happens on UK banks that only give date precision, there was nowhere to advance the cursor to and we'd stop rather than risk skipping rows. We now fall back to your <code>next.offset</code> in exactly that case and pick up the rows behind it. We'd rather stop loudly than truncate silently, but this means we no longer have to stop at all.</div>
+  <div class="warn"><b>Context worth knowing</b>This is the same truncation class as the 15 May zero-transactions incident the walk was originally written to prevent — the guard existed because you'd been bitten. If she asks why it was built that way, that's the honest and rather good answer.</div>
+</div>
+
+<h2>Test coverage — if she asks</h2>
+<div class="card">
+  <p style="margin-top:0"><code>src/lib/yapily.test.ts</code> — <b>44 passing</b> (34 before PR #515). <b>Covers:</b> hosted consent creation (body shape, optional institution, featureScope nesting, failure modes), hosted consent retrieval, consent deletion including 404-as-success, the full error-class matrix and retryability, feature-flag semantics, and now transaction pagination across windowing, timestamp cursor and offset continuation.</p>
+  <p><b>Still doesn't cover:</b> <code>triageConsentFailure</code>/<code>resolveConsentState</code>, institution feature gating, and the poller's backoff and terminal-state logic. If she asks about coverage, name these — she'll respect the specificity, and it's a better answer than a percentage.</p>
+</div>
+
+<div class="foot">
+  Generated for the Wednesday review · audited against <code>origin/master</code> @ <code>0fcdf5ed</code> (2026-07-29).
+  Line numbers are from that commit — if you deploy before the call, re-check them.
+</div>
+
+</div>
+</body>
+</html>

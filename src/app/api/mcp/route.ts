@@ -424,9 +424,15 @@ function timestamp(): string {
 // Create MCP server — SAFE TOOLS ONLY
 // ---------------------------------------------------------------------------
 
+// Single source of truth for what this server reports about itself. Keep
+// TOOL_COUNT in sync when adding/removing a `server.tool(...)` registration
+// below — verify with: grep -c "server.tool(" src/app/api/mcp/route.ts
+const MCP_SERVER_VERSION = "2.2.0";
+const MCP_TOOL_COUNT = 30;
+
 function createPaybackerMcpServer(): McpServer {
   const server = new McpServer(
-    { name: "paybacker-mcp-server", version: "2.0.0" },
+    { name: "paybacker-mcp-server", version: MCP_SERVER_VERSION },
     { capabilities: { tools: {} } }
   );
 
@@ -1589,8 +1595,8 @@ export async function GET(req: NextRequest) {
       {
         status: "ok",
         server: "paybacker-mcp-server",
-        version: "2.2.0",
-        tools: 27,
+        version: MCP_SERVER_VERSION,
+        tools: MCP_TOOL_COUNT,
         note: "Real agent tools: GitHub (issues/PRs/diff), Vercel (deployments), Stripe (webhook health), PostHog (funnels), support_tickets/nps_responses/tasks reads, content_drafts insert (pending only). Social media tools disabled. post_to_telegram_admin rate-limited at 10/hour.",
       },
       {

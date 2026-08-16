@@ -19,7 +19,7 @@ import {
 
 const BASE_URL = process.env.PAYBACKER_API_URL ?? 'https://paybacker.co.uk';
 const TOKEN = process.env.PAYBACKER_TOKEN;
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 if (!TOKEN) {
   console.error(
@@ -71,6 +71,23 @@ async function call(path: string, params: Record<string, string | undefined> = {
 // ---------- Tool catalogue ----------------------------------------------
 
 const TOOLS: Tool[] = [
+  {
+    name: 'get_accounts',
+    description:
+      "List the user's connected bank accounts: institution, account type, " +
+      'masked account reference and latest known balance. Balances are recorded ' +
+      'per bank connection, so accounts on the same connection share a balance ' +
+      '(see `balance_scope`). Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        include_inactive: {
+          type: 'boolean',
+          description: 'Include archived connections. Default false.',
+        },
+      },
+    },
+  },
   {
     name: 'get_transactions',
     description:
@@ -158,6 +175,10 @@ const TOOLS: Tool[] = [
 
 async function runTool(name: string, args: Record<string, unknown>): Promise<unknown> {
   switch (name) {
+    case 'get_accounts':
+      return call('/api/mcp/accounts', {
+        include_inactive: args.include_inactive ? 'true' : undefined,
+      });
     case 'get_transactions':
       return call('/api/mcp/transactions', {
         since: args.since as string | undefined,
