@@ -45,6 +45,8 @@ export async function GET(req: NextRequest) {
       'transaction_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring',
     )
     .eq('user_id', auth.userId)
+    // Soft-deleted rows (bank-disconnect modal) must not reappear here.
+    .is('deleted_at', null)
     .or(`description.ilike.%${safe}%,merchant_name.ilike.%${safe}%`)
     .order('timestamp', { ascending: false })
     .limit(limit);

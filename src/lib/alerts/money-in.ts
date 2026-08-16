@@ -20,6 +20,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendNotification } from '@/lib/notifications/dispatch';
+import { isFutureDated } from '@/lib/alerts/future-dated';
 
 const DEFAULT_MIN_AMOUNT = 10; // £
 const FRESH_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -120,6 +121,18 @@ export async function dispatchMoneyInAlertsForUser(
   let skipped = 0;
 
   for (const row of rows as Row[]) {
+    // FUTURE-DATED GUARD. Banks return scheduled payments as ordinary
+    // rows dated on the day they're DUE, with is_pending = false, so
+    // this row can be synced days before the money actually moves.
+    // "£X received / it's just landed" would be untrue. Leave it for
+    // the upcoming/scheduled-payments surface. Not stamped as alerted,
+    // so a sync that still sees it inside the 24h created_at window can
+    // pick it up once its date arrives. See src/lib/alerts/future-dated.ts.
+    if (isFutureDated(row.timestamp)) {
+      skipped++;
+      continue;
+    }
+
     if (looksLikeTransfer(row)) {
       skipped++;
       // Still stamp so we don't re-check on every sync.

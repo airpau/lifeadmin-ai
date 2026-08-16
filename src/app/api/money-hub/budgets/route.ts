@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { applySpaceToTxnQuery, resolveActiveSpaceFromRequest } from '@/lib/spaces';
+import { endOfTodayLondonIso } from '@/lib/alerts/future-dated';
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -16,6 +17,13 @@ export async function GET(request: NextRequest) {
     .eq('user_id', user.id)
     .lt('amount', 0)
     .gte('timestamp', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+    // Exclude FUTURE-DATED rows. Open Banking providers (HSBC confirmed)
+    // return scheduled payments as ordinary transaction rows dated on the
+    // day they're DUE, with is_pending = false. Counting them as "spent so
+    // far this month" overstates budget usage and can flip a category to
+    // over_budget days before the money actually leaves. Scheduled payments
+    // belong in the Upcoming surface. See src/lib/alerts/future-dated.ts.
+    .lte('timestamp', endOfTodayLondonIso())
     .limit(10000);
   txnQuery = applySpaceToTxnQuery(txnQuery, activeSpace);
 

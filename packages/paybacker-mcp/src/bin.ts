@@ -1,28 +1,51 @@
 #!/usr/bin/env node
-// @paybacker/mcp CLI entry point.
+// Paybacker MCP CLI entry point.
 //
-// Usage:
-//   npx @paybacker/mcp           run the stdio server (what Claude Desktop does)
-//   npx @paybacker/mcp setup     interactive setup — writes the Claude Desktop config
-//   npx @paybacker/mcp --help    show usage
+// NOTE: this package is NOT published to npm. `npx -y @paybacker/mcp`
+// returns a 404 from the registry. Everything here therefore refers to a
+// LOCAL build: clone the repo, `npm install && npm run build`, then run
+// `node dist/bin.js setup` (or point Claude Desktop straight at
+// `dist/server.js`). Do not reintroduce npx instructions until the
+// package is actually published.
+//
+// Usage (from a built checkout):
+//   node dist/bin.js           run the stdio server (what Claude Desktop does)
+//   node dist/bin.js setup     interactive setup — writes the Claude Desktop config
+//   node dist/bin.js --help    show usage
 
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { homedir, platform } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const HELP = `\
-@paybacker/mcp — connect Claude Desktop to your Paybacker account.
+Paybacker MCP — connect Claude Desktop to your Paybacker account.
+
+This package is not published to npm yet, so run it from a local build:
+
+  npm install && npm run build
+  node dist/bin.js setup
 
 Commands:
-  paybacker-mcp             Start the MCP server (Claude Desktop does this automatically)
-  paybacker-mcp setup       Interactive setup — writes your Claude Desktop config for you
-  paybacker-mcp --help      Show this message
+  node dist/bin.js             Start the MCP server (Claude Desktop does this automatically)
+  node dist/bin.js setup       Interactive setup — writes your Claude Desktop config for you
+  node dist/bin.js --help      Show this message
 
 Before running setup, generate a personal access token at:
   https://paybacker.co.uk/dashboard/settings/mcp
 `;
+
+/**
+ * Absolute path to the built server this CLI belongs to. bin.js and
+ * server.js are emitted side by side into dist/, so resolving relative
+ * to this file always gives the matching server — no npm registry, no
+ * npx, no guessing where the user cloned the repo.
+ */
+function serverEntryPath(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), 'server.js');
+}
 
 function configPath(): string {
   const home = homedir();
@@ -76,9 +99,13 @@ async function runSetup(): Promise<void> {
     const path = configPath();
     const existing = await readConfig(path);
     const mcpServers = (existing.mcpServers as Record<string, unknown> | undefined) ?? {};
+    // Point Claude Desktop at THIS checkout's built server by absolute
+    // path. We used to write `npx -y @paybacker/mcp`, but the package has
+    // never been published — that config produced a 404 on every launch.
+    const serverPath = serverEntryPath();
     mcpServers.paybacker = {
-      command: 'npx',
-      args: ['-y', '@paybacker/mcp'],
+      command: process.execPath,
+      args: [serverPath],
       env: { PAYBACKER_TOKEN: token },
     };
     existing.mcpServers = mcpServers;
@@ -87,6 +114,10 @@ async function runSetup(): Promise<void> {
     await writeFile(path, JSON.stringify(existing, null, 2) + '\n', 'utf8');
 
     console.log(`\n✅ Config written to ${path}`);
+    console.log(`   Claude Desktop will run: ${process.execPath} ${serverPath}`);
+    console.log(
+      '   Keep this folder where it is — if you move or delete it, re-run setup.',
+    );
     console.log('\nFinal step:');
     console.log('   Quit and restart Claude Desktop, then ask:');
     console.log('   "What did I spend on food last month?"');

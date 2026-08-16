@@ -138,9 +138,10 @@ export default function PaybackerAssistantDocsPage() {
                   will work.
                 </li>
                 <li>
-                  <strong>Node.js 18 or later.</strong> Most desktop AI apps ship with their
-                  own Node runtime, so <code className="doc-code-inline">npx</code> will work
-                  out of the box on most machines.
+                  <strong>Node.js 18 or later, and Git.</strong> You build the Paybacker MCP
+                  server from source once (step 2 below) and your AI app then runs it with{' '}
+                  <code className="doc-code-inline">node</code>. Check with{' '}
+                  <code className="doc-code-inline">node --version</code>.
                 </li>
               </ul>
             </div>
@@ -179,42 +180,78 @@ export default function PaybackerAssistantDocsPage() {
             <div className="doc-step">
               <div className="doc-step-head">
                 <div className="doc-step-num">2</div>
-                <h2>Run the one-command setup</h2>
+                <h2>Build the server and point your app at it</h2>
               </div>
-              <p>Open Terminal (macOS) or PowerShell (Windows) and run:</p>
+              <div className="doc-note" style={{ marginBottom: 14 }}>
+                <strong>Please read this first.</strong> The Paybacker MCP server is not
+                yet published to npm, so{' '}
+                <code className="doc-code-inline">npx @paybacker/mcp</code> will fail with
+                a &quot;404 Not Found&quot; error. Until we publish it, the working method
+                is to build the server from source and point your AI app at the built file
+                by its full path. That is what the steps below do.
+              </div>
+              <p>
+                Open Terminal (macOS) or PowerShell (Windows) and build the server once:
+              </p>
               <pre className="doc-code">
-                <code>npx @paybacker/mcp setup</code>
+                <code>{`git clone https://github.com/airpau/paybacker-mcp.git
+cd paybacker-mcp
+npm install
+npm run build`}</code>
               </pre>
               <p>
-                Paste the token when prompted. The setup script finds your AI app&apos;s MCP
-                config file, adds a <code className="doc-code-inline">paybacker</code> entry
-                under <code className="doc-code-inline">mcpServers</code>, and saves the
-                token locally so your assistant can spawn the server with it. It doesn&apos;t
-                touch any of your other MCP servers.
+                That produces <code className="doc-code-inline">dist/server.js</code>. Print
+                its full path and copy it &mdash; you need the absolute path, not a relative
+                one, because your AI app won&apos;t be running from this folder:
               </p>
-              <details className="troubleshoot" style={{ marginTop: 12 }}>
-                <summary>Prefer to edit the config yourself?</summary>
-                <p>
-                  Add this block to your AI desktop app&apos;s MCP config file (check your
-                  app&apos;s docs for the exact path):
-                </p>
-                <pre
-                  className="doc-code doc-code-small"
-                  style={{ marginTop: 12, marginBottom: 0 }}
-                >
-                  <code>{`{
+              <pre className="doc-code">
+                <code>{`# macOS / Linux
+echo "$(pwd)/dist/server.js"
+
+# Windows PowerShell
+Write-Output "$PWD\\dist\\server.js"`}</code>
+              </pre>
+              <p>
+                Now open your AI desktop app&apos;s MCP config file (on macOS, Claude Desktop
+                uses{' '}
+                <code className="doc-code-inline">
+                  ~/Library/Application Support/Claude/claude_desktop_config.json
+                </code>{' '}
+                &mdash; check your app&apos;s docs if you use something else) and add a{' '}
+                <code className="doc-code-inline">paybacker</code> entry under{' '}
+                <code className="doc-code-inline">mcpServers</code>. Leave any other servers
+                in the file exactly as they are:
+              </p>
+              <pre className="doc-code doc-code-small">
+                <code>{`{
   "mcpServers": {
     "paybacker": {
-      "command": "npx",
-      "args": ["-y", "@paybacker/mcp"],
+      "command": "node",
+      "args": ["/absolute/path/to/paybacker-mcp/dist/server.js"],
       "env": {
         "PAYBACKER_TOKEN": "pbk_YOUR_TOKEN_HERE"
       }
     }
   }
 }`}</code>
-                </pre>
-              </details>
+              </pre>
+              <p>
+                Replace{' '}
+                <code className="doc-code-inline">
+                  /absolute/path/to/paybacker-mcp/dist/server.js
+                </code>{' '}
+                with the path you printed above, and{' '}
+                <code className="doc-code-inline">pbk_YOUR_TOKEN_HERE</code> with the token
+                from step 1. Save the file.
+              </p>
+              <div className="doc-note">
+                The config file must be valid JSON. If you already have other MCP servers
+                listed, add <code className="doc-code-inline">&quot;paybacker&quot;</code> as
+                another key inside{' '}
+                <code className="doc-code-inline">mcpServers</code> and remember the comma
+                between entries. A missing comma stops your app loading <em>any</em> MCP
+                server, not just this one.
+              </div>
             </div>
 
             <div className="doc-step">
@@ -312,9 +349,8 @@ export default function PaybackerAssistantDocsPage() {
                   Pro plan&quot; error.
                 </li>
                 <li>
-                  <strong>Open source.</strong> The{' '}
-                  <code className="doc-code-inline">@paybacker/mcp</code> package is
-                  MIT-licensed and available on{' '}
+                  <strong>Open source.</strong> The Paybacker MCP server is MIT-licensed and
+                  available on{' '}
                   <a
                     href="https://github.com/airpau/paybacker-mcp"
                     target="_blank"
@@ -354,8 +390,16 @@ export default function PaybackerAssistantDocsPage() {
                     any MCP server).
                   </li>
                   <li>
-                    Re-run{' '}
-                    <code className="doc-code-inline">npx @paybacker/mcp setup</code>.
+                    Check the path in{' '}
+                    <code className="doc-code-inline">args</code> is absolute and the file
+                    really exists &mdash; run{' '}
+                    <code className="doc-code-inline">
+                      node /your/path/to/paybacker-mcp/dist/server.js
+                    </code>{' '}
+                    in a terminal. If it starts and waits, the path is right (press Ctrl+C to
+                    stop it). If it says &quot;Cannot find module&quot;, re-run{' '}
+                    <code className="doc-code-inline">npm run build</code> in the
+                    paybacker-mcp folder.
                   </li>
                 </ul>
               </details>
@@ -369,8 +413,10 @@ export default function PaybackerAssistantDocsPage() {
                   <Link href="/dashboard/settings/mcp">
                     Settings → Paybacker Assistant
                   </Link>{' '}
-                  and run <code className="doc-code-inline">npx @paybacker/mcp setup</code>{' '}
-                  again. Tokens expire after 180 days by default.
+                  and replace the{' '}
+                  <code className="doc-code-inline">PAYBACKER_TOKEN</code> value in your MCP
+                  config with the new one, then restart your AI app. Tokens expire after 180
+                  days by default.
                 </p>
               </details>
               <details className="troubleshoot">
@@ -385,8 +431,19 @@ export default function PaybackerAssistantDocsPage() {
               </details>
               <details className="troubleshoot">
                 <summary>
-                  Nothing happens when I run{' '}
-                  <code className="doc-code-inline">npx @paybacker/mcp setup</code>
+                  <code className="doc-code-inline">npx @paybacker/mcp</code> gives me a 404
+                </summary>
+                <p>
+                  That&apos;s expected. We haven&apos;t published the package to npm yet, so
+                  there is nothing at that name to download. Older guides (and some AI
+                  assistants) still suggest that command &mdash; ignore it and use the
+                  build-from-source method in step 2 above, which points your AI app at{' '}
+                  <code className="doc-code-inline">dist/server.js</code> directly.
+                </p>
+              </details>
+              <details className="troubleshoot">
+                <summary>
+                  <code className="doc-code-inline">npm run build</code> fails
                 </summary>
                 <p>
                   Check your Node version with{' '}
@@ -440,14 +497,7 @@ export default function PaybackerAssistantDocsPage() {
             >
               github.com/airpau/paybacker-mcp
             </a>{' '}
-            · Published on npm as{' '}
-            <a
-              href="https://www.npmjs.com/package/@paybacker/mcp"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              @paybacker/mcp
-            </a>
+            · Not yet published to npm — build from source using step 2 above.
           </p>
         </div>
       </main>

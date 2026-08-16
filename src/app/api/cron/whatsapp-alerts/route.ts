@@ -52,6 +52,7 @@ import { canUseWhatsApp } from '@/lib/plan-limits';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import { getEffectiveThreshold } from '@/lib/intelligence/detection-thresholds';
 import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
+import { isFutureDated } from '@/lib/alerts/future-dated';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -202,15 +203,21 @@ export async function GET(req: NextRequest) {
       const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
       const { data: recentCharges } = await sb
         .from('bank_transactions')
-        .select('id, merchant_normalized, merchant_name, amount, timestamp')
+        .select('id, merchant_name, amount, timestamp')
         .eq('user_id', userId)
         .lt('amount', 0)
         .gte('timestamp', oneDayAgo)
-        .not('merchant_normalized', 'is', null)
+        .not('merchant_name', 'is', null)
         .limit(50);
 
       for (const charge of recentCharges ?? []) {
-        if (!charge.merchant_normalized) continue;
+        // FUTURE-DATED GUARD — "Unusual charge from X" reads as money
+        // already taken. A scheduled payment dated in the future hasn't
+        // been charged yet (banks set is_pending = false on these, so
+        // that flag can't be relied on). Leave it to the upcoming
+        // /scheduled-payments surface.
+        if (isFutureDated(charge.timestamp)) continue;
+        if (!charge.merchant_name) continue;
         const currentAmount = Math.abs(Number(charge.amount));
         if (currentAmount < 5) continue; // ignore tiny charges
 
@@ -219,7 +226,7 @@ export async function GET(req: NextRequest) {
           .from('bank_transactions')
           .select('amount, timestamp')
           .eq('user_id', userId)
-          .eq('merchant_normalized', charge.merchant_normalized)
+          .eq('merchant_name', charge.merchant_name)
           .lt('amount', 0)
           .gte('timestamp', ninetyDaysAgo)
           .lt('timestamp', oneDayAgo)
@@ -233,7 +240,7 @@ export async function GET(req: NextRequest) {
         // raises it for merchants where the user dismisses repeatedly.
         const threshold = await getEffectiveThreshold(
           'unusual_charge',
-          charge.merchant_normalized,
+          charge.merchant_name,
           20,
         );
         if (percentHigher < threshold) continue;
@@ -247,7 +254,7 @@ export async function GET(req: NextRequest) {
           .maybeSingle();
         if (alreadyAlerted) continue;
 
-        const merchantLabel = charge.merchant_name || charge.merchant_normalized;
+        const merchantLabel = charge.merchant_name;
         const result = await sendNotification(sb, {
           userId,
           event: 'unusual_charge',
@@ -414,13 +421,19 @@ export async function GET(req: NextRequest) {
 
       const { data: outgoing } = await sb
         .from('bank_transactions')
-        .select('id, merchant_normalized, merchant_name, amount, category, user_category, timestamp')
+        .select('id, merchant_name, amount, category, user_category, timestamp')
         .eq('user_id', userId)
         .lt('amount', 0)
         .gte('timestamp', oneDayAgo)
         .limit(20);
 
       for (const tx of outgoing ?? []) {
+        // FUTURE-DATED GUARD. This alert reads "£X just left your
+        // account" — never true for a payment the bank has merely
+        // scheduled. HSBC returns those as ordinary rows dated on the
+        // due day with is_pending = false, so is_pending can't be used.
+        // Future-dated debits belong in upcoming/scheduled payments.
+        if (isFutureDated(tx.timestamp)) continue;
         const absAmount = Math.abs(Number(tx.amount));
         if (absAmount < userThreshold) continue;
 
@@ -434,7 +447,7 @@ export async function GET(req: NextRequest) {
           .maybeSingle();
         if (already) continue;
 
-        const merchant = tx.merchant_name || tx.merchant_normalized || 'a merchant';
+        const merchant = tx.merchant_name || 'a merchant';
         const category = (tx.user_category || tx.category || 'general') as string;
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
         const { data: monthCat } = await sb

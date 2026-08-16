@@ -42,6 +42,7 @@ import { sendNotification } from '@/lib/notifications/dispatch';
 import { isPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
 import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
+import { isFutureDated } from '@/lib/alerts/future-dated';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -150,6 +151,13 @@ async function runCron() {
 
   // 2. Apply category + description filters in JS.
   const incomes: IncomeTxn[] = (candidates as IncomeTxn[]).filter((t) => {
+    // FUTURE-DATED GUARD. Open Banking providers (HSBC confirmed) return
+    // scheduled credits/debits as ordinary rows dated on the day they're
+    // DUE, with is_pending = false — so is_pending can't be trusted here.
+    // This alert says the money "just landed", which is false for a
+    // credit dated next Monday. Future-dated rows belong in the
+    // upcoming/scheduled surface, not in a "money received" alert.
+    if (isFutureDated(t.timestamp)) return false;
     const cat = (t.user_category ?? t.category ?? '').toLowerCase();
     if (EXCLUDED_CATS.has(cat)) return false;
     if (t.income_type && ['transfer', 'credit_loan', 'refund'].includes(t.income_type)) return false;

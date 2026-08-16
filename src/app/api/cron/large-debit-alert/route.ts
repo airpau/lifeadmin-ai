@@ -31,6 +31,7 @@ import { createClient } from '@supabase/supabase-js';
 import { sendWhatsAppTemplate } from '@/lib/whatsapp';
 import { isPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
+import { isFutureDated, endOfTodayLondonIso } from '@/lib/alerts/future-dated';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -106,6 +107,13 @@ export async function GET(request: NextRequest) {
 
   // Filter by category + description.
   const debits: DebitTxn[] = (candidates as DebitTxn[]).filter((t) => {
+    // FUTURE-DATED GUARD. HSBC returns scheduled payments as ordinary
+    // rows dated on the day they're DUE, with is_pending = false — so
+    // is_pending tells us nothing. This alert says the money "just left
+    // your account", which is a lie for a payment scheduled for Monday.
+    // A future-dated debit belongs in upcoming/scheduled payments, not
+    // here, so drop it. See src/lib/alerts/future-dated.ts.
+    if (isFutureDated(t.timestamp)) return false;
     const cat = (t.user_category ?? t.category ?? '').toLowerCase();
     if (EXCLUDED_CATS.has(cat)) return false;
     const desc = `${t.description ?? ''} ${t.merchant_name ?? ''}`;
@@ -165,6 +173,10 @@ export async function GET(request: NextRequest) {
     .select('user_id, amount')
     .in('user_id', Array.from(eligibleUsers))
     .gte('timestamp', monthStartIso)
+    // Same reason as the future-dated guard above: a payment scheduled
+    // for next Monday hasn't been spent yet, so it must not inflate the
+    // "spend this month" figure we quote back to the user.
+    .lte('timestamp', endOfTodayLondonIso())
     .lt('amount', 0);
   const monthlyTotalByUser = new Map<string, number>();
   for (const r of (monthly ?? []) as Array<{ user_id: string; amount: number }>) {

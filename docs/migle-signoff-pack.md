@@ -1,5 +1,177 @@
 # Yapily Build Review — Independent Verification & Live Demo Pack
 
+---
+
+## Consent 403 diagnosis (16 Aug)
+
+**Short version:** there are **two separate faults**, and the earlier write-up conflated them.
+The `status = 'token_expired'` mystery is **100% our bug** — found, root-caused, fixed, and
+verified. The **403 on `/transactions` is not our bug** and is the one thing only Migle can
+resolve. Paul's own read is correct: the initial sync genuinely worked and genuinely pulled
+data. What is broken is everything *after* the first ~4 minutes.
+
+### E1 — Evidence timeline (connection `f1776dbb-125f-4915-9261-39289068a622`, HSBC Business, user `aireypaul@googlemail.com`, tier `pro`)
+
+All times UTC. Sources: `bank_sync_log`, `bank_transactions`, `yapily_pending_consent_requests`,
+`bank_connections`, Supabase `function_edge_logs`, `cron.job`.
+
+| When | What happened | Evidence |
+|---|---|---|
+| 16 May 21:35 | **First 403.** Consent from the 14 May connect dies. The row then fails **459 consecutive times** over three months. | `bank_sync_log` grouped by error signature: `failed` × 459, first `2026-05-16 21:35:06`, last `2026-08-16 17:02:14` |
+| 18 May 13:08 | Last genuinely successful transaction pull before August — a **manual** sync, 437 transactions. | `bank_sync_log` `trigger_type='manual'`, `transactions_synced=437` |
+| 15 Aug 17:01 | Pre-reconnect cron. 403 on the single stale account `PNae6W0h3CyGMZimjdXrvw`: *"Consent must has been revoked"*. | tracingId `6a809b5593220f36053ea728c1ce8523` |
+| **15 Aug 18:44:33** | Paul starts a fresh Hosted Pages consent. | `yapily_pending_consent_requests` `81d6a006-41d0-4f56-a11c-cbfa19285936`, status `completed` |
+| **15 Aug 18:45:08** | Consent AUTHORIZED (35 s round trip). Row updated in place: new `consent_token`, new `yapily_consent_id` `fd949d3c-a633-49ee-9775-819ab58886dd`, `consent_expires_at` = **13 Nov 2026** (90 days), `status='active'`, 4 accounts. | `connection-store.ts:172-205`; `bank_connections.connected_at` |
+| **15 Aug 18:45–18:48** | **The initial sync fully worked.** Two `initial` runs, 9 API calls each, **zero per-account errors** — meaning *both* passes succeeded on *all four* accounts, including the 91–365-day historical pass. **567 transactions inserted.** | `bank_sync_log status='success'`; `bank_transactions` created 15 Aug: `PNae…` 523, `lnZJ…` 39, `hYUi…` 3, `YXYw…` 2 |
+| **15 Aug 20:00:59** | **First post-reconnect cron — 403 on all four accounts.** 71 minutes after the last success. | tracingIds `6a80c54a29b481257b85c7bbab170222`, `6a80c5589f1bf48a6ddcec46453d9796`, `6a80c55f0eb29508c71d1a83640fa80a`, `6a80c5672efc903…` |
+| **16 Aug 03:00:06.609** | Legacy TrueLayer **Supabase Edge Function** fires. Row `updated_at` becomes `03:00:06.578` and `status` becomes `token_expired`. **No log row written.** | `function_edge_logs`: `POST │ 200 │ /functions/v1/bank-sync?trigger=auto` @ `2026-08-16T03:00:06.609Z` — a **31 ms** match to `updated_at` |
+| 16 Aug 03:01 / 09:03 / 13:03 / 17:02 | Vercel cron continues; same four 403s each run. | latest tracingIds `6a81ece6f7bf279875d881114ab9c0b1`, `6a81ecf4a31d8a75fc51f4566a7c1e06`, `6a81ed001508247d8a6d633d0eac58f2`, `6a81ed0c9cb92d3…` |
+| **16 Aug 17:42:59** | **Fixed** — legacy pg_cron jobs unscheduled, row reset to `active`. | migration `20260816180000_retire_legacy_truelayer_bank_sync_cron` |
+
+**The error split is stable and reproducible across every run:**
+
+- `PNae6W0h3CyGMZimjdXrvw` → *"You are not authorised to access this resource. We didn't managed
+  to fix this unauthorized by refreshing the authorization credential. **Consent must has been
+  revoked.**"* (403)
+- the other three accounts → *"The institution rejected the call due to insufficient rights. The
+  consent does not have the right privileges for that action."* (403)
+
+`PNae…` is the one account carried over from the **May** consent; the other three first appeared
+at 18:45 on 15 Aug.
+
+### E2 — Verdict on cause
+
+**Fault A — `status='token_expired'`: OUR BUG. Confidence: certain.** *(fixed)*
+
+The previous analysis was right that nothing in `src/` writes `token_expired`. It came from
+**outside the Next.js app**: a legacy **TrueLayer-era Supabase Edge Function** (slug `bank-sync`,
+version 2, still `ACTIVE`) driven by **pg_cron jobs 2 and 3** at `0 3,9,15,21 * * *` and
+`0 1 1 * *`. Mechanism:
+
+1. It reads the `bank_connections_due_sync` view, which does **not** filter by provider — so it
+   picks up Yapily rows.
+2. `const tokenExpired = new Date(connection.token_expires_at) < new Date()`. Yapily rows have
+   `token_expires_at = NULL`, and `new Date(null)` is **epoch 1970** → always `true`.
+3. `connection.refresh_token` is NULL for Yapily → it takes the branch that writes
+   `status: "token_expired"`.
+4. Its audit call `record_bank_sync(p_status => 'token_expired')` violates
+   `bank_sync_log_status_check` (`success|failed|skipped`). supabase-js **returns** that error
+   rather than throwing, the function ignores it, and the status write proceeds — **so the flip
+   left no trace anywhere.** That is exactly why it looked like it came from nowhere.
+
+Timing proof: the row was `active` after the 18:45 reconnect; it only became due for that view
+once `last_synced_at` (18:48:58) aged past the 6 h Pro interval, i.e. at the **03:00** slot, not
+the 21:00 one — and that is precisely when it flipped. The hash-backfill branch in the Vercel
+cron (`bank-sync/route.ts:295-333`) is the only other writer of `updated_at` on a failing
+connection and it could not have run (`account_identifications_hashes` already had 4 entries for
+4 accounts).
+
+**Fault B — the 403s themselves: NOT our bug. Confidence: high.**
+
+The strongest possible control test already ran in production, by accident:
+
+- `/api/yapily/initial-sync` (`route.ts:98-102`) and `/api/cron/bank-sync`
+  (`route.ts:340-363`) call the **same function** `getAllTransactions(accountId, consentToken,
+  { from: <90d ago>, before: <tomorrow> })` with **byte-identical parameters**.
+- The callback (`callback/route.ts:229-237` and `:298-309`) hands the **same in-memory
+  `consentToken` string** both to `upsertYapilyConnection` (which stores `encrypt(...)`) and to
+  `initial-sync`. So the cron reads back exactly the credential that worked.
+- That identical call **succeeded on all four accounts at 18:47** and **403'd on all four at
+  20:00**. Nothing on our side changed in between — no code ran, no status changed, the consent
+  does not expire until 13 Nov.
+
+Corroborating: Yapily's message says *"The **institution** rejected the call"*. For HSBC to be the
+rejector, Yapily must have resolved our consent successfully — which independently proves our
+stored token decrypts correctly and is still valid. And for `PNae…`, Yapily states it **attempted
+a credential refresh with HSBC and HSBC refused it**. Both are bank-side outcomes.
+
+Also note `triageConsentFailure` (`yapily.ts:1058-1098`) returned **non-fatal** on every one of
+these 403s (`consent_failure_count` is still `0`). It only returns non-fatal when
+`GET /consents/{id}` comes back **non-terminal** — i.e. **Yapily's own consent record says this
+consent is alive** while the data call says "revoked". *(Caveat: it also returns non-fatal if the
+`GET /consents/{id}` lookup itself failed — see F3 — so this is corroborating, not conclusive.)*
+
+**What we cannot determine from our side:** *why* HSBC revoked access ~71 minutes after granting
+it, and why one account reports "revoked" while three report "insufficient rights". That
+distinction lives entirely in Yapily's logs. **Do not guess at it on the call — ask Q1 below.**
+
+### E3 — What WE need to fix
+
+| # | Severity | Issue | Location | Status |
+|---|---|---|---|---|
+| **F1** | **Critical** | Legacy TrueLayer edge function silently rewrites every Yapily connection to `status='token_expired'`, hiding it from `/api/bank/sync-now`, `/api/cron/consent-renewal` and the money-hub active card. | Supabase Edge Function `bank-sync` (`index.ts`, `syncConnection` token-expiry branch) driven by `cron.job` ids 2 & 3 | **DONE 16 Aug 17:42** — `supabase/migrations/20260816180000_retire_legacy_truelayer_bank_sync_cron.sql`. Jobs unscheduled (`cron.job` now holds only ids 1, 4, 5); row reset to `active`. Verified: all 3 `provider='truelayer'` rows are `revoked` + soft-deleted, and the view requires `status='active'`, so the function could never sync anything — it could only corrupt. |
+| **F2** | High | The 90-day consent-renewal flow **would never have fired** for this connection. `/api/cron/consent-renewal/route.ts:43-51` filters `.eq('status','active')` and `:59-66` filters `.in('status',['active','expiring_soon'])`. A `token_expired` row is invisible to both — so F1 silently disabled re-consent prompting too. | `src/app/api/cron/consent-renewal/route.ts:43-66` | **Resolved by F1** for this row. Consider widening the filter to include `token_expired` as belt-and-braces. Not required before the call. |
+| **F3** | Medium | `isYapilyConsentExpiryError` (`src/lib/yapily.ts:901-922`) does **not** match Yapily's actual live wording **"Consent must has been revoked."** The list checks `'consent has been revoked'`; the live string has `must` in the middle, so it never matches. This only bites on the fallback path (when `GET /consents/{id}` itself fails), but on that path a genuinely revoked consent is classed non-fatal **forever** and the user is never prompted to reconnect. | `src/lib/yapily.ts:914-916` | **NOT fixed — deliberate.** Adding the substring changes disconnect behaviour, and a wrong flip to `expired` the day before the review is worse than the current conservative miss. Fix after the call: add `'must has been revoked'` and `'been revoked'` to the list at `:914-916`. |
+| **F4** | Low | `/api/yapily/initial-sync/route.ts:200-206` writes its `bank_sync_log` row **without** `transactions_synced` / `transactions_new`. The 15 Aug initial sync therefore logged `0 / 0` while actually inserting **567** transactions — which is exactly why the sync looked like it had failed when it had not. | `src/app/api/yapily/initial-sync/route.ts:200-206` | **NOT fixed.** One-line addition of `transactions_synced: totalInserted + totalDuplicateSkipped, transactions_new: totalInserted`. Cosmetic but it caused this whole misdiagnosis — worth doing after the call. |
+
+**Nothing else on our side is implicated.** Consent storage, token round-trip, request shape,
+date window, account-id handling and the 403-triage path all check out against production
+evidence.
+
+### E4 — The question to put to Migle
+
+Word it so she can answer straight from her request logs. Give her the tracingIds.
+
+> **Q1 (the one that matters).** Consent `fd949d3c-a633-49ee-9775-819ab58886dd`
+> (consentRequestId `81d6a006-41d0-4f56-a11c-cbfa19285936`, institution `hsbcbusiness_uk`,
+> authorised 15 Aug 2026 18:45:08 UTC, `consent_expires_at` 13 Nov 2026).
+>
+> `GET /accounts/{id}/transactions?from=<-90d>&before=<+1d>` succeeded on **all four** accounts
+> at 18:45–18:47 on 15 Aug — including the 91-to-365-day historical window.
+>
+> The **identical** call, same consent token, same four account IDs, same date window, returned
+> **403 on all four** at 20:00:59 the same evening, and on every run since.
+> Latest set (16 Aug 17:02 UTC):
+> `6a81ece6f7bf279875d881114ab9c0b1`, `6a81ecf4a31d8a75fc51f4566a7c1e06`,
+> `6a81ed001508247d8a6d633d0eac58f2`, `6a81ed0c9cb92d3…`
+> First set (15 Aug 20:00 UTC): `6a80c54a29b481257b85c7bbab170222`,
+> `6a80c5589f1bf48a6ddcec46453d9796`, `6a80c55f0eb29508c71d1a83640fa80a`, `6a80c5672efc903…`
+>
+> **In your logs, what did HSBC actually return between 18:48 and 20:00 that killed this
+> consent, and what is the correct client behaviour to keep it alive?**
+>
+> Specifically:
+> 1. **Is there a time-boxed window** after consent grant during which HSBC Business allows
+>    unattended data access, after which SCA / re-authorisation is required? If so, how long, and
+>    is a scheduled 4×-daily sync outside it by design?
+> 2. **Why do three accounts report `insufficient_rights` while `PNae6W0h3CyGMZimjdXrvw` reports
+>    `Consent must has been revoked`** under the same consent token? Is `PNae…` still bound to the
+>    older consent `371ff887-987b-4224-9cfe-2476446dfc05` / the 14 May consent on Yapily's side?
+> 3. **What does `GET /consents/fd949d3c-a633-49ee-9775-819ab58886dd` report right now?** Our
+>    triage treats it as non-terminal, which is why we correctly did **not** disconnect the bank.
+>    If Yapily says AUTHORIZED while HSBC 403s, **what is the intended recovery path?**
+>    `POST /consents/{id}/extend` only fires for us on `AWAITING_RE_AUTHORIZATION` — should we
+>    call it on `insufficient_rights` too?
+> 4. **Does `hsbcbusiness_uk` require per-account re-selection?** All six requested scopes are
+>    advertised for this institution and all four accounts returned transactions at 18:47, so a
+>    static scope gap does not fit the evidence.
+> 5. **Is `before=<tomorrow>` (a future upper bound) acceptable to HSBC on unattended calls?** It
+>    was accepted at 18:47 under the same consent, but confirm it is not a contributing factor.
+
+### E5 — Will a clean reconnect hold for the demo?
+
+**Honest answer: it will work, then degrade — probably within about an hour. Confidence: moderate
+(this is a single observation, twice).**
+
+- **It will pull data.** Both reconnects (14 May, 15 Aug) produced a fully successful multi-pass
+  initial sync within minutes. 15 Aug inserted 567 transactions across all four accounts with
+  zero errors. Reconnecting on the day will demonstrate points 1, 2, 5, 9 and 11 live.
+- **It will not hold.** Both times, scheduled access died shortly after: 16 May (two days after
+  the 14 May connect) and 15 Aug at 20:00 (**71 minutes** after the 18:48 connect). The
+  degradation is not caused by anything we do in between — the 15 Aug case had a brand-new
+  consent, `status='active'`, a clean failure counter, and no intervening code path.
+- **F1 is now fixed**, so at least the connection will no longer *also* get silently marked
+  `token_expired` on top of the 403s. That was masking the real signal.
+
+**Demo recommendation:** do the fresh HSBC connect **immediately before** the call, not the night
+before. Everything works inside the first window. Then use the 403s themselves as the live
+evidence for point 6 (403 → `GET /consents/{id}` → prompt re-consent) — the triage path handles
+them exactly as Yapily's build review requires, and the tracingIds above prove it fires in
+production. Turning the fault into the demo for point 6 is the strongest available play, and it
+is honest.
+
+---
+
 **Repo state audited:** `master` @ `d5498f1c` · **Audit date:** 2026-08-16
 **Reviewer:** Migle (Yapily) · **Format:** app demo only, she reads Yapily's request logs her side
 **Supersedes the claims in:** `docs/migle-build-review-runbook.html` (audited @ `0fcdf5ed`, line numbers there are stale and two of its demo steps no longer work — see GAPS)
@@ -14,9 +186,16 @@ current source, not against the previous runbook. The unit suite runs clean:
 
 **But the production account is not currently in a demoable state.** There is one live
 Yapily connection and it cannot read transactions — every scheduled sync since
-15 Aug 20:00 UTC has returned 403 on all four accounts. Its `status` is also stuck in a
-value no current code writes (`token_expired`), which silently disables the "Sync now",
+15 Aug 20:00 UTC has returned 403 on all four accounts. Its `status` was also stuck in a
+value no code in `src/` writes (`token_expired`), which silently disabled the "Sync now",
 "Renew", and "active connection" paths the demo depends on.
+
+> **Updated 16 Aug 17:42 — see "Consent 403 diagnosis (16 Aug)" at the top of this file.**
+> The `token_expired` mystery is solved and **fixed**: a legacy TrueLayer Supabase Edge
+> Function on pg_cron was rewriting every Yapily connection's status. The 403s are a
+> **separate, bank-side** fault and are **not** our bug — the identical request with the
+> identical token succeeded 71 minutes earlier. Read that section instead of §0/§4 where
+> they disagree.
 
 Three of the eleven points (5, 9, 11) cannot be demonstrated live until that is fixed.
 Points 1, 2, 3, 4, 6, 7, 8, 10 are demoable today.

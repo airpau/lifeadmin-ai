@@ -9,6 +9,7 @@
 import { NextRequest } from 'next/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { authenticateMcp, isAuthSuccess, mcpJson } from '@/lib/mcp-auth';
+import { endOfTodayLondonIso } from '@/lib/alerts/future-dated';
 
 export const runtime = 'nodejs';
 
@@ -29,17 +30,26 @@ export async function GET(req: NextRequest) {
     1,
   ).toISOString();
 
+  // Column names verified against the live schema (2026-08-16).
+  // `money_hub_budgets` has no `alerts_enabled` column — selecting it
+  // 500'd every call to this endpoint. The real optional columns are
+  // `rollover` and `payday_date`.
   const [budgetsRes, txnsRes] = await Promise.all([
     admin()
       .from('money_hub_budgets')
-      .select('id, category, monthly_limit, alerts_enabled, created_at')
+      .select('id, category, monthly_limit, rollover, payday_date, created_at')
       .eq('user_id', auth.userId),
     admin()
       .from('bank_transactions')
       .select('amount, category, user_category')
       .eq('user_id', auth.userId)
+      .is('deleted_at', null)
       .lt('amount', 0)
       .gte('timestamp', startOfMonth)
+      // Future-dated rows are SCHEDULED payments (banks return them with
+      // is_pending = false), so they haven't been spent yet and must not
+      // inflate "spent so far this month".
+      .lte('timestamp', endOfTodayLondonIso())
       .limit(10000),
   ]);
 
@@ -67,7 +77,8 @@ export async function GET(req: NextRequest) {
       remaining_gbp: parseFloat((Number(b.monthly_limit ?? 0) - spent).toFixed(2)),
       percentage_used: parseFloat(pct.toFixed(1)),
       status: pct > 100 ? 'over_budget' : pct > 80 ? 'warning' : 'on_track',
-      alerts_enabled: !!b.alerts_enabled,
+      rollover: !!b.rollover,
+      payday_date: b.payday_date ?? null,
     };
   });
 
