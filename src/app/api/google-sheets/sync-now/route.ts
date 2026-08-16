@@ -31,6 +31,21 @@ export async function POST(_req: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
+  // Google Sheets export is Pro-only per plan-limits.ts — same gate as
+  // /api/auth/google-sheets, /api/export/csv and /api/export/xlsx. Without
+  // this, a downgraded user could keep syncing indefinitely.
+  const { getEffectiveTier } = await import('@/lib/plan-limits')
+  const tier = await getEffectiveTier(user.id)
+  if (tier !== 'pro') {
+    return NextResponse.json(
+      {
+        error: 'Google Sheets export is available on the Pro plan.',
+        upgradeUrl: '/pricing',
+      },
+      { status: 403 },
+    )
+  }
+
   // Is a sheet connected? If so, decide full vs incremental.
   const { data: conn } = await supabase
     .from('google_sheets_connections')
@@ -82,12 +97,27 @@ export async function POST(_req: NextRequest) {
     }
 
     const data = await res.json()
-    const rows = data?.results?.[0]?.rows_written ?? 0
+    const result = data?.results?.[0]
+    const rows = result?.rows_written ?? 0
+    // Propagate the per-user diagnostics. Previously only rows_written was
+    // read, so token_expired / sheets_metadata_read_failed / no_bank_connections
+    // / skipped tabs all rendered to the user as "All caught up".
+    const syncError: string | null = result?.error ?? null
+    const skippedTabs: number = result?.skipped_tabs ?? 0
+
+    if (syncError) {
+      console.error(
+        `sync-now: export reported "${syncError}" for user ${user.id} (rows=${rows}, skipped_tabs=${skippedTabs})`
+      )
+    }
 
     return NextResponse.json({
-      ok: true,
+      ok: !syncError,
       rows_written: rows,
       full_export: fullExport,
+      sync_error: syncError,
+      skipped_tabs: skippedTabs,
+      recreated_spreadsheet: result?.recreated_spreadsheet === true,
     })
   } catch (err) {
     console.error('sync-now: fetch failed', err)

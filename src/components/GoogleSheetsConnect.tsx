@@ -27,6 +27,38 @@ const SYNC_CAPTIONS: LoaderCaption[] = [
   { icon: '✨', text: 'Almost done — tidying the last tab…' },
 ]
 
+// A sync can fail in ways that used to be invisible: the Google connection
+// dies, the sheet is deleted, or there are no bank accounts to export. These
+// render as a persistent panel with a route out, not a transient toast.
+type SyncIssue = {
+  text: string
+  action?: 'reconnect' | 'connect_bank'
+}
+
+function describeSyncError(code: string): SyncIssue {
+  switch (code) {
+    case 'token_expired':
+      return {
+        text: 'Your Google connection has expired. Reconnect to resume syncing.',
+        action: 'reconnect',
+      }
+    case 'token_refresh_failed':
+      return {
+        text: 'We could not reach Google to refresh your connection. We will retry automatically. If this keeps happening, reconnect.',
+        action: 'reconnect',
+      }
+    case 'sheets_metadata_read_failed':
+      return {
+        text: 'We could not open your Google Sheet. Reconnect to create a fresh one.',
+        action: 'reconnect',
+      }
+    case 'no_bank_connections':
+      return { text: 'Connect a bank account to export transactions.', action: 'connect_bank' }
+    default:
+      return { text: 'Sync did not complete. Please try again shortly.' }
+  }
+}
+
 export default function GoogleSheetsConnect() {
   const [connection, setConnection] = useState<SheetsConnection | null>(null)
   const [loading, setLoading] = useState(true)
@@ -35,6 +67,9 @@ export default function GoogleSheetsConnect() {
   const [syncMessage, setSyncMessage] = useState<
     { kind: 'success' | 'error'; text: string } | null
   >(null)
+  // Persists until the next successful sync so the user isn't left staring at
+  // a stale "All caught up".
+  const [syncIssue, setSyncIssue] = useState<SyncIssue | null>(null)
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -86,25 +121,47 @@ export default function GoogleSheetsConnect() {
           kind: 'error',
           text: data?.error || 'Sync failed. Please try again.',
         })
+        setSyncIssue(null)
+        return
+      }
+
+      const rows = data?.rows_written ?? 0
+      const isBackfill = data?.full_export === true
+      const syncError: string | null = data?.sync_error ?? null
+      const skippedTabs: number = data?.skipped_tabs ?? 0
+
+      if (syncError) {
+        // A real failure the user can act on. Keep it on screen.
+        setSyncIssue(describeSyncError(syncError))
+        setSyncMessage(null)
+      } else if (skippedTabs > 0) {
+        setSyncIssue({
+          text: `We could not write ${skippedTabs} of your account tab${skippedTabs === 1 ? '' : 's'}. We will retry on the next sync.`,
+        })
+        setSyncMessage(null)
       } else {
-        const rows = data?.rows_written ?? 0
-        const isBackfill = data?.full_export === true
+        setSyncIssue(null)
         if (rows === 0) {
           setSyncMessage({
             kind: 'success',
             text: 'All caught up — no new transactions to sync.',
           })
         } else {
+          const recreated = data?.recreated_spreadsheet === true
+          const base = isBackfill
+            ? `Backfill complete — ${rows.toLocaleString()} rows written.`
+            : `Synced ${rows.toLocaleString()} new row${rows === 1 ? '' : 's'}.`
           setSyncMessage({
             kind: 'success',
-            text: isBackfill
-              ? `Backfill complete — ${rows.toLocaleString()} rows written.`
-              : `Synced ${rows.toLocaleString()} new row${rows === 1 ? '' : 's'}.`,
+            text: recreated
+              ? `We could not find your old sheet, so we created a fresh one. ${base}`
+              : base,
           })
         }
-        // Reload connection to pick up fresh last_synced_at
-        await loadConnection()
       }
+
+      // Reload connection to pick up fresh last_synced_at and any new sheet URL.
+      await loadConnection()
     } catch {
       setSyncMessage({
         kind: 'error',
@@ -141,7 +198,7 @@ export default function GoogleSheetsConnect() {
           <p className="text-xs text-slate-500 truncate">
             {connection
               ? `Connected as ${connection.email}`
-              : 'Sync every account to a Google Sheet, updated daily'}
+              : 'One-way export of every account to a Google Sheet, updated daily'}
           </p>
         </div>
         {connection && (
@@ -192,7 +249,30 @@ export default function GoogleSheetsConnect() {
             />
           )}
 
-          {!syncing && syncMessage && (
+          {/* Persistent problem panel — stays until the next clean sync. */}
+          {!syncing && syncIssue && (
+            <div className="rounded-lg px-3 py-2.5 text-xs bg-amber-50 text-amber-800 border border-amber-300 space-y-2">
+              <p>{syncIssue.text}</p>
+              {syncIssue.action === 'reconnect' && (
+                <a
+                  href="/api/auth/google-sheets"
+                  className="inline-flex items-center justify-center rounded-md bg-amber-600 hover:bg-amber-700 text-white font-semibold px-3 py-1.5 transition-colors"
+                >
+                  Reconnect Google Sheets
+                </a>
+              )}
+              {syncIssue.action === 'connect_bank' && (
+                <a
+                  href="/dashboard/money-hub"
+                  className="inline-flex items-center justify-center rounded-md bg-amber-600 hover:bg-amber-700 text-white font-semibold px-3 py-1.5 transition-colors"
+                >
+                  Connect a bank
+                </a>
+              )}
+            </div>
+          )}
+
+          {!syncing && !syncIssue && syncMessage && (
             <div
               className={
                 'rounded-lg px-3 py-2 text-xs ' +
@@ -231,6 +311,11 @@ export default function GoogleSheetsConnect() {
               {disconnecting ? 'Disconnecting…' : 'Disconnect'}
             </button>
           </div>
+
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            Automatic one-way export. Paybacker adds new transactions to your Google Sheet each day.
+            Anything you change in the Sheet stays there, it is not read back into Paybacker.
+          </p>
         </div>
       ) : (
         /* Not connected state */
@@ -245,6 +330,9 @@ export default function GoogleSheetsConnect() {
             <li className="flex items-center gap-2">
               <span className="text-green-400">✓</span> Date, merchant, amount, category &amp; more
             </li>
+            <li className="flex items-center gap-2">
+              <span className="text-green-400">✓</span> One-way export — your Sheet edits are never read back
+            </li>
           </ul>
           <a
             href="/api/auth/google-sheets"
@@ -258,8 +346,10 @@ export default function GoogleSheetsConnect() {
             </svg>
             Connect Google Sheets
           </a>
-          <p className="text-[11px] text-slate-500 text-center">
-            Your data stays in your Google account. Updated every morning at 6am.
+          <p className="text-[11px] text-slate-500 text-center leading-relaxed">
+            Your data stays in your Google account. Automatic one-way export. Paybacker adds new
+            transactions to your Google Sheet each morning at 6am. Anything you change in the Sheet
+            stays there, it is not read back into Paybacker.
           </p>
         </div>
       )}

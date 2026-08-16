@@ -2,7 +2,7 @@
 // Handles OAuth callback: exchanges code for tokens, creates the Google Sheet,
 // does initial full historical export, saves connection to Supabase.
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -118,15 +118,32 @@ export async function GET(req: NextRequest) {
     updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id' })
 
-  // 7. Trigger initial full export (fire and forget — sheet will populate in background)
-  fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/google-sheets/export`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-internal-key': process.env.INTERNAL_API_KEY ?? '',
-    },
-    body: JSON.stringify({ user_id: user.id, full_export: true }),
-  }).catch(console.error)
+  // 7. Trigger the initial full backfill AFTER the redirect response is sent.
+  //
+  // This used to be a bare un-awaited fetch(). On Vercel the lambda freezes the
+  // moment the response is returned, so the request was routinely dropped
+  // before it left the function and the backfill never ran — the user landed on
+  // a permanently empty sheet. after() keeps the runtime alive for the work.
+  after(async () => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/google-sheets/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-key': process.env.INTERNAL_API_KEY ?? '',
+        },
+        body: JSON.stringify({ user_id: user.id, full_export: true }),
+      })
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        console.error(
+          `[google-sheets callback] initial backfill returned ${res.status}: ${text.slice(0, 300)}`
+        )
+      }
+    } catch (err) {
+      console.error('[google-sheets callback] initial backfill failed:', err)
+    }
+  })
 
   return NextResponse.redirect(
     `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/export?sheets_connected=true`

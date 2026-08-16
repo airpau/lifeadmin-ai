@@ -18,6 +18,9 @@ export const runtime = 'nodejs'
 // These can be large; allow longer processing on Vercel Pro.
 export const maxDuration = 60
 
+// PostgREST caps a plain select at 1000 rows. Paginate by this size.
+const DB_PAGE_SIZE = 1000
+
 const COLUMNS: Array<{ header: string; key: string; width: number }> = [
   { header: 'Date',           key: 'date',        width: 12 },
   { header: 'Description',    key: 'description', width: 40 },
@@ -137,16 +140,30 @@ export async function GET(_req: NextRequest) {
   }
 
   // Load transactions.
-  const { data: transactions, error } = await supabase
-    .from('bank_transactions')
-    .select('transaction_id, account_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring')
-    .eq('user_id', user.id)
-    .eq('is_pending', false)
-    .order('timestamp', { ascending: true })
+  //
+  // Paginated: a plain .select() is capped at 1000 rows by PostgREST and
+  // returns the oldest first, so every user with a real transaction history
+  // was silently downloading a truncated workbook.
+  const transactions: Tx[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .select('transaction_id, account_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring')
+      .eq('user_id', user.id)
+      .eq('is_pending', false)
+      .is('deleted_at', null)
+      .order('timestamp', { ascending: true })
+      .range(from, from + DB_PAGE_SIZE - 1)
 
-  if (error) {
-    console.error('xlsx export query failed:', error)
-    return NextResponse.json({ error: 'Export failed' }, { status: 500 })
+    if (error) {
+      console.error('xlsx export query failed:', error)
+      return NextResponse.json({ error: 'Export failed' }, { status: 500 })
+    }
+    if (!data || data.length === 0) break
+    transactions.push(...(data as Tx[]))
+    if (data.length < DB_PAGE_SIZE) break
+    from += DB_PAGE_SIZE
   }
 
   const workbook = new ExcelJS.Workbook()
@@ -163,7 +180,7 @@ export async function GET(_req: NextRequest) {
 
   // Group transactions by account for the per-account tabs.
   const perAccount = new Map<string, Tx[]>()
-  for (const tx of (transactions ?? []) as Tx[]) {
+  for (const tx of transactions) {
     const key = tx.account_id ?? 'unknown'
     const list = perAccount.get(key) ?? []
     list.push(tx)

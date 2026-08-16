@@ -793,7 +793,7 @@ function Section5Sheets() {
           <h3>Why it beats Lunchflow</h3>
           <ul>
             <li>Sync columns include Paybacker&rsquo;s enrichment, not just raw txns.</li>
-            <li>Two-way: write &ldquo;cancelled&rdquo; in the sheet, it updates the app.</li>
+            <li>One way: we write to your sheet, your edits stay in your sheet.</li>
             <li>Works with any AI agent that can read a Google Sheet.</li>
           </ul>
         </div>

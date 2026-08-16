@@ -14,10 +14,14 @@
 // when there is no new data. The daily 6am cron at /api/cron/google-sheets-sync
 // remains as a safety net for users whose bank sync hasn't fired recently.
 //
-// IMPORTANT: this is fire-and-forget. We never await the export — the caller
-// returns to the user as soon as bank-sync is done; the sheet writes happen
-// in the background. Errors are logged but never bubble up to the user.
+// IMPORTANT: this never blocks the caller. The export is scheduled with
+// Next's after() so it runs once the caller's response has been sent, but
+// still inside a runtime that Vercel keeps alive. A bare un-awaited fetch()
+// (what this used to do) is dropped when the lambda freezes on response —
+// which is why post-sync sheet writes silently never happened in production.
+// Errors are logged but never bubble up to the user.
 
+import { after } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 type TriggerOpts = {
@@ -53,21 +57,38 @@ export async function triggerSheetsExport(
       return;
     }
 
-    // Fire and forget — do NOT await the fetch promise. Errors are caught
-    // in .catch() so an unreachable export endpoint never crashes the caller.
-    fetch(`${appUrl}/api/google-sheets/export`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-internal-key': internalKey,
-      },
-      body: JSON.stringify({
-        user_id: userId,
-        full_export: opts.fullExport === true,
-      }),
-    }).catch((err) => {
-      console.error(`triggerSheetsExport: fetch failed for user ${userId}:`, err);
-    });
+    const runExport = async () => {
+      try {
+        const res = await fetch(`${appUrl}/api/google-sheets/export`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-key': internalKey,
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            full_export: opts.fullExport === true,
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          console.error(
+            `triggerSheetsExport: export returned ${res.status} for user ${userId}: ${text.slice(0, 300)}`
+          );
+        }
+      } catch (err) {
+        console.error(`triggerSheetsExport: fetch failed for user ${userId}:`, err);
+      }
+    };
+
+    try {
+      // Runs after the caller's response is flushed, with the runtime kept alive.
+      after(runExport);
+    } catch {
+      // after() throws outside a request/render context (e.g. a script or a
+      // non-Next caller). Fall back to running it inline so the work isn't lost.
+      await runExport();
+    }
   } catch (err) {
     // Never let sheets-export wiring break a bank sync.
     console.error(`triggerSheetsExport: unexpected error for user ${userId}:`, err);

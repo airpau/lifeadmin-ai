@@ -49,19 +49,57 @@ const INCREMENTAL_OVERLAP_DAYS = 2
 // OAuth token refresh
 // ---------------------------------------------------------------------------
 
-async function refreshAccessToken(refreshToken: string): Promise<string | null> {
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      refresh_token: refreshToken,
-      grant_type: 'refresh_token',
-    }),
-  })
-  const data = await res.json()
-  return data.access_token ?? null
+// A refresh either succeeds, fails permanently (the user revoked access or the
+// refresh token expired — only a reconnect fixes it), or fails transiently
+// (Google 5xx, network blip — retrying tomorrow is fine). Collapsing all three
+// into `null` was why a dead refresh token looked like a no-op sync.
+type TokenResult =
+  | { ok: true; token: string }
+  | { ok: false; reason: 'token_expired' | 'token_refresh_failed' }
+
+async function refreshAccessToken(refreshToken: string): Promise<TokenResult> {
+  let res: Response
+  try {
+    res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    })
+  } catch (err) {
+    console.error('[sheets-export] refreshAccessToken network failure:', err)
+    return { ok: false, reason: 'token_refresh_failed' }
+  }
+
+  const raw = await res.text().catch(() => '')
+
+  if (!res.ok) {
+    console.error(`[sheets-export] refreshAccessToken ${res.status}: ${raw.slice(0, 300)}`)
+    // invalid_grant = revoked consent, expired refresh token (Google expires
+    // refresh tokens after 7 days while the OAuth app is in Testing mode), or
+    // a password change. Permanent — the user must reconnect.
+    if (raw.includes('invalid_grant')) return { ok: false, reason: 'token_expired' }
+    return { ok: false, reason: 'token_refresh_failed' }
+  }
+
+  let data: { access_token?: string }
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    console.error(`[sheets-export] refreshAccessToken unparseable body: ${raw.slice(0, 300)}`)
+    return { ok: false, reason: 'token_refresh_failed' }
+  }
+
+  if (!data.access_token) {
+    console.error(`[sheets-export] refreshAccessToken 200 with no access_token: ${raw.slice(0, 300)}`)
+    return { ok: false, reason: 'token_refresh_failed' }
+  }
+
+  return { ok: true, token: data.access_token }
 }
 
 async function getOrRefreshToken(
@@ -72,37 +110,47 @@ async function getOrRefreshToken(
     refresh_token: string | null
     token_expiry: string | null
   }
-): Promise<string | null> {
+): Promise<TokenResult> {
   const expiry = connection.token_expiry ? new Date(connection.token_expiry) : null
   const isExpired = !expiry || expiry < new Date(Date.now() + 60_000)
 
-  if (!isExpired) return connection.access_token
+  if (!isExpired) return { ok: true, token: connection.access_token }
 
-  if (!connection.refresh_token) return null
+  // No refresh token at all — nothing to refresh with, user must reconnect.
+  if (!connection.refresh_token) {
+    console.error(`[sheets-export] user=${connection.user_id} has no refresh_token — reconnect required`)
+    return { ok: false, reason: 'token_expired' }
+  }
 
-  const newToken = await refreshAccessToken(connection.refresh_token)
-  if (!newToken) return null
+  const refreshed = await refreshAccessToken(connection.refresh_token)
+  if (!refreshed.ok) return refreshed
 
   await supabase
     .from('google_sheets_connections')
     .update({
-      access_token: newToken,
+      access_token: refreshed.token,
       token_expiry: new Date(Date.now() + 3600_000).toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', connection.user_id)
 
-  return newToken
+  return refreshed
 }
 
 // ---------------------------------------------------------------------------
 // Google Sheets helpers (all check response status — no silent failures)
 // ---------------------------------------------------------------------------
 
+type SheetsMetaResult =
+  | { ok: true; sheets: { title: string; sheetId: number }[] }
+  // 404 / 410 = the spreadsheet is gone (user deleted or trashed it). Recoverable
+  // by creating a fresh one — see createSpreadsheet below.
+  | { ok: false; missing: boolean }
+
 async function getExistingSheets(
   token: string,
   spreadsheetId: string
-): Promise<{ title: string; sheetId: number }[] | null> {
+): Promise<SheetsMetaResult> {
   const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
     { headers: { Authorization: `Bearer ${token}` } }
@@ -110,13 +158,46 @@ async function getExistingSheets(
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     console.error(`[sheets-export] getExistingSheets ${res.status}: ${body.slice(0, 300)}`)
-    return null
+    return { ok: false, missing: res.status === 404 || res.status === 410 }
   }
   const data = await res.json()
-  return (data.sheets ?? []).map((s: { properties: { title: string; sheetId: number } }) => ({
-    title: s.properties.title,
-    sheetId: s.properties.sheetId,
-  }))
+  return {
+    ok: true,
+    sheets: (data.sheets ?? []).map((s: { properties: { title: string; sheetId: number } }) => ({
+      title: s.properties.title,
+      sheetId: s.properties.sheetId,
+    })),
+  }
+}
+
+/**
+ * Create a fresh Paybacker spreadsheet in the user's Drive. Mirrors the
+ * creation logic in /api/auth/google-sheets/callback — kept in step with it.
+ * Used to self-heal when the stored spreadsheet_id no longer resolves.
+ */
+async function createSpreadsheet(
+  token: string,
+  title: string
+): Promise<{ spreadsheetId: string; spreadsheetUrl: string } | null> {
+  const res = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      properties: { title },
+      sheets: [{ properties: { title: 'Summary' } }], // placeholder; account tabs added below
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error(`[sheets-export] createSpreadsheet ${res.status}: ${body.slice(0, 300)}`)
+    return null
+  }
+  const sheet = await res.json()
+  if (!sheet.spreadsheetId) {
+    console.error('[sheets-export] createSpreadsheet returned no spreadsheetId')
+    return null
+  }
+  return { spreadsheetId: sheet.spreadsheetId, spreadsheetUrl: sheet.spreadsheetUrl ?? '' }
 }
 
 async function ensureAccountTab(
@@ -315,40 +396,106 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ synced: 0 })
   }
 
-  const results: { user_id: string; rows_written: number; skipped_tabs?: number; error?: string }[] = []
+  const results: {
+    user_id: string
+    rows_written: number
+    skipped_tabs?: number
+    error?: string
+    recreated_spreadsheet?: boolean
+  }[] = []
 
   for (const conn of connections) {
     try {
-      const token = await getOrRefreshToken(supabase, conn)
-      if (!token) {
-        results.push({ user_id: conn.user_id, rows_written: 0, error: 'token_expired' })
+      const tokenResult = await getOrRefreshToken(supabase, conn)
+      if (!tokenResult.ok) {
+        results.push({ user_id: conn.user_id, rows_written: 0, error: tokenResult.reason })
         continue
       }
+      const token = tokenResult.token
 
-      // All bank_connections EXCEPT revoked. Revoked = user deliberately disconnected.
-      // token_expired is fine: we only read cached bank_transactions, never the bank API.
-      const { data: bankConns } = await supabase
+      // Every bank connection EXCEPT permanently-dead ones. This export only
+      // reads cached rows from bank_transactions and never calls the bank API,
+      // so live consent state is irrelevant to it.
+      //
+      // Previously this filtered to ['active','token_expired'], which silently
+      // dropped every user in expiring_soon / expired / expired_legacy — states
+      // the daily consent-renewal cron routinely sets because Open Banking
+      // consent rolls every 90 days. Those users got rows_written: 0 with no
+      // error, so the UI reported "All caught up" forever.
+      const { data: allBankConns } = await supabase
         .from('bank_connections')
-        .select('id, bank_name, account_ids, account_display_names')
+        .select('id, bank_name, account_ids, account_display_names, status')
         .eq('user_id', conn.user_id)
-        .in('status', ['active', 'token_expired'])
 
-      if (!bankConns?.length) {
-        results.push({ user_id: conn.user_id, rows_written: 0 })
+      const DEAD_STATUSES = ['revoked', 'revoked_duplicate', 'archived']
+      const bankConns = (allBankConns ?? []).filter(
+        (b) => !DEAD_STATUSES.includes(String(b.status ?? ''))
+      )
+
+      if (!bankConns.length) {
+        // Make this visible rather than reporting a clean zero-row sync.
+        results.push({ user_id: conn.user_id, rows_written: 0, error: 'no_bank_connections' })
         continue
       }
 
-      const existingSheets = await getExistingSheets(token, conn.spreadsheet_id)
-      if (existingSheets === null) {
-        results.push({ user_id: conn.user_id, rows_written: 0, error: 'sheets_metadata_read_failed' })
+      // Self-heal: if the stored spreadsheet no longer resolves (user deleted or
+      // trashed it), create a fresh one, repoint the connection, and treat the
+      // run as a full backfill so the new sheet isn't left half-empty.
+      let spreadsheetId: string = conn.spreadsheet_id
+      let recreatedSpreadsheet = false
+      let forceFullExport = false
+
+      let meta = await getExistingSheets(token, spreadsheetId)
+      if (!meta.ok && meta.missing) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, first_name')
+          .eq('id', conn.user_id)
+          .maybeSingle()
+        const displayName =
+          profile?.first_name || profile?.full_name || conn.email || 'Your transactions'
+
+        const created = await createSpreadsheet(token, `Paybacker — ${displayName}`)
+        if (!created) {
+          results.push({ user_id: conn.user_id, rows_written: 0, error: 'sheets_metadata_read_failed' })
+          continue
+        }
+
+        await supabase
+          .from('google_sheets_connections')
+          .update({
+            spreadsheet_id: created.spreadsheetId,
+            spreadsheet_url: created.spreadsheetUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', conn.user_id)
+
+        spreadsheetId = created.spreadsheetId
+        recreatedSpreadsheet = true
+        forceFullExport = true
+        console.log(
+          `[sheets-export] user=${conn.user_id} spreadsheet missing — recreated as ${created.spreadsheetId}`
+        )
+
+        meta = await getExistingSheets(token, spreadsheetId)
+      }
+
+      if (!meta.ok) {
+        results.push({
+          user_id: conn.user_id,
+          rows_written: 0,
+          error: 'sheets_metadata_read_failed',
+          ...(recreatedSpreadsheet ? { recreated_spreadsheet: true } : {}),
+        })
         continue
       }
+      const existingSheets = meta.sheets
 
       // Incremental: fetch rows from (last_synced - overlap) onwards. The sheet-side
       // dedup (readExistingTransactionIds) catches anything we re-fetch.
       // Full export: sinceTimestamp = null → pull every transaction for the account.
       let sinceTimestamp: string | null = null
-      if (!full_export && conn.last_synced_timestamp) {
+      if (!full_export && !forceFullExport && conn.last_synced_timestamp) {
         const lowerBound = new Date(
           new Date(conn.last_synced_timestamp).getTime() - INCREMENTAL_OVERLAP_DAYS * 24 * 60 * 60 * 1000
         )
@@ -379,7 +526,7 @@ export async function POST(req: NextRequest) {
           if (transactions.length === 0) continue
 
           // Make sure the tab (and header row) exist before we try to read column H.
-          const tabOk = await ensureAccountTab(token, conn.spreadsheet_id, tabName, existingSheets)
+          const tabOk = await ensureAccountTab(token, spreadsheetId, tabName, existingSheets)
           if (!tabOk) {
             console.error(`[sheets-export] skipping "${tabName}" — could not ensure tab`)
             skippedTabs++
@@ -390,7 +537,7 @@ export async function POST(req: NextRequest) {
           // this tab rather than risk writing duplicates.
           const existingIds = await readExistingTransactionIds(
             token,
-            conn.spreadsheet_id,
+            spreadsheetId,
             tabName
           )
           if (existingIds === null) {
@@ -403,7 +550,7 @@ export async function POST(req: NextRequest) {
           if (newTxs.length === 0) continue
 
           const rows = newTxs.map(formatTransaction)
-          const appendOk = await appendRows(token, conn.spreadsheet_id, tabName, rows)
+          const appendOk = await appendRows(token, spreadsheetId, tabName, rows)
           if (!appendOk) {
             skippedTabs++
             continue
@@ -418,25 +565,43 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Update sync metadata. We only bump last_synced_timestamp forward, never
-      // backwards — this is defensive against a partial-failure run where we
-      // only wrote a subset of accounts.
-      const updates: Record<string, string> = {
-        last_synced_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+      // Only stamp the sync metadata when the run genuinely succeeded — either
+      // we wrote rows, or it was a clean pass with nothing new and no skipped
+      // tabs. Stamping last_synced_at on a failed run permanently downgrades
+      // every future Sync Now from full backfill to incremental, so the user
+      // can never recover from a bad first sync.
+      const runSucceeded = totalRows > 0 || skippedTabs === 0
+
+      if (runSucceeded) {
+        // We only bump last_synced_timestamp forward, never backwards — this is
+        // defensive against a partial-failure run where we only wrote a subset
+        // of accounts.
+        const updates: Record<string, string> = {
+          last_synced_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        if (latestTimestampWritten && latestTimestampWritten !== conn.last_synced_timestamp) {
+          updates.last_synced_timestamp = latestTimestampWritten
+        }
+        await supabase
+          .from('google_sheets_connections')
+          .update(updates)
+          .eq('user_id', conn.user_id)
+      } else {
+        console.error(
+          `[sheets-export] user=${conn.user_id} skipped ${skippedTabs} tab(s) and wrote nothing — not stamping last_synced_at`
+        )
       }
-      if (latestTimestampWritten && latestTimestampWritten !== conn.last_synced_timestamp) {
-        updates.last_synced_timestamp = latestTimestampWritten
-      }
-      await supabase
-        .from('google_sheets_connections')
-        .update(updates)
-        .eq('user_id', conn.user_id)
 
       console.log(
-        `[sheets-export] user=${conn.user_id} wrote=${totalRows} skipped_tabs=${skippedTabs} full=${!!full_export}`
+        `[sheets-export] user=${conn.user_id} wrote=${totalRows} skipped_tabs=${skippedTabs} full=${!!full_export || forceFullExport} recreated=${recreatedSpreadsheet}`
       )
-      results.push({ user_id: conn.user_id, rows_written: totalRows, skipped_tabs: skippedTabs })
+      results.push({
+        user_id: conn.user_id,
+        rows_written: totalRows,
+        skipped_tabs: skippedTabs,
+        ...(recreatedSpreadsheet ? { recreated_spreadsheet: true } : {}),
+      })
     } catch (err) {
       console.error(`[sheets-export] failed for user ${conn.user_id}:`, err)
       results.push({ user_id: conn.user_id, rows_written: 0, error: String(err) })

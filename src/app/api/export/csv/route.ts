@@ -27,9 +27,19 @@ const HEADERS = [
   'Transaction ID',
 ]
 
+// PostgREST caps a plain select at 1000 rows. Paginate by this size, otherwise
+// anyone with more than 1000 transactions silently gets only their OLDEST 1000.
+const DB_PAGE_SIZE = 1000
+
 function csvEscape(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return ''
-  const s = String(value)
+  let s = String(value)
+  // Neutralise spreadsheet formula injection: any cell whose first char is
+  // =, +, -, @, tab or CR could be parsed as a formula by Excel / Numbers /
+  // Sheets. Prefix a single quote to defang it. Merchant and description
+  // strings come straight from the bank feed, so they are untrusted input.
+  // Numbers are exempt — a negative amount must stay a number.
+  if (typeof value !== 'number' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
   // Always quote; escape embedded quotes by doubling.
   return '"' + s.replace(/"/g, '""') + '"'
 }
@@ -78,23 +88,50 @@ export async function GET(_req: NextRequest) {
   }
 
   // Pull all the user's non-pending transactions, oldest first.
-  const { data: transactions, error } = await supabase
-    .from('bank_transactions')
-    .select('transaction_id, account_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring')
-    .eq('user_id', user.id)
-    .eq('is_pending', false)
-    .order('timestamp', { ascending: true })
+  //
+  // Paginated: a plain .select() is capped at 1000 rows by PostgREST and
+  // returns the oldest first, so every user with a real transaction history
+  // was silently downloading a truncated ledger.
+  type CsvTx = {
+    transaction_id: string | null
+    account_id: string | null
+    timestamp: string
+    description: string | null
+    merchant_name: string | null
+    amount: number | null
+    category: string | null
+    user_category: string | null
+    income_type: string | null
+    is_recurring: boolean | null
+  }
 
-  if (error) {
-    console.error('CSV export query failed:', error)
-    return NextResponse.json({ error: 'Export failed' }, { status: 500 })
+  const transactions: CsvTx[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .select('transaction_id, account_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring')
+      .eq('user_id', user.id)
+      .eq('is_pending', false)
+      .is('deleted_at', null)
+      .order('timestamp', { ascending: true })
+      .range(from, from + DB_PAGE_SIZE - 1)
+
+    if (error) {
+      console.error('CSV export query failed:', error)
+      return NextResponse.json({ error: 'Export failed' }, { status: 500 })
+    }
+    if (!data || data.length === 0) break
+    transactions.push(...(data as CsvTx[]))
+    if (data.length < DB_PAGE_SIZE) break
+    from += DB_PAGE_SIZE
   }
 
   // Build CSV body.
   const lines: string[] = []
   lines.push(HEADERS.map(csvEscape).join(','))
 
-  for (const tx of transactions ?? []) {
+  for (const tx of transactions) {
     const dateRaw = tx.timestamp ? new Date(tx.timestamp) : null
     const date = dateRaw ? dateRaw.toLocaleDateString('en-GB') : ''
     const amount = typeof tx.amount === 'number' ? Number(tx.amount.toFixed(2)) : ''

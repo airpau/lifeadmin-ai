@@ -101,7 +101,7 @@ export default function ExportPage() {
         <div>
           <h1 className="page-title">Export</h1>
           <p className="page-sub">
-            Send your Paybacker data to the tools you already use. Connect once and we keep it in sync automatically. You always own your data — revoke anytime.
+            Send your Paybacker data to the tools you already use. Connect once and we export new data automatically, one way only. Anything you change in the destination stays there, it is not read back into Paybacker. You always own your data — revoke anytime.
           </p>
         </div>
         <Link
@@ -198,8 +198,9 @@ export default function ExportPage() {
           color: 'var(--text-3)',
         }}
       >
-        Paybacker only writes to destinations you connect yourself. You can disconnect any time
-        — your existing sheets, exports and Notion databases aren&rsquo;t deleted.
+        Paybacker only writes to destinations you connect yourself, and only ever writes — we never
+        read your edits back. You can disconnect any time — your existing sheets, exports and Notion
+        databases aren&rsquo;t deleted.
       </div>
     </div>
   )

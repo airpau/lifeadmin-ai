@@ -1287,7 +1287,7 @@ export default function HomepageV3PreviewPage() {
                 spreadsheets that update as your bank moves.
               </p>
               <ul className="feature-bullets">
-                <li>Google Sheets live sync (bi-directional)</li>
+                <li>Google Sheets export, updated automatically each day</li>
                 <li>CSV, Excel and PDF statements by month or category</li>
                 <li>Accountant-ready annual exports for self-assessment</li>
               </ul>
@@ -1605,7 +1605,7 @@ export default function HomepageV3PreviewPage() {
                   <td><span className="chk">✓</span></td>
                   <td><span className="x">—</span></td>
                   <td><span className="x">—</span></td>
-                  <td className="us">✓ two-way</td>
+                  <td className="us">✓ daily</td>
                 </tr>
                 <tr>
                   <td>Switch-deals that beat your bill</td>
