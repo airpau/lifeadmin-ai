@@ -108,6 +108,7 @@ function MarkFoot() {
             <Link href="/privacy-policy">Privacy</Link>
             <Link href="/terms-of-service">Terms</Link>
             <Link href="/legal/methodology">Methodology</Link>
+            <Link href="/legal/how-we-cite">How we cite</Link>
             <Link href="/legal/ethics-code">Ethics Code</Link>
             <Link href="/cookie-policy">Cookies</Link>
           </div>

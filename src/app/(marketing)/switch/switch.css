@@ -1,0 +1,429 @@
+/*
+ * Scoped styles for the /switch migration pages.
+ *
+ * Everything is nested under `.m-land-root` (set by the (marketing)
+ * layout) so nothing here can leak onto the dashboard, the blog or the
+ * homepage. Only the pieces the landing stylesheet does not already
+ * provide live here: the closure notice, the comparison table, the
+ * honest "does / does not" split, and the checklist blocks.
+ */
+
+/* ---------- Hero ---------- */
+.m-land-root .sw-hero {
+  max-width: 820px;
+  padding: 118px 0 12px;
+}
+
+.m-land-root .sw-hero h1 {
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+  margin: 14px 0 18px;
+}
+
+.m-land-root .sw-hero .sw-intro {
+  font-size: 17.5px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  margin: 0 0 14px;
+}
+
+.m-land-root .sw-breadcrumb {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-bottom: 14px;
+}
+
+.m-land-root .sw-breadcrumb a {
+  color: var(--text-tertiary);
+  text-decoration: none;
+}
+
+.m-land-root .sw-breadcrumb a:hover {
+  color: var(--accent-mint-deep);
+}
+
+.m-land-root .sw-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(234, 88, 12, 0.28);
+  background: rgba(234, 88, 12, 0.07);
+  color: var(--accent-orange-deep, #C2410C);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ---------- Section scaffolding ---------- */
+.m-land-root .sw-section {
+  padding: 44px 0;
+}
+
+.m-land-root .sw-section h2 {
+  font-size: clamp(25px, 3.2vw, 33px);
+  letter-spacing: -0.025em;
+  line-height: 1.14;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+.m-land-root .sw-section h3 {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  margin: 0 0 8px;
+}
+
+.m-land-root .sw-narrow {
+  max-width: 780px;
+}
+
+.m-land-root .sw-narrow p {
+  font-size: 16.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0 0 14px;
+}
+
+.m-land-root .sw-narrow p:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- Closure notice ---------- */
+.m-land-root .sw-notice {
+  border: 1px solid var(--divider, #E5E7EB);
+  border-left: 3px solid var(--accent-orange-deep, #C2410C);
+  border-radius: 14px;
+  background: #fff;
+  padding: 26px 28px;
+  max-width: 820px;
+}
+
+.m-land-root .sw-notice p {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+
+.m-land-root .sw-notice p:last-child {
+  margin-bottom: 0;
+}
+
+.m-land-root .sw-source {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+  padding-top: 14px;
+  border-top: 1px solid var(--divider, #E5E7EB);
+  margin-top: 16px;
+}
+
+.m-land-root .sw-source a {
+  color: var(--accent-mint-deep, #059669);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Honest split: does / does not ---------- */
+.m-land-root .sw-split {
+  display: grid;
+  gap: 18px;
+  margin-top: 8px;
+}
+
+@media (min-width: 760px) {
+  .m-land-root .sw-split {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.m-land-root .sw-split-card {
+  border: 1px solid var(--divider, #E5E7EB);
+  border-radius: 14px;
+  background: #fff;
+  padding: 24px 26px;
+}
+
+.m-land-root .sw-split-card.is-yes {
+  border-color: rgba(5, 150, 105, 0.28);
+  background: rgba(52, 211, 153, 0.05);
+}
+
+.m-land-root .sw-split-card.is-no {
+  border-color: rgba(100, 116, 139, 0.26);
+  background: rgba(100, 116, 139, 0.045);
+}
+
+.m-land-root .sw-split-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  color: var(--text-tertiary);
+}
+
+.m-land-root .sw-split-card.is-yes .sw-split-label {
+  color: var(--accent-mint-deep, #059669);
+}
+
+.m-land-root .sw-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.m-land-root .sw-list li {
+  position: relative;
+  padding-left: 24px;
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 11px;
+}
+
+.m-land-root .sw-list li:last-child {
+  margin-bottom: 0;
+}
+
+.m-land-root .sw-list li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-mint-deep, #059669);
+}
+
+.m-land-root .sw-list.is-no li::before {
+  content: '—';
+  color: #94A3B8;
+}
+
+/* ---------- Comparison table ---------- */
+.m-land-root .sw-table-wrap {
+  border: 1px solid var(--divider, #E5E7EB);
+  border-radius: 14px;
+  background: #fff;
+  overflow-x: auto;
+}
+
+.m-land-root .sw-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  font-size: 14.5px;
+}
+
+.m-land-root .sw-table th,
+.m-land-root .sw-table td {
+  text-align: left;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--divider, #E5E7EB);
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.m-land-root .sw-table tbody tr:last-child th,
+.m-land-root .sw-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.m-land-root .sw-table thead th {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: var(--surface-base, #F8FAFC);
+}
+
+.m-land-root .sw-table thead th.is-us {
+  color: var(--accent-mint-deep, #059669);
+}
+
+.m-land-root .sw-table tbody th {
+  font-weight: 600;
+  color: var(--text-primary);
+  width: 34%;
+}
+
+.m-land-root .sw-table td.is-us {
+  background: rgba(52, 211, 153, 0.06);
+  color: var(--text-primary);
+  font-weight: 550;
+}
+
+.m-land-root .sw-table-note {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-tertiary);
+  margin: 14px 0 0;
+  max-width: 780px;
+}
+
+/* ---------- Numbered setup steps ---------- */
+.m-land-root .sw-steps {
+  display: grid;
+  gap: 16px;
+  counter-reset: sw-step;
+}
+
+@media (min-width: 900px) {
+  .m-land-root .sw-steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.m-land-root .sw-step {
+  border: 1px solid var(--divider, #E5E7EB);
+  border-radius: 14px;
+  background: #fff;
+  padding: 22px 24px;
+}
+
+.m-land-root .sw-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: rgba(52, 211, 153, 0.14);
+  color: var(--accent-mint-deep, #059669);
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.m-land-root .sw-step p {
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* ---------- Adds grid ---------- */
+.m-land-root .sw-adds {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 900px) {
+  .m-land-root .sw-adds {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.m-land-root .sw-add {
+  border: 1px solid var(--divider, #E5E7EB);
+  border-radius: 14px;
+  padding: 24px 26px;
+  background: #fff;
+}
+
+.m-land-root .sw-add p {
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* ---------- FAQ ---------- */
+.m-land-root .sw-faq {
+  max-width: 820px;
+}
+
+.m-land-root .sw-faq-item {
+  border-bottom: 1px solid var(--divider, #E5E7EB);
+  padding: 20px 0;
+}
+
+.m-land-root .sw-faq-item h3 {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  margin: 0 0 10px;
+  color: var(--text-primary);
+}
+
+.m-land-root .sw-faq-item p {
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+
+.m-land-root .sw-faq-item p:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- Hub tiles ---------- */
+.m-land-root .sw-hub-grid {
+  display: grid;
+  gap: 18px;
+}
+
+@media (min-width: 760px) {
+  .m-land-root .sw-hub-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.m-land-root .sw-hub-tile {
+  display: block;
+  border: 1px solid var(--divider, #E5E7EB);
+  border-radius: 16px;
+  background: #fff;
+  padding: 26px 28px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+
+.m-land-root .sw-hub-tile:hover {
+  border-color: rgba(5, 150, 105, 0.42);
+  transform: translateY(-2px);
+}
+
+.m-land-root .sw-hub-tile h2 {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 12px 0 10px;
+}
+
+.m-land-root .sw-hub-tile p {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.m-land-root .sw-hub-go {
+  display: inline-block;
+  margin-top: 16px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--accent-mint-deep, #059669);
+}
+
+/* ---------- Disclaimer ---------- */
+.m-land-root .sw-disclaimer {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-tertiary);
+  border-top: 1px solid var(--divider, #E5E7EB);
+  padding-top: 18px;
+  max-width: 820px;
+}

@@ -23,7 +23,7 @@ const data: LandingPageData = {
     'Right to repair, replacement, or partial refund for faults appearing within 6 months (burden of proof on retailer)',
     'Right to your PAC (Porting Authorisation Code) to keep your number when switching — provider must supply this within one working day',
     'Right to accurate billing and prompt correction of any billing errors',
-    'Right to escalate to CISAS or Ombudsman Services: Communications for free after 8 weeks without resolution',
+    'Right to escalate to CISAS or the Communications Ombudsman for free after 6 weeks without resolution',
     'Right to a final bill and account closure within a reasonable time after cancellation',
   ],
   howItWorks: [
@@ -40,7 +40,7 @@ const data: LandingPageData = {
     {
       step: '3',
       title: 'Send and escalate if needed',
-      description: 'Send to your provider. If unresolved after 8 weeks, refer for free to CISAS or Ombudsman Services: Communications.',
+      description: 'Send to your provider. If unresolved after 6 weeks, refer for free to CISAS or the Communications Ombudsman.',
     },
   ],
   faqs: [

@@ -281,7 +281,7 @@ export const TELECOMS_SOURCES: ReadonlyArray<LegalSource> = [
     section: 'Condition C1 — contract requirements',
     url: 'https://www.ofcom.org.uk/phones-and-broadband/service-quality/contracts',
     establishes:
-      'Condition C1.3 requires the price you will pay, including any scheduled rise, to be set out in the contract information before you sign. Conditions C1.14 to C1.17 require at least one month’s notice of a contract modification likely to be of material detriment, and a right to exit without penalty. Ofcom treats a rise in the core subscription price during a fixed term as likely to be of material detriment.',
+      'Condition C1.3 requires the price you will pay, including any scheduled rise, to be set out in the contract information before you sign. Condition C1.14 requires at least one month’s notice of any contractual modification, unless it is exclusively to your benefit, purely administrative or imposed by law. Condition C1.15 then gives you the right to terminate at no additional cost, and Condition C1.17 confirms no early termination charge is payable. A rise in the core subscription price during a fixed term that was not set out in pounds and pence before you signed is such a modification.',
     inLegalRefStore: true,
     verifiedOn: V,
   },
@@ -321,7 +321,7 @@ export const TELECOMS_FILING: ReadonlyArray<FilingRoute> = [
   {
     name: 'CEDR (CISAS)',
     url: 'https://www.cedr.com/consumer/cisas/',
-    note: 'The other approved telecoms ADR scheme. Available after eight weeks or on a deadlock letter.',
+    note: 'The other approved telecoms ADR scheme. Available after six weeks or on a deadlock letter.',
   },
 ];
 
@@ -592,7 +592,7 @@ export const BILL_RISE_SOURCES: ReadonlyArray<LegalSource> = [
     section: 'Condition C1 — contract requirements',
     url: 'https://www.ofcom.org.uk/phones-and-broadband/service-quality/contracts',
     establishes:
-      'That a provider must give at least one month’s notice of a contract modification likely to be of material detriment and offer a right to exit without penalty. Ofcom treats a rise in the core subscription price during a fixed term as likely to be of material detriment.',
+      'That under Condition C1.14 a provider must give at least one month’s notice of any contractual modification, and that Conditions C1.15 and C1.17 then give a right to terminate at no additional cost with no early termination charge. A rise in the core subscription price during a fixed term that was not set out in pounds and pence before you signed is such a modification.',
     inLegalRefStore: true,
     verifiedOn: V,
   },
@@ -644,7 +644,7 @@ export const BILL_RISE_FILING: ReadonlyArray<FilingRoute> = [
   {
     name: 'Communications Ombudsman',
     url: 'https://www.commsombudsman.org/',
-    note: 'For a broadband or mobile price rise your provider will not resolve. Available after eight weeks or on a deadlock letter.',
+    note: 'For a broadband or mobile price rise your provider will not resolve. Available after six weeks or on a deadlock letter.',
   },
   {
     name: 'CEDR (CISAS)',

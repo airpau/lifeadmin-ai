@@ -284,11 +284,34 @@ const KQL_DD =
 const KQL_GOVERNMENT =
   'from:hmrc.gov.uk OR from:gov.uk OR from:dvla.gov.uk OR from:nhs.uk OR subject:"self assessment" OR subject:"tax return" OR subject:"tax code" OR subject:"P60" OR subject:"P45" OR subject:"P800" OR subject:HMRC OR subject:DVLA OR subject:"council tax" OR subject:"student loan" OR subject:"MOT reminder"';
 
+/**
+ * Graph's `$search` cannot be combined with `$filter`, so unlike Gmail we
+ * cannot push the date bound into the query. We apply it client-side on
+ * `receivedDateTime` immediately after the fetch and BEFORE any Claude
+ * call, which is where the actual cost is — every message that survives
+ * this filter becomes an Anthropic call.
+ *
+ * Deliberately conservative: the cutoff is only applied when the tier
+ * window is NARROWER than the standard 2-year sweep. Outlook has never
+ * had a date bound on the `$search` path, so leaving paid tiers unbounded
+ * keeps existing paid behaviour byte-for-byte identical.
+ */
+const FULL_SWEEP_DAYS = 730;
+
 export async function scanOutlookForOpportunities(
-  accessToken: string
+  accessToken: string,
+  options?: {
+    /** Tier lookback cap in days (PLAN_LIMITS[tier].emailScanDays). */
+    lookbackDays?: number;
+  }
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
   // Run all queries in parallel (same strategy as Gmail)
   console.log('[outlook] Starting comprehensive email scan (11 parallel queries)...');
+  const lookbackDays = options?.lookbackDays;
+  const cutoffMs =
+    typeof lookbackDays === 'number' && lookbackDays > 0 && lookbackDays < FULL_SWEEP_DAYS
+      ? Date.now() - lookbackDays * 24 * 60 * 60 * 1000
+      : null;
 
   const [
     subjectMsgs, senderMsgs1, senderMsgs2, senderMsgs3,
@@ -317,8 +340,19 @@ export async function scanOutlookForOpportunities(
   ].filter((m) => {
     if (seen.has(m.id)) return false;
     seen.add(m.id);
+    // Tier lookback cap — drop anything older than the window before it
+    // reaches Claude. Messages with no parseable date are kept (we would
+    // rather scan an undated message than silently lose a real finding).
+    if (cutoffMs !== null) {
+      const received = m.receivedDateTime ? new Date(m.receivedDateTime).getTime() : NaN;
+      if (Number.isFinite(received) && received < cutoffMs) return false;
+    }
     return true;
   });
+
+  if (cutoffMs !== null) {
+    console.log(`[outlook] Lookback cap ${lookbackDays}d applied — ${allMessages.length} messages within window`);
+  }
 
   console.log(`[outlook] Total unique messages: ${allMessages.length} (subject: ${subjectMsgs.length}, senders1: ${senderMsgs1.length}, senders2: ${senderMsgs2.length}, senders3: ${senderMsgs3.length}, expirations: ${expirationMsgs.length}, payments: ${paymentMsgs.length}, priceChanges: ${priceChangeMsgs.length})`);
 

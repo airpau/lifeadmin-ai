@@ -119,7 +119,7 @@ export function DisputesDemo() {
   const letterText = [
     'Dear Virgin Media,',
     '',
-    'On 12 November 2026 my monthly charge increased from £38 to £50 with no prior notice. Under Ofcom General Condition C1.8, you must provide at least one month\u2019s notice of any change that materially increases my charges.',
+    'On 12 November 2026 my monthly charge increased from £38 to £50 with no prior notice. Under Ofcom General Condition C1.14, you must provide at least one month\u2019s notice of any contractual modification, and under Condition C1.15 I am entitled to terminate at no additional cost.',
     '',
     'Under Consumer Rights Act 2015, Section 49, I am exercising my right to exit without penalty and request a full refund of £312 for charges billed without adequate notice since August.',
   ].join('\n');
@@ -323,7 +323,7 @@ export function DisputesDemo() {
                 {shownText
                   .split(/(Ofcom General Condition C1\.8|Consumer Rights Act 2015, Section 49)/)
                   .map((ch, i) =>
-                    ch === 'Ofcom General Condition C1.8' || ch === 'Consumer Rights Act 2015, Section 49' ? (
+                    ch === 'Ofcom General Condition C1.14' || ch === 'Consumer Rights Act 2015, Section 49' ? (
                       <mark
                         key={i}
                         style={{
@@ -1663,7 +1663,7 @@ export function PocketAgentDemoLegacy() {
                           marginBottom: 5,
                         }}
                       >
-                        &ldquo;…under Ofcom GC C1.8 + CRA 2015 s.49, £312 refund requested…&rdquo;
+                        &ldquo;…under Ofcom GC C1.14 + CRA 2015 s.49, £312 refund requested…&rdquo;
                       </div>
                       <div style={{ display: 'flex', gap: 3 }}>
                         <div
@@ -3053,7 +3053,7 @@ export function McpDemo() {
   const showToolResult = t > 4.5;
   const summaryText =
     'Three bills increased this year:\n\n' +
-    '\u2022 Virgin Media: \u00A338 \u2192 \u00A350 (+32%) \u2014 flagged, no notice given (Ofcom C1.8 breach)\n' +
+    '\u2022 Virgin Media: \u00A338 \u2192 \u00A350 (+32%) \u2014 flagged, no notice given (Ofcom C1.14 breach)\n' +
     '\u2022 British Gas: \u00A395 \u2192 \u00A3118 (+24%) \u2014 within price-cap window, legitimate\n' +
     '\u2022 Sky: \u00A328 \u2192 \u00A334 (+21%) \u2014 check your original contract\n\n' +
     'The Virgin Media hike is already draftable. Want me to open a dispute?';

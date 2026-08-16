@@ -22,6 +22,7 @@ import { COMPANIES } from '@/data/companies';
 import { SOLUTION_SLUGS } from '@/app/solutions/_data/solutions';
 import { DEAL_CATEGORY_SLUGS } from '@/app/deals/_data/categories';
 import { TOOLS } from '@/app/(marketing)/tools/_data/tools';
+import { SWITCHES } from '@/app/(marketing)/switch/_data/switches';
 
 export const BASE_URL = 'https://paybacker.co.uk';
 
@@ -91,6 +92,15 @@ export const CORE_ROUTES: RouteEntry[] = [
     summary: `${TOOLS.length} no-signup calculators and eligibility checkers covering flight delay compensation, section 75, parking tickets, energy overcharges, broadband and mobile price rises, council tax bands and household money maths.`,
     changeFrequency: 'weekly',
     priority: 0.9,
+  },
+  {
+    path: '/switch',
+    title: 'Moving on from a closed UK money app',
+    // Count derived from the registry so it cannot go stale when a
+    // migration page is added. SWITCHES is imported above.
+    summary: `Honest, source-linked guides for people whose UK money app has closed, covering ${SWITCHES.length} services. What Paybacker replaces, what it does not, and how to reconnect through Open Banking.`,
+    changeFrequency: 'weekly',
+    priority: 0.85,
   },
   {
     path: '/complaints',
@@ -184,7 +194,7 @@ export const LANDING_ROUTES: RouteEntry[] = [
   { path: '/hmrc-tax-rebate', title: 'HMRC tax rebate', summary: 'Claiming overpaid tax back from HMRC.', changeFrequency: 'monthly', priority: 0.9 },
   { path: '/dvla-vehicle', title: 'DVLA vehicle issues', summary: 'Challenging DVLA decisions, penalties and refunds.', changeFrequency: 'monthly', priority: 0.9 },
   { path: '/broadband-overcharging', title: 'Broadband overcharging', summary: 'Ofcom rules on in-contract price rises and automatic compensation for outages.', changeFrequency: 'monthly', priority: 0.8 },
-  { path: '/mobile-contract-dispute', title: 'Mobile contract dispute', summary: 'Mid-contract price rises, faulty handsets and penalty-free exit under Ofcom General Condition C1.', changeFrequency: 'monthly', priority: 0.8 },
+  { path: '/mobile-contract-dispute', title: 'Mobile contract dispute', summary: 'Mid-contract price rises, faulty handsets and penalty-free exit under Ofcom General Conditions C1.14 to C1.17.', changeFrequency: 'monthly', priority: 0.8 },
   { path: '/insurance-complaint', title: 'Insurance complaint', summary: 'FCA claims-handling rules and the free, binding Financial Ombudsman route.', changeFrequency: 'monthly', priority: 0.8 },
   { path: '/parking-appeal', title: 'Parking charge appeal', summary: 'Private parking charges, POPLA and the IAS, and council PCN appeal routes.', changeFrequency: 'monthly', priority: 0.8 },
   { path: '/hidden-subscriptions', title: 'Find hidden subscriptions', summary: 'Finding forgotten recurring payments across bank and inbox.', changeFrequency: 'monthly', priority: 0.8 },
@@ -212,6 +222,7 @@ export const LEGAL_ROUTES: RouteEntry[] = [
   { path: '/cookie-policy', title: 'Cookie policy', summary: 'Cookies set by paybacker.co.uk and how to control them.', changeFrequency: 'monthly', priority: 0.2 },
   { path: '/legal/methodology', title: 'Methodology', summary: 'How Paybacker sources, verifies and maintains every legal citation it uses.', changeFrequency: 'monthly', priority: 0.3 },
   { path: '/legal/ethics-code', title: 'Code of ethics', summary: 'The commitments Paybacker holds itself to, including never charging a success fee.', changeFrequency: 'monthly', priority: 0.3 },
+  { path: '/legal/how-we-cite', title: 'How we cite the law', summary: 'Where Paybacker’s legal citations come from, which sources we accept and which we reject, what is checked before a letter is produced, and what we do not claim.', changeFrequency: 'monthly', priority: 0.3 },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -223,6 +234,20 @@ export const TOOL_ROUTES: RouteEntry[] = TOOLS.map((t) => ({
   title: t.name,
   summary: t.oneLiner,
   changeFrequency: 'monthly' as const,
+  priority: 0.9,
+}));
+
+/**
+ * Migration landing pages. Time-sensitive acquisition surfaces, so they
+ * carry a higher priority and a weekly change frequency than an
+ * evergreen lander would: the search interest around a closure spikes
+ * and then decays, and we want them recrawled while that is happening.
+ */
+export const SWITCH_ROUTES: RouteEntry[] = SWITCHES.map((s) => ({
+  path: `/switch/${s.slug}`,
+  title: s.name,
+  summary: `${s.service} closed on ${s.closedOn}. ${s.oneLiner}`,
+  changeFrequency: 'weekly' as const,
   priority: 0.9,
 }));
 
@@ -265,6 +290,7 @@ export function allStaticRoutes(): RouteEntry[] {
   return [
     ...CORE_ROUTES,
     ...TOOL_ROUTES,
+    ...SWITCH_ROUTES,
     ...LANDING_ROUTES,
     ...SOLUTION_ROUTES,
     ...COMPANY_ROUTES,

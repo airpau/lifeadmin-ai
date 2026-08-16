@@ -181,6 +181,71 @@
 }
 .m-pricing-root .nav-start:hover { transform: scale(1.03); box-shadow: var(--shadow-mint); }
 
+/* Billing toggle ----------------------------------------------------- */
+/* PricingGrid.tsx has rendered these classes since the monthly/annual
+   toggle was added, but no rules existed for them, so the control
+   painted as two bare browser buttons. The annual price is the better
+   deal and it was the least visible thing on the page. */
+.m-pricing-root .billing-toggle-wrap { display: flex; justify-content: center; margin-bottom: 34px; }
+.m-pricing-root .billing-toggle {
+  display: inline-flex; gap: 4px; padding: 5px;
+  background: var(--surface-base); border: 1px solid var(--divider);
+  border-radius: var(--r-pill);
+}
+.m-pricing-root .billing-toggle__opt {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 0; background: transparent; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 600;
+  color: var(--text-secondary);
+  padding: 9px 18px; border-radius: var(--r-pill);
+  transition: background 150ms, color 150ms, box-shadow 150ms;
+}
+.m-pricing-root .billing-toggle__opt:hover { color: var(--text-primary); }
+.m-pricing-root .billing-toggle__opt.is-active {
+  background: #fff; color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+.m-pricing-root .billing-toggle__save {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  background: var(--accent-mint); color: #052E1C;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+}
+
+/* Annual saving band ------------------------------------------------- */
+.m-pricing-root .annual-band {
+  margin-top: 40px;
+  border: 1px solid var(--accent-mint);
+  border-radius: var(--r-card);
+  background: var(--accent-mint-wash);
+  padding: 28px 32px;
+}
+.m-pricing-root .annual-band__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+.m-pricing-root .annual-band__flag {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  background: var(--accent-mint); color: #052E1C;
+  padding: 5px 11px; border-radius: 999px;
+}
+.m-pricing-root .annual-band__head strong { font-size: 20px; letter-spacing: -0.02em; color: var(--text-primary); }
+.m-pricing-root .annual-band__sub { font-size: 14.5px; color: var(--text-secondary); }
+.m-pricing-root .annual-band__rows { display: grid; gap: 12px; }
+.m-pricing-root .annual-band__row {
+  display: grid; grid-template-columns: 120px 1fr auto; gap: 16px; align-items: center;
+  background: #fff; border: 1px solid var(--divider);
+  border-radius: 12px; padding: 16px 20px;
+}
+.m-pricing-root .annual-band__tier { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
+.m-pricing-root .annual-band__maths { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
+.m-pricing-root .annual-band__was { font-size: 14px; color: var(--text-tertiary); text-decoration: line-through; }
+.m-pricing-root .annual-band__now { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-primary); }
+.m-pricing-root .annual-band__save { font-size: 13.5px; font-weight: 700; color: var(--accent-mint-deep); white-space: nowrap; }
+.m-pricing-root .annual-band__note { margin: 18px 0 0; font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); }
+
+@media (max-width: 720px) {
+  .m-pricing-root .annual-band { padding: 22px 20px; }
+  .m-pricing-root .annual-band__row { grid-template-columns: 1fr; gap: 8px; }
+  .m-pricing-root .annual-band__save { white-space: normal; }
+}
+
 /* Pricing grid ------------------------------------------------------- */
 .m-pricing-root .pricing-section { padding: 120px 0; }
 .m-pricing-root .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }

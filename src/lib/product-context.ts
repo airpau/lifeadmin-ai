@@ -84,10 +84,10 @@ FEATURE CATALOGUE:
 
 9. Email Inbox Scanning
    - Connect Gmail or Outlook (read-only, Google OAuth)
-   - Scans up to 2 years of email history
+   - Scan depth is a plan limit: Free scans the last 90 days. Essential and Pro scan up to 2 years of email history.
    - Finds overcharges, forgotten subscriptions, flight delay opportunities, debt disputes, price increase notices
    - Smart action buttons: Add to Subscriptions, Write Complaint, Claim Compensation, Create Task, Dismiss
-   - Plan access: Free gets one-time scan. Essential gets monthly re-scans. Pro gets unlimited scans.
+   - Plan access: Free gets one 90-day scan per 30 days. Essential gets monthly re-scans over 2 years of history. Pro gets unlimited scans over 2 years of history.
 
 10. Deal Comparison
     - 59+ deals across 9 categories from verified UK providers

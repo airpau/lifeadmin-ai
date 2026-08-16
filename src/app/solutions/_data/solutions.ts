@@ -90,7 +90,7 @@ export const PAGES: Record<string, SolutionPage> = {
     howItWorks: [
       { step: '1', title: 'Tell us your problem', description: 'Price increase, slow speeds, service outage, billing error, or cancellation dispute.' },
       { step: '2', title: 'AI writes your complaint', description: 'Formal letter citing Ofcom rules, automatic compensation scheme, and Consumer Rights Act.' },
-      { step: '3', title: 'Send and get compensated', description: 'Your provider must respond. If unresolved after 8 weeks, escalate to CISAS or the Communications Ombudsman.' },
+      { step: '3', title: 'Send and get compensated', description: 'Your provider must respond. If unresolved after 6 weeks, escalate to CISAS or the Communications Ombudsman.' },
     ],
     faqs: [
       { q: 'Can I leave my broadband contract if the price goes up?', a: 'Under Ofcom rules, if your provider increases the price beyond what was agreed in your contract, you may be able to leave without paying an exit fee. Our letter covers this.' },
@@ -241,10 +241,10 @@ export const PAGES: Record<string, SolutionPage> = {
     slug: 'email-scanner',
     title: 'Email Inbox Scanner - Find Money You Are Owed | Paybacker',
     description:
-      'Connect Gmail or Outlook and scan 2 years of emails for overcharges, forgotten subscriptions, flight delay compensation, debt disputes, and price increase notifications.',
+      'Connect Gmail or Outlook and scan up to 2 years of emails for overcharges, forgotten subscriptions, flight delay compensation, debt disputes, and price increase notifications. Free plan scans the last 90 days.',
     h1: 'Scan your email inbox and find money you are owed',
     subtitle:
-      'Your email inbox contains proof of overcharges, price increase notifications, flight booking confirmations, and subscription receipts. Paybacker scans 2 years of emails and shows you exactly what you can claim.',
+      'Your email inbox contains proof of overcharges, price increase notifications, flight booking confirmations, and subscription receipts. Paybacker scans your emails and shows you exactly what you can claim. The free plan reads the last 90 days; Essential and Pro read up to 2 years.',
     keywords: ['email scanner money', 'find overcharges email', 'scan inbox subscriptions', 'email receipt scanner', 'find money owed UK'],
     icon: Mail,
     heroStat: '2 years',
@@ -260,7 +260,7 @@ export const PAGES: Record<string, SolutionPage> = {
     ],
     howItWorks: [
       { step: '1', title: 'Connect your email', description: 'Google OAuth login. Read-only access. We only scan relevant financial emails.' },
-      { step: '2', title: 'AI analyses your emails', description: 'We scan up to 2 years of emails for overcharges, subscriptions, compensation opportunities, and disputes.' },
+      { step: '2', title: 'AI analyses your emails', description: 'We scan your emails for overcharges, subscriptions, compensation opportunities, and disputes. Free scans the last 90 days; Essential and Pro scan up to 2 years.' },
       { step: '3', title: 'Take action on each finding', description: 'Each opportunity has an action button: write complaint, claim compensation, add to subscriptions, or dismiss.' },
     ],
     faqs: [

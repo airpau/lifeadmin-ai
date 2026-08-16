@@ -17,23 +17,23 @@ import './styles.css';
  */
 
 export const metadata: Metadata = {
-  title: 'Pricing — Free forever, paid from £4.99/mo. 0% success fee, ever.',
+  title: 'Pricing: 0% success fee, ever. You keep everything you recover.',
   description:
-    'Three tiers: Free forever for occasional disputes, Essential £4.99/mo for unlimited letters and bank sync, Pro £9.99/mo for the full sweep. No tier ever takes a cut of your refund.',
+    'Paybacker charges a flat subscription and never takes a percentage of money you get back, while services that work on a success fee commonly take 25% to 35%. Free tier, Essential £4.99/month or £44.99/year (about 25% off), Pro £9.99/month or £94.99/year (about 21% off).',
   alternates: { canonical: 'https://paybacker.co.uk/pricing' },
   openGraph: {
-    title: 'Paybacker pricing — Free forever, paid from £4.99/mo',
+    title: 'Paybacker pricing: 0% success fee, ever',
     description:
-      'Three tiers. 0% success fee, ever. £4.99/mo for unlimited UK dispute letters and Yapily bank sync (2 accounts). £9.99/mo for unlimited.',
+      'A flat subscription and no cut of anything you recover. Free tier, Essential £4.99/month or £44.99/year, Pro £9.99/month or £94.99/year. Paying yearly saves about 21% to 25%.',
     url: 'https://paybacker.co.uk/pricing',
     siteName: 'Paybacker',
     type: 'website',
   },
   twitter: {
     card: 'summary',
-    title: 'Paybacker pricing — Free forever, paid from £4.99/mo',
+    title: 'Paybacker pricing: 0% success fee, ever',
     description:
-      'Three tiers. 0% success fee, ever. £4.99/mo for unlimited dispute letters. £9.99/mo for unlimited.',
+      'Flat subscription, no cut of your recovery. Free tier, Essential from £44.99/year, Pro from £94.99/year.',
   },
 };
 
@@ -113,6 +113,7 @@ function MarkFoot() {
             <Link href="/privacy-policy">Privacy</Link>
             <Link href="/terms-of-service">Terms</Link>
             <Link href="/legal/methodology">Methodology</Link>
+            <Link href="/legal/how-we-cite">How we cite</Link>
             <Link href="/legal/ethics-code">Ethics Code</Link>
             <Link href="/cookie-policy">Cookies</Link>
           </div>
@@ -161,6 +162,7 @@ const COMPARE_ROWS: ReadonlyArray<readonly [string, string, string, string]> = [
   ['AI dispute letters', '3 / month', 'Unlimited', 'Unlimited'],
   ['Bank sync (read-only, FCA via Yapily)', '2 accounts', '3 accounts', 'Unlimited'],
   ['Email inbox scan + Watchdog reply polling', '1 inbox', '3 inboxes', 'Unlimited'],
+  ['Inbox scan history (how far back we read)', '90 days', '2 years', '2 years'],
   ['Subscription tracker', '•', '•', '•'],
   ['Money Hub (basic spending overview)', '•', '•', '•'],
   ['Money Hub Budgets, Savings Goals, full categories', '—', '•', '•'],
@@ -185,7 +187,11 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
   ],
   [
     'How do you make money if you don\u2019t take a cut of refunds?',
-    'Flat subscription revenue. We\u2019re deliberately small and deliberately cheap — we\u2019d rather grow slowly and keep the incentives clean than take a cut of your refund.',
+    'Flat subscription revenue, and nothing else. We are deliberately small and deliberately cheap — we\u2019d rather grow slowly and keep the incentives clean than take a percentage of your recovery, because that arrangement quietly stops being on your side.',
+  ],
+  [
+    'How much does paying yearly actually save?',
+    'Essential is £4.99 a month, which comes to £59.88 over a year, against £44.99 paid annually. That is £14.89 back, or about 25% off. Pro is £9.99 a month, which comes to £119.88 over a year, against £94.99 paid annually. That is £24.89 back, or about 21% off. Identical features either way, and the success fee is 0% either way.',
   ],
   [
     'Is my bank data safe?',
@@ -197,7 +203,7 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
   ],
   [
     'What if a dispute letter doesn\u2019t get me a refund?',
-    'Many disputes are resolved after the first letter, though every case is different. When a dispute isn\u2019t resolved, we provide next-step guidance (Ombudsman, CMA, small-claims) and all the evidence logged. You never pay per-dispute.',
+    'Then it does not, and we will not pretend otherwise. Outcomes depend on the facts, the evidence and the company, and we make no promise about any of them. When a dispute isn\u2019t resolved, we provide next-step guidance (Ombudsman, CMA, small-claims) and all the evidence logged. You never pay per-dispute.',
   ],
 ];
 
@@ -213,7 +219,7 @@ export default function PricingPage() {
       >
         <div className="wrap" style={{ textAlign: 'center' }}>
           <span className="eyebrow" style={{ color: 'var(--accent-orange-deep)' }}>
-            ● Three tiers — Founding rates locked in forever
+            ● 0% success fee at every tier · Founding rates locked in forever
           </span>
           <h1
             style={{
@@ -225,20 +231,20 @@ export default function PricingPage() {
               maxWidth: 1040,
             }}
           >
-            <span style={{ display: 'block', color: 'var(--text-primary)' }}>Free forever.</span>
-            <span style={{ display: 'block', color: 'var(--accent-mint-deep)' }}>Paid from £4.99/mo.</span>
+            <span style={{ display: 'block', color: 'var(--text-primary)' }}>You recover it.</span>
+            <span style={{ display: 'block', color: 'var(--accent-mint-deep)' }}>You keep all of it.</span>
             <span style={{ display: 'block', color: 'var(--accent-orange-deep)' }}>We never take a cut.</span>
           </h1>
           <p
             style={{
               fontSize: 19,
               color: 'var(--text-secondary)',
-              maxWidth: 700,
+              maxWidth: 760,
               lineHeight: 1.5,
               margin: '0 auto 32px',
             }}
           >
-            Start free for occasional disputes. Pay £4.99/mo when you want unlimited letters and bank sync. £9.99/mo for the full sweep across every account. No tier ever charges a success fee on your refund.
+            Paybacker charges a flat subscription and takes nothing out of the money you get back, at any tier. Services that work on a percentage commonly take 25% to 35% of a recovery. Start free, and pay only when you want the limits lifted.
           </p>
         </div>
       </section>
@@ -256,6 +262,48 @@ export default function PricingPage() {
             <span>Your data stays in the UK</span>
           </p>
           <PricingGrid />
+
+          {/*
+            Annual saving stated in plain numbers rather than left to the
+            toggle. The percentages are not the same on both tiers, so a
+            single "save 25%" badge would overstate Pro. Figures:
+              Essential £4.99 x 12 = £59.88 vs £44.99 → £14.89, 24.9%
+              Pro       £9.99 x 12 = £119.88 vs £94.99 → £24.89, 20.8%
+            If a price ever changes, recompute both rows here as well as
+            in PricingGrid.tsx.
+          */}
+          <div className="annual-band" aria-label="Annual billing saving">
+            <div className="annual-band__head">
+              <span className="annual-band__flag">Pay yearly</span>
+              <strong>Two months and change, free.</strong>
+              <span className="annual-band__sub">
+                Same plan, same features, one payment instead of twelve.
+              </span>
+            </div>
+            <div className="annual-band__rows">
+              <div className="annual-band__row">
+                <div className="annual-band__tier">Essential</div>
+                <div className="annual-band__maths">
+                  <span className="annual-band__was">£59.88 if you pay monthly</span>
+                  <span className="annual-band__now">£44.99 a year</span>
+                </div>
+                <div className="annual-band__save">Save £14.89 · about 25% off</div>
+              </div>
+              <div className="annual-band__row">
+                <div className="annual-band__tier">Pro</div>
+                <div className="annual-band__maths">
+                  <span className="annual-band__was">£119.88 if you pay monthly</span>
+                  <span className="annual-band__now">£94.99 a year</span>
+                </div>
+                <div className="annual-band__save">Save £24.89 · about 21% off</div>
+              </div>
+            </div>
+            <p className="annual-band__note">
+              Switch the toggle above to Yearly to take the annual price. You can
+              still cancel at any time, and the success fee is 0% either way.
+            </p>
+          </div>
+
           <p className="compare-link">
             <a href="#compare">See the full feature comparison ↓</a>
           </p>
@@ -282,8 +330,11 @@ export default function PricingPage() {
               >
                 You keep 100% of what we recover.
               </h2>
-              <p style={{ fontSize: 16.5, lineHeight: 1.6, color: 'var(--text-secondary)', margin: 0 }}>
-                <strong>No success fee. Ever.</strong> Plenty of services take a percentage of whatever you recover. Paybacker is a flat monthly subscription, so every penny you get back stays in your pocket.
+              <p style={{ fontSize: 16.5, lineHeight: 1.6, color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+                <strong>No success fee. Ever.</strong> Services that work on a percentage commonly take between a quarter and a third of whatever you recover. For scale, the FCA caps what a claims-management company may charge on smaller consumer-credit claims at 30% plus VAT. Paybacker is a flat monthly subscription, so every penny you get back stays in your pocket.
+              </p>
+              <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--text-tertiary)', margin: 0 }}>
+                It also keeps the incentives clean. We are paid the same whether your case is worth £40 or £4,000, so nothing in the product has a reason to push you toward the big claim over the right one.
               </p>
             </div>
             <div
@@ -480,12 +531,12 @@ export default function PricingPage() {
       >
         <div className="wrap">
           <h2 style={{ fontSize: 'clamp(48px,6vw,72px)' }}>
-            Stop overpaying.
+            Stop absorbing it.
             <br />
-            Start <span className="mint">fighting</span> back.
+            Start <span className="mint">claiming</span> it back.
           </h2>
           <p style={{ textAlign: 'center', color: 'var(--text-on-ink-dim)', marginTop: 24, fontSize: 17 }}>
-            Free forever tier. Paid plans from £4.99/mo. Keep 100% of your refunds, every tier.
+            Free forever tier. Essential £44.99 a year, Pro £94.99 a year. Whatever comes back is yours, at every tier.
           </p>
           <div
             style={{
@@ -505,7 +556,7 @@ export default function PricingPage() {
               style={{ color: 'var(--accent-mint)', borderColor: 'rgba(52,211,153,.3)' }}
               href={SIGNUP_HREF}
             >
-              Start Essential — £4.99/mo →
+              Start Essential, £44.99 a year →
             </Link>
           </div>
           <p style={{ textAlign: 'center', marginTop: 20, color: 'var(--text-on-ink-dim)', fontSize: 13 }}>

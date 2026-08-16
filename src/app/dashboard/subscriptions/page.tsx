@@ -19,6 +19,7 @@ import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, categoryMatchesFilterGroup, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
+import ScanWindowNotice, { type ScanWindowNoticeData } from '@/components/scanner/ScanWindowNotice';
 
 // Rotating copy for the Inbox Scan loading card. British tone, mix of
 // concrete progress and light humour. Tokens: {N}, {X} are replaced at render.
@@ -179,6 +180,8 @@ export default function SubscriptionsPage() {
   } | null>(null);
   const [detectedSubs, setDetectedSubs] = useState<any[]>([]);
   const [scanSummary, setScanSummary] = useState<Array<{ provider_email: string; provider_type: string; count: number; emailsScanned?: number; error?: string }>>([]);
+  // Depth notice for capped (free-tier) scans. Null for paid tiers.
+  const [scanWindowNotice, setScanWindowNotice] = useState<ScanWindowNoticeData | null>(null);
   const [scanCopyIdx, setScanCopyIdx] = useState(0);
   const [providerCancelInfo, setProviderCancelInfo] = useState<Record<string, { method?: string; email?: string; phone?: string; url?: string; tips?: string; last_verified_at?: string } | null>>({});
   const [openCancelPill, setOpenCancelPill] = useState<string | null>(null);
@@ -639,6 +642,7 @@ export default function SubscriptionsPage() {
     setDetectingFromInbox(true);
     setDetectedSubs([]);
     setScanSummary([]);
+    setScanWindowNotice(null);
     setScanCopyIdx(0);
     try {
       // Use the unified multi-inbox scan endpoint — covers every connected
@@ -647,6 +651,8 @@ export default function SubscriptionsPage() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.summary)) setScanSummary(data.summary);
+        // Null on paid tiers — the component renders nothing.
+        setScanWindowNotice(data.scanWindowNotice ?? null);
         const tracked = subscriptions.map((s) => s.provider_name.toLowerCase());
         const subsOnly = (data.opportunities || []).filter((o: any) => o.type === 'subscription' || o.type === 'forgotten_subscription');
         const novel = subsOnly
@@ -1977,6 +1983,15 @@ export default function SubscriptionsPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Depth notice — only rendered when the scan was capped (free tier).
+          Sits above the results so the user reads "here is what we looked
+          at" before "here is what we found". */}
+      {!detectingFromInbox && (
+        <div className="mb-8">
+          <ScanWindowNotice notice={scanWindowNotice} />
         </div>
       )}
 

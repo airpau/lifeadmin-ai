@@ -117,7 +117,7 @@ OFFER ASSESSMENT — when the supplier has put a settlement amount on the table 
    HEADLINE: ACCEPT (offer ≥ ~80% of fair range), NEGOTIATE (50–80%), or ESCALATE (< 50%).
    "Their £X vs likely fair £Y–£Z" with the basis stated in one line.
    Top 1–2 citations from search_legal_rights.
-   Suggested next step (accept and close, hold out for £Y, or refer to the named ombudsman / CISAS / FOS after deadlock or 8 weeks).
+   Suggested next step (accept and close, hold out for £Y, or refer to the named ombudsman / CISAS / FOS on a deadlock letter, or after 6 weeks for telecoms and 8 weeks for energy and financial services).
    One-line risk note: "If you escalate and adjudicator awards less than this offer, you can't reclaim it; if you accept now, you waive the higher claim."
 
 Always include the FCA 8-week clock remaining when escalation is on the table. THEN ask whether to accept, negotiate, or escalate, and only on that answer call update_dispute_status / draft_dispute_letter.

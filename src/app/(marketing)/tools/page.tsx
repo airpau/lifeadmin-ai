@@ -6,16 +6,31 @@ import { TOOLS, TOOL_GROUPS, TOOLS_BASE, toolsInGroup } from './_data/tools';
 /**
  * Free tools hub.
  *
- * Note for whoever maintains this next: two URLs currently seeded in the
- * `legal_references` table were found returning HTTP 404 when the
- * sources for these pages were verified on 2026-08-16:
+ * Note for whoever maintains this next. Two URLs seeded by
+ * supabase/migrations/20260328000000_legal_refs_topup.sql still return
+ * HTTP 404:
  *
  *   ofcom.org.uk/phones-and-broadband/making-changes/mid-contract-price-rises
  *   ofgem.gov.uk/check-if-energy-price-is-fair/understand-your-energy-bill/back-billing
  *
- * The tools use live replacements (see _data/sources.ts). The stored
- * rows should be put through the normal `legal_ref_corrections` flow
- * rather than edited directly.
+ * Re-checked 2026-08-16: neither is still live in the `legal_references`
+ * table. Both rows have since been moved to working URLs, so the 404s
+ * survive only in the historical migration file, which must not be
+ * rewritten. What IS still wrong on those rows was queued through
+ * `legal_ref_corrections` on 2026-08-16 for founder approval:
+ *
+ *   - the Ofcom GC row carries section "Condition C4.2" for the
+ *     mid-contract exit right. C4 is complaints handling; the exit right
+ *     is C1.15, read with C1.14 (notice) and C1.17 (no early termination
+ *     charge), per the consolidated General Conditions in force from
+ *     8 April 2026.
+ *   - the Ofgem back-billing row points at a URL that 301-redirects to
+ *     ofgem.gov.uk/what-do-if-you-get-back-bill. A correction proposing
+ *     the canonical target was already pending before this audit.
+ *
+ * Never edit legal_references directly — law_name, source_url,
+ * source_type and verification_status may only change via
+ * `legal_ref_corrections` plus a founder approval click.
  */
 
 export const metadata: Metadata = {

@@ -133,7 +133,7 @@ For unauthorised payments / subscription auto-renewals: cite Payment Services Re
 For Section 75 / credit-card disputes: cite CCA 1974 s.75.
 For energy back-billing: cite Ofgem SLC 21BA.
 For flight delay/cancellation: cite UK261.
-For broadband mid-contract rises: cite Ofcom GC C1.
+For broadband mid-contract rises: cite Ofcom GC C1.14 (one month notice of a contractual modification), C1.15 (right to terminate at no additional cost) and C1.17 (no early termination charge). Do NOT cite C1.3 for the exit right — C1.3 covers pre-contract information only.
 For statute-barred debt: cite Limitation Act 1980 s.5 AND CCA 1974 s.77/78.
 A single-citation letter on a multi-ground scenario is incorrect output. Use every applicable citation from the verified-refs list — do not pick "the strongest" and drop the others.
 

@@ -23,6 +23,7 @@ import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal
 import { calculateTotalSavings, parseComparisonDeals, isPriceAlertValid, priceAlertAnnualImpact } from '@/lib/savings-utils';
 import { disputeWinnabilityHook } from '@/lib/category-taxonomy';
 import PendingDisputeLettersCard from '@/components/dashboard/PendingDisputeLettersCard';
+import ScanWindowNotice, { type ScanWindowNoticeData } from '@/components/scanner/ScanWindowNotice';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -73,6 +74,11 @@ export default function DashboardPage() {
   // "spins and items don't update — is it working?" when the count was
   // unchanged (30 → 30). The spinner stopping is too quiet a signal.
   const [scanFeedback, setScanFeedback] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  // Depth transparency for capped (free-tier) scans. Null for paid tiers —
+  // the API returns null and we render nothing. Deliberately NOT put on
+  // the auto-dismiss timer that clears scanFeedback: the user should be
+  // able to read it and act on it, not have it vanish under them.
+  const [scanWindowNotice, setScanWindowNotice] = useState<ScanWindowNoticeData | null>(null);
   const scanFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null; status: string }>>([]);
@@ -602,6 +608,7 @@ export default function DashboardPage() {
       scanFeedbackTimerRef.current = null;
     }
     setScanFeedback(null);
+    setScanWindowNotice(null);
     const priorCount = emailOpportunities.length;
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -638,6 +645,18 @@ export default function DashboardPage() {
       // actually scanned — Codex P1.
       const results = await Promise.all(calls);
       const okCount = results.filter((r): r is Response => !!r && r.ok).length;
+
+      // Read the scan bodies. Historically this handler discarded them
+      // entirely and re-hydrated from Supabase, which is still how the
+      // opportunity list is built — but the depth notice only exists in
+      // the response, so we parse for that. `scanWindowNotice` is null on
+      // paid tiers, so this is a no-op for anyone who is paying.
+      const scanBodies = await Promise.all(
+        results.map((r) => (r && r.ok ? r.json().catch(() => null) : Promise.resolve(null)))
+      );
+      const cappedNotice = scanBodies
+        .map((b: any) => b?.scanWindowNotice)
+        .find((n: any) => n && typeof n.headline === 'string') as ScanWindowNoticeData | undefined;
 
       // Always refresh state from the canonical tables, regardless of
       // per-endpoint success. Fixes the "scan-now button doesn't seem
@@ -768,6 +787,19 @@ export default function DashboardPage() {
           message = `Scan complete · no new findings (${total} total)`;
         }
         setScanFeedback({ kind: 'success', message });
+
+        // Depth notice for capped scans. The API builds the headline
+        // against its own per-endpoint count; on this surface we restate
+        // it using the same delta the success banner just quoted, so the
+        // two never contradict each other in front of the user.
+        if (cappedNotice) {
+          const n = Math.max(0, delta);
+          const foundPhrase = n === 1 ? 'found 1 opportunity' : `found ${n} opportunities`;
+          setScanWindowNotice({
+            ...cappedNotice,
+            headline: `Scanned the last ${cappedNotice.scannedLabel} and ${foundPhrase}.`,
+          });
+        }
       }
 
       if (refreshedConns && refreshedConns.length > 0) {
@@ -1607,6 +1639,7 @@ export default function DashboardPage() {
                   {scanFeedback.message}
                 </div>
               )}
+              <ScanWindowNotice notice={scanWindowNotice} compact />
               {emailOpportunities.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {emailOpportunities.slice(0, 5).map((opp: any, i: number) => (

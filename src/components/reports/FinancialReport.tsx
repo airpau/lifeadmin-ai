@@ -153,7 +153,7 @@ const SAMPLE_ANNUAL: AnnualReportData = {
       topCitedRefs: [
         { name: 'Consumer Rights Act 2015 (s. 9)', count: 3 },
         { name: 'Consumer Credit Act 1974 (s. 75)', count: 2 },
-        { name: 'Ofcom General Conditions (C1.4)', count: 1 },
+        { name: 'Ofcom General Conditions (C1.15)', count: 1 },
         { name: 'EU261 / UK261 Regulation', count: 1 },
       ],
     },

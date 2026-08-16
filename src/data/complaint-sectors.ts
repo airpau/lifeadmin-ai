@@ -279,8 +279,8 @@ export const SECTOR_GUIDANCE: Record<string, SectorGuidance> = {
       'Broadband complaints cluster around mid-contract price rises, speeds well below what was sold, and outages that take days to fix. Ofcom has specific rules on all three, and two of them give you either an exit from the contract or money back without having to prove loss.',
     rights: [
       {
-        text: 'Any in-contract price rise must have been set out in pounds and pence, before you signed. If it was not, or if the provider changes your contract to your detriment in a way you were not clearly told about, you have the right to leave without an early termination charge.',
-        basis: 'Ofcom General Condition C1, price transparency rules in force from 17 January 2025',
+        text: 'Any in-contract price rise must have been set out in pounds and pence, before you signed. If it was not, the rise is a contractual modification: the provider must give you at least one month’s notice, and you have the right to leave without an early termination charge.',
+        basis: 'Ofcom General Conditions C1.14 to C1.17, with price transparency rules in force from 17 January 2025',
       },
       {
         text: 'If your service is completely lost and not fixed within two full working days of being reported, a daily payment falls due, as does a payment for a missed engineer appointment and for a delayed start of service. Ofcom reviews the daily rate every year.',
@@ -309,8 +309,8 @@ export const SECTOR_GUIDANCE: Record<string, SectorGuidance> = {
         body: 'Where a provider signed the Ofcom speed code, it has one month to bring the speed back above the guaranteed minimum before you gain a penalty-free exit.',
       },
       {
-        title: '8 weeks — when ADR opens up',
-        body: 'Eight weeks after your first complaint, or on a deadlock letter, you can take the case to the provider’s alternative dispute resolution scheme.',
+        title: '6 weeks — when ADR opens up',
+        body: 'Six weeks after your first complaint, or on a deadlock letter, you can take the case to the provider’s alternative dispute resolution scheme. Ofcom cut this wait from eight weeks to six with effect from 8 April 2026.',
       },
     ],
     letterPoints: [
@@ -363,8 +363,8 @@ export const SECTOR_GUIDANCE: Record<string, SectorGuidance> = {
       'Mobile complaints tend to be about annual price rises inside a fixed term, charges for data or roaming that were not made clear, handsets that fail inside the warranty, and difficulty leaving. Ofcom rules cover the price rise and the switch. The Consumer Rights Act covers the handset.',
     rights: [
       {
-        text: 'An in-contract price rise must have been set out in pounds and pence before you signed. If it was not, the rise is a detrimental contract modification and you can exit without an early termination charge.',
-        basis: 'Ofcom General Condition C1, price transparency rules in force from 17 January 2025',
+        text: 'An in-contract price rise must have been set out in pounds and pence before you signed. If it was not, the rise is a contractual modification and you can exit without an early termination charge.',
+        basis: 'Ofcom General Conditions C1.14 to C1.17, with price transparency rules in force from 17 January 2025',
       },
       {
         text: 'You can switch away using a PAC to keep your number or a STAC to leave without keeping it, obtained by text, and the provider must not charge you notice-period fees for a period after you have left.',
@@ -393,8 +393,8 @@ export const SECTOR_GUIDANCE: Record<string, SectorGuidance> = {
         body: 'A fault appearing within six months of delivery is presumed to have been there from the start. The network has to prove otherwise, not you.',
       },
       {
-        title: '8 weeks — when ADR opens up',
-        body: 'Eight weeks after your first complaint, or on a deadlock letter, you can take the case to the network’s alternative dispute resolution scheme.',
+        title: '6 weeks — when ADR opens up',
+        body: 'Six weeks after your first complaint, or on a deadlock letter, you can take the case to the network’s alternative dispute resolution scheme. Ofcom cut this wait from eight weeks to six with effect from 8 April 2026.',
       },
     ],
     letterPoints: [
@@ -425,7 +425,7 @@ export const SECTOR_GUIDANCE: Record<string, SectorGuidance> = {
       },
       {
         q: 'I was charged hundreds for data I did not know I was using. Can I get it back?',
-        a: 'Ask for the itemised data records and check whether the network applied the spend caps and out-of-bundle warnings it is required to offer. Where a network failed to warn you, or applied roaming charges without the notification you should have had, the charge is challengeable. Put it in writing, ask for the charge to be removed while it is investigated, and escalate to ADR at eight weeks.',
+        a: 'Ask for the itemised data records and check whether the network applied the spend caps and out-of-bundle warnings it is required to offer. Where a network failed to warn you, or applied roaming charges without the notification you should have had, the charge is challengeable. Put it in writing, ask for the charge to be removed while it is investigated, and escalate to ADR at six weeks.',
       },
       {
         q: 'Can I cancel a contract I signed in a shop?',

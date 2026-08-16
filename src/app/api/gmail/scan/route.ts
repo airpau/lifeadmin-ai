@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { scanEmailsForOpportunities, refreshAccessToken } from '@/lib/gmail';
 import { checkUsageLimit, incrementUsage, checkFreeScanGate } from '@/lib/plan-limits';
+import { resolveEmailScanWindow, clampSinceToWindow, buildScanWindowNotice } from '@/lib/email-scan-window';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
 import { getUserPlan } from '@/lib/get-user-plan';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
@@ -108,11 +109,21 @@ export async function POST(request: NextRequest) {
       .eq('status', 'active')
       .maybeSingle();
     const isFullScan = forceFull || !connRow?.last_full_scanned_at;
-    const sinceISO = isFullScan
+    // Tier lookback cap. resolveEmailScanWindow goes through
+    // getEffectiveTier, so an active onboarding trial gets the paid
+    // window and a downgraded user just gets the shallower window on
+    // their next scan (no error, no broken state).
+    const scanWindow = await resolveEmailScanWindow(user.id);
+    const rawSince = isFullScan
       ? null
       : (connRow?.last_scanned_at || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
-    console.log(`[gmail-scan] Starting ${isFullScan ? 'FULL' : 'INCREMENTAL'} scan (since=${sinceISO})...`);
-    const scanResult = await scanEmailsForOpportunities(accessToken, { sinceISO, userId: user.id });
+    const sinceISO = clampSinceToWindow(rawSince, scanWindow);
+    console.log(`[gmail-scan] Starting ${isFullScan ? 'FULL' : 'INCREMENTAL'} scan (since=${sinceISO}, window=${scanWindow.days}d, tier=${scanWindow.tier})...`);
+    const scanResult = await scanEmailsForOpportunities(accessToken, {
+      sinceISO,
+      userId: user.id,
+      lookbackDays: scanWindow.days,
+    });
     let opportunities = scanResult.opportunities;
 
     console.log(`[gmail-scan] Scan complete: ${scanResult.emailsFound} found, ${scanResult.emailsScanned} scanned, ${opportunities.length} opportunities`);
@@ -532,6 +543,16 @@ export async function POST(request: NextRequest) {
       emailsScanned: scanResult.emailsScanned,
       opportunityCount: opportunities.length,
       scannedAt: new Date().toISOString(),
+      // Depth transparency. `scanWindowNotice` is null for paid tiers —
+      // a paying user never sees an upsell after a scan they paid for.
+      scanWindow: {
+        days: scanWindow.days,
+        tier: scanWindow.tier,
+        capped: scanWindow.capped,
+        fullWindowDays: scanWindow.fullWindowDays,
+        sinceISO: scanWindow.sinceISO,
+      },
+      scanWindowNotice: buildScanWindowNotice(scanWindow, opportunities.length),
     });
   } catch (err: any) {
     console.error('Gmail scan error:', err.message);

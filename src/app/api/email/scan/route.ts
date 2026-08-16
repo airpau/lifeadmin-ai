@@ -8,6 +8,7 @@ import {
   decryptPassword,
 } from '@/lib/imap-scanner';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { resolveEmailScanWindow, buildScanWindowNotice } from '@/lib/email-scan-window';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { getUserPlan } from '@/lib/get-user-plan';
 
@@ -114,14 +115,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to decrypt credentials' }, { status: 500 });
     }
 
-    // Scan emails via IMAP
-    console.log(`[email/scan] Scanning ${conn.email_address} via ${conn.imap_host}:${conn.imap_port}`);
+    // Scan emails via IMAP. The lookback is a tier limit — free is 90
+    // days, paid 730. In practice free never reaches here (hard 403
+    // above), so paid behaviour is unchanged; this is defence in depth
+    // so the window can only ever come from one place.
+    const scanWindow = await resolveEmailScanWindow(user.id);
+    console.log(`[email/scan] Scanning ${conn.email_address} via ${conn.imap_host}:${conn.imap_port} (window=${scanWindow.days}d, tier=${scanWindow.tier})`);
     const emails = await scanEmailsViaImap(
       conn.imap_host,
       conn.imap_port,
       conn.email_address,
       password,
-      730,
+      scanWindow.days,
     );
 
     console.log(`[email/scan] Found ${emails.length} financial emails`);
@@ -132,7 +137,19 @@ export async function POST(req: NextRequest) {
         .update({ last_scanned_at: new Date().toISOString() })
         .eq('id', connectionId);
 
-      return NextResponse.json({ opportunities: [], emailsFound: 0, emailsScanned: 0 });
+      return NextResponse.json({
+        opportunities: [],
+        emailsFound: 0,
+        emailsScanned: 0,
+        scanWindow: {
+          days: scanWindow.days,
+          tier: scanWindow.tier,
+          capped: scanWindow.capped,
+          fullWindowDays: scanWindow.fullWindowDays,
+          sinceISO: scanWindow.sinceISO,
+        },
+        scanWindowNotice: buildScanWindowNotice(scanWindow, 0),
+      });
     }
 
     // Group emails by sender (same pattern as Gmail/Outlook scanner)
@@ -413,6 +430,14 @@ IMPORTANT:
       emailsScanned: senderMap.size,
       opportunityCount: opportunities.length,
       scannedAt: new Date().toISOString(),
+      scanWindow: {
+        days: scanWindow.days,
+        tier: scanWindow.tier,
+        capped: scanWindow.capped,
+        fullWindowDays: scanWindow.fullWindowDays,
+        sinceISO: scanWindow.sinceISO,
+      },
+      scanWindowNotice: buildScanWindowNotice(scanWindow, opportunities.length),
     });
   } catch (err: any) {
     console.error('[email/scan] Error:', err.message);

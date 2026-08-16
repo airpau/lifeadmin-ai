@@ -258,7 +258,7 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
       companyName: 'Sky',
       issueDescription:
         "Sky just put my broadband bill up by £4 a month mid-contract. I want to leave penalty-free under Ofcom's mid-contract price rise rules.",
-      desiredOutcome: 'Penalty-free exit from contract under GC C1.',
+      desiredOutcome: 'Penalty-free exit from contract under GC C1.15.',
       letterType: 'broadband_complaint',
     },
     matches: (ctx) =>
@@ -267,10 +267,10 @@ export const GUARANTEE_RULES: GuaranteeRule[] = [
       /\b(mid-?contract|price\s*(rise|increase|hike)|cpi|inflation|exit\s*fee|early\s*termination)\b/.test(ctx.text),
     required: [
       {
-        label: 'Ofcom General Conditions, GC C1 (right to exit on material modification)',
+        label: 'Ofcom General Conditions, GC C1.14 to C1.17 (notice of a contractual modification and right to exit)',
         matchTokens: ['general conditions', 'gc c1', 'gc1', 'ofcom'],
         rationale:
-          'Customer has a right to exit penalty-free on a material modification to contract terms.',
+          'C1.14 requires at least one month notice of any contractual modification; C1.15 gives the right to terminate at no additional cost; C1.17 confirms no early termination charge is payable.',
       },
     ],
   },

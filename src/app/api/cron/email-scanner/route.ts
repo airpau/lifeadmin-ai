@@ -71,6 +71,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { scanEmailsForOpportunities, refreshAccessToken, type Opportunity as GmailOpportunity } from '@/lib/gmail';
 import { scanOutlookForOpportunities, refreshMicrosoftToken } from '@/lib/outlook';
+import { resolveEmailScanWindow, clampSinceToWindow } from '@/lib/email-scan-window';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -281,13 +282,20 @@ async function scanGmail(sb: AdminClient, conn: ConnRow): Promise<ScanOutcome> {
   // connection has never had a full scan, do one; otherwise look at
   // emails since last_scanned_at (or the last 30 days as a floor).
   const isFullScan = !conn.last_full_scanned_at;
-  const sinceISO = isFullScan
+  // Tier lookback cap. The cron runs unattended across every active
+  // connection, so this is the highest-volume enforcement point — a free
+  // account must not get a 2-year sweep here just because no human is
+  // watching. Trial-aware via getEffectiveTier.
+  const scanWindow = await resolveEmailScanWindow(conn.user_id);
+  const rawSince = isFullScan
     ? null
     : (conn.last_scanned_at || new Date(Date.now() - 30 * 86_400_000).toISOString());
+  const sinceISO = clampSinceToWindow(rawSince, scanWindow);
 
   const scanResult = await scanEmailsForOpportunities(accessToken, {
     sinceISO,
     userId: conn.user_id,
+    lookbackDays: scanWindow.days,
   });
 
   const newFindings = await persistFindings(sb, conn, scanResult.opportunities, 'gmail');
@@ -350,7 +358,11 @@ async function scanOutlook(sb: AdminClient, conn: ConnRow): Promise<ScanOutcome>
     };
   }
 
-  const scanResult = await scanOutlookForOpportunities(accessToken);
+  // Tier lookback cap — same rule as the Gmail leg above.
+  const outlookWindow = await resolveEmailScanWindow(conn.user_id);
+  const scanResult = await scanOutlookForOpportunities(accessToken, {
+    lookbackDays: outlookWindow.days,
+  });
   const newFindings = await persistFindings(sb, conn, scanResult.opportunities, 'outlook');
 
   await sb.from('email_connections').update({

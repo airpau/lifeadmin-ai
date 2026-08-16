@@ -1,7 +1,12 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { COMPANIES, getCompanyBySlug, companiesInSameCategory } from '@/data/companies';
+import {
+  COMPANIES,
+  getCompanyBySlug,
+  companiesInSameCategory,
+  hasCompanyComplaintFacts,
+} from '@/data/companies';
 import { getSectorGuidance } from '@/data/complaint-sectors';
 import { MarkNav, MarkFoot } from '@/app/blog/_shared';
 import type { Metadata } from 'next';
@@ -40,8 +45,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // Google truncates. The descriptive detail lives in the meta
   // description and the H1 instead.
   const title = `How to complain to ${company.name} | Paybacker`;
+  // Where we hold verified company-specific facts, lead the description with
+  // them. Otherwise every company in a sector shares one description, which
+  // reads as duplicate content to a crawler and is useless in the SERP.
+  const escalateTo = company.adrScheme ?? sector.escalation.name;
   const description = clampDescription(
-    `Complaining to ${company.name}? The rights that apply, the deadlines that decide your claim, and how to escalate to ${sector.escalation.name}.`,
+    company.complaintsPostalAddress || company.complaintsEmail
+      ? `Where to send a ${company.name} complaint, their published response time, the rights that apply, and how to escalate to ${escalateTo}.`
+      : `Complaining to ${company.name}? The rights that apply, the deadlines that decide your claim, and how to escalate to ${escalateTo}.`,
   );
 
   return {
@@ -83,6 +94,13 @@ export default async function CompanyPage({ params }: Props) {
   const sector = getSectorGuidance(company);
   const url = `${BASE}/complaints/${company.slug}`;
   const related = companiesInSameCategory(company.slug).slice(0, 6);
+
+  // Everything below the sector guidance is shared by every company in the
+  // sector. These are the facts that are true of this company and no other,
+  // and each was read on the company's own website. Where we hold none, the
+  // block is omitted entirely rather than padded with plausible-looking text.
+  const showCompanyFacts = hasCompanyComplaintFacts(company);
+  const responseTime = company.publishedResponseTimeDays;
 
   // BreadcrumbList mirrors the visible breadcrumb. FAQPage is genuine:
   // every question below is answered in full in the visible copy. We do
@@ -135,6 +153,85 @@ export default async function CompanyPage({ params }: Props) {
             <h1>How to complain to {company.name}</h1>
             <p className="subtitle">{sector.intro}</p>
           </section>
+
+          {/* Company-specific facts -------------------------------------- */}
+          {showCompanyFacts && (
+            <section className="prose-section" style={{ paddingTop: 24 }}>
+              <div className="rights-card">
+                <h2>Where to send a {company.name} complaint</h2>
+                <p className="prose-body" style={{ marginTop: 0 }}>
+                  These details are published by {company.name} itself. Sending a
+                  complaint to the route the company actually operates, rather than a
+                  general enquiries address, is the single cheapest thing you can do to
+                  speed it up.
+                </p>
+                <dl style={{ marginTop: 18, display: 'grid', gap: 14 }}>
+                  {company.complaintsUrl && (
+                    <div>
+                      <dt style={{ fontWeight: 600 }}>Official complaints page</dt>
+                      <dd style={{ margin: '4px 0 0' }}>
+                        <a
+                          href={company.complaintsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer nofollow"
+                          style={{ color: 'var(--accent-mint-deep)' }}
+                        >
+                          {company.complaintsUrl}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                  {company.complaintsEmail && (
+                    <div>
+                      <dt style={{ fontWeight: 600 }}>Complaints email</dt>
+                      <dd style={{ margin: '4px 0 0' }}>
+                        <a
+                          href={`mailto:${company.complaintsEmail}`}
+                          style={{ color: 'var(--accent-mint-deep)' }}
+                        >
+                          {company.complaintsEmail}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                  {company.complaintsPostalAddress && (
+                    <div>
+                      <dt style={{ fontWeight: 600 }}>Complaints address</dt>
+                      <dd style={{ margin: '4px 0 0' }}>{company.complaintsPostalAddress}</dd>
+                    </div>
+                  )}
+                  {typeof responseTime === 'number' && (
+                    <div>
+                      <dt style={{ fontWeight: 600 }}>Their published response time</dt>
+                      <dd style={{ margin: '4px 0 0' }}>
+                        {responseTime === 1 ? '1 day' : `${responseTime} days`}
+                        <span style={{ color: 'var(--text-secondary)' }}>
+                          {' '}— quote this back to them if it passes.
+                        </span>
+                      </dd>
+                    </div>
+                  )}
+                  {company.adrScheme && (
+                    <div>
+                      <dt style={{ fontWeight: 600 }}>Who they escalate to</dt>
+                      <dd style={{ margin: '4px 0 0' }}>
+                        {company.adrScheme}
+                        <span style={{ color: 'var(--text-secondary)' }}>
+                          {' '}— the scheme {company.name} names on its own complaints page.
+                          Sending a case to the wrong scheme wastes weeks.
+                        </span>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+                {company.companyNote && (
+                  <p className="prose-body" style={{ marginBottom: 0 }}>
+                    <strong>Worth knowing:</strong> {company.companyNote}
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Rights ------------------------------------------------------ */}
           <section className="prose-section" style={{ paddingTop: 24 }}>

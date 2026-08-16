@@ -129,8 +129,8 @@ const LAW_ROTATION: LawUpdate[] = [
       'Ofcom now bans CPI/RPI-linked mid-contract price rises in broadband and mobile contracts. Any in-contract price increase must be stated in <strong>pounds and pence</strong> at the point of sale — anything else gives the customer a no-penalty exit.',
     who_it_helps:
       'Anyone whose broadband or mobile bill went up mid-contract in 2025/2026 with the increase pegged to inflation indices.',
-    source_label: 'Ofcom General Conditions C1.6',
-    source_url: 'https://www.ofcom.org.uk/phones-and-broadband/mobile/inflation-linked-mid-contract-price-rises',
+    source_label: 'Ofcom General Conditions C1.14 to C1.17',
+    source_url: 'https://www.ofcom.org.uk/phones-and-broadband/bills-and-charges/ofcom-bans-mid-contract-price-rises-linked-to-inflation',
   },
   {
     title: 'Tougher rules on hidden fees and drip pricing',

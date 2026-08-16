@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { scanOutlookForOpportunities, refreshMicrosoftToken } from '@/lib/outlook';
 import { checkUsageLimit, incrementUsage, checkFreeScanGate } from '@/lib/plan-limits';
+import { resolveEmailScanWindow, buildScanWindowNotice } from '@/lib/email-scan-window';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
 import { getUserPlan } from '@/lib/get-user-plan';
 
@@ -96,8 +97,12 @@ export async function POST(request: NextRequest) {
 
   try {
     // Use the comprehensive scanning function (now matches Gmail capability)
-    console.log('[outlook-scan] Starting comprehensive email scan...');
-    const scanResult = await scanOutlookForOpportunities(accessToken);
+    // Tier lookback cap — trial-aware via getEffectiveTier.
+    const scanWindow = await resolveEmailScanWindow(user.id);
+    console.log(`[outlook-scan] Starting comprehensive email scan (window=${scanWindow.days}d, tier=${scanWindow.tier})...`);
+    const scanResult = await scanOutlookForOpportunities(accessToken, {
+      lookbackDays: scanWindow.days,
+    });
     let opportunities = scanResult.opportunities;
 
     console.log(`[outlook-scan] Scan complete: ${scanResult.emailsFound} found, ${scanResult.emailsScanned} scanned, ${opportunities.length} opportunities`);
@@ -238,6 +243,14 @@ export async function POST(request: NextRequest) {
       emailsScanned: scanResult.emailsScanned,
       opportunityCount: opportunities.length,
       scannedAt: new Date().toISOString(),
+      scanWindow: {
+        days: scanWindow.days,
+        tier: scanWindow.tier,
+        capped: scanWindow.capped,
+        fullWindowDays: scanWindow.fullWindowDays,
+        sinceISO: scanWindow.sinceISO,
+      },
+      scanWindowNotice: buildScanWindowNotice(scanWindow, opportunities.length),
     });
   } catch (err: any) {
     console.error('[outlook-scan] Scan error:', err.message);

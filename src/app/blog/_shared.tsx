@@ -66,6 +66,13 @@ export function MarkFoot() {
               signal. This link puts the hub one hop from every page.
             */}
             <Link href="/complaints">Company complaints</Link>
+            {/*
+              Migration hub for people whose UK money app has closed. Kept
+              in the footer so the /switch pages are one hop from every
+              marketing page rather than sitemap-only, which matters most
+              while the search interest around a closure is still live.
+            */}
+            <Link href="/switch">Switching from a closed app</Link>
           </div>
           <div className="footer-col">
             <h5>Company</h5>
@@ -79,6 +86,7 @@ export function MarkFoot() {
             <Link href="/privacy-policy">Privacy</Link>
             <Link href="/terms-of-service">Terms</Link>
             <Link href="/legal/methodology">Methodology</Link>
+            <Link href="/legal/how-we-cite">How we cite</Link>
             <Link href="/legal/ethics-code">Ethics Code</Link>
             <Link href="/cookie-policy">Cookies</Link>
             <Link href="/ico-notice">ICO notice</Link>

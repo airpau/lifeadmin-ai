@@ -702,6 +702,14 @@ export default function MoneyHubPage() {
          ? `Scanned ${scanned} email${scanned === 1 ? '' : 's'} · Nothing new to surface — you're all caught up.`
          : 'Inbox scan complete — nothing new.';
      showToast(summary, 'success');
+     // Depth transparency for capped (free-tier) scans. `scanWindowNotice`
+     // is null on paid tiers, so a paying user sees nothing extra. Shown
+     // as a second toast rather than folded into the summary so the
+     // result and the limitation stay separately readable.
+     const notice = payload?.scanWindowNotice;
+     if (notice?.body) {
+       setTimeout(() => showToast(`${notice.headline} ${notice.body}`, 'info'), 400);
+     }
    }
  }
  catch {

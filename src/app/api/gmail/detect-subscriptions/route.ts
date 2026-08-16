@@ -5,8 +5,18 @@ import { refreshAccessToken } from '@/lib/gmail';
 import Anthropic from '@anthropic-ai/sdk';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { resolveEmailScanWindow, buildScanWindowNotice } from '@/lib/email-scan-window';
 
 export const maxDuration = 300;
+
+/**
+ * Swap the hardcoded recency clause for the caller's tier window.
+ * Mirrors `withRecency` in src/lib/gmail.ts — the lookback is a tier
+ * limit (PLAN_LIMITS[tier].emailScanDays), not a constant.
+ */
+function withLookback(query: string, days: number): string {
+  return query.replace(/newer_than:\d+d/g, `newer_than:${days}d`);
+}
 
 const SUBJECT_QUERY =
   'subject:(subscription OR renewal OR "direct debit" OR "standing order" OR "recurring payment" OR invoice OR receipt OR membership OR "auto-renew" OR "payment received" OR "plan renewed" OR "trial ended" OR "billing statement" OR "your bill" OR "payment due" OR "price change" OR "contract end" OR "notice period") newer_than:730d';
@@ -71,14 +81,29 @@ export async function POST(request: NextRequest) {
     }).eq('user_id', user.id);
   }
 
+  // Tier lookback cap — free 90 days, paid 730. Trial-aware.
+  const scanWindow = await resolveEmailScanWindow(user.id);
+
   // Fetch emails from both queries
   const [subjectIds, providerIds] = await Promise.all([
-    fetchMessageIds(SUBJECT_QUERY, accessToken),
-    fetchMessageIds(PROVIDER_QUERY, accessToken),
+    fetchMessageIds(withLookback(SUBJECT_QUERY, scanWindow.days), accessToken),
+    fetchMessageIds(withLookback(PROVIDER_QUERY, scanWindow.days), accessToken),
   ]);
 
   const allIds = Array.from(new Set([...subjectIds, ...providerIds]));
-  if (!allIds.length) return NextResponse.json({ subscriptions: [] });
+  if (!allIds.length) {
+    return NextResponse.json({
+      subscriptions: [],
+      scanWindow: {
+        days: scanWindow.days,
+        tier: scanWindow.tier,
+        capped: scanWindow.capped,
+        fullWindowDays: scanWindow.fullWindowDays,
+        sinceISO: scanWindow.sinceISO,
+      },
+      scanWindowNotice: buildScanWindowNotice(scanWindow, 0),
+    });
+  }
 
   // Fetch metadata for up to 100 emails
   const idsToFetch = allIds.slice(0, 100);
@@ -184,6 +209,14 @@ Rules:
       emailsFound: allIds.length,
       emailsScanned: emailDetails.length,
       providersFound: senderMap.size,
+      scanWindow: {
+        days: scanWindow.days,
+        tier: scanWindow.tier,
+        capped: scanWindow.capped,
+        fullWindowDays: scanWindow.fullWindowDays,
+        sinceISO: scanWindow.sinceISO,
+      },
+      scanWindowNotice: buildScanWindowNotice(scanWindow, subscriptions.length),
     });
   } catch (err: any) {
     console.error('Detect subscriptions error:', err.message);

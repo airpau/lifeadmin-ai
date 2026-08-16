@@ -9,10 +9,17 @@
  * (b) the billingCycle prop passed to PricingCTA.
  *
  * Pricing copy pinned to CLAUDE.md §PRICING:
- *   - Essential £4.99/mo · £44.99/year (saves £14.89)
- *   - Pro       £9.99/mo · £94.99/year (saves £24.89)
+ *   - Essential £4.99/mo · £44.99/year (saves £14.89, about 25% off)
+ *   - Pro       £9.99/mo · £94.99/year (saves £24.89, about 21% off)
  * CTAs deliberately avoid any "14-day trial" language — per CLAUDE.md the
  * Pro trial was removed because it produced silent downgrades at expiry.
+ *
+ * The two tiers do NOT save the same percentage, so the toggle badge says
+ * "save up to 25%" rather than "save ~25%": the latter overstated Pro by
+ * four points. The annual price is also shown on the monthly view, because
+ * hiding it behind the toggle meant most visitors never saw it at all.
+ * Recompute both figures here and in the annual band on page.tsx if a
+ * price ever changes.
  */
 
 import { useState } from 'react';
@@ -44,7 +51,7 @@ export default function PricingGrid() {
             className={`billing-toggle__opt ${isYearly ? 'is-active' : ''}`}
             onClick={() => setCycle('yearly')}
           >
-            Yearly <span className="billing-toggle__save">save ~25%</span>
+            Yearly <span className="billing-toggle__save">save up to 25%</span>
           </button>
         </div>
       </div>
@@ -80,7 +87,9 @@ export default function PricingGrid() {
             <span className="per">{isYearly ? '/year' : '/month'}</span>
           </div>
           <div className="founding">
-            {isYearly ? 'Saves £14.89 vs monthly' : 'Founding member · locked-in forever'}
+            {isYearly
+              ? 'Billed once · saves £14.89 · about 25% off'
+              : 'or £44.99 a year · saves £14.89 · about 25% off'}
           </div>
           <ul>
             <li>Unlimited AI dispute letters</li>
@@ -106,7 +115,9 @@ export default function PricingGrid() {
             <span className="per">{isYearly ? '/year' : '/month'}</span>
           </div>
           <div className="founding">
-            {isYearly ? 'Saves £24.89 vs monthly' : 'Founding member · locked-in forever'}
+            {isYearly
+              ? 'Billed once · saves £24.89 · about 21% off'
+              : 'or £94.99 a year · saves £24.89 · about 21% off'}
           </div>
           <ul>
             <li>Everything in Essential</li>

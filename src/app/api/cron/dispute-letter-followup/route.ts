@@ -424,8 +424,13 @@ async function runStallSweep(
     } else {
       // FCA 8-week computation: if we know first_letter_sent_at, derive the
       // remaining days; otherwise fall back to fca_8_week_deadline if the
-      // column is populated. Energy / broadband / finance disputes share
-      // the 8-week regulator clock under Ofgem / Ofcom / FCA rules.
+      // column is populated. Energy and financial-services disputes run on
+      // the 8-week regulator clock under Ofgem / FCA rules. NOTE: telecoms
+      // is no longer 8 weeks — Ofcom General Conditions (consolidated
+      // version in force 8 April 2026), Annex to C4 paragraph 12, requires
+      // an ADR letter once a complaint is unresolved after SIX weeks. This
+      // column and its 8-week default therefore over-state the wait for
+      // Ofcom-regulated disputes; treat 6 weeks as the trigger for those.
       let daysToFca: number | null = null;
       if (d.fca_8_week_deadline) {
         daysToFca = Math.floor(

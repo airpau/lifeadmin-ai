@@ -257,8 +257,9 @@ function Section1Disputes() {
             <div>
               <strong>Bonus: we scan your inbox too.</strong> Paybacker reads Gmail or Outlook
               (read-only) for hidden refunds, forgotten subscriptions, flight-delay claims, and
-              debt disputes you&rsquo;d otherwise miss &mdash; up to <strong>2 years</strong>{' '}
-              of email history on the first scan.
+              debt disputes you&rsquo;d otherwise miss. The free plan scans the last{' '}
+              <strong>90 days</strong>; Essential and Pro scan up to <strong>2 years</strong>{' '}
+              of email history.
             </div>
           </div>
         </div>

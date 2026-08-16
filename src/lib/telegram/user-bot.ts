@@ -261,7 +261,7 @@ OFFER ASSESSMENT — when the supplier has put a settlement amount on the table 
    HEADLINE: ACCEPT (offer ≥ ~80% of fair range), NEGOTIATE (50–80%), or ESCALATE (< 50%).
    "Their £X vs likely fair £Y–£Z" with the basis stated in one line.
    Top 1–2 citations from search_legal_rights.
-   Suggested next step (accept and close, hold out for £Y, or refer to the named ombudsman / CISAS / FOS after deadlock or 8 weeks).
+   Suggested next step (accept and close, hold out for £Y, or refer to the named ombudsman / CISAS / FOS on a deadlock letter, or after 6 weeks for telecoms and 8 weeks for energy and financial services).
    One-line risk note: "If you escalate and adjudicator awards less than this offer, you can't reclaim it; if you accept now, you waive the higher claim."
 
 Always include the FCA 8-week clock remaining when escalation is on the table. THEN ask whether to accept, negotiate, or escalate, and only on that answer call update_dispute_status / draft_dispute_letter.
@@ -948,7 +948,7 @@ export function createUserBot(): Bot<UserBotContext> {
       const LETTER_CONTEXT: Record<string, string> = {
         complaint: 'General consumer complaint. Cite Consumer Rights Act 2015. Include the 14-day FCA deadline and name the relevant ombudsman.',
         energy_dispute: 'Energy price dispute. Cite Ofgem Standards of Conduct — suppliers must give 30 days written notice before any price change. Where notice is inadequate the consumer may exit penalty-free. Name the Energy Ombudsman as escalation.',
-        broadband_complaint: 'Broadband/telecoms price dispute. Cite Ofcom General Conditions GC C1.3 — providers must give 30 days notice of mid-contract price rises not linked to a published RPI/CPI index; if notice is inadequate the consumer has the right to exit penalty-free. Name CISAS or Ombudsman Services: Communications as escalation.',
+        broadband_complaint: 'Broadband/telecoms price dispute. Cite Ofcom General Conditions GC C1.14 to C1.17 — C1.14 requires at least one month notice of any contractual modification, C1.15 gives the right to terminate at no additional cost, and C1.17 confirms no early termination charge is payable. Name CISAS or the Communications Ombudsman as escalation, available six weeks after the complaint was first made or immediately on a deadlock letter.',
       };
 
       const letterPrompt = `Write a formal complaint letter from a UK consumer to ${providerName}.
@@ -2063,7 +2063,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
       const LETTER_CONTEXT: Record<string, string> = {
         complaint: 'General consumer complaint. Cite Consumer Rights Act 2015. Include the 14-day FCA deadline and name the relevant ombudsman.',
         energy_dispute: 'Energy price dispute. Cite Ofgem Standards of Conduct — suppliers must give 30 days written notice before any price change. Name the Energy Ombudsman as escalation.',
-        broadband_complaint: 'Broadband price dispute. Cite Ofcom General Conditions GC C1.3 — 30 days notice required for mid-contract price rises. Name CISAS or Ombudsman Services: Communications.',
+        broadband_complaint: 'Broadband price dispute. Cite Ofcom General Conditions GC C1.14 to C1.17 — at least one month notice of a contractual modification, right to terminate at no additional cost, no early termination charge. Name CISAS or the Communications Ombudsman, available after six weeks.',
       };
 
       const letterResponse = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({

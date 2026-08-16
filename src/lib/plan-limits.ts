@@ -8,6 +8,19 @@ export interface PlanLimits {
   // null = unlimited. Enforced at the connect endpoints (yapily/google/microsoft).
   maxBanks: number | null;
   maxEmails: number | null;
+  /**
+   * How far back an inbox scan looks, in days.
+   *
+   * Every scanned message costs us an Anthropic call, so depth is the
+   * single largest variable cost on the free tier. Free is capped at 90
+   * days; paid tiers keep the full 2-year sweep the product has always
+   * described (`FULL_EMAIL_SCAN_DAYS` in src/lib/email-scan-window.ts).
+   *
+   * Enforced server-side in every scan path via
+   * `resolveEmailScanWindow(userId)`, which reads getEffectiveTier so an
+   * active onboarding trial gets the paid window.
+   */
+  emailScanDays: number;
   // Custom Account Spaces. Default "Everything" Space is always free; this
   // caps user-created Spaces. Pro-only feature — free/essential get 1.
   maxSpaces: number | null;
@@ -41,6 +54,7 @@ export interface PlanLimits {
  *                               Free    Essential   Pro
  * Bank connections              2       3           ∞
  * Email connections             1       3           ∞
+ * Inbox scan history            90d     2 years     2 years
  * AI letters / month            3       ∞           ∞
  * Dispute-reply watchdog        30m auto (all tiers)
  * Dispute thread links          ∞       ∞           ∞
@@ -70,6 +84,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     scanRunsPerMonth: 1, // one-time bank scan, email scan, opportunity scan
     maxBanks: 2,
     maxEmails: 1,
+    emailScanDays: 90,
     maxSpaces: 1,
     disputeThreadLinks: 1,
     watchdogSyncIntervalMinutes: null, // manual only
@@ -81,6 +96,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     scanRunsPerMonth: 4, // monthly re-scans (bank daily auto, email/opportunity monthly)
     maxBanks: 3,
     maxEmails: 3,
+    emailScanDays: 730,
     maxSpaces: 1,
     disputeThreadLinks: 5,
     watchdogSyncIntervalMinutes: 60,
@@ -92,6 +108,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     scanRunsPerMonth: null, // unlimited everything
     maxBanks: null,
     maxEmails: null,
+    emailScanDays: 730,
     maxSpaces: null,
     disputeThreadLinks: null,
     watchdogSyncIntervalMinutes: 30,

@@ -815,7 +815,7 @@ function StickyCTA() {
 
   return (
     <div className={`sticky-cta mobile-hidden${visible ? ' shown' : ''}`} aria-hidden={!visible}>
-      <span>Find your overcharges in 30s — no card, no catch.</span>
+      <span>Find what you are owed. Keep 100% of it. No card.</span>
       <Link href="/auth/signup">Start free →</Link>
     </div>
   );
@@ -865,22 +865,23 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="hero-grid">
             <Reveal className="hero-copy">
-              <span className="eyebrow">Free forever tier · No card required</span>
+              <span className="eyebrow">0% success fee, ever · Free tier · No card required</span>
               <h1>
-                <span className="l1">Your AI financial helper.</span>
-                <span className="l2">In your pocket.</span>
-                <span className="l3">On your side.</span>
+                <span className="l1">We find the money</span>
+                <span className="l2">you are owed.</span>
+                <span className="l3">You keep all of it.</span>
               </h1>
               <p className="hero-sub">
-                Paybacker watches your bills, bank and inbox. It spots
-                overcharges and price rises, drafts dispute letters citing UK
-                law, and sees every dispute through to the end.
+                Paybacker reads your bank and your inbox to find the charges
+                that should not be there. It writes the letter citing the exact
+                UK statute or regulator rule, links the official source, and
+                keeps the case moving to the ombudsman deadline.
                 <br />
-                You keep 100% of anything you get back.
+                You keep 100% of anything that comes back. We never take a cut.
               </p>
               <div className="hero-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
-                  Start free — keep 100% of your wins →
+                  Start free, keep 100% of what comes back →
                 </Link>
                 {/* Public, no-account case checker. Added as the second
                     hero CTA because it is the only surface a visitor can
@@ -903,9 +904,9 @@ export default function HomepageV3PreviewPage() {
               <div className="hero-ticker">
                 <span className="pulse" />
                 <span>
-                  Price rises spotted. Disputes drafted in 30 seconds.
-                  Subscriptions tracked.{' '}
-                  <strong>Free tier available, and you keep 100% of anything you get back.</strong>
+                  Overcharges found in your bank and inbox. Letters citing the
+                  law in 30 seconds. Cases tracked to the deadline.{' '}
+                  <strong>Free tier available, and we never take a percentage of what you recover.</strong>
                 </span>
               </div>
             </Reveal>
@@ -933,14 +934,17 @@ export default function HomepageV3PreviewPage() {
           <Reveal className="section-head">
             <span className="eyebrow">Why Paybacker exists</span>
             <h2>
-              Every British household is leaking money.
+              Noticing the overcharge is the easy half.
               <br />
-              Paybacker plugs the leaks.
+              Getting the money back is the hard half.
             </h2>
             <p>
-              No gamified streaks. No vague &ldquo;up to&rdquo; claims. These are the
-              sector benchmarks we&rsquo;re built around — grounded in UK consumer
-              protection law.
+              Plenty of apps will show you that a bill went up. Almost none will
+              name the rule that governs it, put that in a letter, and still be
+              watching eight weeks later. No gamified streaks, no vague
+              &ldquo;up to&rdquo; claims, and no promises about outcomes: the
+              figures below are sector benchmarks and product facts, nothing
+              more.
             </p>
           </Reveal>
 
@@ -952,8 +956,9 @@ export default function HomepageV3PreviewPage() {
               </div>
               <div className="underline" />
               <div className="blurb">
-                Most of it hides in price hikes, forgotten subs, and standing charges
-                nobody reads. Paybacker surfaces it in one scan.
+                Most of it hides in mid-contract price rises, forgotten subscriptions
+                and estimated bills nobody checks. Paybacker reads your bank and your
+                inbox to surface it in one pass.
               </div>
             </Reveal>
 
@@ -964,22 +969,25 @@ export default function HomepageV3PreviewPage() {
               </div>
               <div className="underline" />
               <div className="blurb">
-                AI cites the exact statute — Consumer Rights Act 2015 s.49, UK261,
-                Ofcom and Ofgem rules — and formats it professionally, ready to
-                send.
+                The letter names the exact provision, Consumer Rights Act 2015 s.49,
+                UK261, Ofcom or Ofgem rules, and links the official source it came
+                from. Citations are drawn from a maintained library, not generated
+                by the model.
               </div>
             </Reveal>
 
             <Reveal className="stat-card" delay={160}>
-              <div className="label">Of your refund you keep</div>
+              <div className="label">Of anything recovered, you keep</div>
               <div className="num">
                 <Counter to={100} instant />
                 <span className="unit">%</span>
               </div>
               <div className="underline" />
               <div className="blurb">
-                Paybacker never takes a cut of what you get back. We just charge
-                a flat monthly subscription, so every £ you recover stays yours.
+                Services that work on a success fee commonly take 25% to 35% of what
+                you recover, and the FCA caps claims-management charges on smaller
+                consumer-credit claims at 30% plus VAT. Paybacker takes none of it:
+                a flat monthly subscription and nothing else.
               </div>
             </Reveal>
           </div>
@@ -1066,16 +1074,18 @@ export default function HomepageV3PreviewPage() {
       <section className="features-intro section-light" id="features">
         <div className="wrap">
           <Reveal className="section-head section-head--center">
-            <span className="eyebrow">What&rsquo;s in the box</span>
+            <span className="eyebrow">How the money actually comes back</span>
             <h2>
-              Seven tools. One subscription.
+              Found in your bank. Argued from the statute.
               <br />
-              Every £ you overpay — found, disputed, cancelled.
+              Chased to the ombudsman deadline.
             </h2>
             <p>
-              Most UK households are overcharged by £1,000+ a year. Paybacker
-              finds it, disputes it, and cancels it — in minutes, not hours on
-              hold.
+              Most complaints fail for the same three reasons: nobody spotted the
+              charge, the letter was a strongly worded email with no provision
+              behind it, and nobody was watching the clock when the company went
+              quiet. Paybacker is built around those three failures rather than
+              around a list of features.
             </p>
           </Reveal>
         </div>
@@ -1094,13 +1104,14 @@ export default function HomepageV3PreviewPage() {
               </p>
               <p>
                 It tells you when a dispute is ready to send, when the company
-                replies, and when the 8-week Ombudsman clock hits. Tap to
-                approve. Done — no chasing, no hold music.
+                replies, and when the 8-week ombudsman clock hits. Tap to
+                approve. That is the whole job: no chasing, no hold music, and
+                nothing sent without you saying so.
               </p>
               <ul className="feature-bullets">
-                <li>Drafts ready in 30 seconds — approve with one tap</li>
+                <li>Drafts ready in 30 seconds, approved with one tap</li>
                 <li>Watches your inbox for the provider&rsquo;s response</li>
-                <li>Auto-escalates to Ombudsman at the 8-week mark</li>
+                <li>Flags the 8-week ombudsman point and drafts the escalation for you to approve</li>
                 <li>
                   <strong>WhatsApp Pocket Agent</strong>{' '}
                   <span className="tier-chip tier-chip--pro">Pro</span> — £9.99/month.
@@ -1132,11 +1143,12 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="feature-copy">
               <h2 className="feature-title">AI Disputes Centre</h2>
               <p className="feature-tagline">
-                Draft a UK-law-cited complaint in 30 seconds.
+                A letter that names the provision, in 30 seconds.
               </p>
               <p>
-                Type one sentence — Paybacker writes the formal letter, cites
-                the exact regulation, and sends it on your behalf.
+                Type one sentence. Paybacker writes the formal letter, names the
+                exact regulation that applies to your facts, and links the
+                official source so the company can check it as easily as you can.
               </p>
               <p className="freshness-chip">
                 <span className="freshness-chip__dot" aria-hidden="true" />
@@ -1417,7 +1429,7 @@ export default function HomepageV3PreviewPage() {
             <h2>
               Three steps. Ten minutes.
               <br />
-              Your bills, back under control.
+              Then we do the chasing.
             </h2>
             <p className="sub">
               You don&rsquo;t have to connect anything to see it work. Try the
@@ -1451,8 +1463,8 @@ export default function HomepageV3PreviewPage() {
 
             <Reveal className="how-step" delay={160}>
               <div className="num">03</div>
-              <h3>We escalate the dispute end-to-end — provider, then Ombudsman.</h3>
-              <p>Watchdog reads the provider&rsquo;s reply, escalates after 8 weeks if needed, and tracks every step. You keep 100% of what we recover.</p>
+              <h3>We keep the case moving: provider first, then the ombudsman.</h3>
+              <p>Watchdog reads the provider&rsquo;s reply, drafts the escalation at the 8-week point if you have been ignored, and keeps a record of every step. You keep 100% of anything that comes back.</p>
               <div style={{ marginTop: 'auto' }}>
                 <div className="deal-row">
                   <div>
@@ -1471,7 +1483,7 @@ export default function HomepageV3PreviewPage() {
                 <div className="deal-row">
                   <div>
                     <div className="cat">Step 3</div>
-                    <div className="name">Refund recovered</div>
+                    <div className="name">Anything recovered</div>
                   </div>
                   <div className="save">100% yours</div>
                 </div>
@@ -1491,9 +1503,19 @@ export default function HomepageV3PreviewPage() {
       <section className="compare-section section-ink" id="compare">
         <div className="wrap">
           <Reveal className="section-head section-head--center">
-            <span className="eyebrow on-ink">Stacked</span>
-            <h2>Architecture + competitor comparison</h2>
-            <p>How Paybacker compares.</p>
+            <span className="eyebrow on-ink">Capability, not price</span>
+            <h2>Anything can write you a letter now.</h2>
+            <p>
+              A general-purpose AI will produce a complaint that reads well. Three
+              things separate that from a dispute that goes anywhere. It has to
+              know what you were actually charged, which means reading your bank
+              and your inbox rather than asking you to remember. It has to cite
+              law that exists, which is why every citation here comes from a
+              maintained library restricted to official sources and is checked
+              daily rather than generated on the spot. And someone has to still be
+              watching in eight weeks, when the company has said nothing and the
+              ombudsman route opens.
+            </p>
           </Reveal>
 
           {/* 3-panel architecture diagram */}
@@ -1686,12 +1708,19 @@ export default function HomepageV3PreviewPage() {
       <section className="pricing-section section-light" id="pricing">
         <div className="wrap">
           <Reveal className="section-head section-head--center">
-            <span className="eyebrow">Founding member pricing</span>
+            <span className="eyebrow">Flat subscription · 0% success fee</span>
             <h2 style={{ margin: '12px 0' }}>
-              Start free. Upgrade only when we&rsquo;ve
+              A flat monthly fee, and no cut
               <br />
-              found you money.
+              of anything you recover.
             </h2>
+            <p>
+              Services that work on a percentage commonly take 25% to 35% of what
+              comes back. On a £216 recovery that is £54 to £76 gone. Paybacker
+              charges the same amount whether you recover nothing or thousands,
+              which is the only arrangement where our advice and your interests
+              point the same way.
+            </p>
           </Reveal>
 
           <div className="pricing-grid">
@@ -1715,7 +1744,7 @@ export default function HomepageV3PreviewPage() {
               <span className="ribbon">Most popular</span>
               <div className="tier">Essential</div>
               <div className="price">£4.99<span className="per">/month</span></div>
-              <div className="founding">or £44.99/yr · Founding rate locked-in</div>
+              <div className="founding">or £44.99 a year · saves £14.89 · about 25% off</div>
               <ul>
                 <li>Unlimited AI dispute letters</li>
                 <li>3 bank accounts · daily auto-sync</li>
@@ -1733,7 +1762,7 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="price-card" delay={160}>
               <div className="tier">Pro</div>
               <div className="price">£9.99<span className="per">/month</span></div>
-              <div className="founding">or £94.99/yr · Founding rate locked-in</div>
+              <div className="founding">or £94.99 a year · saves £24.89 · about 21% off</div>
               <ul>
                 <li>Everything in Essential</li>
                 <li>Unlimited bank &amp; email connections</li>
@@ -1801,18 +1830,19 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <Reveal>
             <h2>
-              Stop overpaying.
+              Stop absorbing it.
               <br />
-              Start <span className="mint">fighting</span> back.
+              Start <span className="mint">claiming</span> it back.
             </h2>
           </Reveal>
           <Reveal as="p" className="fc-sub">
-            Most UK households are overcharged by £1,000+ a year. We find it, dispute
-            it, and cancel it — in minutes.
+            We find the charge, write the letter that cites the actual law, and
+            chase the reply. Whatever comes back is yours: we never take a
+            percentage of it.
           </Reveal>
           <Reveal className="fc-btn-row">
             <Link className="btn btn-mint" href="/auth/signup">
-              Find my money — free →
+              Find what you are owed, free →
             </Link>
           </Reveal>
           <p className="fine">No card. Cancel anytime. Your data stays in the UK.</p>
@@ -1852,6 +1882,7 @@ export default function HomepageV3PreviewPage() {
               <a href="#deals">Deals</a>
               <Link href="/templates">Letter templates</Link>
               <Link href="/tools">Free tools</Link>
+              <Link href="/switch">Switching from a closed app</Link>
               <Link href="/pricing">Pricing</Link>
             </div>
             <div className="footer-col">

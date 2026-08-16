@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { researchCancellationForProvider } from '@/lib/cancellation-provider';
+import { resolveEmailScanWindow, buildScanWindowNotice } from '@/lib/email-scan-window';
 
 export const maxDuration = 300;
 
@@ -154,6 +155,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // The per-inbox endpoints each return their own notice keyed to their
+  // own count. Rebuild it once here against the DEDUPED total so the
+  // multi-inbox surface quotes the number the user can actually see.
+  const scanWindow = await resolveEmailScanWindow(user.id);
+
   return NextResponse.json({
     summary: results.map(r => ({
       provider_email: r.provider_email,
@@ -167,5 +173,13 @@ export async function POST(request: NextRequest) {
     opportunityCount: combined.length,
     inboxesScanned: results.length,
     scannedAt: new Date().toISOString(),
+    scanWindow: {
+      days: scanWindow.days,
+      tier: scanWindow.tier,
+      capped: scanWindow.capped,
+      fullWindowDays: scanWindow.fullWindowDays,
+      sinceISO: scanWindow.sinceISO,
+    },
+    scanWindowNotice: buildScanWindowNotice(scanWindow, combined.length),
   });
 }

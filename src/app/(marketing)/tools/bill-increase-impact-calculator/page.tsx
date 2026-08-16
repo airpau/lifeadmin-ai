@@ -107,7 +107,7 @@ export default function Page() {
         },
         {
           q: 'Where do I go if the provider will not resolve it?',
-          a: 'Telecoms goes to the Communications Ombudsman or CEDR, depending on which scheme your provider belongs to, after eight weeks or a deadlock letter. Energy goes to the Energy Ombudsman on the same timing. Insurance goes to the Financial Ombudsman Service after a final response or eight weeks. All are free to you and their decisions bind the company.',
+          a: 'Telecoms goes to the Communications Ombudsman or CISAS, depending on which scheme your provider belongs to, after six weeks or a deadlock letter. Energy goes to the Energy Ombudsman after eight weeks or a deadlock letter. Insurance goes to the Financial Ombudsman Service after a final response or eight weeks. All are free to you and their decisions bind the company.',
         },
       ]}
       cta={{

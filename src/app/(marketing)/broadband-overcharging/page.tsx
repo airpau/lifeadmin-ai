@@ -23,7 +23,7 @@ const data: LandingPageData = {
     '£6.21 one-off payment if an engineer misses or cancels a scheduled appointment',
     'Right to exit your contract without charge if a mid-contract price rise exceeds what was agreed at sign-up',
     'Right to exit if your provider consistently fails to deliver your minimum guaranteed download speed',
-    'Right to escalate to Ombudsman Services: Communications or CISAS for free after 8 weeks',
+    'Right to escalate to the Communications Ombudsman or CISAS for free after 6 weeks',
     'Right to report providers not in the Automatic Compensation Scheme directly to Ofcom',
   ],
   howItWorks: [
@@ -40,7 +40,7 @@ const data: LandingPageData = {
     {
       step: '3',
       title: 'Send and get compensated',
-      description: 'Your provider must respond within 8 weeks. If unresolved, escalate for free to Ombudsman Services: Communications.',
+      description: 'If your complaint is unresolved after 6 weeks, escalate for free to the Communications Ombudsman or CISAS, depending on which scheme your provider belongs to.',
     },
   ],
   faqs: [
@@ -58,7 +58,7 @@ const data: LandingPageData = {
     },
     {
       q: 'What is CISAS?',
-      a: 'CISAS (Communications and Internet Services Adjudication Scheme) is an approved dispute resolution body for broadband and phone complaints. It is free to use for consumers. It covers providers not handled by Ombudsman Services: Communications. You can refer a complaint after 8 weeks without resolution.',
+      a: 'CISAS (Communications and Internet Services Adjudication Scheme) is an approved dispute resolution body for broadband and phone complaints. It is free to use for consumers. It covers providers not handled by the Communications Ombudsman. You can refer a complaint after 6 weeks without resolution, or immediately on a deadlock letter. Ofcom cut that wait from eight weeks to six with effect from 8 April 2026.',
     },
   ],
   finalCtaTitle: 'Ready to challenge your broadband provider?',

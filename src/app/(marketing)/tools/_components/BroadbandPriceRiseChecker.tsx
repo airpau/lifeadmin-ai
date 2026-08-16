@@ -11,11 +11,19 @@ import { Field, ResultCard, type Verdict } from './ResultCard';
  *
  *   C1.3   the price you will pay, including any scheduled increase,
  *          must be in the contract information given before you sign.
- *   C1.14  to C1.17 a modification likely to be of material detriment
- *          needs at least one month's notice and a right to exit
- *          without penalty. Ofcom treats an increase in the core
- *          subscription price during a fixed term as likely to be of
- *          material detriment.
+ *   C1.14  at least one month's notice of any contractual modification,
+ *          unless it is exclusively to the customer's benefit, is purely
+ *          administrative with no negative effect, or is imposed by law.
+ *   C1.15  the right to terminate at no additional cost, exercisable
+ *          within one month of that notification.
+ *   C1.17  no Early Termination Charge is payable on a C1.15 exit.
+ *
+ * Numbering verified 16 August 2026 against the Ofcom General Conditions
+ * of Entitlement, unofficial consolidated version with effect from
+ * 8 April 2026 (the instrument currently in force). The older "material
+ * detriment" test belonged to GC9.6 and was superseded when the EECC
+ * provisions took effect in December 2021; the current C1.14 test is
+ * "any contractual modification" subject to the three carve-outs above.
  *
  * From 17 January 2025 Ofcom additionally requires any in-contract rise
  * to be stated up front in pounds and pence. Contracts entered from
@@ -54,7 +62,7 @@ export default function BroadbandPriceRiseChecker() {
   const escalation = [
     'Put the complaint to your provider in writing and ask it to confirm, in writing, which contract term it says permits the increase and where that term was disclosed to you before you signed.',
     'If it refuses, ask for a deadlock letter.',
-    'After eight weeks, or on a deadlock letter, take it free of charge to whichever approved ADR scheme your provider belongs to: the Communications Ombudsman or CISAS.',
+    'After six weeks, or on a deadlock letter, take it free of charge to whichever approved ADR scheme your provider belongs to: the Communications Ombudsman or CISAS.',
   ];
 
   function evaluate(): Verdict {
@@ -141,7 +149,7 @@ export default function BroadbandPriceRiseChecker() {
           headline: 'If a CPI or RPI clause was clearly disclosed and you signed before the rule change, the rise is contractual',
           reasoning: [
             `This is the answer people do not want, and it is the honest one. Ofcom’s ban on inflation-linked rises applies to contracts entered from ${RULE_CHANGE}. It is not retrospective.`,
-            'For an earlier contract, if the CPI or RPI plus a percentage term was properly set out in the contract information before you signed, then the increase is something you agreed to. Under Condition C1.3 a rise disclosed up front is not treated as a modification, so no penalty-free exit right arises when it takes effect.',
+            'For an earlier contract, if the CPI or RPI plus a percentage term was properly set out in the contract information before you signed, then the increase is something you agreed to. A rise disclosed up front under Condition C1.3 is not a contractual modification for the purposes of Condition C1.14, so no penalty-free exit right arises when it takes effect.',
             'The provider still has to apply the term correctly and give you notice.',
           ],
           nextSteps: [

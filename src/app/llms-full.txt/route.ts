@@ -124,7 +124,7 @@ Paybacker is not a law firm and does not provide legal advice.
 
 ## How citations are sourced
 
-Every legal reference used by the engine is held in a maintained index and checked against an allowlist of official domains before it is shown: legislation.gov.uk, gov.uk, and the regulators and approved dispute-resolution bodies. References from trade associations, law-firm blogs, news sites and aggregators are rejected rather than queued. Citations are never written or rewritten by a model without human approval; automated verifiers propose corrections into a review queue and a person approves them. The methodology is published at ${BASE_URL}/legal/methodology.
+Every legal reference used by the engine is held in a maintained index and checked against an allowlist of official domains before it is shown: legislation.gov.uk, gov.uk, and the regulators and approved dispute-resolution bodies. References from trade associations, law-firm blogs, news sites and aggregators are rejected rather than queued. Automated verifiers propose corrections into a review queue rather than overwriting citations: any change to what a citation says — the name of the Act, the section number, the year — requires a human approval click, while routine link repair within the same official domain and freshness status are maintained automatically and are logged with a one-click revert. The methodology is published at ${BASE_URL}/legal/methodology and the citation process in full at ${BASE_URL}/legal/how-we-cite.
 
 ## Free tools, no account required
 

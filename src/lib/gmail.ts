@@ -289,14 +289,29 @@ export async function scanEmailsForOpportunities(
     sinceISO?: string | null;
     /** User ID — used for the email_scan_cache + cost-ledger attribution. */
     userId?: string | null;
+    /**
+     * Tier lookback cap in days (PLAN_LIMITS[tier].emailScanDays).
+     * Free = 90, paid = 730. Defaults to 730 so any caller that has not
+     * been updated keeps the historic behaviour.
+     */
+    lookbackDays?: number;
   }
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number; cacheHits?: number }> {
-  // Build the recency clause once. Default = 2 years for full scans;
-  // when sinceISO is supplied, narrow the window so Gmail API returns
-  // far fewer messages and Claude does less work.
-  const sinceClause = options?.sinceISO
-    ? `after:${Math.floor(new Date(options.sinceISO).getTime() / 1000)}`
-    : 'newer_than:730d';
+  // Build the recency clause once. The window is a TIER LIMIT — free
+  // users get 90 days, paid users the full 2 years. Depth is the single
+  // largest AI cost in the product, so this is the enforcement point for
+  // the Gmail path: every one of the 15 parallel queries below is
+  // rewritten through withRecency() with this one clause.
+  //
+  // When sinceISO is supplied (incremental scan) we narrow further, but
+  // never wider than the tier cap — a dormant account with a stale
+  // last_scanned_at must not silently re-open the 2-year sweep.
+  const lookbackDays = Math.max(1, options?.lookbackDays ?? 730);
+  const windowFloorMs = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+  const cursorMs = options?.sinceISO ? new Date(options.sinceISO).getTime() : NaN;
+  const sinceClause = Number.isFinite(cursorMs)
+    ? `after:${Math.floor(Math.max(cursorMs, windowFloorMs) / 1000)}`
+    : `newer_than:${lookbackDays}d`;
   // Run all queries in parallel for comprehensive scanning
   // Scan up to 250 emails per query for thorough coverage (2 years of history)
   const [
