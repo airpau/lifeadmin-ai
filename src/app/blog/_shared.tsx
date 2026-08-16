@@ -53,10 +53,12 @@ export function MarkFoot() {
           </div>
           <div className="footer-col">
             <h5>Product</h5>
+            <Link href="/check">Free case check</Link>
             <Link href="/how-it-works">How it works</Link>
             <Link href="/pricing">Pricing</Link>
             <Link href="/deals">Deals</Link>
             <Link href="/templates">Letter templates</Link>
+            <Link href="/tools">Free tools</Link>
           </div>
           <div className="footer-col">
             <h5>Company</h5>

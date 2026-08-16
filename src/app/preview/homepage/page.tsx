@@ -882,10 +882,24 @@ export default function HomepageV3PreviewPage() {
                 <Link className="btn btn-mint" href="/auth/signup">
                   Start free — keep 100% of your wins →
                 </Link>
+                {/* Public, no-account case checker. Added as the second
+                    hero CTA because it is the only surface a visitor can
+                    get real value from before signing up. Deliberately
+                    placed after "Start free" and before the Pocket Agent
+                    link so neither the section order nor the Pocket Agent
+                    anchor is disturbed. */}
+                <Link className="btn btn-ghost" href="/check">
+                  Check your case free →
+                </Link>
                 <a className="btn btn-ghost" href="#pocket-agent">
                   Meet your Pocket Agent →
                 </a>
               </div>
+              <p className="hero-cta-note">
+                No account needed to check. You&rsquo;ll see how strong your case is, the
+                exact UK law that applies with a link to the official source, and a full
+                draft letter you can copy.
+              </p>
               <div className="hero-ticker">
                 <span className="pulse" />
                 <span>
@@ -1837,6 +1851,7 @@ export default function HomepageV3PreviewPage() {
               <a href="#pocket-agent">Pocket Agent</a>
               <a href="#deals">Deals</a>
               <Link href="/templates">Letter templates</Link>
+              <Link href="/tools">Free tools</Link>
               <Link href="/pricing">Pricing</Link>
             </div>
             <div className="footer-col">

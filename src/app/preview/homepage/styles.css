@@ -336,6 +336,18 @@
 
 .m-v2-root .hero-cta-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 
+/* Qualifier under the hero CTA row, explaining that /check needs no
+   account. Sits between the buttons and the ticker so it reads as part
+   of the CTA block rather than as body copy. */
+.m-v2-root .hero-cta-note {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  max-width: 520px;
+  text-wrap: pretty;
+}
+
 .m-v2-root .hero-ticker {
   margin-top: 22px;
   font-size: 14px;

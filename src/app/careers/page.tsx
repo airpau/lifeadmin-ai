@@ -103,6 +103,7 @@ function MarkFoot() {
             <Link href="/pricing">Pricing</Link>
             <Link href="/deals">Deals</Link>
             <Link href="/templates">Letter templates</Link>
+            <Link href="/tools">Free tools</Link>
           </div>
           <div className="footer-col">
             <h5>Company</h5>

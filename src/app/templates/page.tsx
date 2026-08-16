@@ -306,13 +306,32 @@ export default function TemplatesPage() {
             >
               The complaint generator handles any UK consumer issue, even ones we haven&rsquo;t built a template for yet. Plain English in, formal letter citing real law out.
             </p>
-            <Link
-              href={SIGNUP_HREF}
-              className="btn btn-mint"
-              style={{ padding: '14px 24px', fontSize: 14 } as CSSProperties}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 12,
+                justifyContent: 'center',
+              } as CSSProperties}
             >
-              Generate any UK letter free →
-            </Link>
+              {/* Free, no-account route first: /check gives the case
+                  strength, the verified citations and a full draft letter
+                  without a signup wall. */}
+              <Link
+                href="/check"
+                className="btn btn-mint"
+                style={{ padding: '14px 24px', fontSize: 14 } as CSSProperties}
+              >
+                Check your case free, no account →
+              </Link>
+              <Link
+                href={SIGNUP_HREF}
+                className="btn btn-ghost"
+                style={{ padding: '14px 24px', fontSize: 14 } as CSSProperties}
+              >
+                Generate any UK letter free →
+              </Link>
+            </div>
           </div>
         </div>
       </section>
