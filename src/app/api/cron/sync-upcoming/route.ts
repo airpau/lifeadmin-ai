@@ -23,6 +23,11 @@ import {
   detectRecurringUpcoming,
   type DetectorTransaction,
 } from '@/lib/upcoming/detect-recurring';
+import {
+  detectRecurringIncome,
+  occurrencesFrom,
+} from '@/lib/upcoming/detect-income';
+import { endOfTodayLondonIso } from '@/lib/alerts/future-dated';
 
 export const maxDuration = 300;
 
@@ -58,8 +63,11 @@ const FEATURE_TRANSACTIONS = 'ACCOUNT_TRANSACTIONS';
 
 interface UpsertRow {
   user_id: string;
+  /** Owning bank_connections row — added 2026-08-16 so the upcoming feed
+   *  can be Space-filtered the same way bank_transactions is. */
+  connection_id: string;
   account_id: string;
-  source: UpcomingRow['source'] | 'predicted_recurring';
+  source: UpcomingRow['source'] | 'predicted_recurring' | 'predicted_income';
   direction: 'incoming' | 'outgoing';
   counterparty: string | null;
   amount: number;
@@ -70,6 +78,10 @@ interface UpsertRow {
   yapily_provider_id: string | null;
   raw: unknown;
 }
+
+/** How far ahead the forward view runs. The UI offers 7/14/30 days, so
+ *  35 gives the 30-day window a little slack either side of a cron run. */
+const FORWARD_HORIZON_DAYS = 35;
 
 export async function GET(request: NextRequest) {
   const auth = request.headers.get('authorization');
@@ -97,6 +109,7 @@ export async function GET(request: NextRequest) {
     connectionsProcessed: number;
     deterministicRowsUpserted: number;
     predictedRowsUpserted: number;
+    incomeRowsDetected: number;
     staleRowsPruned: number;
     pendingEndpointsFailed: number;
     otherFailures: number;
@@ -108,6 +121,7 @@ export async function GET(request: NextRequest) {
     connectionsProcessed: 0,
     deterministicRowsUpserted: 0,
     predictedRowsUpserted: 0,
+    incomeRowsDetected: 0,
     staleRowsPruned: 0,
     pendingEndpointsFailed: 0,
     otherFailures: 0,
@@ -220,7 +234,14 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      // Recurrence detector over 180 days of history.
+      // Recurrence detectors over 180 days of history. History is
+      // fetched ONCE and fed to both detectors:
+      //   • detectRecurringUpcoming — outgoings (amount ±2% grouping)
+      //   • detectRecurringIncome   — credits (cadence-led grouping)
+      // Future-dated rows are excluded from the detector input: HSBC
+      // returns scheduled payments as ordinary transactions dated on the
+      // due date, and feeding tomorrow's scheduled debit back in as
+      // "history" would shift every predicted date forward by a cycle.
       try {
         const since = new Date(today.getTime() - 180 * 86_400_000).toISOString();
         const { data: txns } = await supabase
@@ -229,6 +250,7 @@ export async function GET(request: NextRequest) {
           .eq('user_id', conn.user_id)
           .eq('account_id', accountId)
           .gte('timestamp', since)
+          .lte('timestamp', endOfTodayLondonIso())
           .order('timestamp', { ascending: true })
           .limit(5000);
 
@@ -240,27 +262,84 @@ export async function GET(request: NextRequest) {
           date: t.timestamp,
         }));
 
+        const horizonIso = new Date(today.getTime() + FORWARD_HORIZON_DAYS * 86_400_000)
+          .toISOString()
+          .slice(0, 10);
+        const todayIso = today.toISOString().slice(0, 10);
+
+        // ── Outgoings ──────────────────────────────────────────────
+        // The detector returns only the NEXT occurrence, which left a
+        // weekly direct debit showing up once in a 30-day view instead
+        // of four times. Expand each series across the horizon.
         const predicted = detectRecurringUpcoming(detectorInput, new Date());
         for (const p of predicted) {
+          const dates = [
+            p.expectedDate,
+            ...occurrencesFrom({
+              cadence: p.cadence,
+              lastSeen: p.expectedDate,
+              afterIso: p.expectedDate,
+              horizonIso,
+              max: 12,
+            }),
+          ];
+          for (const expectedDate of dates) {
+            if (expectedDate > horizonIso) continue;
+            rows.push({
+              user_id: conn.user_id,
+              connection_id: conn.id,
+              account_id: accountId,
+              source: 'predicted_recurring',
+              direction: p.direction,
+              counterparty: p.displayCounterparty,
+              amount: p.amount,
+              currency: 'GBP',
+              expected_date: expectedDate,
+              confidence: p.confidence,
+              yapily_resource_id: null,
+              yapily_provider_id: conn.provider_id,
+              raw: {
+                cadence: p.cadence,
+                sampleSize: p.sampleSize,
+                lastSeen: p.lastSeen,
+                normalised: p.counterparty,
+              },
+            });
+          }
+        }
+
+        // ── Incoming ───────────────────────────────────────────────
+        const income = detectRecurringIncome(detectorInput, {
+          now: new Date(),
+          horizonDays: FORWARD_HORIZON_DAYS,
+        });
+        for (const inc of income) {
+          if (inc.expectedDate <= todayIso) continue;
           rows.push({
             user_id: conn.user_id,
+            connection_id: conn.id,
             account_id: accountId,
-            source: 'predicted_recurring',
-            direction: p.direction,
-            counterparty: p.displayCounterparty,
-            amount: p.amount,
+            source: 'predicted_income',
+            direction: 'incoming',
+            counterparty: inc.displayCounterparty,
+            amount: inc.amount,
             currency: 'GBP',
-            expected_date: p.expectedDate,
-            confidence: p.confidence,
+            expected_date: inc.expectedDate,
+            confidence: inc.confidence,
             yapily_resource_id: null,
             yapily_provider_id: conn.provider_id,
             raw: {
-              cadence: p.cadence,
-              sampleSize: p.sampleSize,
-              lastSeen: p.lastSeen,
-              normalised: p.counterparty,
+              cadence: inc.cadence,
+              sampleSize: inc.sampleSize,
+              lastSeen: inc.lastSeen,
+              normalised: inc.counterparty,
+              amountLow: inc.amountLow,
+              amountHigh: inc.amountHigh,
+              amountVariability: inc.amountVariability,
+              occurrenceIndex: inc.occurrenceIndex,
             },
           });
+          summary.incomeRowsDetected++;
         }
       } catch (err) {
         console.error(
@@ -270,37 +349,80 @@ export async function GET(request: NextRequest) {
         summary.otherFailures++;
       }
 
-      // Upsert in two passes: deterministic rows match on
-      // (user, account, source, yapily_resource_id); predicted rows
-      // match on (user, account, source, counterparty, date, amount).
+      // ── Write in two passes ────────────────────────────────────
+      //
+      // Deterministic rows are UPSERTED so created_at survives, which
+      // is what the alerting block below uses to tell a genuinely new
+      // detection from a repeat. The conflict target is now backed by
+      // uniq_upcoming_deterministic_full — a NON-partial index. The
+      // original uniq_upcoming_deterministic is partial
+      // (WHERE yapily_resource_id IS NOT NULL) and Postgres cannot
+      // infer a partial index from a predicate-less ON CONFLICT, so
+      // every upsert this cron has ever issued failed with 42P10 and
+      // the table stayed empty. See the 20260816190000 migration.
+      //
+      // Predicted rows are REPLACED wholesale for the forward window.
+      // They're recomputed from scratch on every run anyway, so
+      // replacing them clears predictions that no longer hold instead
+      // of leaving them to rot until the date prune. Predicted rows are
+      // never alerted on (the alert query filters to the deterministic
+      // sources), so re-inserting them daily can't spam anyone.
       const deterministicRows = rows.filter((r) => r.yapily_resource_id !== null);
       const predictedRows = rows.filter((r) => r.yapily_resource_id === null);
 
       if (deterministicRows.length) {
+        // Guard against the same resource id arriving twice in one run —
+        // an upsert batch containing two rows with the same conflict key
+        // errors with "cannot affect row a second time".
+        const seen = new Set<string>();
+        const deduped = deterministicRows.filter((r) => {
+          const k = `${r.account_id}|${r.source}|${r.yapily_resource_id}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
         const { error } = await supabase
           .from('upcoming_payments')
-          .upsert(deterministicRows, {
+          .upsert(deduped, {
             onConflict: 'user_id,account_id,source,yapily_resource_id',
           });
         if (error) {
           console.error('[sync-upcoming] deterministic upsert failed:', error.message);
           summary.otherFailures++;
         } else {
-          summary.deterministicRowsUpserted += deterministicRows.length;
+          summary.deterministicRowsUpserted += deduped.length;
         }
       }
 
+      // Clear the forward window even when the detectors returned
+      // nothing — a merchant the user has stopped paying should stop
+      // being predicted.
+      const { error: clearErr } = await supabase
+        .from('upcoming_payments')
+        .delete()
+        .eq('user_id', conn.user_id)
+        .eq('account_id', accountId)
+        .in('source', ['predicted_recurring', 'predicted_income'])
+        .gte('expected_date', today.toISOString().slice(0, 10));
+      if (clearErr) {
+        console.error('[sync-upcoming] predicted clear failed:', clearErr.message);
+        summary.otherFailures++;
+      }
+
       if (predictedRows.length) {
-        const { error } = await supabase
-          .from('upcoming_payments')
-          .upsert(predictedRows, {
-            onConflict: 'user_id,account_id,source,counterparty,expected_date,amount',
-          });
+        const seen = new Set<string>();
+        const deduped = predictedRows.filter((r) => {
+          const k = `${r.account_id}|${r.source}|${r.counterparty}|${r.expected_date}|${r.amount}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        const { error } = await supabase.from('upcoming_payments').insert(deduped);
         if (error) {
-          console.error('[sync-upcoming] predicted upsert failed:', error.message);
+          console.error('[sync-upcoming] predicted insert failed:', error.message);
           summary.otherFailures++;
         } else {
-          summary.predictedRowsUpserted += predictedRows.length;
+          summary.predictedRowsUpserted += deduped.length;
         }
       }
     }
@@ -491,6 +613,7 @@ export async function GET(request: NextRequest) {
 function toUpsertRow(r: UpcomingRow, conn: BankConnection, accountId: string): UpsertRow {
   return {
     user_id: conn.user_id,
+    connection_id: conn.id,
     account_id: accountId,
     source: r.source,
     direction: r.direction,

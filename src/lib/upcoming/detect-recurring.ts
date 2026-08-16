@@ -48,8 +48,11 @@ export type Cadence =
 export const MIN_CONFIDENCE = 0.6;
 
 /** Cadence window, in days, used both to *classify* a group and to
- *  build the prediction. Each entry is [min, max, canonical]. */
-const CADENCE_BUCKETS: Record<Cadence, [number, number, number]> = {
+ *  build the prediction. Each entry is [min, max, canonical].
+ *
+ *  Exported so the income detector (detect-income.ts) classifies with
+ *  exactly the same windows rather than keeping a drifting copy. */
+export const CADENCE_BUCKETS: Record<Cadence, [number, number, number]> = {
   weekly:       [6, 8, 7],
   fortnightly:  [13, 15, 14],
   four_weekly:  [27, 29, 28],
@@ -271,7 +274,7 @@ function addDays(d: Date, days: number): Date {
   return n;
 }
 
-function medianOf(xs: number[]): number {
+export function medianOf(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
@@ -281,7 +284,7 @@ function roundGBP(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function classifyCadence(median: number, intervals: number[]): Cadence | null {
+export function classifyCadence(median: number, intervals: number[]): Cadence | null {
   // Find the cadence whose canonical interval is closest to the
   // median (provided the median falls inside or near its window).
   let best: { cadence: Cadence; diff: number } | null = null;
@@ -309,7 +312,7 @@ function classifyCadence(median: number, intervals: number[]): Cadence | null {
   return null;
 }
 
-function computeConfidence(
+export function computeConfidence(
   sampleSize: number,
   median: number,
   cadence: Cadence,
