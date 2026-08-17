@@ -42,6 +42,18 @@ export async function PUT(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // Same Essential+ gate as POST. "Add funds" is a PUT, so without this a
+  // downgraded user keeps the whole savings-goal feature working — only
+  // creating a new goal was ever blocked.
+  const { getEffectiveTier } = await import('@/lib/plan-limits');
+  const tier = await getEffectiveTier(user.id);
+  if (tier === 'free') {
+    return NextResponse.json(
+      { error: 'Updating savings goals is available on the Essential plan.', upgradeRequired: true, tier },
+      { status: 403 },
+    );
+  }
+
   const body = await request.json();
   const update: Record<string, any> = {};
   if (body.current_amount !== undefined) update.current_amount = body.current_amount;
@@ -56,6 +68,9 @@ export async function PUT(request: NextRequest) {
   return NextResponse.json(data);
 }
 
+// DELETE is deliberately NOT tier-gated. Removing your own data is not
+// "using the feature" — a downgraded user must always be able to clear
+// goals they can no longer edit, otherwise the rows are stranded.
 export async function DELETE(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
