@@ -12,6 +12,16 @@
 - [x] paperclip-business-monitor — Daily 6pm. Checks PR status, sprint completions, flags urgent items.
 - [x] daily-ceo-report updated — Now includes open GitHub PRs and sprint completions (needs GITHUB_TOKEN)
 
+## Launch readiness follow-ups — from docs/launch-readiness-16aug2026.md §4 ("worth doing, not blocking")
+_Added 2026-08-17 by dev-sprint-runner. The April Critical list is now fully closed or in open PRs, so this report is the live source of actionable code work._
+- [~PR#529] Budgets and goals PUT/DELETE ungated, only POST gated — a downgraded user keeps edit access. PR#529 gates PUT on both routes and stops GoalsAndBudgetsModal silently swallowing the 403 (every handler had `catch { /* silent */ }` and never checked the status, so the existing POST gate was invisible too). DELETE deliberately left open — see PR for reasoning. (PR created 2026-08-17)
+- [ ] `src/lib/category-taxonomy.ts` buckets `credit` as discretionary, so a bank credit is counted as spending. Pre-existing, corrupts Money Hub spending totals. (@Claude Code)
+- [ ] Branches `fix/mcp-schema-bugs` and `fix/mcp-finance-tier-essential` are unmerged. The first fixes a misleading Pro upsell shown on token failure. (@Claude Code)
+- [ ] `/pricing` shows a browser confirm and then the confirmation page — remove the browser confirm to clean up the double prompt. (@Claude Code)
+- [ ] Onboarding CTAs link to `/api/auth/yapily` with no institutionId and return raw 400 JSON to the user. (@Claude Code)
+- [ ] The institution picker shows 4 UK institutions, two of them sandboxes (`mock-sandbox`, `natwest-sandbox`) — gate sandboxes out of production. (@Claude Code)
+- [ ] Money Hub "Better Deals" sits inside the Action Centre card so it did not move in the reorder. Extracting it is a larger refactor. (@Claude Code)
+
 ## URGENT - Email Spam Fix
 - [~PR#99] Implement global email rate limiter (max 2 emails per user per day) — rate limiter exists in email-rate-limit.ts; PR#99 fixes missing types (contract_expiry_alert, contract_end_alert, overcharge_alert) that were bypassing the cap (PR created 2026-04-20)
 - [ ] Consolidate deal alerts + targeted deals + price increases into single daily digest
