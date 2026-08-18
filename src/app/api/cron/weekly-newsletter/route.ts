@@ -20,6 +20,15 @@
  *
  * Dedup: per-user `profiles.newsletter_last_sent_at` stops a manual
  * replay from double-sending within 6 days.
+ *
+ * Daily cap: the newsletter is a marketing email, so it goes through the
+ * same global cap as every other consumer marketing cron
+ * (`src/lib/email-rate-limit.ts`, currently 1/user/day). A user who
+ * already received e.g. the 08:00 daily digest is skipped WITHOUT
+ * stamping `newsletter_last_sent_at`, so they simply pick the newsletter
+ * up on the next Thursday run rather than losing it silently. Successful
+ * sends record a `weekly_newsletter` task row so the newsletter also
+ * consumes the user's slot for the rest of the day.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -32,6 +41,7 @@ import {
 } from '@/lib/email/weekly-newsletter';
 import { composeWeeklyIssue } from '@/lib/email/weekly-newsletter-content';
 import { sendPaybackerEmail } from '@/lib/email/send';
+import { getBlockedUsers, markEmailSent } from '@/lib/email-rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -100,12 +110,30 @@ async function runCron() {
   }
   const audience = (rows ?? []) as AudienceRow[];
 
+  // Global daily send cap — resolve in batches so a 2,000-recipient
+  // audience costs a handful of queries rather than one per user.
+  const blocked = new Set<string>();
+  const audienceIds = audience.map((r) => r.user_id).filter(Boolean);
+  const batchSize = 200;
+  for (let i = 0; i < audienceIds.length; i += batchSize) {
+    const batchBlocked = await getBlockedUsers(sb, audienceIds.slice(i, i + batchSize));
+    for (const id of batchBlocked) blocked.add(id);
+  }
+
   let sent = 0;
   let failed = 0;
+  let capped = 0;
   const results: Array<{ email: string; ok: boolean; error?: string }> = [];
 
   for (const r of audience) {
     if (!r.email) continue;
+
+    // Already at their daily marketing-email limit. Skip without stamping
+    // newsletter_last_sent_at so they receive the next issue instead.
+    if (blocked.has(r.user_id)) {
+      capped++;
+      continue;
+    }
     const unsubscribeUrl = `${SITE}/api/unsubscribe?token=${encodeURIComponent(r.newsletter_unsub_token ?? '')}&kind=newsletter`;
 
     const issue = await composeWeeklyIssue({
@@ -136,6 +164,8 @@ async function runCron() {
         .from('profiles')
         .update({ newsletter_last_sent_at: now.toISOString() })
         .eq('id', r.user_id);
+      // Consume the user's daily slot so later marketing crons stand down.
+      await markEmailSent(sb, r.user_id, 'weekly_newsletter', 'Weekly newsletter');
     } else {
       failed++;
     }
@@ -147,6 +177,7 @@ async function runCron() {
     audience: audience.length,
     sent,
     failed,
+    capped,
     results: results.slice(0, 20),
   });
 }

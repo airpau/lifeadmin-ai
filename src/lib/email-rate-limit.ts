@@ -30,6 +30,7 @@ const MARKETING_EMAIL_TYPES = [
   'churn_pre_renewal',
   'founding_reminder',
   'weekly_money_digest',
+  'weekly_newsletter',
   'onboarding_email',
   // Contract and overcharge alerts are marketing-adjacent — they count toward
   // the daily cap so users can't receive both a deal email AND a contract alert
