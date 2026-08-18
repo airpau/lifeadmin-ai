@@ -22,6 +22,12 @@ export interface EmailPayload {
   subject: string;
   html: string;
   to?: string; // overrides profile.email
+  /**
+   * Optional Reply-To. Callers migrating off a direct `resend.emails.send`
+   * that set one pass it here so replies keep landing in the monitored
+   * inbox rather than the unattended noreply address.
+   */
+  replyTo?: string;
 }
 
 export interface TelegramPayload {
@@ -245,6 +251,7 @@ async function sendEmail(email: string, payload: EmailPayload): Promise<boolean>
       to: payload.to ?? email,
       subject: payload.subject,
       html: payload.html,
+      ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
     });
     return true;
   } catch (err) {
