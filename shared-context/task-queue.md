@@ -15,7 +15,7 @@
 ## URGENT - Email Spam Fix
 - [~PR#99] Implement global email rate limiter (max 2 emails per user per day) — rate limiter exists in email-rate-limit.ts; PR#99 fixes missing types (contract_expiry_alert, contract_end_alert, overcharge_alert) that were bypassing the cap (PR created 2026-04-20)
 - [ ] Consolidate deal alerts + targeted deals + price increases into single daily digest
-- [ ] Add user email preference settings (daily digest / weekly / off)
+- [~PR#530] Add user email preference settings (daily digest / weekly / off) — the settings UI, `notification_preferences` table and `sendNotification` dispatcher already exist. Audit 2026-08-18 found the two remaining consumer email crons that never read the table: weekly-money-digest (`weekly_digest`) and targeted-deals (`targeted_deal`) sent straight to Resend, so those two toggles did nothing. PR#530 routes both through the dispatcher. (PR created 2026-08-18)
 - [ ] Audit and restructure all 11 email cron triggers (see email-audit below)
 
 ## Architecture Task - AI Letters Intelligence Upgrade (Consumer-Friendly)
