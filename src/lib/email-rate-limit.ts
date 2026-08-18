@@ -10,12 +10,30 @@ import { SupabaseClient } from '@supabase/supabase-js';
  * tasks table (which all crons already write to) and enforce a global cap.
  *
  * Rules:
- * - Max 2 marketing emails per user per day
+ * - Max 1 general marketing email per user per day
  * - Transactional emails (welcome, password reset, ticket reply) bypass the limit
  * - Onboarding sequence gets 1 reserved slot per day (so it's not blocked by deals)
  */
 
 const MAX_MARKETING_EMAILS_PER_DAY = 1;
+
+/**
+ * The onboarding sequence is counted against its OWN daily allowance rather
+ * than the shared marketing slot.
+ *
+ * Without this, the reserved slot described above did not actually exist: the
+ * 8am crons (daily digest, renewal reminders, contract expiry) consume the
+ * single shared slot, and /api/cron/onboarding-emails runs at 10am on Tue/Fri
+ * and finds the user already blocked. Because that cron stops at day 14 and
+ * only runs twice a week, a blocked send is a permanently LOST onboarding
+ * email, not a delayed one — new users are exactly the cohort we can least
+ * afford to drop.
+ *
+ * Net effect per user per day: at most 1 general marketing email plus at most
+ * 1 onboarding email, and onboarding only applies during the first 14 days.
+ */
+const ONBOARDING_EMAIL_TYPE = 'onboarding_email';
+const MAX_ONBOARDING_EMAILS_PER_DAY = 1;
 
 // These task types count towards the daily limit
 const MARKETING_EMAIL_TYPES = [
@@ -37,6 +55,12 @@ const MARKETING_EMAIL_TYPES = [
   'contract_end_alert',
   'overcharge_alert',
 ];
+
+// The types that compete for the single shared marketing slot. Onboarding is
+// excluded because it draws on its own reserved allowance above.
+const GENERAL_MARKETING_EMAIL_TYPES = MARKETING_EMAIL_TYPES.filter(
+  (t) => t !== ONBOARDING_EMAIL_TYPE
+);
 
 // These are transactional and bypass the limit
 const TRANSACTIONAL_TYPES = [
@@ -60,7 +84,13 @@ export async function canSendEmail(
     return { allowed: true, sent_today: 0 };
   }
 
-  // Count marketing emails sent to this user today
+  // Onboarding draws on its own reserved allowance; everything else competes
+  // for the shared marketing slot.
+  const isOnboarding = emailType === ONBOARDING_EMAIL_TYPE;
+  const countedTypes = isOnboarding ? [ONBOARDING_EMAIL_TYPE] : GENERAL_MARKETING_EMAIL_TYPES;
+  const limit = isOnboarding ? MAX_ONBOARDING_EMAILS_PER_DAY : MAX_MARKETING_EMAILS_PER_DAY;
+
+  // Count emails already sent to this user today from that allowance
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
@@ -68,7 +98,7 @@ export async function canSendEmail(
     .from('tasks')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .in('type', MARKETING_EMAIL_TYPES)
+    .in('type', countedTypes)
     .gte('created_at', todayStart.toISOString());
 
   const sentToday = count || 0;
@@ -79,11 +109,11 @@ export async function canSendEmail(
     return { allowed: true, sent_today: sentToday };
   }
 
-  if (sentToday >= MAX_MARKETING_EMAILS_PER_DAY) {
+  if (sentToday >= limit) {
     return {
       allowed: false,
       sent_today: sentToday,
-      reason: `Daily limit reached (${sentToday}/${MAX_MARKETING_EMAILS_PER_DAY})`,
+      reason: `Daily ${isOnboarding ? 'onboarding' : 'marketing'} limit reached (${sentToday}/${limit})`,
     };
   }
 
@@ -92,7 +122,11 @@ export async function canSendEmail(
 
 /**
  * Check rate limit for a batch of users. Returns a Set of user IDs that
- * have already hit their daily limit.
+ * have already used their shared marketing slot today.
+ *
+ * This answers the general-marketing question only. The onboarding sequence
+ * has its own reserved allowance, so it must go through canSendEmail() rather
+ * than this batch helper.
  */
 export async function getBlockedUsers(
   supabase: SupabaseClient,
@@ -103,12 +137,12 @@ export async function getBlockedUsers(
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  // Get count of marketing emails per user today
+  // Get count of shared-slot marketing emails per user today
   const { data, error } = await supabase
     .from('tasks')
     .select('user_id')
     .in('user_id', userIds)
-    .in('type', MARKETING_EMAIL_TYPES)
+    .in('type', GENERAL_MARKETING_EMAIL_TYPES)
     .gte('created_at', todayStart.toISOString());
 
   if (error) {
