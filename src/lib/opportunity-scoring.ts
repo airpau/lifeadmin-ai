@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { formatRenewalAmount } from '@/lib/subscriptions/renewal-digest';
 
 export interface OpportunityScore {
   total: number;
@@ -54,7 +55,11 @@ export async function calculateOpportunityScore(
   const scoredProviders = new Set<string>(); // prevent duplicate scoring per provider
 
   for (const sub of subs) {
-    const amount = parseFloat(String(sub.amount)) || 0;
+    // Monthly equivalent, not the raw stored figure. CATEGORY_AVERAGES are
+    // monthly, every consumer of topOpportunities labels the amount "/month",
+    // and an annual premium compared raw against a monthly average produced
+    // nonsense like "Paying 1100% above average for insurance".
+    const amount = formatRenewalAmount(sub.amount as number, sub.billing_cycle as string | null).monthly;
     const cat = sub.category || 'other';
 
     // Skip non-switchable categories
@@ -116,13 +121,19 @@ export async function calculateOpportunityScore(
   // Multiple loans = consolidation opportunity (one entry, not per-loan)
   const loans = subs.filter(s => s.category === 'loan' || s.category === 'credit_card' || s.category === 'car_finance');
   if (loans.length >= 2) {
-    const totalLoanPayments = loans.reduce((sum, l) => sum + (parseFloat(String(l.amount)) || 0), 0);
+    const totalLoanPayments = loans.reduce(
+      (sum, l) => sum + formatRenewalAmount(l.amount as number, l.billing_cycle as string | null).monthly,
+      0,
+    );
     breakdown.push({ reason: `${loans.length} loans/credit totalling £${totalLoanPayments.toFixed(0)}/mo — consolidation opportunity`, points: 30 });
     topOpportunities.push({ provider: 'Multiple lenders', category: 'loan', amount: totalLoanPayments, reason: `Consolidate ${loans.length} debts` });
   }
 
   // High total monthly spend
-  const totalMonthly = subs.reduce((sum, s) => sum + (parseFloat(String(s.amount)) || 0), 0);
+  const totalMonthly = subs.reduce(
+    (sum, s) => sum + formatRenewalAmount(s.amount as number, s.billing_cycle as string | null).monthly,
+    0,
+  );
   if (totalMonthly >= 500) {
     breakdown.push({ reason: `Total spend £${totalMonthly.toFixed(0)}/mo across ${subs.length} subscriptions`, points: 10 });
   }

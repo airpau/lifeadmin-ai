@@ -1,4 +1,5 @@
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
+import { formatRenewalAmount } from '@/lib/subscriptions/renewal-digest';
 
 // Deal categories we can offer alternatives for
 const DEAL_CATEGORIES: Record<string, { title: string; description: string; switchMessage: string }> = {
@@ -68,7 +69,7 @@ interface UserSubscription {
   provider_name: string;
   amount: number;
   category: string | null;
-  billing_cycle: string;
+  billing_cycle: string | null;
 }
 
 export interface DealAlert {
@@ -95,15 +96,22 @@ export function findDealOpportunities(subscriptions: UserSubscription[]): DealAl
     const dealInfo = DEAL_CATEGORIES[cat];
     if (!dealInfo) continue;
 
+    // Monthly equivalent, not the raw stored figure. The email renders this
+    // under a "/month" label, the £5 floor is a monthly floor, and the sort
+    // below ranks "biggest opportunity first" — all three are wrong if an
+    // annual premium (car/pet insurance are usually billed yearly) is treated
+    // as a monthly amount.
+    const monthlyAmount = formatRenewalAmount(sub.amount, sub.billing_cycle).monthly;
+
     // Skip null categories, excluded categories, and very small amounts
     if (!sub.category) continue;
     if (excludedCats.has(cat)) continue;
-    if (sub.amount < 5) continue;
+    if (monthlyAmount < 5) continue;
 
     alerts.push({
       category: cat,
       currentProvider: sub.provider_name,
-      currentAmount: sub.amount,
+      currentAmount: monthlyAmount,
       message: dealInfo.switchMessage,
     });
   }
