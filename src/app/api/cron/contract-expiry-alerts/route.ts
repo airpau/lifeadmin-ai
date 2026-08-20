@@ -199,8 +199,11 @@ export async function GET(request: NextRequest) {
 
     // Email rate limit (only email is rate-limited; telegram/whatsapp/push
     // route through the dispatcher which respects channel prefs + quiet hours).
+    // A hit cap must suppress the EMAIL ONLY — returning early here muted the
+    // Pocket Agent channels too, which the email cap has no say over. The
+    // dispatcher declares `rateLimited` but never enforces it, so gating the
+    // email payload is the caller's job (same pattern as price-increases).
     const rateCheck = await canSendEmail(supabase, userId, 'contract_expiry_alert');
-    if (!rateCheck.allowed) continue;
 
     // ---- 2. Build ONE digest across all due contracts ----
     const { subject, html } = buildContractEndEmail(
@@ -236,7 +239,7 @@ export async function GET(request: NextRequest) {
     const dispatch = await sendNotification(supabase, {
       userId,
       event: 'contract_expiry',
-      email: { subject, html, to: profile.email },
+      email: rateCheck.allowed ? { subject, html, to: profile.email } : undefined,
       telegram: { text: digest.telegram },
       whatsapp: {
         templateName: 'paybacker_pocket_agent_reply',
