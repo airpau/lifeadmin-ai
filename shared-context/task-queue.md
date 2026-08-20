@@ -17,6 +17,7 @@
 - [ ] Consolidate deal alerts + targeted deals + price increases into single daily digest
 - [ ] Add user email preference settings (daily digest / weekly / off)
 - [ ] Audit and restructure all 11 email cron triggers (see email-audit below)
+- [~PR#532] Email cap muted the Pocket Agent channels too (PR created 2026-08-20 — `contract-expiry-alerts` (live daily 08:00) checked the global daily email cap then `continue`d past the whole `sendNotification` call, so a cap miss silently suppressed Telegram, WhatsApp and push as well. With `MAX_MARKETING_EMAILS_PER_DAY = 1` and four marketing crons in the 08:00 block, a user who already got the daily digest received no contract-renewal warning on any channel. Fixed by gating the email payload instead of the dispatch, matching the existing `price-increases` pattern; `DispatchInput.rateLimited` is declared but never enforced, so this is the caller's job. `renewal-reminders` and `daily-digest` have the same shape but are entangled with cap-counted dedup rows / pre-build cost savings — follow-ups, see PR#532 body.)
 
 ## Architecture Task - AI Letters Intelligence Upgrade (Consumer-Friendly)
 - [ ] Claude Desktop to architect the full AI Letters upgrade (see shared-context/handoff-notes.md for brief)
