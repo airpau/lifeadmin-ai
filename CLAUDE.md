@@ -783,7 +783,9 @@ The Claude Desktop scheduler holds daily-social-media-post (disabled since 2 Jul
 - Generate image: `uv run ~/.openclaw/skills/nano-banana-pro/scripts/generate_image.py --prompt "..." --filename "docs/social-images/name.png" --resolution 2K --api-key $GEMINI_API_KEY`
 
 **Brand guidelines for all posts:**
-- Dark navy (#0f172a) background, gold (#f59e0b) accents
+- Dark navy (#0A1628, `--color-navy-950`) background, mint (#34D399, `--color-accent-mint`) accents. Deeper mint for contrast is #059669 (`--color-accent-mint-deep`). Source of truth is the `@theme inline` block in `src/app/globals.css` — take hex values from there, never from memory.
+- No gold/amber in generated social images. Orange remains a real brand token (`--color-accent-orange` #F59E0B, `--color-brand-500` #F97316) and is still used on web surfaces, but the daily social image prompt is navy + mint only, per the system prompt in `src/app/api/cron/social-post/route.ts`.
+- Never put hex codes in an image prompt — the model renders them as visible text. Describe colours in words ("dark navy blue background, mint green glowing accents").
 - NO TEXT in generated images (AI hallucinates garbled text)
 - Always use `paybacker.co.uk` (NEVER paybacker.com)
 - All posts must include a free signup CTA: "Sign up free at paybacker.co.uk" or "Try it free at paybacker.co.uk"
