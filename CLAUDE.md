@@ -765,19 +765,20 @@ CREATE TABLE IF NOT EXISTS nps_responses (
 
 ## Social Media Posting — How It Works
 
-### Current Setup (21 Mar 2026)
+### Current Setup (20 Aug 2026)
 Social media posting is **admin-only infrastructure** — no user-facing UI. All routes require `CRON_SECRET` Bearer token.
 
 The live job is /api/cron/social-post, scheduled "0 9 * * *" in vercel.json (10:00 BST, 09:00 GMT). It researches via Perplexity, writes the caption, generates the image via fal.ai, and posts to Facebook, Instagram and X. post-social and generate-social-posts exist in the codebase but are not scheduled and do not run. Instagram posting is live, confirmed working 10 June 2026, and is no longer pending Meta App Review.
 
 **Facebook posting: WORKING ✅**
 - Posts go to Facebook Page ID: `1056645287525328`
-- Page Access Token stored in `META_ACCESS_TOKEN` env var (expires — needs refreshing periodically)
-- Token is a **Page Access Token** (not user token) — obtained by exchanging user token via `/v18.0/{page_id}?fields=access_token`
-- Token refresh: go to developers.facebook.com → Graph API Explorer → Get Page Access Token → exchange via API → update Vercel env
+- META_ACCESS_TOKEN is a Meta system user token. It does not expire on a schedule, but it can still be invalidated by a password change, a permissions change, or an app settings change. If a call returns OAuth error 190, regenerate it in Meta Business Settings and update it in both .env.local and Vercel. It does not need routine periodic refreshing. Note that three Graph API versions are currently in use: v18.0 in src/lib/meta-social.ts, v19.0 in the daily-social-media-post task, and v25.0 in src/app/api/cron/social-post/route.ts. The live posting path is v25.0.
 
 **Instagram posting: LIVE ✅**
 - Instagram account: @paybacker.co.uk (ID: 17841440175351137)
+
+**Manual fallback (use only if the cron fails):**
+- Generate image: `uv run ~/.openclaw/skills/nano-banana-pro/scripts/generate_image.py --prompt "..." --filename "docs/social-images/name.png" --resolution 2K --api-key $GEMINI_API_KEY`
 
 **Brand guidelines for all posts:**
 - Dark navy (#0f172a) background, gold (#f59e0b) accents
