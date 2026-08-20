@@ -235,7 +235,7 @@ separate marketing opt-in before send).
 - **Hosting:** Vercel Pro
 - **Analytics:** PostHog
 - **Image/Video Generation:** fal.ai (primary), Runway ML (backup)
-- **Social Posting:** Late API (getlate.dev) — ALL platforms via one integration
+- **Social Posting:** Meta Graph API direct (Facebook Page + Instagram Business)
 - **Web Research:** Perplexity API (used by Leo and Nico agents)
 - **IP Intelligence:** ipapi.co (used by Finn agent)
 
@@ -271,8 +271,8 @@ domain to the list — don't bypass the gate.
 
 ## CRITICAL ARCHITECTURE RULES — NEVER VIOLATE THESE
 
-1. **ALL image and video generation goes through fal.ai only.** Never integrate directly with OpenAI image generation, Stability AI, Midjourney, or any other image/video API. One fal.ai key accesses everything.
-2. **ALL social media posting goes through Late API (getlate.dev) only.** Never build direct integrations with Meta Graph API, TikTok Content Posting API, LinkedIn Marketing API, or X/Twitter API. Late handles all platforms via one endpoint.
+1. **ALL image and video generation goes through fal.ai by default.** One fal.ai key accesses everything. Higgsfield is approved as a second source for hand-curated social bundles produced outside the application. Do not add OpenAI image, Stability AI or Midjourney integrations to application code.
+2. **Paybacker social posting goes direct to the Meta Graph API.** Facebook page 1056645287525328 and Instagram 17841440175351137, using META_ACCESS_TOKEN exchanged for a page token. This is what the `daily-social-media-post` scheduled task and `src/lib/meta-social.ts` actually do, last confirmed working 10 June 2026. Late API (getlate.dev) is not in use and appears nowhere in the codebase. Do not add TikTok, LinkedIn or X posting integrations without recording the decision here first.
 3. **ALL real-time web research by agents uses Perplexity API.** Not web scraping, not Google Search API, not Bing — Perplexity only.
 4. **ALL product analytics and funnel tracking uses PostHog.** Never add Google Analytics or Mixpanel.
 5. **ALL transactional and lifecycle emails use Resend.** Already integrated — never add SendGrid, Mailchimp, or any other email provider.
@@ -346,8 +346,10 @@ YAPILY_APPLICATION_SECRET=
 FAL_KEY=                        # fal.ai/dashboard
 RUNWAY_API_KEY=                 # app.runwayml.com/account/api-keys
 
-# Social Media Posting (Casey) — all platforms via one key
-LATE_API_KEY=                   # getlate.dev/dashboard
+# Social Media Posting — Meta Graph API direct (FB Page + Instagram Business)
+META_ACCESS_TOKEN=              # system user token, never-expiring
+META_PAGE_ID=                   # 1056645287525328
+META_INSTAGRAM_ACCOUNT_ID=      # 17841440175351137
 
 # Product Analytics (Drew)
 POSTHOG_API_KEY=                # app.posthog.com/project/api-keys
