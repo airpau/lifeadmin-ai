@@ -770,6 +770,8 @@ Social media posting is **admin-only infrastructure** — no user-facing UI. All
 
 The live job is /api/cron/social-post, scheduled "0 9 * * *" in vercel.json (10:00 BST, 09:00 GMT). It researches via Perplexity, writes the caption, generates the image via fal.ai, and posts to Facebook, Instagram and X. post-social and generate-social-posts exist in the codebase but are not scheduled and do not run. Instagram posting is live, confirmed working 10 June 2026, and is no longer pending Meta App Review.
 
+The Claude Desktop scheduler holds daily-social-media-post (disabled since 2 Jul 2026, bundle exhausted). A daily-social-media-posting folder also exists on disk but is not registered with the scheduler and does not run. Do not confuse the two.
+
 **Facebook posting: WORKING ✅**
 - Posts go to Facebook Page ID: `1056645287525328`
 - META_ACCESS_TOKEN is a Meta system user token. It does not expire on a schedule, but it can still be invalidated by a password change, a permissions change, or an app settings change. If a call returns OAuth error 190, regenerate it in Meta Business Settings and update it in both .env.local and Vercel. It does not need routine periodic refreshing. Graph API versions across the codebase: v18.0 (meta-social.ts, builder-verify), v19.0 (daily-social-media-post task), v20.0 (whatsapp/meta-provider.ts), v25.0 (cron/social-post). The live social posting path is v25.0. All four would need the same OAuth 190 recovery.
