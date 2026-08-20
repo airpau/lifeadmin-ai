@@ -33,7 +33,7 @@ async function generateImage(prompt: string): Promise<string | null> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        prompt: `Dark navy blue background, mint green glowing accents, soft warm orange highlights, ${prompt}, absolutely no text no words no letters no numbers no characters, abstract shapes, premium fintech aesthetic, clean modern design, professional social media square post`,
+        prompt: `Dark navy blue background, mint green glowing accents, ${prompt}, absolutely no text no words no letters no numbers no characters, abstract shapes, premium fintech aesthetic, clean modern design, professional social media square post`,
         image_size: 'square',
         num_images: 1,
       }),

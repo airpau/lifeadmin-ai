@@ -235,7 +235,7 @@ separate marketing opt-in before send).
 - **Hosting:** Vercel Pro
 - **Analytics:** PostHog
 - **Image/Video Generation:** fal.ai (primary), Runway ML (backup)
-- **Social Posting:** Late API (getlate.dev) — ALL platforms via one integration
+- **Social Posting:** Meta Graph API direct (Facebook Page + Instagram Business)
 - **Web Research:** Perplexity API (used by Leo and Nico agents)
 - **IP Intelligence:** ipapi.co (used by Finn agent)
 
@@ -271,8 +271,8 @@ domain to the list — don't bypass the gate.
 
 ## CRITICAL ARCHITECTURE RULES — NEVER VIOLATE THESE
 
-1. **ALL image and video generation goes through fal.ai only.** Never integrate directly with OpenAI image generation, Stability AI, Midjourney, or any other image/video API. One fal.ai key accesses everything.
-2. **ALL social media posting goes through Late API (getlate.dev) only.** Never build direct integrations with Meta Graph API, TikTok Content Posting API, LinkedIn Marketing API, or X/Twitter API. Late handles all platforms via one endpoint.
+1. **ALL image and video generation goes through fal.ai by default.** One fal.ai key accesses everything. Higgsfield is approved as a second source for hand-curated social bundles produced outside the application. Do not add OpenAI image, Stability AI or Midjourney integrations to application code.
+2. **Paybacker social posting goes direct to the Meta Graph API.** Facebook page 1056645287525328 and Instagram 17841440175351137, using META_ACCESS_TOKEN exchanged for a page token. This is what src/lib/meta-social.ts and src/app/api/cron/social-post/route.ts do. The daily-social-media-post task in the Claude Desktop scheduler used the same path until its content bundle was exhausted on 2 Jul 2026, and is now disabled. Late API (getlate.dev) is not the posting path for Facebook or Instagram. A LinkedIn path via postViaLate() remains in src/lib/content-apis.ts, called from admin/post-linkedin and admin/content/approve, gated on LATE_API_KEY. That key is unset in .env.local, but check the Vercel environment before treating it as inert or removing it. Do not add TikTok, LinkedIn or X posting integrations without recording the decision here first.
 3. **ALL real-time web research by agents uses Perplexity API.** Not web scraping, not Google Search API, not Bing — Perplexity only.
 4. **ALL product analytics and funnel tracking uses PostHog.** Never add Google Analytics or Mixpanel.
 5. **ALL transactional and lifecycle emails use Resend.** Already integrated — never add SendGrid, Mailchimp, or any other email provider.
@@ -346,8 +346,10 @@ YAPILY_APPLICATION_SECRET=
 FAL_KEY=                        # fal.ai/dashboard
 RUNWAY_API_KEY=                 # app.runwayml.com/account/api-keys
 
-# Social Media Posting (Casey) — all platforms via one key
-LATE_API_KEY=                   # getlate.dev/dashboard
+# Social Media Posting — Meta Graph API direct (FB Page + Instagram Business)
+META_ACCESS_TOKEN=              # system user token, never-expiring
+META_PAGE_ID=                   # 1056645287525328
+META_INSTAGRAM_ACCOUNT_ID=      # 17841440175351137
 
 # Product Analytics (Drew)
 POSTHOG_API_KEY=                # app.posthog.com/project/api-keys
@@ -763,28 +765,27 @@ CREATE TABLE IF NOT EXISTS nps_responses (
 
 ## Social Media Posting — How It Works
 
-### Current Setup (21 Mar 2026)
+### Current Setup (20 Aug 2026)
 Social media posting is **admin-only infrastructure** — no user-facing UI. All routes require `CRON_SECRET` Bearer token.
+
+The live job is /api/cron/social-post, scheduled "0 9 * * *" in vercel.json (10:00 BST, 09:00 GMT). It researches via Perplexity, writes the caption, generates the image via fal.ai, and posts to Facebook, Instagram and X. post-social and generate-social-posts exist in the codebase but are not scheduled and do not run. Instagram posting is live, confirmed working 10 June 2026, and is no longer pending Meta App Review.
+
+The Claude Desktop scheduler holds daily-social-media-post (disabled since 2 Jul 2026, bundle exhausted). A near-identically named daily-social-media-posting was never registered with the scheduler and never ran; it has been retired to docs/retired/daily-social-media-posting/. Do not confuse the two.
 
 **Facebook posting: WORKING ✅**
 - Posts go to Facebook Page ID: `1056645287525328`
-- Page Access Token stored in `META_ACCESS_TOKEN` env var (expires — needs refreshing periodically)
-- Token is a **Page Access Token** (not user token) — obtained by exchanging user token via `/v18.0/{page_id}?fields=access_token`
-- Token refresh: go to developers.facebook.com → Graph API Explorer → Get Page Access Token → exchange via API → update Vercel env
+- META_ACCESS_TOKEN is a Meta system user token. It does not expire on a schedule, but it can still be invalidated by a password change, a permissions change, or an app settings change. If a call returns OAuth error 190, regenerate it in Meta Business Settings and update it in both .env.local and Vercel. It does not need routine periodic refreshing. Graph API versions across the codebase: v18.0 (meta-social.ts, builder-verify), v19.0 (daily-social-media-post task), v20.0 (whatsapp/meta-provider.ts), v25.0 (cron/social-post). The live social posting path is v25.0. All four would need the same OAuth 190 recovery.
 
-**Instagram posting: PENDING ✅**
-- Blocked until Meta App Review completes (requires incorporation documents for business verification)
+**Instagram posting: LIVE ✅**
 - Instagram account: @paybacker.co.uk (ID: 17841440175351137)
-- Will work once Meta app is published (Development → Live mode)
 
-**Manual posting workflow (until Instagram API works):**
-1. Generate image: `uv run ~/.openclaw/skills/nano-banana-pro/scripts/generate_image.py --prompt "..." --filename "docs/social-images/name.png" --resolution 2K --api-key $GEMINI_API_KEY`
-2. Check image for text errors before using
-3. Post to Facebook via API (see src/lib/meta-social.ts)
-4. Send image to Paul via Telegram for manual Instagram posting
+**Manual fallback (use only if the cron fails):**
+- Generate image: `uv run ~/.openclaw/skills/nano-banana-pro/scripts/generate_image.py --prompt "..." --filename "docs/social-images/name.png" --resolution 2K --api-key $GEMINI_API_KEY`
 
 **Brand guidelines for all posts:**
-- Dark navy (#0f172a) background, gold (#f59e0b) accents
+- Dark navy (#0A1628, `--color-navy-950`) background, mint (#34D399, `--color-accent-mint`) accents. Deeper mint for contrast is #059669 (`--color-accent-mint-deep`). Source of truth is the `@theme inline` block in `src/app/globals.css` — take hex values from there, never from memory.
+- No gold/amber in generated social images. Orange remains a real brand token (`--color-accent-orange` #F59E0B, `--color-brand-500` #F97316) and is still used on web surfaces, but the daily social image prompt is navy + mint only, per the system prompt in `src/app/api/cron/social-post/route.ts`.
+- Never put hex codes in an image prompt — the model renders them as visible text. Describe colours in words ("dark navy blue background, mint green glowing accents").
 - NO TEXT in generated images (AI hallucinates garbled text)
 - Always use `paybacker.co.uk` (NEVER paybacker.com)
 - All posts must include a free signup CTA: "Sign up free at paybacker.co.uk" or "Try it free at paybacker.co.uk"
@@ -797,8 +798,9 @@ Social media posting is **admin-only infrastructure** — no user-facing UI. All
 - `src/app/api/social/post/route.ts` — publish approved post
 - `src/app/api/social/approve/route.ts` — approve draft post
 - `src/app/api/social/generate-image/route.ts` — generate image for post
-- `src/app/api/cron/generate-social-posts/route.ts` — 8am daily post generation
-- `src/app/api/cron/post-social/route.ts` — 10am daily auto-post
+- `src/app/api/cron/social-post/route.ts` — the live daily job (09:00 UTC, scheduled in vercel.json)
+- `src/app/api/cron/generate-social-posts/route.ts` — not scheduled, does not run
+- `src/app/api/cron/post-social/route.ts` — not scheduled, does not run
 
 **Meta App credentials:**
 - META_APP_ID, META_APP_SECRET, META_ACCESS_TOKEN, META_PAGE_ID, META_INSTAGRAM_ACCOUNT_ID — all set in Vercel
