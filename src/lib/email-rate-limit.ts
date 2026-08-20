@@ -142,10 +142,20 @@ export async function markEmailSent(
   emailType: string,
   title?: string,
 ): Promise<void> {
+  // `tasks.description` is NOT NULL with no default. Omitting it made every
+  // insert here fail the constraint, and the error below only ever reached
+  // the console — so this ledger has never recorded a single row. The cap
+  // counts rows in `tasks`, which is why it only ever saw the crons that do
+  // their own insert (renewal_reminder, deal_alert_email, weekly_money_digest,
+  // founding_reminder) and never the ones routed through this helper
+  // (daily_digest, price_increase_alert, contract_expiry_alert,
+  // contract_end_alert, overcharge_alert).
+  const label = title ?? emailType.replace(/_/g, ' ');
   const { error } = await supabase.from('tasks').insert({
     user_id: userId,
     type: emailType,
-    title: title ?? emailType.replace(/_/g, ' '),
+    title: label,
+    description: label,
     status: 'completed',
   });
   if (error) {

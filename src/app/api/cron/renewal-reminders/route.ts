@@ -137,9 +137,17 @@ export async function GET(request: NextRequest) {
     const effectiveTier = trialActive ? 'pro' : (user.subscription_tier || 'free');
     if (effectiveTier === 'free') continue;
 
-    // Global daily email rate limit
+    // Global daily email rate limit. A hit cap must suppress the EMAIL only —
+    // returning early here muted Telegram, WhatsApp and push as well, which
+    // the email cap has no say over (same defect as contract-expiry-alerts,
+    // PR#532). The dispatcher declares `rateLimited` but never enforces it,
+    // so gating the email payload is the caller's job.
+    //
+    // Dedup is unaffected: the task rows below are written on ANY delivery,
+    // so a cap-suppressed morning still marks the window done and the Pocket
+    // Agent digest is not repeated tomorrow.
     const rateCheck = await canSendEmail(supabase, userId, 'renewal_reminder');
-    if (!rateCheck.allowed) continue;
+    const emailAllowed = rateCheck.allowed;
 
     const userName = user.first_name || user.full_name?.split(' ')[0] || 'there';
 
@@ -181,7 +189,7 @@ export async function GET(request: NextRequest) {
     const dispatchResult = await sendNotification(supabase, {
       userId,
       event: 'renewal_reminder',
-      email: { subject, html },
+      email: emailAllowed ? { subject, html } : undefined,
       telegram: { text: digest.telegram },
       whatsapp: {
         templateName: 'paybacker_pocket_agent_reply',
