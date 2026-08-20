@@ -154,7 +154,7 @@ export async function GET(req: NextRequest) {
 
 async function generateCaption(idea: any): Promise<{ caption: string; hashtags: string }> {
   const res = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-latest',
+    model: 'claude-sonnet-4-6',
     max_tokens: 500,
     messages: [
       {
@@ -190,7 +190,7 @@ Return ONLY valid JSON: {"caption": "...", "hashtags": "..."}`,
   const lowered = parsed.caption.toLowerCase();
   if (BANNED_PHRASES.some((p) => lowered.includes(p))) {
     const retry = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-latest',
+      model: 'claude-sonnet-4-6',
       max_tokens: 500,
       messages: [
         {

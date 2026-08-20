@@ -101,7 +101,7 @@ async function draftResponse(query: any) {
   const angleLibrary = await loadAngleLibrary();
 
   const res = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-latest',
+    model: 'claude-sonnet-4-6',
     max_tokens: 800,
     messages: [{
       role: 'user',
@@ -131,7 +131,7 @@ Return JSON: {"response": "...", "angleUsed": "e.g. 'broadband mid-contract', 'U
 
 async function draftFollowup(send: any) {
   const res = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-latest',
+    model: 'claude-sonnet-4-6',
     max_tokens: 300,
     messages: [{
       role: 'user',

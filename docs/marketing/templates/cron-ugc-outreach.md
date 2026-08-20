@@ -89,7 +89,7 @@ function pickRate(followers: number): { suggestedRate: number; bracket: string }
 
 async function draftOutreach(creator: any) {
   const res = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-latest',
+    model: 'claude-sonnet-4-6',
     max_tokens: 600,
     messages: [{
       role: 'user',

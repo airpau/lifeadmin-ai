@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
 
 async function generateCaption(idea: any) {
   const res = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-latest',
+    model: 'claude-sonnet-4-6',
     max_tokens: 500,
     messages: [{
       role: 'user',

@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
     }));
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: claudeMessages,
@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
       admin.from('agent_runs').insert({
         user_id: null,
         agent_type: 'b2b_chatbot',
-        model_name: 'claude-sonnet-4-20250514',
+        model_name: 'claude-sonnet-4-6',
         status: 'completed',
         input_data: { message_count: messages.length, surface: 'for-business' },
         output_data: { reply_length: reply.length },

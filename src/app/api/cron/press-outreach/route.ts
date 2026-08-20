@@ -203,7 +203,7 @@ function parseDigest(
 
 async function draftResponse(query: any, angleLibrary: string) {
   const res = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-latest',
+    model: 'claude-sonnet-4-6',
     max_tokens: 800,
     messages: [
       {
@@ -238,7 +238,7 @@ Return ONLY valid JSON: {"response": "...", "angleUsed": "topic identifier e.g. 
 
 async function draftFollowup(send: any): Promise<string> {
   const res = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-latest',
+    model: 'claude-sonnet-4-6',
     max_tokens: 300,
     messages: [
       {

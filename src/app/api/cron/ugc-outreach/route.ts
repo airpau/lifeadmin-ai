@@ -139,7 +139,7 @@ function pickRate(followers: number): { rate: number; bracket: string } {
 
 async function draftOutreach(creator: Creator & { fitScore: number }, rate: number): Promise<string> {
   const res = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-latest',
+    model: 'claude-sonnet-4-6',
     max_tokens: 600,
     messages: [
       {
