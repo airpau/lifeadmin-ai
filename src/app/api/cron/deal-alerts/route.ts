@@ -68,13 +68,12 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // Global daily email rate limit
+      // Global daily email rate limit. Suppresses the EMAIL only — jumping to
+      // the next user here also muted the Pocket Agent buzz below, which the
+      // email cap has no say over (same defect as contract-expiry-alerts,
+      // PR#532).
       const rateCheck = await canSendEmail(supabase, user.id, 'deal_alert_email');
-      if (!rateCheck.allowed) {
-        skipped++;
-        results.push({ email: user.email, alerts: 0, sent: false, reason: rateCheck.reason });
-        continue;
-      }
+      const emailAllowed = rateCheck.allowed;
 
       // Fetch user's subscriptions
       const { data: subs } = await supabase
@@ -114,8 +113,10 @@ export async function GET(request: NextRequest) {
 
       const userName = user.first_name || user.full_name?.split(' ')[0] || 'there';
 
-      // Send the email
-      const emailSent = await sendDealAlertEmail(user.email, userName, alerts, totalMonthly);
+      // Send the email, unless the daily cap says otherwise.
+      const emailSent = emailAllowed
+        ? await sendDealAlertEmail(user.email, userName, alerts, totalMonthly)
+        : false;
 
       if (emailSent) {
         // Log it in tasks table to prevent re-sending
@@ -128,7 +129,17 @@ export async function GET(request: NextRequest) {
         });
         sent++;
         results.push({ email: user.email, alerts: alerts.length, sent: true });
+      } else {
+        skipped++;
+        results.push({
+          email: user.email,
+          alerts: alerts.length,
+          sent: false,
+          reason: emailAllowed ? 'Send failed' : rateCheck.reason,
+        });
+      }
 
+      {
         // Pocket Agent buzz with the headline deal — uses the
         // already-approved paybacker_better_deal_found WhatsApp
         // template and the deal_alert event default for Telegram/push.
@@ -173,8 +184,6 @@ export async function GET(request: NextRequest) {
         } catch (err) {
           console.error(`[deal-alerts][${user.id}] pocket-agent buzz failed:`, err);
         }
-      } else {
-        results.push({ email: user.email, alerts: alerts.length, sent: false, reason: 'Send failed' });
       }
     } catch (err: any) {
       console.error(`Deal alert error for ${user.email}:`, err.message);
