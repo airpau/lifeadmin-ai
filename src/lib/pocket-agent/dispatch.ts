@@ -408,11 +408,27 @@ export async function dispatchPocketAgentAlert(args: {
         }
         return String(v);
       });
-      const result = await sendWhatsAppTemplate({
-        to: String(session.destination),
-        templateName,
-        parameters: positional,
-      });
+      // Digest metadata: when the facade defers this send to the 18:00
+      // evening digest, provider + url make the digest bullet link to the
+      // SPECIFIC page (e.g. the dispute detail) instead of the generic
+      // "open paybacker.co.uk/dashboard" tail some template previews end
+      // with. Free-text only — the approved template body is untouched.
+      const providerName =
+        whatsappVars['merchant'] ?? whatsappVars['service'] ?? whatsappVars['supplier'] ?? whatsappVars['provider'];
+      const result = await sendWhatsAppTemplate(
+        {
+          to: String(session.destination),
+          templateName,
+          parameters: positional,
+        },
+        {
+          userId: session.user_id,
+          eventType: alertType,
+          dedupKey: `${alertType}_${detectedIssueId}`,
+          provider: providerName != null ? String(providerName) : undefined,
+          url: digestUrlForAlertType(alertType, detectedIssueId),
+        },
+      );
       // 2026-04-30 — log every send to whatsapp_message_log so
       // future silence is visible. Previously only the
       // dispute_followup path wrote outbound rows, which is why
@@ -703,6 +719,29 @@ async function logSkippedDispatch(args: {
     // On dedup-helper failure, fall through to regular logging — better
     // to log twice than miss a real signal.
     return { alreadyLogged: false };
+  }
+}
+
+/**
+ * Specific dashboard destination for a deferred (evening-digest) alert.
+ * Dispute-shaped alerts deep-link to the dispute detail page via the
+ * detected issue id; the rest map to their dashboard section.
+ */
+function digestUrlForAlertType(alertType: AlertType, detectedIssueId: string): string {
+  switch (alertType) {
+    case 'dispute_agent_action':
+    case 'dispute_followup':
+      return `paybacker.co.uk/dashboard/disputes/${detectedIssueId}`;
+    case 'money_recovered':
+      return 'paybacker.co.uk/dashboard/disputes';
+    case 'price_increase':
+    case 'contract_expiring':
+    case 'subscription_renewing':
+      return 'paybacker.co.uk/dashboard/subscriptions';
+    case 'budget_overrun':
+    case 'unusual_charge':
+    default:
+      return 'paybacker.co.uk/dashboard/money-hub';
   }
 }
 

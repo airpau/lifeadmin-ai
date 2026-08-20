@@ -1,24 +1,28 @@
 'use client';
 
 /**
- * Homepage v3 preview — /preview/homepage
+ * LIVE homepage — this component IS the production homepage, rendered
+ * at `/` via the server-component shell in `src/app/page.tsx` (which
+ * owns the route metadata). It also remains reachable at
+ * /preview/homepage for design iteration.
  *
- * Dynamic homepage redesign ported from
+ * Dynamic homepage design ported from
  *   design_handoff_paybacker_homepage/index.html
- * with extra scroll-driven dynamism (intersection-observer reveals,
- * animated counters, scroll progress bar, 3D dashboard tilt, sticky
- * conversion CTA).
+ * with scroll-driven dynamism (intersection-observer reveals,
+ * animated counters, scroll progress bar, sticky conversion CTA).
  *
  * Everything is wrapped in `.m-v2-root` so the scoped stylesheet at
- * `./styles.css` cannot leak onto `/`, the dashboard, or any other
- * surface. Once Paul approves this surface we cut /preview/homepage
- * over to `/`.
+ * `./styles.css` cannot leak onto the dashboard or any other surface.
  *
  * Content rules (see redesign/CONTENT_SOURCES_OF_TRUTH.md):
  *   - No fabricated specific savings claims.
  *   - Member counts are forbidden.
- *   - No testimonials anywhere — first-launch trust would suffer from
+ *   - No testimonials anywhere: first-launch trust would suffer from
  *     unverifiable named quotes.
+ *   - No outcome guarantees, ever. We say what the product does, never
+ *     what a company or an ombudsman will decide.
+ *   - The success-fee benchmark is "services that take a percentage",
+ *     never solicitors or law firms.
  */
 
 import Link from 'next/link';
@@ -41,6 +45,12 @@ import {
   DealsDemo,
   McpDemo,
 } from './demos';
+import {
+  MoneyHubMobileMock,
+  SubscriptionsMobileMock,
+  DisputesMobileMock,
+  PocketAgentMobileMock,
+} from './mobile-mocks';
 import { createClient } from '@/lib/supabase/client';
 import './styles.css';
 
@@ -177,6 +187,72 @@ function Counter({
       {formatted}
       {suffix}
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LiveRecoveredStat — first card in the stats grid
+// ---------------------------------------------------------------------------
+// Fetches the real recovered-so-far total from /api/stats/recovered (a
+// public, cached, aggregate-only endpoint) and renders it as a live
+// counter with a pulsing dot. Below the threshold the number is too
+// small to be persuasive, so we keep showing the original static
+// "typical household overcharge" card instead. The copy states only
+// what users have recorded, never a promised outcome.
+const LIVE_RECOVERED_THRESHOLD_GBP = 10000;
+
+function LiveRecoveredStat() {
+  const [liveTotal, setLiveTotal] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/stats/recovered')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { total_gbp?: number } | null) => {
+        if (cancelled || !data) return;
+        const total = Number(data.total_gbp);
+        if (Number.isFinite(total)) setLiveTotal(total);
+      })
+      .catch(() => {
+        // Static fallback card already covers the failure path.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (liveTotal !== null && liveTotal >= LIVE_RECOVERED_THRESHOLD_GBP) {
+    return (
+      <Reveal className="stat-card" delay={0}>
+        <div className="label">
+          <span className="live-dot" aria-hidden="true" />
+          Recovered by Paybacker users so far
+        </div>
+        <div className="num">
+          <Counter to={liveTotal} prefix="£" />
+        </div>
+        <div className="underline" />
+        <div className="blurb">
+          Real outcomes recorded by users when their disputes resolve. This
+          number updates automatically.
+        </div>
+      </Reveal>
+    );
+  }
+
+  return (
+    <Reveal className="stat-card" delay={0}>
+      <div className="label">Typical household overcharge</div>
+      <div className="num">
+        <Counter to={1000} prefix="£" suffix="+" /> <span className="unit">/yr</span>
+      </div>
+      <div className="underline" />
+      <div className="blurb">
+        Most of it hides in mid-contract price rises, forgotten subscriptions
+        and estimated bills nobody checks. Paybacker reads your bank and your
+        inbox to surface it in one pass.
+      </div>
+    </Reveal>
   );
 }
 
@@ -822,6 +898,131 @@ function StickyCTA() {
 }
 
 // ---------------------------------------------------------------------------
+// FeatureVoteSection — "You decide what we build next" (#vote)
+//
+// Counts come from GET /api/feature-votes → { counts: Record<string, number> }.
+// A vote is POST /api/feature-votes { feature } → { ok: true, counts }.
+// Voted keys are remembered in localStorage 'pb_feature_votes' so a voter
+// sees a "Voted" state and cannot re-click. All fetch errors are swallowed:
+// if the API is unavailable we simply hide the counts and leave the buttons
+// enabled.
+// ---------------------------------------------------------------------------
+const VOTE_STORAGE_KEY = 'pb_feature_votes';
+const VOTE_OPTIONS: ReadonlyArray<{ key: string; label: string }> = [
+  { key: 'native_app', label: 'Native iPhone and Android app' },
+  { key: 'sms_agent', label: 'Pocket Agent over SMS, no smartphone needed' },
+  { key: 'household', label: 'Shared household accounts' },
+  { key: 'autopilot', label: 'Savings autopilot that switches you automatically' },
+  { key: 'insurance', label: 'Car and home insurance disputes' },
+];
+
+function readStoredVotes(): string[] {
+  try {
+    const raw = window.localStorage.getItem(VOTE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function FeatureVoteSection() {
+  const [counts, setCounts] = useState<Record<string, number> | null>(null);
+  const [voted, setVoted] = useState<ReadonlySet<string>>(new Set());
+  const [pending, setPending] = useState<string | null>(null);
+
+  useEffect(() => {
+    setVoted(new Set(readStoredVotes()));
+    let cancelled = false;
+    fetch('/api/feature-votes')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { counts?: Record<string, number> } | null) => {
+        if (cancelled) return;
+        if (data && data.counts && typeof data.counts === 'object') {
+          setCounts(data.counts);
+        }
+      })
+      .catch(() => {
+        /* API unavailable — hide counts, keep voting buttons usable. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleVote = useCallback(
+    async (key: string) => {
+      if (voted.has(key) || pending) return;
+      setPending(key);
+      try {
+        const res = await fetch('/api/feature-votes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feature: key }),
+        });
+        if (!res.ok) return;
+        const data: { ok?: boolean; counts?: Record<string, number> } | null =
+          await res.json().catch(() => null);
+        if (data?.ok && data.counts) setCounts(data.counts);
+        setVoted((prev) => {
+          const next = new Set(prev);
+          next.add(key);
+          try {
+            window.localStorage.setItem(VOTE_STORAGE_KEY, JSON.stringify([...next]));
+          } catch {}
+          return next;
+        });
+      } catch {
+        /* Network error — fail silently, the visitor can try again. */
+      } finally {
+        setPending(null);
+      }
+    },
+    [voted, pending]
+  );
+
+  return (
+    <section className="vote-section section-light" id="vote">
+      <div className="wrap">
+        <Reveal className="section-head section-head--center">
+          <span className="eyebrow">Feature voting</span>
+          <h2>You decide what we build next</h2>
+          <p>Vote for the next feature. We build the winners.</p>
+        </Reveal>
+        <div className="vote-grid">
+          {VOTE_OPTIONS.map((option, index) => {
+            const hasVoted = voted.has(option.key);
+            const count = counts?.[option.key];
+            return (
+              <Reveal className="vote-card" key={option.key} delay={index * 60}>
+                <div className="vote-card__label">{option.label}</div>
+                <div className="vote-card__actions">
+                  <button
+                    type="button"
+                    className={`vote-btn${hasVoted ? ' vote-btn--voted' : ''}`}
+                    onClick={() => handleVote(option.key)}
+                    disabled={hasVoted || pending === option.key}
+                    aria-pressed={hasVoted}
+                  >
+                    {hasVoted ? 'Voted ✓' : pending === option.key ? 'Voting…' : 'Vote'}
+                  </button>
+                  {typeof count === 'number' && (
+                    <span className="vote-count">
+                      {count.toLocaleString('en-GB')} {count === 1 ? 'vote' : 'votes'}
+                    </span>
+                  )}
+                </div>
+              </Reveal>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 export default function HomepageV3PreviewPage() {
@@ -881,7 +1082,7 @@ export default function HomepageV3PreviewPage() {
               </p>
               <div className="hero-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
-                  Start free, keep 100% of what comes back →
+                  Start free →
                 </Link>
                 {/* Public, no-account case checker. Added as the second
                     hero CTA because it is the only surface a visitor can
@@ -892,21 +1093,21 @@ export default function HomepageV3PreviewPage() {
                 <Link className="btn btn-ghost" href="/check">
                   Check your case free →
                 </Link>
-                <a className="btn btn-ghost" href="#pocket-agent">
+                <a className="btn btn-ghost btn-tertiary" href="#pocket-agent">
                   Meet your Pocket Agent →
                 </a>
               </div>
               <p className="hero-cta-note">
-                No account needed to check. You&rsquo;ll see how strong your case is, the
-                exact UK law that applies with a link to the official source, and a full
-                draft letter you can copy.
+                Checking is free and needs no signup. You will see how strong
+                your case is, the exact UK law that applies, and a full draft
+                letter you can copy.
               </p>
               <div className="hero-ticker">
                 <span className="pulse" />
                 <span>
                   Overcharges found in your bank and inbox. Letters citing the
-                  law in 30 seconds. Cases tracked to the deadline.{' '}
-                  <strong>Free tier available, and we never take a percentage of what you recover.</strong>
+                  law in 30 seconds.{' '}
+                  <strong>Free to start, and we never take a cut.</strong>
                 </span>
               </div>
             </Reveal>
@@ -916,9 +1117,15 @@ export default function HomepageV3PreviewPage() {
                 composition because the looping product walkthrough shows
                 people exactly how the product works in the first scroll.
                 `HeroVisual` is still defined above and can be swapped back
-                in if the looping demo causes issues. */}
-            <div className="hero-stage">
+                in if the looping demo causes issues.
+
+                On phones (≤768px) the scaled 980px demo is unreadable, so
+                we swap in a responsive static mock instead. */}
+            <div className="hero-stage desktop-demo">
               <PocketAgentDemo />
+            </div>
+            <div className="mobile-mock">
+              <PocketAgentMobileMock />
             </div>
           </div>
         </div>
@@ -935,7 +1142,7 @@ export default function HomepageV3PreviewPage() {
             <span className="eyebrow">Why Paybacker exists</span>
             <h2>
               Noticing the overcharge is the easy half.
-              <br />
+              <br className="br-lg" />
               Getting the money back is the hard half.
             </h2>
             <p>
@@ -949,18 +1156,10 @@ export default function HomepageV3PreviewPage() {
           </Reveal>
 
           <div className="stats-grid">
-            <Reveal className="stat-card" delay={0}>
-              <div className="label">Typical household overcharge</div>
-              <div className="num">
-                <Counter to={1000} prefix="£" suffix="+" /> <span className="unit">/yr</span>
-              </div>
-              <div className="underline" />
-              <div className="blurb">
-                Most of it hides in mid-contract price rises, forgotten subscriptions
-                and estimated bills nobody checks. Paybacker reads your bank and your
-                inbox to surface it in one pass.
-              </div>
-            </Reveal>
+            {/* Live "recovered so far" counter when the real total clears
+                the threshold; the original static benchmark card otherwise.
+                See LiveRecoveredStat above. */}
+            <LiveRecoveredStat />
 
             <Reveal className="stat-card" delay={80}>
               <div className="label">Draft a UK-law complaint in</div>
@@ -1077,7 +1276,7 @@ export default function HomepageV3PreviewPage() {
             <span className="eyebrow">How the money actually comes back</span>
             <h2>
               Found in your bank. Argued from the statute.
-              <br />
+              <br className="br-lg" />
               Chased to the ombudsman deadline.
             </h2>
             <p>
@@ -1096,11 +1295,10 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <h2 className="feature-title">Your AI financial helper, in your pocket</h2>
+              <h2 className="feature-title">Never miss money you are owed</h2>
               <p className="feature-tagline">
-                Paybacker lives on WhatsApp and Telegram, the apps you already
-                check. It messages you when something needs your eyes and
-                quietly handles the rest.
+                Your Pocket Agent chases replies and deadlines for you, on
+                WhatsApp and Telegram.
               </p>
               <p>
                 It tells you when a dispute is ready to send, when the company
@@ -1123,15 +1321,33 @@ export default function HomepageV3PreviewPage() {
                   <span className="tier-chip tier-chip--free">Free</span> — same agent, any plan.
                 </li>
               </ul>
+              {/* Why chat beats a native app — and the honest pressure valve
+                  for people who still want one (feature voting below). */}
+              <div className="no-app-block">
+                <h3 className="no-app-block__title">No new app to download</h3>
+                <p>
+                  Pocket Agent lives in WhatsApp and Telegram, the apps already
+                  on your phone. Nothing to install, nothing to learn. Alerts
+                  arrive where you already look.
+                </p>
+                <p>
+                  Want a native app as well?{' '}
+                  <a href="#vote">Vote for it below</a> and if enough people
+                  ask, we will build it.
+                </p>
+              </div>
               <div className="feature-cta-row">
                 <Link className="btn btn-mint" href="/pocket-agent">
                   Set up your Pocket Agent →
                 </Link>
               </div>
             </Reveal>
-            <Reveal className="feature-stage" delay={120}>
+            <Reveal className="feature-stage desktop-demo" delay={120}>
               <PocketAgentDemo />
             </Reveal>
+            <div className="mobile-mock">
+              <PocketAgentMobileMock />
+            </div>
           </div>
         </div>
       </section>
@@ -1141,9 +1357,10 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <h2 className="feature-title">AI Disputes Centre</h2>
+              <h2 className="feature-title">Turn a bad bill into money back</h2>
               <p className="feature-tagline">
-                A letter that names the provision, in 30 seconds.
+                Letters citing the exact law in 30 seconds. Cases tracked to
+                the ombudsman deadline.
               </p>
               <p>
                 Type one sentence. Paybacker writes the formal letter, names the
@@ -1169,9 +1386,12 @@ export default function HomepageV3PreviewPage() {
                 </Link>
               </div>
             </Reveal>
-            <Reveal className="feature-stage" delay={120}>
+            <Reveal className="feature-stage desktop-demo" delay={120}>
               <DisputesDemo />
             </Reveal>
+            <div className="mobile-mock">
+              <DisputesMobileMock />
+            </div>
           </div>
         </div>
       </section>
@@ -1236,9 +1456,9 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <h2 className="feature-title">Money Hub</h2>
+              <h2 className="feature-title">Know where every pound goes</h2>
               <p className="feature-tagline">
-                Every account, every bill, every trend — in one view.
+                Every account, every bill, every trend, in one view.
               </p>
               <p>
                 Connect your bank via Open Banking (Yapily, FCA-authorised).
@@ -1255,9 +1475,12 @@ export default function HomepageV3PreviewPage() {
                 </Link>
               </div>
             </Reveal>
-            <Reveal className="feature-stage" delay={120}>
+            <Reveal className="feature-stage desktop-demo" delay={120}>
               <MoneyHubDemo />
             </Reveal>
+            <div className="mobile-mock">
+              <MoneyHubMobileMock />
+            </div>
           </div>
         </div>
       </section>
@@ -1270,9 +1493,9 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <h2 className="feature-title">Subscriptions Tracker</h2>
+              <h2 className="feature-title">Stop paying for things you forgot</h2>
               <p className="feature-tagline">
-                Every fixed outgoing — surfaced, sorted, cancelled with one tap.
+                Price rises flagged. One tap to start a cancellation.
               </p>
               <p>
                 Auto-detects every subscription, direct debit and recurring
@@ -1292,9 +1515,12 @@ export default function HomepageV3PreviewPage() {
                 </Link>
               </div>
             </Reveal>
-            <Reveal className="feature-stage" delay={120}>
+            <Reveal className="feature-stage desktop-demo" delay={120}>
               <SubscriptionsDemo />
             </Reveal>
+            <div className="mobile-mock">
+              <SubscriptionsMobileMock />
+            </div>
           </div>
         </div>
       </section>
@@ -1304,12 +1530,12 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <h2 className="feature-title">Export Hub</h2>
+              <h2 className="feature-title">Your numbers, wherever you need them</h2>
               <p className="feature-tagline">
-                Live-sync to Google Sheets. Or one-shot CSV, Excel, PDF.
+                Live-sync to Google Sheets, or one-shot CSV, Excel and PDF.
               </p>
               <p>
-                Your money is your data. Export it anywhere — including live
+                Your money is your data. Export it anywhere, including live
                 spreadsheets that update as your bank moves.
               </p>
               <ul className="feature-bullets">
@@ -1342,7 +1568,7 @@ export default function HomepageV3PreviewPage() {
             <span className="eyebrow">A real Paybacker win — this week</span>
             <h2>
               Their offer: £106.96.
-              <br />
+              <br className="br-lg" />
               <span style={{ color: 'var(--accent-orange-deep)' }}>What the law actually said: £505.46.</span>
             </h2>
             <p>
@@ -1428,7 +1654,7 @@ export default function HomepageV3PreviewPage() {
             <span className="eyebrow on-ink">How it works</span>
             <h2>
               Three steps. Ten minutes.
-              <br />
+              <br className="br-lg" />
               Then we do the chasing.
             </h2>
             <p className="sub">
@@ -1493,7 +1719,7 @@ export default function HomepageV3PreviewPage() {
 
           <div className="how-cta-row">
             <Link className="btn btn-mint" href="/auth/signup">
-              Try it free — no account needed
+              Start free →
             </Link>
           </div>
         </div>
@@ -1679,10 +1905,12 @@ export default function HomepageV3PreviewPage() {
           <Reveal className="section-head section-head--center">
             <span className="eyebrow">53+ verified UK partners</span>
             <h2 style={{ margin: '12px 0' }}>
-              Real prices. Real savings.
-              <br />
-              Better deals in every category.
+              Pay less for the same thing.
             </h2>
+            <p>
+              Real prices from verified UK partners, matched against what you
+              already pay. Switch when the deal beats your bill.
+            </p>
           </Reveal>
 
           <div className="logo-cloud">
@@ -1704,6 +1932,9 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
+      {/* ========== Feature voting ========== */}
+      <FeatureVoteSection />
+
       {/* ========== Pricing ========== */}
       <section className="pricing-section section-light" id="pricing">
         <div className="wrap">
@@ -1711,7 +1942,7 @@ export default function HomepageV3PreviewPage() {
             <span className="eyebrow">Flat subscription · 0% success fee</span>
             <h2 style={{ margin: '12px 0' }}>
               A flat monthly fee, and no cut
-              <br />
+              <br className="br-lg" />
               of anything you recover.
             </h2>
             <p>
@@ -1720,6 +1951,9 @@ export default function HomepageV3PreviewPage() {
               charges the same amount whether you recover nothing or thousands,
               which is the only arrangement where our advice and your interests
               point the same way.
+            </p>
+            <p className="pricing-free-line">
+              Start on the free plan. Upgrade only if it pays for itself.
             </p>
           </Reveal>
 
@@ -1735,7 +1969,9 @@ export default function HomepageV3PreviewPage() {
                 <li>Unlimited subscription tracker</li>
                 <li>Telegram Pocket Agent + AI chatbot — free on every plan</li>
               </ul>
-              <Link className="btn btn-ghost cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
+              {/* Free CTA is deliberately btn-mint: the free plan is the
+                  default choice we push visitors towards. */}
+              <Link className="btn btn-mint cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
                 Start free →
               </Link>
             </Reveal>
@@ -1766,7 +2002,7 @@ export default function HomepageV3PreviewPage() {
               <ul>
                 <li>Everything in Essential</li>
                 <li>Unlimited bank &amp; email connections</li>
-                <li><strong>WhatsApp Pocket Agent</strong> (Pro-only) — your caseworker on chat 24/7:
+                <li><strong>WhatsApp Pocket Agent</strong> (Pro-only), your AI money agent on chat 24/7:
                   <ul style={{ marginTop: 6 }}>
                     <li>Better-deal alerts when a cheaper tariff is found</li>
                     <li>Instant price-increase alerts</li>
@@ -1805,7 +2041,7 @@ export default function HomepageV3PreviewPage() {
             </div>
             <h2>
               Talk to your money
-              <br />
+              <br className="br-lg" />
               from Claude Desktop.
             </h2>
             <p className="sub" style={{ color: 'var(--text-on-ink)' }}>
@@ -1831,7 +2067,7 @@ export default function HomepageV3PreviewPage() {
           <Reveal>
             <h2>
               Stop absorbing it.
-              <br />
+              <br className="br-lg" />
               Start <span className="mint">claiming</span> it back.
             </h2>
           </Reveal>

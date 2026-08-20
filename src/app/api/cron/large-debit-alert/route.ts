@@ -275,6 +275,8 @@ export async function GET(request: NextRequest) {
           section: 'money_out',
           line: digestLine,
           amount: absAmount,
+          provider: merchant,
+          url: 'paybacker.co.uk/dashboard/money-hub',
           templateName: 'paybacker_payment_outgoing',
           parameters,
           dedupKey: refKey,

@@ -15,8 +15,13 @@
  *     keep their original un-prefixed dedup_key format and are untouched.
  *
  * Row payload shape for digest rows:
- *   { section, line, amount, template_name, parameters, source: 'digest' }
+ *   { section, line, amount, provider, url, template_name, parameters,
+ *     source: 'digest' }
  * `line` is a single newline-free sentence ready to drop into the digest.
+ * `provider` (optional) is the merchant/provider name, bolded at render
+ * time. `url` (optional) is the SPECIFIC dashboard destination for the
+ * item (e.g. paybacker.co.uk/dashboard/disputes/{id}) — rendered on its
+ * own line under the bullet so WhatsApp auto-linkifies it.
  *
  * The unique partial index uq_waq_pending_dedup (user_id, dedup_key) WHERE
  * status='pending' gives us cross-cron dedup for free — e.g. the same
@@ -44,6 +49,12 @@ export interface DigestEnqueueInput {
   line: string;
   /** Optional £ magnitude used to rank "top items" within a section. */
   amount?: number;
+  /** Provider/merchant name — bolded in the rendered digest bullet. */
+  provider?: string | null;
+  /** Specific dashboard destination for this item (no protocol needed,
+   *  e.g. paybacker.co.uk/dashboard/disputes/abc). Rendered on its own
+   *  line under the bullet. */
+  url?: string | null;
   /** Template the item would have been sent as (audit only — the digest itself
    *  goes out as one message, never as this template). */
   templateName?: string | null;
@@ -159,6 +170,8 @@ export async function enqueueDigestItem(
         amount: typeof input.amount === 'number' && Number.isFinite(input.amount)
           ? Math.round(Math.abs(input.amount) * 100) / 100
           : null,
+        provider: input.provider?.trim() || null,
+        url: input.url?.trim() || null,
         template_name: input.templateName ?? null,
         parameters: input.parameters ?? null,
         source: 'digest',
@@ -189,6 +202,8 @@ export interface QueuedDigestRow {
     section?: DigestSection;
     line?: string;
     amount?: number | null;
+    provider?: string | null;
+    url?: string | null;
     [k: string]: unknown;
   } | null;
 }
@@ -213,25 +228,66 @@ const SECTION_TITLES: Record<DigestSection, string> = {
 const MAX_LINES_PER_SECTION = 3;
 
 /**
+ * Strip a generic "open paybacker.co.uk/dashboard" tail from a bullet
+ * line. Only applied when the item carries a SPECIFIC `url` — the link
+ * is rendered on its own line instead, so the generic clause (which some
+ * rendered template previews end with) would be dead weight.
+ */
+function stripTrailingDashboardClause(line: string): string {
+  const m = line.match(
+    /^(.*?)[,;]?\s*(?:or\s+)?open\s+paybacker\.co\.uk\/dashboard[\w/-]*[.\s]*$/i,
+  );
+  if (!m) return line;
+  let head = m[1].trim();
+  if (!head) return line;
+  if (!/[.!?]$/.test(head)) head += '.';
+  return head;
+}
+
+/**
+ * Bold the provider name inside a bullet line. If the line already
+ * mentions the provider, the first occurrence is wrapped in WhatsApp
+ * bold markers in place; otherwise the provider is prefixed.
+ */
+function boldProviderInLine(line: string, provider?: string | null): string {
+  const p = (provider ?? '').trim();
+  if (!p) return line;
+  const idx = line.toLowerCase().indexOf(p.toLowerCase());
+  if (idx === -1) return `*${p}*: ${line}`;
+  // Already bolded at this position — leave it alone.
+  if (idx > 0 && line[idx - 1] === '*') return line;
+  return `${line.slice(0, idx)}*${line.slice(idx, idx + p.length)}*${line.slice(idx + p.length)}`;
+}
+
+/**
  * Group one user's queued items into a single sectioned evening-digest
  * body, in the same voice as the morning brief. Sections with nothing in
  * them are omitted entirely. Items are ranked by £ magnitude so the top
- * items surface first.
+ * items surface first. Each item's specific deep link (payload.url) is
+ * rendered on its own line directly under the bullet so WhatsApp
+ * auto-linkifies it.
  */
 export function buildEveningDigestBody(
   firstName: string,
   rows: QueuedDigestRow[],
 ): string {
-  const bySection = new Map<DigestSection, Array<{ line: string; amount: number }>>();
+  const bySection = new Map<
+    DigestSection,
+    Array<{ line: string; amount: number; url: string | null }>
+  >();
   for (const row of rows) {
     const section =
       row.payload?.section ?? sectionForEvent(row.event_type, row.template_name);
-    const line =
+    let line =
       (typeof row.payload?.line === 'string' && row.payload.line.trim()) ||
       `${row.event_type ?? row.template_name ?? 'Update'}`;
+    const url =
+      (typeof row.payload?.url === 'string' && row.payload.url.trim()) || null;
+    if (url) line = stripTrailingDashboardClause(line);
+    line = boldProviderInLine(line, row.payload?.provider);
     const amount = Number(row.payload?.amount) || 0;
     if (!bySection.has(section)) bySection.set(section, []);
-    bySection.get(section)!.push({ line, amount });
+    bySection.get(section)!.push({ line, amount, url });
   }
 
   const parts: string[] = [
@@ -245,14 +301,18 @@ export function buildEveningDigestBody(
     items.sort((a, b) => b.amount - a.amount);
     const shown = items.slice(0, MAX_LINES_PER_SECTION);
     const header = `*${SECTION_TITLES[section]}* (${items.length})`;
-    const lines = shown.map((it) => `• ${it.line}`);
+    const lines: string[] = [];
+    for (const it of shown) {
+      lines.push(`• ${it.line}`);
+      if (it.url) lines.push(it.url);
+    }
     if (items.length > shown.length) {
       lines.push(`• +${items.length - shown.length} more in your dashboard`);
     }
     parts.push('', header, ...lines);
   }
 
-  parts.push('', 'See the detail at paybacker.co.uk/dashboard');
+  parts.push('', 'Full detail: paybacker.co.uk/dashboard');
   return parts.join('\n');
 }
 

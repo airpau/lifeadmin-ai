@@ -96,7 +96,7 @@ export default function LatestSupplierReplyCard({
 
   const headerLabel = supplierReplies.length === 1
     ? `Latest reply from ${providerName}`
-    : `${supplierReplies.length} replies from ${providerName} — latest first`;
+    : `${supplierReplies.length} replies from ${providerName}, latest first`;
 
   return (
     <div className="card mb-4" style={{ borderColor: '#fde68a', background: '#fffdf5' }}>

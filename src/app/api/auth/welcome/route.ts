@@ -5,6 +5,7 @@ import { resend, FROM_EMAIL } from '@/lib/resend';
 import { notifyAgents } from '@/lib/agent-notify';
 import { trackSignup } from '@/lib/meta-conversions';
 import { captureServer } from '@/lib/posthog-server';
+import { sendFounderAlert } from '@/lib/telegram/founder-alert';
 
 // Founder notification recipient — admin inbox, not the user's email.
 const FOUNDER_NOTIFY_EMAIL = 'hello@paybacker.co.uk';
@@ -75,6 +76,22 @@ export async function POST(request: NextRequest) {
       `,
     }).catch(err => console.error('Admin signup notification failed:', err));
 
+    // Map Supabase's app_metadata.provider to the analytics signup_method
+    // dimension (also used in the founder Telegram alert below).
+    const signupMethod =
+      provider === 'google' || provider === 'azure' || provider === 'microsoft'
+        ? provider === 'azure'
+          ? 'microsoft'
+          : provider
+        : 'email';
+
+    // Founder Telegram alert — fire and forget, must never block or fail
+    // the response. Same idempotency guarantee as the email above: this
+    // route short-circuits on welcome_sent_at, so one alert per signup.
+    sendFounderAlert(
+      `🆕 New signup: ${name || 'Not provided'} (${email}) via ${signupMethod}. Tier: ${tier}. Watch for upgrade.`
+    ).catch(() => {});
+
     // Notify AI agents about new signup
     notifyAgents('new_signup', `New signup: ${name || email}`, `New user signed up: ${email} (${name || 'no name'}). User ID: ${userId || 'unknown'}. Tier: ${tier}. Provider: ${provider}. Time: ${new Date().toISOString()}`, 'system').catch(() => {});
 
@@ -89,14 +106,7 @@ export async function POST(request: NextRequest) {
 
     // PostHog server-side signup conversion. This route is idempotent
     // (welcome_sent_at short-circuits above) and every signup path drains
-    // through it, so this fires exactly once per new user. Map Supabase's
-    // app_metadata.provider to the analytics signup_method dimension.
-    const signupMethod =
-      provider === 'google' || provider === 'azure' || provider === 'microsoft'
-        ? provider === 'azure'
-          ? 'microsoft'
-          : provider
-        : 'email';
+    // through it, so this fires exactly once per new user.
     captureServer('user_signed_up', userId, { email, signup_method: signupMethod });
 
     // Stamp idempotency flag so a re-call (e.g. dashboard layout firing

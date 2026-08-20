@@ -883,11 +883,22 @@ export async function POST(request: NextRequest) {
         const url = body.disputeId
           ? `paybacker.co.uk/dashboard/disputes/${body.disputeId}`
           : `paybacker.co.uk/dashboard/complaints`;
-        await sendWhatsAppTemplate({
-          to: session.whatsapp_phone,
-          templateName: 'paybacker_complaint_letter_ready',
-          parameters: [body.companyName ?? 'a supplier', url],
-        });
+        await sendWhatsAppTemplate(
+          {
+            to: session.whatsapp_phone,
+            templateName: 'paybacker_complaint_letter_ready',
+            parameters: [body.companyName ?? 'a supplier', url],
+          },
+          {
+            // Digest metadata: if the facade defers this to the evening
+            // digest, the bullet links straight to the dispute (or the
+            // complaints page for standalone letters).
+            userId: user.id,
+            eventType: 'complaint_letter_ready',
+            provider: body.companyName ?? undefined,
+            url,
+          },
+        );
       } catch (e) {
         console.warn('[complaints/generate] letter_ready template send failed', e);
       }

@@ -87,6 +87,11 @@ export interface AlertContext {
   digestSection?: DigestSection;
   /** £ magnitude used to rank "top items" within a digest section. */
   amount?: number;
+  /** Provider/merchant name — bolded in the digest bullet when deferred. */
+  provider?: string;
+  /** Specific dashboard deep link shown under the digest bullet when the
+   *  send is deferred (e.g. paybacker.co.uk/dashboard/disputes/{id}). */
+  url?: string;
 }
 
 function policyAdmin() {
@@ -191,6 +196,8 @@ export async function sendWhatsAppTemplate(
     dedupKey: ctx?.dedupKey,
     digestSection: ctx?.digestSection,
     amount: ctx?.amount,
+    provider: ctx?.provider,
+    url: ctx?.url,
   });
 
   if (decision.action === 'block') {

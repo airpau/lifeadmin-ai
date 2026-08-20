@@ -136,6 +136,59 @@ function latestInbound(correspondence: CorrespondenceRow[]): CorrespondenceRow |
   return inbound[0] ?? null;
 }
 
+/** True when the entry is an outbound letter/response from the user's side. */
+function isOutboundFromUser(c: CorrespondenceRow): boolean {
+  const t = (c.correspondence_type ?? '').toLowerCase();
+  return (
+    t === 'ai_letter' ||
+    t === 'letter_sent' ||
+    t === 'followup_sent' ||
+    t === 'user_letter'
+  );
+}
+
+/**
+ * Timestamp (ms) of the most recent outbound letter, taken from both the
+ * dispute row's sent markers and any outbound correspondence entries.
+ */
+function latestOutboundAtMs(
+  dispute: DisputeRow,
+  correspondence: CorrespondenceRow[],
+): number | null {
+  const candidates: number[] = [];
+  for (const iso of [
+    dispute.last_letter_sent_at,
+    dispute.first_letter_sent_at,
+    dispute.sent_at,
+  ]) {
+    if (!iso) continue;
+    const t = Date.parse(iso);
+    if (!Number.isNaN(t)) candidates.push(t);
+  }
+  for (const c of correspondence) {
+    if (!isOutboundFromUser(c)) continue;
+    const t = Date.parse(c.email_date ?? c.created_at);
+    if (!Number.isNaN(t)) candidates.push(t);
+  }
+  return candidates.length > 0 ? Math.max(...candidates) : null;
+}
+
+/**
+ * True when the company's latest inbound message is newer than anything we
+ * have sent — i.e. the ball is in the user's court and a 'wait' decision
+ * would silently swallow the reply.
+ */
+function isInboundUnanswered(
+  dispute: DisputeRow,
+  correspondence: CorrespondenceRow[],
+  inbound: CorrespondenceRow,
+): boolean {
+  const inboundAt = Date.parse(inbound.email_date ?? inbound.created_at);
+  if (Number.isNaN(inboundAt)) return false;
+  const outboundAt = latestOutboundAtMs(dispute, correspondence);
+  return outboundAt == null || inboundAt > outboundAt;
+}
+
 /** Pick the best historical signal from intelligence stats for this dispute. */
 function pickHistoricalSignal(
   merchantNormalised: string | null,
@@ -305,6 +358,9 @@ export async function decideNextAction(
 
   // Rule 3 — responded. Use AI extraction to classify the latest inbound.
   const inbound = latestInbound(recentCorrespondence);
+  const inboundUnanswered = inbound
+    ? isInboundUnanswered(dispute, recentCorrespondence, inbound)
+    : false;
   if (state === 'responded' || inbound) {
     if (inbound) {
       const inboundText = `${inbound.subject ?? ''}\n\n${inbound.summary ?? ''}`;
@@ -378,7 +434,23 @@ export async function decideNextAction(
             historical_signal: historical,
           };
         }
-        // still_open
+        // still_open — the company has replied but not decided. If their
+        // message is newer than our last letter, the ball is in the user's
+        // court: surface an actionable recommendation rather than waiting,
+        // so the reply is never silently swallowed.
+        if (inboundUnanswered) {
+          return {
+            to_state: 'awaiting_user_input',
+            action: 'send_followup',
+            rationale:
+              `${merchantLabel} has replied since your last letter but has not resolved the dispute. ` +
+              `Review their response and draft a follow-up so the case does not stall.`,
+            next_check_at: plus(POST_DECISION_RECHECK_DAYS),
+            surface_to_user: true,
+            data_grounded: dataGrounded,
+            historical_signal: historical,
+          };
+        }
         return {
           to_state: 'responded',
           action: 'wait',
@@ -386,6 +458,22 @@ export async function decideNextAction(
           next_check_at: plus(POST_DECISION_RECHECK_DAYS),
           surface_to_user: false,
           data_grounded: false,
+        };
+      }
+      // Outcome extraction was unavailable or inconclusive. An unanswered
+      // company message still needs the user's attention — never fall
+      // through to a silent wait.
+      if (inboundUnanswered) {
+        return {
+          to_state: 'awaiting_user_input',
+          action: 'send_followup',
+          rationale:
+            `${merchantLabel} has sent a new message since your last letter. ` +
+            `Review their reply and draft a follow-up response.`,
+          next_check_at: plus(POST_DECISION_RECHECK_DAYS),
+          surface_to_user: true,
+          data_grounded: dataGrounded,
+          historical_signal: historical,
         };
       }
     }

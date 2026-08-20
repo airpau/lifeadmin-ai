@@ -27,6 +27,9 @@ const styles = StyleSheet.create({
   page: {
     backgroundColor: navy950,
     padding: 40,
+    // Extra bottom padding so wrapped content never overlaps the
+    // two-line fixed footer (disclaimer + links).
+    paddingBottom: 64,
     fontFamily: 'Helvetica',
     color: white,
   },
@@ -184,15 +187,43 @@ const styles = StyleSheet.create({
     bottom: 20,
     left: 40,
     right: 40,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     borderTopWidth: 1,
     borderTopColor: navy800,
     paddingTop: 8,
   },
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   footerText: {
     fontSize: 7,
     color: slate500,
+  },
+  footerDisclaimer: {
+    fontSize: 7,
+    color: slate500,
+    marginBottom: 4,
+  },
+  summaryText: {
+    fontSize: 9,
+    color: slate300,
+    lineHeight: 1.5,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+  actionNumber: {
+    width: 14,
+    fontSize: 9,
+    fontFamily: 'Helvetica-Bold',
+    color: mint400,
+  },
+  actionText: {
+    flex: 1,
+    fontSize: 9,
+    color: slate300,
+    lineHeight: 1.4,
   },
   grid2: {
     flexDirection: 'row',
@@ -222,9 +253,29 @@ const MONTH_SHORT: Record<string, string> = {
 /*  PDF Document                                                       */
 /* ------------------------------------------------------------------ */
 
+const PDF_DISCLAIMER =
+  'This report is a factual summary of your own accounts and activity. It is general information, not financial advice.';
+
+function PdfFooter() {
+  return (
+    <View style={styles.footer} fixed>
+      <Text style={styles.footerDisclaimer}>{PDF_DISCLAIMER}</Text>
+      <View style={styles.footerRow}>
+        <Text style={styles.footerText}>paybacker.co.uk</Text>
+        <Text style={styles.footerText}>Confidential</Text>
+      </View>
+    </View>
+  );
+}
+
 function ReportPDFDocument({ data }: { data: AnnualReportData }) {
   const maxCat = data.spendingByCategory[0]?.total || 1;
   const maxMonth = Math.max(...data.monthlyTrends.map((m) => m.spend), 1);
+  const windowLabel = data.reportWindow?.label
+    || (data.monthlyTrends.length > 0
+      ? `${MONTH_SHORT[data.monthlyTrends[0].month.split('-')[1]] || ''} ${data.monthlyTrends[0].month.split('-')[0]} to ${MONTH_SHORT[data.monthlyTrends[data.monthlyTrends.length - 1].month.split('-')[1]] || ''} ${data.monthlyTrends[data.monthlyTrends.length - 1].month.split('-')[0]}`
+      : '');
+  const recovered = data.disputesDetail;
 
   return (
     <Document>
@@ -232,9 +283,9 @@ function ReportPDFDocument({ data }: { data: AnnualReportData }) {
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
           <Text style={styles.brand}>PAYBACKER FINANCIAL REPORT</Text>
-          <Text style={styles.title}>Your {data.year} Report</Text>
+          <Text style={styles.title}>Your Last 12 Months</Text>
           <Text style={styles.subtitle}>
-            Member for {data.daysAsMember} days | Generated{' '}
+            {windowLabel ? `${windowLabel} | ` : ''}Member for {data.daysAsMember} days | Generated{' '}
             {new Date(data.generatedAt).toLocaleDateString('en-GB', {
               day: 'numeric',
               month: 'long',
@@ -242,6 +293,14 @@ function ReportPDFDocument({ data }: { data: AnnualReportData }) {
             })}
           </Text>
         </View>
+
+        {/* Executive summary */}
+        {data.executiveSummary ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Executive Summary</Text>
+            <Text style={styles.summaryText}>{data.executiveSummary}</Text>
+          </View>
+        ) : null}
 
         {/* Key stats row */}
         <View style={styles.statsRow}>
@@ -309,10 +368,7 @@ function ReportPDFDocument({ data }: { data: AnnualReportData }) {
         </View>
 
         {/* Footer */}
-        <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>paybacker.co.uk</Text>
-          <Text style={styles.footerText}>Confidential</Text>
-        </View>
+        <PdfFooter />
       </Page>
 
       {/* Page 2: Trends, merchants, achievements */}
@@ -376,6 +432,44 @@ function ReportPDFDocument({ data }: { data: AnnualReportData }) {
           </View>
         </View>
 
+        {/* Next actions */}
+        {data.nextActions && data.nextActions.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your Next Actions</Text>
+            {data.nextActions.map((action, i) => (
+              <View key={i} style={styles.actionRow}>
+                <Text style={styles.actionNumber}>{i + 1}.</Text>
+                <Text style={styles.actionText}>{action}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {/* Disputes & money recovered */}
+        {recovered && recovered.totalDisputes > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Disputes &amp; Money Recovered</Text>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Total recovered</Text>
+              <Text style={[styles.rowValue, { color: mint400 }]}>{fmtGBP(recovered.totalRecovered)}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Won / partial</Text>
+              <Text style={styles.rowValue}>{recovered.wins} / {recovered.partialWins}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>In progress</Text>
+              <Text style={styles.rowValue}>{recovered.inProgress}</Text>
+            </View>
+            {recovered.averageResolutionDays !== null ? (
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>Average time to resolve</Text>
+                <Text style={styles.rowValue}>{recovered.averageResolutionDays} days</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         {/* Achievements */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Achievements</Text>
@@ -405,14 +499,11 @@ function ReportPDFDocument({ data }: { data: AnnualReportData }) {
         <View style={styles.scoreBox}>
           <Text style={styles.scoreLabel}>FINANCIAL HEALTH SCORE</Text>
           <Text style={styles.scoreValue}>{data.financialHealth.overall}/100</Text>
-          <Text style={styles.scoreCaption}>{data.financialHealth.tier.charAt(0).toUpperCase() + data.financialHealth.tier.slice(1)} — based on spending, savings, borrowing, and planning</Text>
+          <Text style={styles.scoreCaption}>{data.financialHealth.tier.charAt(0).toUpperCase() + data.financialHealth.tier.slice(1)}: based on spending, savings, borrowing, and planning</Text>
         </View>
 
         {/* Footer */}
-        <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>paybacker.co.uk</Text>
-          <Text style={styles.footerText}>Confidential</Text>
-        </View>
+        <PdfFooter />
       </Page>
     </Document>
   );

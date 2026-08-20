@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { X, Sparkles, TrendingUp, Mail, CreditCard, ArrowRight } from 'lucide-react';
 import { capture } from '@/lib/posthog';
@@ -56,24 +56,36 @@ export default function UpgradeTrigger({
 }: UpgradeTriggerProps) {
   const [dismissed, setDismissed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const viewedFired = useRef(false);
 
   useEffect(() => {
     setMounted(true);
     setDismissed(!!getDismissed()[type]);
   }, [type]);
 
-  if (!mounted || dismissed) return null;
-
   // Never show to paid users (or while tier is still loading).
   // isPaidTier, not a hardcoded essential/pro list — Household and Dispute Pro
   // are paid tiers too and must not be nagged to upgrade.
-  if (!userTier || isPaidTier(userTier)) return null;
+  // Guard: only show when there's something meaningful to say.
+  const hidden =
+    !userTier || isPaidTier(userTier) ||
+    (type === 'bank_scan' && subscriptionCount === 0) ||
+    (type === 'letter_limit' && lettersLimit !== null && (lettersLimit - lettersUsed) > 1) ||
+    (type === 'email_scan' && opportunitiesFound === 0) ||
+    (type === 'price_increase' && priceIncreaseCount === 0);
 
-  // Guard: only show when there's something meaningful to say
-  if (type === 'bank_scan' && subscriptionCount === 0) return null;
-  if (type === 'letter_limit' && lettersLimit !== null && (lettersLimit - lettersUsed) > 1) return null;
-  if (type === 'email_scan' && opportunitiesFound === 0) return null;
-  if (type === 'price_increase' && priceIncreaseCount === 0) return null;
+  const visible = mounted && !dismissed && !hidden;
+
+  // Funnel impression — once per mount, only when the trigger actually
+  // renders. Completes the funnel alongside the existing dismiss/cta events.
+  useEffect(() => {
+    if (visible && !viewedFired.current) {
+      viewedFired.current = true;
+      capture('upgrade_trigger_viewed', { trigger_type: type, tier: userTier });
+    }
+  }, [visible, type, userTier]);
+
+  if (!visible) return null;
 
   const handleDismiss = () => {
     markDismissed(type);

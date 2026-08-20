@@ -6,6 +6,7 @@ import {
   encryptPassword,
   getProviderName,
 } from '@/lib/imap-scanner';
+import { PLAN_LIMITS, getEffectiveTier } from '@/lib/plan-limits';
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,6 +26,34 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
+    }
+
+    // Enforce tier email-connection cap (Free=1, Essential=3, Pro=∞),
+    // mirroring /api/auth/google. Counts active email_connections across
+    // Gmail + Outlook + IMAP. Re-authenticating an ALREADY connected
+    // address (the upsert path below) is allowed — it does not add a
+    // connection — so the existing row for this address is excluded.
+    const tier = await getEffectiveTier(user.id);
+    const maxEmails = PLAN_LIMITS[tier].maxEmails;
+    if (maxEmails !== null) {
+      const { data: existing } = await supabase
+        .from('email_connections')
+        .select('id, email_address')
+        .eq('user_id', user.id)
+        .eq('status', 'active');
+      const count = (existing || []).filter(
+        (c) => (c.email_address || '').toLowerCase() !== email.toLowerCase(),
+      ).length;
+      if (count >= maxEmails) {
+        const errorCopy =
+          tier === 'free'
+            ? `Free plan allows ${maxEmails} email connection. Upgrade to Essential for 3, or Pro for unlimited.`
+            : `Essential plan allows ${maxEmails} email connections. Upgrade to Pro for unlimited.`;
+        return NextResponse.json(
+          { error: errorCopy, upgradeRequired: true, tier, maxEmails },
+          { status: 403 },
+        );
+      }
     }
 
     // Determine IMAP settings: explicit or auto-discovered

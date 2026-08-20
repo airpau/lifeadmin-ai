@@ -15,6 +15,8 @@ import { createClient as createAdmin } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { fetchNewMessages } from '@/lib/dispute-sync/fetchers';
 import type { EmailConnection } from '@/lib/dispute-sync/types';
+import { getEffectiveTier } from '@/lib/plan-limits';
+import { checkClaudeRateLimit } from '@/lib/claude-rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,6 +60,24 @@ export async function POST(request: Request) {
   const { connectionId, threadId } = body as { connectionId?: string; threadId?: string };
   if (!connectionId || !threadId) {
     return NextResponse.json({ error: 'connectionId and threadId required' }, { status: 400 });
+  }
+
+  // Light guard — preview stays available on every tier (it feeds the
+  // create flow, which IS metered via checkUsageLimit), but it still
+  // spends a Haiku call per request, so reuse the existing per-user
+  // Claude rate limit (free: 3/day, paid: 20/hour) as an abuse brake.
+  // We deliberately do NOT recordClaudeCall here, so previews never eat
+  // the shared budget the metered letter routes depend on.
+  // TODO: add a dedicated generous usage counter (e.g. 'preview_run') to
+  // the limits system once usage_logs actions grow beyond
+  // complaint_generated/scan_run — neither existing type fits previews.
+  const tier = await getEffectiveTier(user.id);
+  const rateLimit = await checkClaudeRateLimit(user.id, tier);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please try again later.' },
+      { status: 429 },
+    );
   }
 
   const admin = getAdmin();

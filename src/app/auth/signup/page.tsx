@@ -313,7 +313,11 @@ export default function SignupPage() {
           body: JSON.stringify({ email, name: firstName.trim(), userId: data.user!.id }),
         }).catch(() => {});
 
-        capture('user_signed_up', { email, referral: refCode || undefined, ...utmUpdate });
+        // Renamed from 'user_signed_up' — the server fires that once per
+        // new user from /api/auth/welcome (captureServer), so the client
+        // copy double-counted email/password signups. This is now a
+        // distinct funnel step: form submitted client-side.
+        capture('user_signup_submitted', { email, referral: refCode || undefined, ...utmUpdate });
 
         // Store awc for fallback pixel — fired on dashboard (confirmation page)
         if (awinAwc) sessionStorage.setItem('awin_awc', awinAwc);

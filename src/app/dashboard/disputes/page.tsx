@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   FileText, Sparkles, Download, Copy, CheckCircle, CheckCircle2, Clock, History,
   RotateCcw, RefreshCw, X, ThumbsUp, Pencil, Volume2, Loader2,
-  Plus, MessageSquare, Phone, Mail, Upload, ChevronLeft, Send,
+  Plus, MessageSquare, Phone, Mail, Upload, ChevronLeft, ChevronDown, Send,
   AlertCircle, MoreVertical, StickyNote, Shield, Paperclip, Eye,
   Trophy, PoundSterling, TrendingUp, Scale, Trash2, ArrowRight, Bell,
   ExternalLink,
@@ -254,6 +254,38 @@ function PreviewConfirmModal({ formData, issueLabel, onConfirm, onClose }: {
 }
 
 // ============================================================
+// Collapsible section — simple accordion row used to demote the
+// secondary panels (watchdog, provider info, evidence, escalation)
+// below the fold without deleting them. Children mount lazily so
+// collapsed panels don't fire their fetches until opened.
+// ============================================================
+function CollapsibleSection({ title, icon: Icon, defaultOpen = false, children }: {
+  title: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card mb-3" style={{ padding: 0, overflow: 'hidden' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3.5 text-left hover:bg-slate-50 transition-colors"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+          {Icon && <Icon className="h-4 w-4 text-slate-500" />}
+          {title}
+        </span>
+        <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  );
+}
+
+// ============================================================
 // Dispute Detail View — the thread
 // ============================================================
 function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () => void }) {
@@ -271,11 +303,19 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   const [contractUploading, setContractUploading] = useState(false);
   const [justExtracted, setJustExtracted] = useState(false);
   const [providerInfo, setProviderInfo] = useState<any>(null);
-  // Collapse all but the most recent timeline entry by default so
-  // long disputes are skimmable. User taps "Show full history" to
+  // Collapse all but the most recent timeline entries by default so
+  // long disputes are skimmable. User taps "Show full timeline" to
   // unfurl the rest.
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
+  // Auto-refresh key for the two AI panels (agent action row + story).
+  // Bumped whenever the dispute data changes (correspondence added,
+  // letter saved, resolve completed, watchdog change) and by the single
+  // Refresh control on the "What happens next" hero card, so both
+  // panels refetch without their own manual refresh buttons.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [storyOpen, setStoryOpen] = useState(false);
+  const [overviewNextAction, setOverviewNextAction] = useState<string | null>(null);
 
   const fetchDispute = async () => {
     try {
@@ -294,6 +334,15 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
     }
   };
 
+  const bumpRefresh = () => setRefreshKey(k => k + 1);
+
+  // Post-mutation refresh: reload the dispute AND nudge the agent
+  // action row + AI story to refetch via refreshKey.
+  const refreshAll = () => {
+    fetchDispute();
+    bumpRefresh();
+  };
+
   // Mark unread replies as read on first view so the disputes-list
   // "NEW REPLY · N" badge clears. Fire-and-forget — it's purely a
   // counter reset; failure mode is just the badge sticking around.
@@ -309,6 +358,17 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
     if (detailSearchParams.get('share') !== 'win') return;
     if (isWon(dispute.status)) setShowShareMyWin(true);
   }, [dispute, detailSearchParams]);
+
+  // Auto-open the Resolve Dispute modal when arriving from an outcome
+  // check-in nudge (?resolve=<disputeId>, cron/outcome-checkin) once the
+  // dispute payload is loaded and confirms it is still unresolved. The
+  // param must match THIS dispute so a stale query string cannot open
+  // the modal on the wrong case.
+  useEffect(() => {
+    if (!dispute) return;
+    if (detailSearchParams.get('resolve') !== disputeId) return;
+    if (!isResolved(dispute.status)) setShowResolveModal(true);
+  }, [dispute, disputeId, detailSearchParams]);
 
   const FOLLOWUP_CAPTIONS = [
     { icon: '👀', text: 'Reading their response...' },
@@ -363,7 +423,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         body: JSON.stringify({ status: newStatus }),
       });
       setStatusDropdown(false);
-      fetchDispute();
+      refreshAll();
     } catch {
       alert('Failed to update status.');
     } finally {
@@ -404,14 +464,16 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         pills: data.rightsPills || [],
       });
 
-      fetchDispute();
+      // A letter was just saved to the thread: refresh the dispute and
+      // the AI panels together.
+      refreshAll();
     } catch (error: any) {
       // Safari surfaces fetch network failures (Vercel 504, TLS, etc.)
       // as the cryptic "Load failed". Translate to something useful.
       const msg = error?.message ?? '';
       if (msg.toLowerCase().includes('load failed') || msg.toLowerCase().includes('failed to fetch')) {
         alert(
-          'The letter engine took too long to respond. This usually clears in 30 seconds — please try again. ' +
+          'The letter engine took too long to respond. This usually clears in 30 seconds, please try again. ' +
           'If it keeps happening, the dispute thread may be very long; try generating from the most recent message only.',
         );
       } else {
@@ -472,18 +534,66 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       }
     : undefined;
 
+  // Newest at the top: overrides the API's ASC sort so the page reads
+  // top-to-bottom from "what happened most recently" backwards through
+  // history. Collapsed by default past the first few entries; "Show
+  // full timeline" expands the rest.
+  //
+  // created_at is the tiebreaker so a row added now via the
+  // manual-paste modal beats older same-date rows even if the user
+  // back-dated the entry_date. Without this, a paste whose entry_date
+  // got stamped to start-of-day UTC could sort below other same-day
+  // events from earlier in the day.
+  const COMPANY_ENTRY_TYPES = ['company_email', 'company_letter', 'company_response'];
+  const orderedTimeline = [...(dispute.correspondence ?? [])].sort((a, b) => {
+    const aDate = new Date((a.entry_date as any) || (a as any).occurred_at || 0).getTime();
+    const bDate = new Date((b.entry_date as any) || (b as any).occurred_at || 0).getTime();
+    if (bDate !== aDate) return bDate - aDate;
+    const aCreated = new Date((a as any).created_at || 0).getTime();
+    const bCreated = new Date((b as any).created_at || 0).getTime();
+    return bCreated - aCreated;
+  });
+  const TIMELINE_HEAD = 3;
+  const visibleTimeline = (orderedTimeline.length > TIMELINE_HEAD && !showFullHistory)
+    ? orderedTimeline.slice(0, TIMELINE_HEAD)
+    : orderedTimeline;
+  const hiddenTimelineCount = Math.max(0, orderedTimeline.length - visibleTimeline.length);
+
+  // Latest genuine watchdog-imported supplier reply. Pinned above the
+  // timeline ONLY when the collapsed view would otherwise hide it (a
+  // freshly saved letter can out-sort the reply by created_at tiebreak,
+  // the bug Paul hit on OneStream 2026-04-29).
+  const latestDetectedReply = orderedTimeline.find(
+    (c) => COMPANY_ENTRY_TYPES.includes(c.entry_type) && (c as any).detected_from_email === true,
+  ) ?? null;
+  const pinLatestReply = !!latestDetectedReply
+    && !visibleTimeline.some((e) => e.id === latestDetectedReply.id);
+
+  // Does the user owe the supplier a reply? True when the newest
+  // letter-or-reply in the thread is a company message the classifier
+  // hasn't dismissed as an auto-ack.
+  const newestThreadMessage = orderedTimeline.find(
+    (c) => c.entry_type === 'ai_letter' || COMPANY_ENTRY_TYPES.includes(c.entry_type),
+  );
+  const hasUnansweredReply = !!newestThreadMessage
+    && COMPANY_ENTRY_TYPES.includes(newestThreadMessage.entry_type)
+    && newestThreadMessage.ai_respond_needed !== false;
+
+  // Fallback CTA for the agent action row: if the agent has nothing
+  // pending but the supplier is waiting on a reply, surface the AI
+  // overview's next action so the hero card never says "all caught up"
+  // while the story says a reply is needed.
+  const agentFallback = !isResolved(dispute.status) && hasUnansweredReply
+    ? {
+        label: 'Write your reply',
+        reason: overviewNextAction
+          || `${dispute.provider_name} has replied and is waiting on your response.`,
+        onClick: generateFollowUp,
+      }
+    : null;
+
   return (
     <div className="max-w-4xl">
-      <div className="mb-4 space-y-3">
-        <DisputeAgentBanner disputeId={disputeId} />
-        {/* Ombudsman escalation pack. Renders in every state: it shows the
-            routing (which body covers this dispute, and whether the user
-            is eligible yet) for free, and gates only the drafted letter
-            plus the evidence bundle behind the £14.99 one-off or Dispute
-            Pro. Self-contained, so it drops in without refactoring this
-            page, same pattern as DisputeAgentBanner. */}
-        <EscalationPackCard disputeId={disputeId} />
-      </div>
       {letterModal && (
         <LetterModal
           content={letterModal.content}
@@ -492,7 +602,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           rightsPills={letterModal.pills}
           disputeId={disputeId}
           providerName={dispute?.provider_name}
-          onSentMarked={fetchDispute}
+          onSentMarked={refreshAll}
           onClose={() => setLetterModal(null)}
           threadReply={threadReplyContext}
           alreadySent={letterAlreadyLogged(dispute, letterModal.content)}
@@ -503,7 +613,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         <AddCorrespondenceModal
           disputeId={disputeId}
           onClose={() => setShowAddModal(false)}
-          onAdded={fetchDispute}
+          onAdded={refreshAll}
         />
       )}
 
@@ -511,8 +621,9 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         <ResolveDisputeModal
           disputeId={disputeId}
           disputedAmount={dispute.disputed_amount}
+          providerName={dispute.provider_name}
           onClose={() => setShowResolveModal(false)}
-          onResolved={fetchDispute}
+          onResolved={refreshAll}
         />
       )}
 
@@ -539,9 +650,9 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         />
       )}
 
-      {/* Back link + Variant A dispute-detail header (batch7 DisputeDetail).
-          Data-wired: dispute.provider_name, issue_type, disputed_amount,
-          money_recovered (nullable), status label + resolved flag. */}
+      {/* 1. Compact header: back link, provider + dispute type, amount
+          inline, status chip (tap to change status), edit tucked into
+          an icon button. */}
       <button
         onClick={onBack}
         className="cta-ghost"
@@ -550,72 +661,145 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         <ChevronLeft className="h-3.5 w-3.5" /> Back to all disputes
       </button>
 
-      <div className="page-title-row" style={{marginBottom:14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12}}>
-        <div>
-          <h1 className="page-title" style={{fontSize:26}}>{dispute.provider_name}</h1>
-          <p className="page-sub">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="page-title" style={{ fontSize: 24, marginBottom: 2 }}>{dispute.provider_name}</h1>
+          <p className="page-sub" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 10, rowGap: 2, alignItems: 'center' }}>
+            <span>{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</span>
+            {dispute.disputed_amount && dispute.disputed_amount > 0 ? (
+              <span className="text-amber-600 font-semibold">£{dispute.disputed_amount.toFixed(2)} disputed</span>
+            ) : null}
+            {dispute.money_recovered && dispute.money_recovered > 0 ? (
+              <span className="text-emerald-600 font-semibold">£{Number(dispute.money_recovered).toFixed(2)} recovered</span>
+            ) : null}
+          </p>
         </div>
-        <button
-          onClick={() => setEditingDetails(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm text-slate-700 font-medium transition-colors"
-          title="Edit provider, amount, summary and outcome"
-        >
-          <Pencil className="h-3.5 w-3.5" /> Edit details
-        </button>
-      </div>
-
-      {/* Top status strip — 4 tiles, Variant A pattern */}
-      <div className="kpi-row c4" style={{marginBottom:16}}>
-        <div className="kpi-card">
-          <div className="k-label">Status</div>
-          <div className="k-val" style={{fontSize:15,fontWeight:700,letterSpacing:'-.01em'}}>{statusConf.label}</div>
-          <div className="k-delta">{isResolved(dispute.status) ? 'Resolved' : 'In progress'}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="k-label">Refund target</div>
-          <div className="k-val amber">
-            {dispute.disputed_amount && dispute.disputed_amount > 0
-              ? `£${dispute.disputed_amount.toFixed(2)}`
-              : '—'}
-          </div>
-          <div className="k-delta">Amount being disputed</div>
-        </div>
-        <div className="kpi-card">
-          <div className="k-label">Provider</div>
-          <div className="k-val" style={{fontSize:15,fontWeight:700,letterSpacing:'-.01em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-            {dispute.provider_name}
-          </div>
-          <div className="k-delta">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="k-label">Money recovered</div>
-          <div className="k-val green">
-            {dispute.money_recovered && dispute.money_recovered > 0
-              ? `£${Number(dispute.money_recovered).toFixed(2)}`
-              : '—'}
-          </div>
-          <div className="k-delta">
-            {dispute.money_recovered && dispute.money_recovered > 0
-              ? 'Won · credited'
-              : 'Awaiting outcome'}
-          </div>
-        </div>
-      </div>
-
-      {/* Thread */}
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <h2 className="text-lg font-bold text-slate-900">Your dispute timeline</h2>
-          <div className="flex gap-2">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="relative">
             <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 text-slate-600 rounded-lg text-sm transition-all"
+              onClick={() => !isResolved(dispute.status) && setStatusDropdown(!statusDropdown)}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium whitespace-nowrap ${isResolved(dispute.status) ? '' : 'cursor-pointer hover:opacity-80'} ${statusConf.className}`}
+              title={isResolved(dispute.status) ? undefined : 'Change status'}
             >
-              <Plus className="h-4 w-4" /> Add update
+              {statusUpdating ? (
+                <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+              ) : null}
+              {statusConf.label}
             </button>
+            {statusDropdown && !isResolved(dispute.status) && (
+              <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200/50 rounded-lg shadow-xl z-10 min-w-[200px]">
+                <div className="px-3 py-2 border-b border-slate-200/50">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Update Status</p>
+                </div>
+                {ACTIVE_STATUSES.map((key) => {
+                  const conf = STATUS_CONFIG[key];
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => updateStatus(key)}
+                      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-all flex items-center gap-2 ${
+                        dispute.status === key ? 'text-amber-600' : 'text-slate-600'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        key === 'open' ? 'bg-amber-500' :
+                        key === 'in_progress' ? 'bg-blue-400' :
+                        key === 'awaiting_response' ? 'bg-purple-400' :
+                        key === 'escalated' ? 'bg-orange-400' :
+                        'bg-red-400'
+                      }`} />
+                      {conf.label}
+                      {dispute.status === key && <CheckCircle className="h-3 w-3 ml-auto" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setEditingDetails(true)}
+            aria-label="Edit details"
+            className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+            title="Edit provider, amount, summary and outcome"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Progress steps */}
+      <DisputeProgressTracker dispute={dispute} providerInfo={providerInfo} />
+
+      {/* 3. What happens next: one hero card merging the dispute agent
+          recommendation (action row) and the AI story (collapsed behind
+          "Full story"). One Refresh control updates both. */}
+      <div className="card mb-6">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+              <Sparkles className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900" style={{ margin: 0 }}>What happens next</h2>
+              <p className="text-xs text-slate-500" style={{ margin: 0 }}>Your dispute agent keeps this up to date</p>
+            </div>
+          </div>
+          <button
+            onClick={bumpRefresh}
+            className="text-xs text-emerald-700 hover:text-emerald-900 inline-flex items-center gap-1 shrink-0"
+            title="Refresh the recommendation and the story"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Refresh
+          </button>
+        </div>
+
+        <DisputeAgentBanner disputeId={disputeId} refreshKey={refreshKey} fallback={agentFallback} />
+
+        {isWon(dispute.status) && (
+          <button
+            onClick={() => setShowShareMyWin(true)}
+            className="mt-3 text-xs px-3 py-1.5 rounded-lg font-semibold transition-all hover:opacity-90"
+            style={{ background: '#34d399', color: '#0a1628' }}
+          >
+            🎉 Share My Win
+          </button>
+        )}
+
+        <div className="mt-3 border-t border-slate-200/60 pt-3">
+          <button
+            type="button"
+            onClick={() => setStoryOpen(o => !o)}
+            aria-expanded={storyOpen}
+            className="text-xs font-medium text-slate-600 hover:text-slate-900 inline-flex items-center gap-1"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${storyOpen ? 'rotate-180' : ''}`} />
+            {storyOpen ? 'Hide the full story' : 'Full story'}
+          </button>
+          {/* Kept mounted while collapsed (hidden, not unmounted) so the
+              hero can fall back to the story's next action and stay in
+              sync with refreshKey even before it is first opened. */}
+          <div className={storyOpen ? 'mt-3' : 'hidden'}>
+            <DisputeOverviewCard
+              disputeId={dispute.id}
+              refreshKey={refreshKey}
+              embedded
+              onLoaded={(d) => setOverviewNextAction(d.next_action || null)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Timeline: main actions directly above the collapsed thread */}
+      <div className="mb-6">
+        <h2 className="text-lg font-bold text-slate-900 mb-3">Your dispute timeline</h2>
+
+        {!isResolved(dispute.status) && (dispute.correspondence?.length ?? 0) > 0 && (
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
             <button
               onClick={generateFollowUp}
-              className="flex items-center gap-2 px-3 py-2 cta font-semibold rounded-lg text-sm transition-all disabled:opacity-50 min-w-[200px] justify-center"
+              disabled={generating}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 cta font-semibold rounded-lg text-sm transition-all disabled:opacity-50 sm:flex-1"
             >
               {generating ? (
                 <>
@@ -629,8 +813,33 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                 </>
               )}
             </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-600 rounded-lg text-sm transition-all sm:flex-1"
+            >
+              <Plus className="h-4 w-4" /> Add their response
+            </button>
+            <button
+              onClick={() => setShowResolveModal(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-600 rounded-lg text-sm transition-all border border-amber-200 font-medium sm:flex-1"
+            >
+              <Trophy className="h-4 w-4" /> Resolve dispute
+            </button>
           </div>
-        </div>
+        )}
+
+        {/* Latest supplier reply, pinned only when the collapsed
+            timeline would otherwise hide it behind "Show full
+            timeline" (fresh letter out-sorting the reply). */}
+        {pinLatestReply && (
+          <LatestSupplierReplyCard
+            correspondence={dispute.correspondence ?? []}
+            providerName={dispute.provider_name}
+            userHasGmail={(dispute as any).user_has_gmail}
+            userHasOutlook={(dispute as any).user_has_outlook}
+            onDraftReply={generateFollowUp}
+          />
+        )}
 
         {(!dispute.correspondence || dispute.correspondence.length === 0) ? (
           <div className="card p-12 text-center">
@@ -656,31 +865,8 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           </div>
         ) : (
           <>
-          {(() => {
-            // Newest at the top — overrides the API\'s ASC sort so the
-            // page reads top-to-bottom from "what happened most recently"
-            // backwards through history. Collapsed by default past the
-            // first entry; "Show full history" expands the rest.
-            //
-            // created_at is the tiebreaker so a row added now via the
-            // manual-paste modal beats older same-date rows even if the
-            // user back-dated the entry_date. Without this, a paste
-            // whose entry_date got stamped to start-of-day UTC could
-            // sort below other same-day events from earlier in the day.
-            const orderedAll = [...(dispute.correspondence ?? [])].sort((a, b) => {
-              const aDate = new Date((a.entry_date as any) || (a as any).occurred_at || 0).getTime();
-              const bDate = new Date((b.entry_date as any) || (b as any).occurred_at || 0).getTime();
-              if (bDate !== aDate) return bDate - aDate;
-              const aCreated = new Date((a as any).created_at || 0).getTime();
-              const bCreated = new Date((b as any).created_at || 0).getTime();
-              return bCreated - aCreated;
-            });
-            const HEAD = 1;
-            const visible = (orderedAll.length > HEAD && !showFullHistory) ? orderedAll.slice(0, HEAD) : orderedAll;
-            const hidden = Math.max(0, orderedAll.length - visible.length);
-            return (
           <div className="space-y-4">
-            {visible.map((entry, index) => {
+            {visibleTimeline.map((entry, index) => {
               const config = ENTRY_TYPE_CONFIG[entry.entry_type] || ENTRY_TYPE_CONFIG.user_note;
               const Icon = config.icon;
               const isAiLetter = entry.entry_type === 'ai_letter';
@@ -689,7 +875,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
               return (
                 <div
-                  ref={index === (dispute.correspondence?.length || 0) - 1 ? latestLetterRef : null}
+                  ref={index === 0 ? latestLetterRef : null}
                   key={entry.id}
                   className={`border rounded-2xl p-5 transition-all ${config.className} ${
                     isAiLetter ? 'cursor-pointer hover:border-emerald-500/50' : ''
@@ -712,7 +898,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                         {config.label}
                       </span>
                       {entry.title && (
-                        <span className="text-slate-500 text-sm">— {entry.title}</span>
+                        <span className="text-slate-500 text-sm">· {entry.title}</span>
                       )}
                       {entry.detected_from_email && (
                         <span className="text-[10px] bg-emerald-500/15 text-emerald-600 border border-emerald-500/20 px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wide">
@@ -930,188 +1116,42 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                 </div>
               );
             })}
-            {hidden > 0 && (
+            {hiddenTimelineCount > 0 && (
               <button
                 onClick={() => setShowFullHistory(true)}
                 className="w-full text-center py-3 px-4 rounded-xl border border-dashed border-slate-300 hover:border-emerald-400 hover:bg-emerald-50/40 text-sm font-medium text-slate-600 hover:text-emerald-700 transition-all"
               >
-                Show full history ({hidden} earlier {hidden === 1 ? 'entry' : 'entries'})
+                Show full timeline ({orderedTimeline.length} entries)
               </button>
             )}
-            {showFullHistory && orderedAll.length > HEAD && (
+            {showFullHistory && orderedTimeline.length > TIMELINE_HEAD && (
               <button
                 onClick={() => setShowFullHistory(false)}
                 className="w-full text-center py-2 px-4 text-xs font-medium text-slate-500 hover:text-slate-900"
               >
-                Collapse history
+                Show recent only
               </button>
             )}
           </div>
-            );
-          })()}
-
-          {/* Action buttons at bottom of thread */}
-          {!isResolved(dispute.status) && (
-            <div className="flex flex-col sm:flex-row gap-3 mt-6 pt-4 border-t border-slate-200/30">
-              <button
-                onClick={generateFollowUp}
-                disabled={generating}
-                className="flex items-center justify-center gap-2 px-5 py-3 cta font-semibold rounded-xl text-sm transition-all disabled:opacity-50 flex-1"
-              >
-                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Write next letter
-              </button>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center justify-center gap-2 px-5 py-3 bg-white hover:bg-slate-50 text-slate-600 rounded-xl text-sm transition-all flex-1"
-              >
-                <Plus className="h-4 w-4" /> Add their response
-              </button>
-              <button
-                onClick={() => setShowResolveModal(true)}
-                className="flex items-center justify-center gap-2 px-5 py-3 bg-amber-100 hover:bg-amber-200 text-amber-600 rounded-xl text-sm transition-all border border-amber-200 font-medium flex-1"
-              >
-                <Trophy className="h-3.5 w-3.5" /> Resolve dispute
-              </button>
-            </div>
-          )}
           </>
         )}
       </div>
 
 
-      {/* Legacy detail card retained for the status-change dropdown + resolve
-          action. The h1/subtitle inside are now hidden — the page-title-row
-          above replaces them visually. */}
-      <div className="card mb-6">
-        <div className="flex items-start justify-between mb-3">
-          <div style={{display:'none'}}>
-            <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
-              {dispute.provider_name}
-            </h1>
-            <p className="text-slate-600 text-sm mt-1">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {dispute.disputed_amount && dispute.disputed_amount > 0 && (
-              <span className="text-amber-600 font-bold text-lg">£{dispute.disputed_amount.toFixed(2)}</span>
-            )}
-            <div className="relative">
-              <button
-                onClick={() => !isResolved(dispute.status) && setStatusDropdown(!statusDropdown)}
-                className={`text-xs px-3 py-1.5 rounded-full font-medium ${isResolved(dispute.status) ? '' : 'cursor-pointer hover:opacity-80'} ${statusConf.className}`}
-              >
-                {statusUpdating ? (
-                  <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
-                ) : null}
-                {statusConf.label}
-              </button>
-              {statusDropdown && !isResolved(dispute.status) && (
-                <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200/50 rounded-lg shadow-xl z-10 min-w-[200px]">
-                  <div className="px-3 py-2 border-b border-slate-200/50">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Update Status</p>
-                  </div>
-                  {ACTIVE_STATUSES.map((key) => {
-                    const conf = STATUS_CONFIG[key];
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => updateStatus(key)}
-                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-all flex items-center gap-2 ${
-                          dispute.status === key ? 'text-amber-600' : 'text-slate-600'
-                        }`}
-                      >
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          key === 'open' ? 'bg-amber-500' :
-                          key === 'in_progress' ? 'bg-blue-400' :
-                          key === 'awaiting_response' ? 'bg-purple-400' :
-                          key === 'escalated' ? 'bg-orange-400' :
-                          'bg-red-400'
-                        }`} />
-                        {conf.label}
-                        {dispute.status === key && <CheckCircle className="h-3 w-3 ml-auto" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <p className="text-slate-600 text-sm">{dispute.issue_summary}</p>
-        {dispute.desired_outcome && (
-          <p className="text-slate-500 text-xs mt-2">Outcome wanted: {dispute.desired_outcome}</p>
-        )}
-        <div className="flex items-center justify-between mt-3">
-          <p className="text-slate-600 text-xs">Started {formatDate(dispute.created_at)}</p>
-          {!isResolved(dispute.status) && (
-            <button
-              onClick={() => setShowResolveModal(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-100 text-amber-600 hover:bg-amber-300/20 rounded-lg transition-all border border-amber-300/20 font-medium"
-            >
-              <Trophy className="h-3.5 w-3.5" />
-              Resolve Dispute
-            </button>
-          )}
-          {isResolved(dispute.status) && dispute.money_recovered > 0 && (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20 font-medium">
-                <TrendingUp className="h-3.5 w-3.5" />
-                Recovered £{dispute.money_recovered.toFixed(2)}
-              </div>
-              {isWon(dispute.status) && (
-                <button
-                  onClick={() => setShowShareMyWin(true)}
-                  className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all hover:opacity-90"
-                  style={{ background: '#34d399', color: '#0a1628' }}
-                >
-                  🎉 Share My Win
-                </button>
-              )}
-            </div>
-          )}
-          {isResolved(dispute.status) && !(dispute.money_recovered > 0) && isWon(dispute.status) && (
-            <button
-              onClick={() => setShowShareMyWin(true)}
-              className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all hover:opacity-90"
-              style={{ background: '#34d399', color: '#0a1628' }}
-            >
-              🎉 Share My Win
-            </button>
-          )}
-        </div>
-      </div>
+      {/* 5. Everything else demoted into collapsible sections */}
 
-      {/* AI overview — summary + latest update + next action.
-          Renders above the progress tracker so the user knows where
-          they stand before touching anything else. */}
-      <DisputeOverviewCard disputeId={dispute.id} />
+      {/* Watchdog: email reply sync */}
+      <CollapsibleSection title="Email watchdog" icon={Bell}>
+        <WatchdogCard
+          disputeId={dispute.id}
+          providerName={dispute.provider_name}
+          onChanged={refreshAll}
+        />
+      </CollapsibleSection>
 
-      {/* Latest reply from the supplier — pinned at the top so it's
-          never hidden behind "Show full history" when the user's
-          most-recent letter sorts above it by created_at tiebreak.
-          Renders nothing when there are no supplier replies yet. */}
-      <LatestSupplierReplyCard
-        correspondence={dispute.correspondence ?? []}
-        providerName={dispute.provider_name}
-        userHasGmail={(dispute as any).user_has_gmail}
-        userHasOutlook={(dispute as any).user_has_outlook}
-        onDraftReply={generateFollowUp}
-      />
-
-      {/* Progress Tracker */}
-      <DisputeProgressTracker dispute={dispute} providerInfo={providerInfo} />
-
-      {/* Watchdog — email reply sync */}
-      <WatchdogCard
-        disputeId={dispute.id}
-        providerName={dispute.provider_name}
-        onChanged={fetchDispute}
-      />
-
-      {/* Provider Info Card */}
+      {/* Provider info */}
       {providerInfo && (
-        <div className="card mb-6">
-          <h3 className="text-sm font-semibold text-slate-900 mb-3">About {providerInfo.display_name}</h3>
+        <CollapsibleSection title={`About ${providerInfo.display_name}`} icon={FileText}>
           <div className="grid sm:grid-cols-2 gap-3 text-xs">
             {providerInfo.cancellation_method && (
               <div className="bg-white rounded-lg px-3 py-2">
@@ -1155,14 +1195,22 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               View {providerInfo.display_name} T&Cs
             </a>
           )}
-        </div>
+        </CollapsibleSection>
       )}
 
-      {/* Contract Upload Section */}
-      <div className="card mb-6">
-        <div className="flex items-center gap-2 mb-3">
-          <Shield className="h-5 w-5 text-purple-400" />
-          <h2 className="text-lg font-bold text-slate-900">Your contract</h2>
+      {/* Evidence & contract: the dispute details plus contract upload
+          and extracted terms. */}
+      <CollapsibleSection title="Evidence & contract" icon={Shield}>
+        <div className="mb-4">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">What happened</p>
+          <p className="text-sm text-slate-600">{dispute.issue_summary}</p>
+          {dispute.desired_outcome && (
+            <>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide mt-3 mb-1">What you want</p>
+              <p className="text-sm text-slate-600">{dispute.desired_outcome}</p>
+            </>
+          )}
+          <p className="text-slate-500 text-xs mt-3">Started {formatDate(dispute.created_at)}</p>
         </div>
 
         {dispute.contract_extractions && dispute.contract_extractions.length > 0 ? (
@@ -1170,7 +1218,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             {justExtracted && (
               <div className="flex items-center gap-2 mb-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
                 <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <p className="text-xs text-emerald-600 font-medium">Contract analysed successfully — terms loaded below</p>
+                <p className="text-xs text-emerald-600 font-medium">Contract analysed successfully: terms loaded below</p>
               </div>
             )}
 
@@ -1310,7 +1358,16 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             <p className="text-[11px] text-slate-600 mt-2">We scan the contract, extract key terms, and flag anything unfair. The file is stored securely.</p>
           </div>
         )}
-      </div>
+      </CollapsibleSection>
+
+      {/* Escalation pack. Shows the routing (which body covers this
+          dispute, and whether the user is eligible yet) for free, and
+          gates only the drafted letter plus the evidence bundle behind
+          the £14.99 one-off or Dispute Pro. Mounts lazily when the
+          section is opened. */}
+      <CollapsibleSection title="Escalation pack" icon={Scale}>
+        <EscalationPackCard disputeId={disputeId} />
+      </CollapsibleSection>
 
       {/* Tip */}
       <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-4 py-3">
@@ -2268,10 +2325,20 @@ function ComplaintsPageInner() {
   // ?dispute=<uuid> deep-links straight to the detail view (used by
   // WhatsApp/Telegram Pocket Agent alerts). Validate UUID shape so we
   // don't crash on a bad query string.
+  // ?resolve=<uuid> (outcome check-in nudges, cron/outcome-checkin)
+  // does the same but also auto-opens the Resolve Dispute modal once
+  // the dispute loads — see the effect in DisputeDetail.
   useEffect(() => {
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const disputeParam = searchParams.get('dispute');
-    if (disputeParam && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(disputeParam)) {
+    const resolveParam = searchParams.get('resolve');
+    if (disputeParam && uuidRe.test(disputeParam)) {
       setSelectedDisputeId(disputeParam);
+      setView('detail');
+      return;
+    }
+    if (resolveParam && uuidRe.test(resolveParam)) {
+      setSelectedDisputeId(resolveParam);
       setView('detail');
       return;
     }

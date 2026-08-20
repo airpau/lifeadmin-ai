@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { normaliseMerchantName, categoriseTransaction } from '@/lib/merchant-normalise';
 import { cleanMerchantName, isLoanOrMortgage, getReportCategoryLabel, getSwitchDifficulty } from '@/lib/merchant-utils';
 import { calculateHealthScore, type HealthScore } from '@/lib/financial-health-score';
+import { normalizeSpendingCategoryKey } from '@/lib/money-hub-classification';
 
 const getAdmin = () =>
   createClient(
@@ -86,6 +87,65 @@ export interface DisputeItem {
   issue: string;
   dateFiled: string;
   status: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  v4 section types (2026-08-20)                                      */
+/* ------------------------------------------------------------------ */
+
+export interface EmailFindingsSummary {
+  totalFindings: number;
+  newFindings: number;
+  actionedFindings: number;
+  refundOpportunities: number;
+  /** Sum of `amount` across refund opportunities and other money-bearing findings. */
+  totalPotentialValue: number;
+  urgentCount: number;
+  byType: Array<{ type: string; count: number; totalAmount: number }>;
+}
+
+export interface UpcomingPaymentsSummary {
+  next30DayCount: number;
+  totalCommitted: number;
+  items: Array<{ counterparty: string; amount: number; expectedDate: string; source: string }>;
+}
+
+export interface VerifiedSavingsSummary {
+  count: number;
+  totalSaved: number;
+  totalAnnualSaving: number;
+  items: Array<{ savingType: string; title: string; amountSaved: number; annualSaving: number; confirmedAt: string | null }>;
+}
+
+export interface DisputesRecoverySummary {
+  totalDisputes: number;
+  totalRecovered: number;
+  wins: number;
+  partialWins: number;
+  lost: number;
+  inProgress: number;
+  averageResolutionDays: number | null;
+}
+
+export interface BudgetVsActual {
+  category: string;
+  label: string;
+  monthlyLimit: number;
+  actualMonthlyAverage: number;
+  status: 'under' | 'close' | 'over';
+}
+
+export interface NetWorthSummary {
+  totalAssets: number;
+  totalLiabilities: number;
+  netWorth: number;
+  goals: Array<{ name: string; targetAmount: number; currentAmount: number; progressPct: number }>;
+}
+
+export interface ReportWindow {
+  start: string; // ISO date of window start
+  end: string;   // ISO date of window end
+  label: string; // e.g. "September 2025 to August 2026"
 }
 
 /* ------------------------------------------------------------------ */
@@ -258,49 +318,26 @@ export interface AnnualReportData {
       explored: number;
     };
   };
+
+  // v4 additions (2026-08-20). All optional so previously saved reports
+  // keep rendering without migration.
+  /** True rolling 12-month window this report covers. */
+  reportWindow?: ReportWindow;
+  /** Summary of email scanner findings (refund opportunities etc.). */
+  emailFindings?: EmailFindingsSummary;
+  /** Committed outgoing payments over the next 30 days. */
+  upcomingPayments?: UpcomingPaymentsSummary;
+  /** Confirmed, verified savings (dispute wins, reverted increases...). */
+  verifiedSavings?: VerifiedSavingsSummary;
+  /** Recovery story built from dispute outcomes. */
+  disputesDetail?: DisputesRecoverySummary;
+  /** Per-category budget vs actual average monthly spend. */
+  budgetsVsActual?: BudgetVsActual[];
+  /** Assets minus liabilities plus goal progress. */
+  netWorth?: NetWorthSummary;
+  /** 3-5 AI-suggested next actions (falls back to data-driven list). */
+  nextActions?: string[];
 }
-
-/* ------------------------------------------------------------------ */
-/*  Deals data for comparison                                          */
-/* ------------------------------------------------------------------ */
-
-interface DealForComparison {
-  provider: string;
-  headline: string;
-  monthlyPrice: number;
-  awinMid: string;
-  providerUrl: string;
-  category: string;
-}
-
-const AWIN_AFF_ID = '2825812';
-
-function buildAwinUrl(awinMid: string, providerUrl: string): string {
-  return `https://www.awin1.com/cread.php?awinmid=${awinMid}&awinaffid=${AWIN_AFF_ID}&ued=${encodeURIComponent(providerUrl)}`;
-}
-
-// Inline key deals for quick comparison (from comparison-engine.ts)
-const DEALS_BY_CATEGORY: Record<string, DealForComparison[]> = {
-  energy: [
-    { provider: 'OVO Energy', headline: 'Fixed rate', monthlyPrice: 110, awinMid: '5318', providerUrl: 'https://www.ovoenergy.com', category: 'energy' },
-    { provider: 'EDF', headline: 'Fixed price tariffs', monthlyPrice: 115, awinMid: '1887', providerUrl: 'https://www.edfenergy.com', category: 'energy' },
-    { provider: 'MoneySuperMarket', headline: 'Compare all suppliers', monthlyPrice: 100, awinMid: '22713', providerUrl: 'https://www.moneysupermarket.com/gas-and-electricity/', category: 'energy' },
-  ],
-  broadband: [
-    { provider: 'Community Fibre', headline: 'London full fibre', monthlyPrice: 25, awinMid: '19595', providerUrl: 'https://communityfibre.co.uk', category: 'broadband' },
-    { provider: 'Sky', headline: 'Ultrafast broadband', monthlyPrice: 30, awinMid: '11005', providerUrl: 'https://www.sky.com/shop/broadband', category: 'broadband' },
-    { provider: 'TalkTalk', headline: 'Budget broadband', monthlyPrice: 22, awinMid: '5765', providerUrl: 'https://www.talktalk.co.uk/shop/broadband', category: 'broadband' },
-  ],
-  mobile: [
-    { provider: 'Lebara', headline: 'SIM-only from £5', monthlyPrice: 5, awinMid: '30681', providerUrl: 'https://www.lebara.co.uk/en/best-sim-only-deals.html', category: 'mobile' },
-    { provider: 'iD Mobile', headline: 'SIM-only from £6', monthlyPrice: 8, awinMid: '6366', providerUrl: 'https://www.idmobile.co.uk', category: 'mobile' },
-    { provider: 'SMARTY', headline: 'No contract', monthlyPrice: 10, awinMid: '10933', providerUrl: 'https://smarty.co.uk', category: 'mobile' },
-  ],
-  insurance: [
-    { provider: 'Compare the Market', headline: 'Compare 100+ insurers', monthlyPrice: 0, awinMid: '3738', providerUrl: 'https://www.comparethemarket.com', category: 'insurance' },
-    { provider: 'MoneySuperMarket', headline: 'Car, home and life', monthlyPrice: 0, awinMid: '12049', providerUrl: 'https://www.moneysupermarket.com/car-insurance/', category: 'insurance' },
-  ],
-};
 
 const MONTH_LABELS: Record<string, string> = {
   '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
@@ -309,60 +346,157 @@ const MONTH_LABELS: Record<string, string> = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Helper: normalise sub category to deals category                   */
+/*  Real deal intelligence (2026-08-20)                                */
+/*                                                                     */
+/*  Replaces the old hardcoded DEALS_BY_CATEGORY table. Deals now come */
+/*  from the same sources the rest of the app uses:                    */
+/*    - subscription_comparisons: per-subscription market comparisons  */
+/*      written by the comparison engine cron.                         */
+/*    - overcharge_assessments: the overcharge engine's scored view of */
+/*      whether each subscription is overpriced, including the best    */
+/*      deal it found.                                                 */
 /* ------------------------------------------------------------------ */
-function subCategoryToDealCategory(category?: string | null, providerName?: string | null): string | null {
-  if (!category && !providerName) return null;
-  const cat = (category || '').toLowerCase();
 
-  const categoryMap: Record<string, string> = {
-    energy: 'energy', broadband: 'broadband', mobile: 'mobile',
-    insurance: 'insurance', streaming: 'streaming', fitness: 'fitness',
-  };
-  if (categoryMap[cat]) return categoryMap[cat];
+interface RealDeal {
+  dealProvider: string;
+  dealPrice: number;
+  annualSaving: number;
+  dealUrl: string;
+}
 
-  // Check provider name keywords
-  if (providerName) {
-    const n = providerName.toLowerCase();
-    if (['energy', 'gas', 'electric', 'british gas', 'octopus', 'ovo', 'edf', 'e.on', 'eon next'].some(k => n.includes(k))) return 'energy';
-    if (['broadband', 'fibre', 'bt ', 'sky broadband', 'virgin media', 'talktalk'].some(k => n.includes(k))) return 'broadband';
-    if (['mobile', 'vodafone', 'three', 'o2', 'ee', 'giffgaff', 'lebara'].some(k => n.includes(k))) return 'mobile';
-    if (['insurance', 'aviva', 'admiral', 'direct line'].some(k => n.includes(k))) return 'insurance';
+interface OverchargeAssessmentRow {
+  subscription_id: string | null;
+  merchant_name: string | null;
+  overcharge_score: number | null;
+  estimated_annual_saving: number | string | null;
+  best_deal_provider: string | null;
+  best_deal_url: string | null;
+  best_deal_monthly: number | string | null;
+}
+
+interface DealIntelligence {
+  comparisonsBySub: Map<string, RealDeal>;
+  assessmentsBySub: Map<string, OverchargeAssessmentRow>;
+}
+
+type AdminClient = ReturnType<typeof getAdmin>;
+
+async function loadDealIntelligence(
+  admin: AdminClient,
+  userId: string,
+  subscriptionIds: string[],
+): Promise<DealIntelligence> {
+  const comparisonsBySub = new Map<string, RealDeal>();
+  const assessmentsBySub = new Map<string, OverchargeAssessmentRow>();
+
+  const [compsRes, assessRes] = await Promise.all([
+    subscriptionIds.length > 0
+      ? admin
+          .from('subscription_comparisons')
+          .select('subscription_id, deal_provider, deal_price, annual_saving, deal_url')
+          .in('subscription_id', subscriptionIds)
+          .eq('dismissed', false)
+          .order('annual_saving', { ascending: false })
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+    admin
+      .from('overcharge_assessments')
+      .select('subscription_id, merchant_name, overcharge_score, estimated_annual_saving, best_deal_provider, best_deal_url, best_deal_monthly')
+      .eq('user_id', userId)
+      .eq('status', 'active'),
+  ]);
+
+  for (const raw of (compsRes.data as Array<Record<string, unknown>> | null) || []) {
+    const subId = String(raw.subscription_id || '');
+    if (!subId || comparisonsBySub.has(subId)) continue; // rows are pre-sorted by saving desc
+    const annualSaving = Math.round(parseFloat(String(raw.annual_saving)) || 0);
+    if (annualSaving <= 0) continue;
+    comparisonsBySub.set(subId, {
+      dealProvider: String(raw.deal_provider || 'a cheaper provider'),
+      dealPrice: parseFloat(String(raw.deal_price)) || 0,
+      annualSaving,
+      dealUrl: String(raw.deal_url || '/dashboard/deals'),
+    });
+  }
+
+  for (const a of (assessRes.data as OverchargeAssessmentRow[] | null) || []) {
+    if (a.subscription_id && !assessmentsBySub.has(a.subscription_id)) {
+      assessmentsBySub.set(a.subscription_id, a);
+    }
+  }
+
+  return { comparisonsBySub, assessmentsBySub };
+}
+
+/**
+ * Resolve the best real switching opportunity for one subscription.
+ * Prefers a live subscription_comparisons row; falls back to the
+ * overcharge engine's best deal when the assessment says the user is
+ * genuinely overpaying (score >= 60).
+ */
+function findRealDeal(
+  subscriptionId: string,
+  intel: DealIntelligence,
+): RealDeal | null {
+  const comparison = intel.comparisonsBySub.get(subscriptionId);
+  if (comparison && comparison.annualSaving > 0) return comparison;
+
+  const assessment = intel.assessmentsBySub.get(subscriptionId);
+  if (assessment) {
+    const score = Number(assessment.overcharge_score) || 0;
+    const saving = Math.round(parseFloat(String(assessment.estimated_annual_saving)) || 0);
+    if (score >= 60 && saving > 0 && assessment.best_deal_provider) {
+      return {
+        dealProvider: assessment.best_deal_provider,
+        dealPrice: parseFloat(String(assessment.best_deal_monthly)) || 0,
+        annualSaving: saving,
+        dealUrl: assessment.best_deal_url || '/dashboard/deals',
+      };
+    }
   }
   return null;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Helper: find the cheapest deal for a subscription                  */
-/* ------------------------------------------------------------------ */
-function findCheaperDeal(
-  providerName: string,
-  monthlyCost: number,
-  category: string | null,
-): { dealProvider: string; dealPrice: number; annualSaving: number; dealUrl: string } | null {
-  if (!category || !DEALS_BY_CATEGORY[category]) return null;
-  const deals = DEALS_BY_CATEGORY[category];
-
-  let best: typeof deals[0] | null = null;
-  let bestSaving = 0;
-
-  for (const deal of deals) {
-    if (deal.monthlyPrice <= 0) continue;
-    if (deal.provider.toLowerCase() === providerName.toLowerCase()) continue;
-    const saving = (monthlyCost - deal.monthlyPrice) * 12;
-    if (saving > 24 && saving > bestSaving) {
-      best = deal;
-      bestSaving = saving;
-    }
+/**
+ * Honest "no deal" message. Only claims good value when an overcharge
+ * assessment actually ran and scored the subscription as fairly priced.
+ */
+function noDealGuidance(
+  subscriptionId: string,
+  intel: DealIntelligence,
+): { message: string } {
+  const assessment = intel.assessmentsBySub.get(subscriptionId);
+  if (assessment && assessment.overcharge_score !== null && Number(assessment.overcharge_score) < 40) {
+    return { message: 'Good value: our latest market check found no cheaper alternative' };
   }
+  return { message: 'We have not found a better deal for this yet. We keep checking.' };
+}
 
-  if (!best) return null;
-  return {
-    dealProvider: best.provider,
-    dealPrice: best.monthlyPrice,
-    annualSaving: Math.round(bestSaving),
-    dealUrl: buildAwinUrl(best.awinMid, best.providerUrl),
-  };
+/* ------------------------------------------------------------------ */
+/*  Transaction filtering shared by both generators                    */
+/* ------------------------------------------------------------------ */
+
+interface TxRow {
+  id?: string;
+  amount: number | string;
+  description?: string | null;
+  category?: string | null;
+  timestamp?: string | null;
+  merchant_name?: string | null;
+  user_category?: string | null;
+  is_pending?: boolean | null;
+  transfer_pair_id?: string | null;
+}
+
+/**
+ * Mirror Money Hub's exclusions: pending transactions are not settled
+ * money, and pair-matched transfers are money moving between the user's
+ * own accounts. Soft-deleted rows are excluded at query time via
+ * .is('deleted_at', null).
+ */
+function isCountableTransaction(tx: TxRow): boolean {
+  if (tx.is_pending) return false;
+  if (tx.transfer_pair_id) return false;
+  return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -389,6 +523,10 @@ export async function generateOnDemandReportData(
     emailConnsRes,
     pendingTasksRes,
     allPriceAlertsRes,
+    budgetsRes,
+    liabilitiesRes,
+    savingsGoalsRes,
+    moneyHubGoalsRes,
   ] = await Promise.all([
     // Profile
     admin.from('profiles')
@@ -398,37 +536,39 @@ export async function generateOnDemandReportData(
 
     // Active subscriptions — include extra fields
     admin.from('subscriptions')
-      .select('id, provider_name, company, amount, billing_cycle, category, category_normalized, status, next_billing_date, contract_end_date')
+      .select('id, provider_name, amount, billing_cycle, category, category_normalized, status, next_billing_date, contract_end_date')
       .eq('user_id', userId)
       .eq('status', 'active'),
 
     admin.from('bank_transactions')
-      .select('amount, description, category, timestamp, merchant_name, user_category, id')
+      .select('amount, description, category, timestamp, merchant_name, user_category, id, is_pending, transfer_pair_id')
       .eq('user_id', userId)
+      .is('deleted_at', null)
       .gte('timestamp', currentMonthStart),
 
     admin.from('disputes')
-      .select('id, provider_name, company_name, description, status, created_at, disputed_amount, money_recovered')
+      .select('id, provider_name, issue_summary, status, created_at, disputed_amount, money_recovered')
       .eq('user_id', userId),
 
     // Active price increase alerts
     admin.from('price_increase_alerts')
-      .select('id, merchant_name, old_amount, new_amount, percentage_increase, annual_impact, status')
+      .select('id, merchant_name, old_amount, new_amount, increase_pct, annual_impact, status')
       .eq('user_id', userId)
       .eq('status', 'active'),
 
     // Upcoming renewals (next 30 days)
     admin.from('subscriptions')
-      .select('provider_name, company, amount, next_billing_date, category, category_normalized, contract_end_date')
+      .select('provider_name, amount, next_billing_date, category, category_normalized, contract_end_date')
       .eq('user_id', userId)
       .eq('status', 'active')
       .gte('next_billing_date', now.toISOString().substring(0, 10))
       .lte('next_billing_date', thirtyDaysFromNow.toISOString().substring(0, 10)),
 
-    // Bank connections
+    // Bank connections (current_balance feeds liquid savings in the score)
     admin.from('bank_connections')
-      .select('id, bank_name, status')
-      .eq('user_id', userId),
+      .select('id, bank_name, status, current_balance')
+      .eq('user_id', userId)
+      .is('deleted_at', null),
 
     admin.from('email_connections')
       .select('id, email_address, provider_type, status')
@@ -445,17 +585,44 @@ export async function generateOnDemandReportData(
     admin.from('price_increase_alerts')
       .select('id, status')
       .eq('user_id', userId),
+
+    // Real health-score inputs
+    admin.from('money_hub_budgets')
+      .select('category, monthly_limit')
+      .eq('user_id', userId),
+
+    admin.from('money_hub_liabilities')
+      .select('liability_type, outstanding_balance, monthly_payment')
+      .eq('user_id', userId),
+
+    admin.from('savings_goals')
+      .select('name, target_amount, current_amount, is_active')
+      .eq('user_id', userId)
+      .eq('is_active', true),
+
+    admin.from('money_hub_savings_goals')
+      .select('goal_name, target_amount, current_amount')
+      .eq('user_id', userId),
   ]);
 
   const profile = profileRes.data;
   const activeSubs = activeSubsRes.data || [];
-  const transactions = transactionsRes.data || [];
+  const transactions = ((transactionsRes.data || []) as TxRow[]).filter(isCountableTransaction);
   const disputes = disputesRes.data || [];
   const priceAlerts = priceAlertsRes.data || [];
   const renewals = renewalsRes.data || [];
   const bankConns = bankConnsRes.data || [];
   const emailConns = emailConnsRes.data || [];
   const allPriceAlerts = allPriceAlertsRes.data || [];
+  const budgets = budgetsRes.data || [];
+  const liabilities = liabilitiesRes.data || [];
+  const goals = [
+    ...(savingsGoalsRes.data || []).map(g => ({ target_amount: Number(g.target_amount) || 0, current_amount: Number(g.current_amount) || 0 })),
+    ...(moneyHubGoalsRes.data || []).map(g => ({ target_amount: Number(g.target_amount) || 0, current_amount: Number(g.current_amount) || 0 })),
+  ];
+
+  // Live market intelligence (replaces hardcoded deals table)
+  const dealIntel = await loadDealIntelligence(admin, userId, activeSubs.map(s => s.id));
 
   // --- Money Snapshot ---
   const validDebits = transactions
@@ -490,15 +657,13 @@ export async function generateOnDemandReportData(
 
   // Build subscription guidance
   let potentialAnnualSavings = 0;
-  let subsWithCheaperDeal = 0;
   const topSubscriptions: SubscriptionWithGuidance[] = activeSubs
     .map(s => {
       const amt = parseFloat(String(s.amount)) || 0;
       const monthlyCost = s.billing_cycle === 'yearly' ? amt / 12 : s.billing_cycle === 'quarterly' ? amt / 3 : amt;
       const annualCost = monthlyCost * 12;
-      const displayName = cleanMerchantName(s.provider_name, s.company);
-      const dealCat = subCategoryToDealCategory(s.category || s.category_normalized, s.provider_name);
-      const cheaperDeal = findCheaperDeal(displayName, monthlyCost, dealCat);
+      const displayName = cleanMerchantName(s.provider_name);
+      const cheaperDeal = findRealDeal(s.id, dealIntel);
 
       // Check for price increase on this sub
       const matchingAlert = priceAlerts.find(a =>
@@ -508,7 +673,6 @@ export async function generateOnDemandReportData(
       let guidance: SubscriptionWithGuidance['guidance'];
 
       if (cheaperDeal) {
-        subsWithCheaperDeal++;
         potentialAnnualSavings += cheaperDeal.annualSaving;
         guidance = {
           type: 'switch',
@@ -521,14 +685,14 @@ export async function generateOnDemandReportData(
         const impact = parseFloat(String(matchingAlert.annual_impact)) || 0;
         guidance = {
           type: 'complain',
-          message: `Price went up ${parseFloat(String(matchingAlert.percentage_increase)).toFixed(1)}%. Write a complaint to negotiate it back down`,
-          actionUrl: `/dashboard/complaints?company=${encodeURIComponent(displayName)}&issue=${encodeURIComponent(`Price increase of ${parseFloat(String(matchingAlert.percentage_increase)).toFixed(1)}%`)}&amount=${impact}`,
+          message: `Price went up ${parseFloat(String(matchingAlert.increase_pct)).toFixed(1)}%. Write a complaint to negotiate it back down`,
+          actionUrl: `/dashboard/complaints?company=${encodeURIComponent(displayName)}&issue=${encodeURIComponent(`Price increase of ${parseFloat(String(matchingAlert.increase_pct)).toFixed(1)}%`)}&amount=${impact}`,
           annualSaving: impact,
         };
       } else {
         guidance = {
           type: 'competitive',
-          message: '✓ Good value — no cheaper alternatives found',
+          message: noDealGuidance(s.id, dealIntel).message,
           actionUrl: '/dashboard/deals',
         };
       }
@@ -543,7 +707,7 @@ export async function generateOnDemandReportData(
         priceChange: matchingAlert ? {
           oldAmount: parseFloat(String(matchingAlert.old_amount)),
           newAmount: parseFloat(String(matchingAlert.new_amount)),
-          pctChange: parseFloat(String(matchingAlert.percentage_increase)),
+          pctChange: parseFloat(String(matchingAlert.increase_pct)),
         } : null,
         guidance,
       };
@@ -557,7 +721,7 @@ export async function generateOnDemandReportData(
     merchantName: normaliseMerchantName(a.merchant_name),
     oldAmount: parseFloat(String(a.old_amount)),
     newAmount: parseFloat(String(a.new_amount)),
-    pctChange: parseFloat(String(a.percentage_increase)),
+    pctChange: parseFloat(String(a.increase_pct)),
     annualImpact: parseFloat(String(a.annual_impact)),
     status: a.status,
   }));
@@ -567,7 +731,7 @@ export async function generateOnDemandReportData(
   const filteredRenewals: RenewalItem[] = renewals
     .filter(r => !isLoanOrMortgage(r.category || r.category_normalized, r.provider_name))
     .map(r => ({
-      provider: cleanMerchantName(r.provider_name, r.company),
+      provider: cleanMerchantName(r.provider_name),
       amount: parseFloat(String(r.amount)) || 0,
       date: r.next_billing_date,
       isRenewal: !!r.contract_end_date,
@@ -576,59 +740,83 @@ export async function generateOnDemandReportData(
   // --- Disputes ---
   const disputeItems: DisputeItem[] = disputes.map(d => ({
     id: d.id,
-    company: d.provider_name || d.company_name || 'Unknown',
-    issue: (d.description || `Dispute for ${d.disputed_amount ? '£'+d.disputed_amount : 'unknown amount'}`).substring(0, 100),
+    company: d.provider_name || 'Unknown',
+    issue: (d.issue_summary || `Dispute for ${d.disputed_amount ? '£'+d.disputed_amount : 'unknown amount'}`).substring(0, 100),
     dateFiled: d.created_at ? new Date(d.created_at).toLocaleDateString('en-GB') : '',
     status: d.status || 'open',
   }));
   const activeDisputeCount = disputes.filter(d => d.status === 'open' || d.status === 'in_progress' || d.status === 'awaiting_response').length;
 
-  // --- Financial Health Score ---
-  const activeBanks = bankConns.filter(b => b.status === 'active').length;
-  const activeEmails = emailConns.filter(e => e.status === 'active').length;
+  // --- Financial Health Score (real inputs, 2026-08-20) ---
   const actionedAlerts = allPriceAlerts.filter(a => a.status === 'actioned').length;
+
+  // Budget adherence — match budget categories against this month's
+  // spend by meaningful category.
+  const spendByCategoryKey: Record<string, number> = {};
+  for (const tx of validDebits) {
+    const key = String(tx.meaningfulCategory || 'other').toLowerCase();
+    spendByCategoryKey[key] = (spendByCategoryKey[key] || 0) + tx.amount;
+  }
+  const budgetInputs = budgets
+    .filter(b => Number(b.monthly_limit) > 0)
+    .map(b => ({
+      monthly_limit: Number(b.monthly_limit) || 0,
+      spent: spendByCategoryKey[normalizeSpendingCategoryKey(b.category)] || 0,
+    }));
+
+  // Liquid savings — sum of connected account balances.
+  const liquidSavings = bankConns
+    .filter(b => b.status === 'active')
+    .reduce((sum, b) => sum + (parseFloat(String(b.current_balance)) || 0), 0);
+
+  // Debt from Money Hub liabilities.
+  const totalDebt = liabilities.reduce((s, l) => s + (parseFloat(String(l.outstanding_balance)) || 0), 0);
+  const totalMonthlyDebtPayments = liabilities.reduce((s, l) => s + (parseFloat(String(l.monthly_payment)) || 0), 0);
+  const creditCardBalance = liabilities
+    .filter(l => l.liability_type === 'credit_card')
+    .reduce((s, l) => s + (parseFloat(String(l.outstanding_balance)) || 0), 0);
 
   const financialHealth = calculateHealthScore({
     monthlyIncome: currentMonthIncome,
     monthlyOutgoings: currentMonthSpend,
-    budgets: [],
+    budgets: budgetInputs,
     monthlyTrends: [],
-    liquidSavings: 0,
-    goals: [],
-    totalMonthlyDebtPayments: 0,
-    totalDebt: 0,
-    previousMonthDebt: 0,
-    creditCardBalance: 0,
+    liquidSavings: Math.max(0, liquidSavings),
+    goals,
+    totalMonthlyDebtPayments,
+    totalDebt,
+    previousMonthDebt: totalDebt,
+    creditCardBalance,
     creditCardLimit: 0,
     expectedBillsPaid: activeSubs.length,
     expectedBillsTotal: activeSubs.length,
-    contractsTracked: activeSubs.length,
+    contractsTracked: activeSubs.filter(s => s.contract_end_date).length,
     contractsTotal: activeSubs.length,
     alertsActioned: actionedAlerts,
     alertsTotal: allPriceAlerts.length,
   });
 
-  // --- Savings plan ---
+  // --- Savings plan (real deal intelligence) ---
   const savingsActions: SavingsAction[] = [];
 
-  // Add switch opportunities from top subscriptions
+  // Add switch opportunities from live comparisons / overcharge engine
   for (const sub of activeSubs) {
     const amt = parseFloat(String(sub.amount)) || 0;
     const monthlyCost = sub.billing_cycle === 'yearly' ? amt / 12 : sub.billing_cycle === 'quarterly' ? amt / 3 : amt;
-    const displayName = cleanMerchantName(sub.provider_name, sub.company);
-    const dealCat = subCategoryToDealCategory(sub.category || sub.category_normalized, sub.provider_name);
-    const cheaperDeal = findCheaperDeal(displayName, monthlyCost, dealCat);
+    const displayName = cleanMerchantName(sub.provider_name);
+    const cheaperDeal = findRealDeal(sub.id, dealIntel);
 
     if (cheaperDeal) {
+      const difficulty = getSwitchDifficulty(sub.category || sub.category_normalized);
       savingsActions.push({
         action: 'switch',
         provider: displayName,
         description: `Switch to ${cheaperDeal.dealProvider}`,
-        monthlySaving: Math.round(monthlyCost - cheaperDeal.dealPrice),
+        monthlySaving: Math.max(0, Math.round(monthlyCost - cheaperDeal.dealPrice)),
         annualSaving: cheaperDeal.annualSaving,
         actionUrl: cheaperDeal.dealUrl,
-        difficulty: getSwitchDifficulty(sub.category || sub.category_normalized),
-        difficultyEmoji: getSwitchDifficulty(sub.category || sub.category_normalized) === 'easy' ? '🟢' : getSwitchDifficulty(sub.category || sub.category_normalized) === 'medium' ? '🟡' : '🔴',
+        difficulty,
+        difficultyEmoji: difficulty === 'easy' ? '🟢' : difficulty === 'medium' ? '🟡' : '🔴',
       });
     }
   }
@@ -688,11 +876,24 @@ export async function generateAnnualReportData(
   const admin = getAdmin();
   const now = new Date();
   const yearEnd = now.toISOString();
-  
-  // Use a rolling 12-month window instead of the calendar year
-  const yearStartDt = new Date(now);
-  yearStartDt.setFullYear(yearStartDt.getFullYear() - 1);
+
+  // Rolling 12-month window, aligned to calendar months so the report
+  // always produces exactly 12 monthly buckets (11 full months + the
+  // current partial month). The old "now minus 365 days" window spanned
+  // 13 partial calendar months, which produced the 13-bar chart bug.
+  const yearStartDt = new Date(now.getFullYear(), now.getMonth() - 11, 1);
   const yearStart = yearStartDt.toISOString();
+
+  // Exactly 12 month keys, oldest first.
+  const monthKeys: string[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+
+  const windowLabel = `${yearStartDt.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} to ${now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`;
+  const thirtyDaysFromNow = new Date(now);
+  thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
   const [
     profileRes,
@@ -714,6 +915,14 @@ export async function generateAnnualReportData(
     whatsappSessionRes,
     legalRefUsagesRes,
     incomeAlertsRes,
+    budgetsRes,
+    assetsRes,
+    liabilitiesRes,
+    savingsGoalsRes,
+    moneyHubGoalsRes,
+    emailFindingsRes,
+    upcomingPaymentsRes,
+    verifiedSavingsRes,
   ] = await Promise.all([
     admin.from('profiles')
       .select('full_name, first_name, last_name, phone, address, postcode, email, created_at, subscription_tier, total_money_recovered')
@@ -721,14 +930,14 @@ export async function generateAnnualReportData(
       .single(),
 
     admin.from('subscriptions')
-      .select('provider_name, company, amount, billing_cycle, money_saved, cancelled_at')
+      .select('provider_name, amount, billing_cycle, money_saved, cancelled_at')
       .eq('user_id', userId)
       .eq('status', 'cancelled')
       .gte('cancelled_at', yearStart)
       .lte('cancelled_at', yearEnd),
 
     admin.from('subscriptions')
-      .select('id, provider_name, company, amount, billing_cycle, category, category_normalized, status, next_billing_date, contract_end_date')
+      .select('id, provider_name, amount, billing_cycle, category, category_normalized, status, next_billing_date, contract_end_date')
       .eq('user_id', userId)
       .eq('status', 'active'),
 
@@ -747,8 +956,9 @@ export async function generateAnnualReportData(
       .lte('created_at', yearEnd),
 
     admin.from('bank_transactions')
-      .select('amount, description, category, timestamp, merchant_name, user_category, id')
+      .select('amount, description, category, timestamp, merchant_name, user_category, id, is_pending, transfer_pair_id')
       .eq('user_id', userId)
+      .is('deleted_at', null)
       .gte('timestamp', yearStart)
       .lte('timestamp', yearEnd),
 
@@ -771,16 +981,17 @@ export async function generateAnnualReportData(
       .single(),
 
     admin.from('price_increase_alerts')
-      .select('id, merchant_name, old_amount, new_amount, percentage_increase, annual_impact, status')
+      .select('id, merchant_name, old_amount, new_amount, increase_pct, annual_impact, status')
       .eq('user_id', userId),
 
     admin.from('disputes')
-      .select('id, provider_name, company_name, description, status, created_at, disputed_amount, money_recovered')
+      .select('id, provider_name, issue_summary, status, created_at, disputed_amount, money_recovered, outcome, recovered_amount_gbp, resolution_time_days')
       .eq('user_id', userId),
 
     admin.from('bank_connections')
-      .select('id, bank_name, status')
-      .eq('user_id', userId),
+      .select('id, bank_name, status, current_balance')
+      .eq('user_id', userId)
+      .is('deleted_at', null),
 
     admin.from('email_connections')
       .select('id, email_address, provider_type, status')
@@ -829,6 +1040,47 @@ export async function generateAnnualReportData(
       .eq('notification_type', 'income_received')
       .gte('sent_at', yearStart)
       .lte('sent_at', yearEnd),
+
+    // v4 — real health-score inputs + new report sections
+    admin.from('money_hub_budgets')
+      .select('category, monthly_limit')
+      .eq('user_id', userId),
+
+    admin.from('money_hub_assets')
+      .select('asset_type, asset_name, estimated_value')
+      .eq('user_id', userId),
+
+    admin.from('money_hub_liabilities')
+      .select('liability_type, liability_name, outstanding_balance, monthly_payment')
+      .eq('user_id', userId),
+
+    admin.from('savings_goals')
+      .select('name, target_amount, current_amount, is_active')
+      .eq('user_id', userId)
+      .eq('is_active', true),
+
+    admin.from('money_hub_savings_goals')
+      .select('goal_name, target_amount, current_amount')
+      .eq('user_id', userId),
+
+    admin.from('email_scan_findings')
+      .select('finding_type, amount, urgency, status, created_at')
+      .eq('user_id', userId)
+      .gte('created_at', yearStart)
+      .lte('created_at', yearEnd),
+
+    admin.from('upcoming_payments')
+      .select('counterparty, amount, expected_date, direction, source')
+      .eq('user_id', userId)
+      .eq('direction', 'outgoing')
+      .gte('expected_date', now.toISOString().substring(0, 10))
+      .lte('expected_date', thirtyDaysFromNow.toISOString().substring(0, 10))
+      .order('expected_date', { ascending: true }),
+
+    admin.from('verified_savings')
+      .select('saving_type, title, amount_saved, annual_saving, confirmed_at')
+      .eq('user_id', userId)
+      .order('confirmed_at', { ascending: false }),
   ]);
 
   const profile = profileRes.data;
@@ -836,7 +1088,7 @@ export async function generateAnnualReportData(
   const activeSubs = activeSubsRes.data || [];
   const tasks = tasksRes.data || [];
   const agentRuns = agentRunsRes.data || [];
-  const transactions = transactionsRes.data || [];
+  const transactions = ((transactionsRes.data || []) as TxRow[]).filter(isCountableTransaction);
   const dealClicks = dealClicksRes.data || [];
   const challenges = challengesRes.data || [];
   const points = pointsRes.data;
@@ -845,6 +1097,19 @@ export async function generateAnnualReportData(
   const bankConns = bankConnsRes.data || [];
   const emailConns = emailConnsRes.data || [];
   const allPriceAlerts = allPriceAlertsRes.data || [];
+  const budgets = budgetsRes.data || [];
+  const assets = assetsRes.data || [];
+  const liabilities = liabilitiesRes.data || [];
+  const goals = [
+    ...(savingsGoalsRes.data || []).map(g => ({ name: String(g.name || 'Savings goal'), target_amount: Number(g.target_amount) || 0, current_amount: Number(g.current_amount) || 0 })),
+    ...(moneyHubGoalsRes.data || []).map(g => ({ name: String(g.goal_name || 'Savings goal'), target_amount: Number(g.target_amount) || 0, current_amount: Number(g.current_amount) || 0 })),
+  ];
+  const emailFindingRows = emailFindingsRes.data || [];
+  const upcomingPaymentRows = upcomingPaymentsRes.data || [];
+  const verifiedSavingRows = verifiedSavingsRes.data || [];
+
+  // Live market intelligence (replaces hardcoded deals table)
+  const dealIntel = await loadDealIntelligence(admin, userId, activeSubs.map(s => s.id));
 
   // v3 ── Tool-usage roll-up
   const tg = (telegramSessionRes as { data: { linked_at: string | null; last_message_at: string | null; is_active: boolean } | null }).data ?? null;
@@ -895,8 +1160,7 @@ export async function generateAnnualReportData(
     }))
     .filter(tx => tx.meaningfulCategory !== 'transfers' && tx.meaningfulCategory !== 'internal');
 
-  const totalOutgoings = validDebits.reduce((sum, tx) => sum + tx.amount, 0);
-  const totalIncome = validCredits.reduce((sum, tx) => sum + tx.amount, 0);
+  const jsOutgoings = validDebits.reduce((sum, tx) => sum + tx.amount, 0);
 
   // Spending by meaningful category
   const categoryTotals: Record<string, { total: number; count: number }> = {};
@@ -911,12 +1175,12 @@ export async function generateAnnualReportData(
       category,
       label: getReportCategoryLabel(category),
       total: parseFloat(data.total.toFixed(2)),
-      percentage: totalOutgoings > 0 ? parseFloat(((data.total / totalOutgoings) * 100).toFixed(1)) : 0,
+      percentage: jsOutgoings > 0 ? parseFloat(((data.total / jsOutgoings) * 100).toFixed(1)) : 0,
       transactionCount: data.count,
     }))
     .sort((a, b) => b.total - a.total);
 
-  // Monthly trends — only populated months
+  // JS fallback monthly aggregation (used when an RPC call fails)
   const monthlyMap: Record<string, { spend: number; income: number }> = {};
   for (const tx of validDebits) {
     const key = tx.timestamp?.substring(0, 7);
@@ -932,15 +1196,49 @@ export async function generateAnnualReportData(
       monthlyMap[key].income += tx.amount;
     }
   }
-  const monthlyTrends: MonthlyTrend[] = Object.entries(monthlyMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, vals]) => ({
-      month,
-      monthLabel: MONTH_LABELS[month.split('-')[1]] || month.split('-')[1],
-      spend: parseFloat(vals.spend.toFixed(2)),
-      income: parseFloat(vals.income.toFixed(2)),
-      hasData: vals.spend > 0 || vals.income > 0,
-    }));
+
+  // Monthly trends — exactly 12 buckets covering the rolling window.
+  // Where possible each month's totals come from the same canonical DB
+  // RPCs Money Hub uses (get_monthly_spending_breakdown +
+  // get_monthly_income_total) so the report and Money Hub agree; the JS
+  // aggregation above is the fallback per month.
+  const monthlyTrends: MonthlyTrend[] = await Promise.all(
+    monthKeys.map(async (month) => {
+      const [y, m] = month.split('-').map(Number);
+      const fallback = monthlyMap[month] || { spend: 0, income: 0 };
+      let spend = fallback.spend;
+      let income = fallback.income;
+      try {
+        const [spendRes, incomeRes] = await Promise.all([
+          admin.rpc('get_monthly_spending_breakdown', { p_user_id: userId, p_year: y, p_month: m }),
+          admin.rpc('get_monthly_income_total', { p_user_id: userId, p_year: y, p_month: m }),
+        ]);
+        if (!spendRes.error) {
+          const row = Array.isArray(spendRes.data) ? spendRes.data[0] : spendRes.data;
+          const rpcSpend = parseFloat(String((row as { spending_total?: number | string } | null)?.spending_total ?? ''));
+          if (!Number.isNaN(rpcSpend)) spend = rpcSpend;
+        }
+        if (!incomeRes.error && incomeRes.data !== null && incomeRes.data !== undefined) {
+          const rpcIncome = parseFloat(String(incomeRes.data));
+          if (!Number.isNaN(rpcIncome)) income = rpcIncome;
+        }
+      } catch {
+        // Keep the JS fallback for this month.
+      }
+      return {
+        month,
+        monthLabel: MONTH_LABELS[month.split('-')[1]] || month.split('-')[1],
+        spend: parseFloat(spend.toFixed(2)),
+        income: parseFloat(income.toFixed(2)),
+        hasData: spend > 0 || income > 0,
+      };
+    }),
+  );
+
+  // Headline totals from the monthly buckets so the numbers on the
+  // report agree with the chart (and with Money Hub's month cards).
+  const totalOutgoings = monthlyTrends.reduce((s, m) => s + m.spend, 0);
+  const totalIncome = monthlyTrends.reduce((s, m) => s + m.income, 0);
 
   // Top 5 merchants (clean names)
   const merchantMap: Record<string, { total: number; count: number }> = {};
@@ -966,8 +1264,7 @@ export async function generateAnnualReportData(
     return sum + amt;
   }, 0);
 
-  // Build subscription list with guidance
-  let subsWithCheaperDeal = 0;
+  // Build subscription list with guidance (real deal intelligence)
   let totalSubSavings = 0;
 
   const subscriptionsList: SubscriptionWithGuidance[] = activeSubs
@@ -975,9 +1272,8 @@ export async function generateAnnualReportData(
       const amt = parseFloat(String(s.amount)) || 0;
       const monthlyCost = s.billing_cycle === 'yearly' ? amt / 12 : s.billing_cycle === 'quarterly' ? amt / 3 : amt;
       const annualCost = monthlyCost * 12;
-      const displayName = cleanMerchantName(s.provider_name, s.company);
-      const dealCat = subCategoryToDealCategory(s.category || s.category_normalized, s.provider_name);
-      const cheaperDeal = findCheaperDeal(displayName, monthlyCost, dealCat);
+      const displayName = cleanMerchantName(s.provider_name);
+      const cheaperDeal = findRealDeal(s.id, dealIntel);
 
       const matchingAlert = priceAlerts.find(a =>
         normaliseMerchantName(a.merchant_name).toLowerCase() === displayName.toLowerCase()
@@ -986,7 +1282,6 @@ export async function generateAnnualReportData(
       let guidance: SubscriptionWithGuidance['guidance'];
 
       if (cheaperDeal) {
-        subsWithCheaperDeal++;
         totalSubSavings += cheaperDeal.annualSaving;
         guidance = {
           type: 'switch',
@@ -998,12 +1293,12 @@ export async function generateAnnualReportData(
       } else if (matchingAlert) {
         guidance = {
           type: 'complain',
-          message: `Price went up ${parseFloat(String(matchingAlert.percentage_increase)).toFixed(1)}%`,
+          message: `Price went up ${parseFloat(String(matchingAlert.increase_pct)).toFixed(1)}%`,
           actionUrl: `/dashboard/complaints?company=${encodeURIComponent(displayName)}`,
           annualSaving: parseFloat(String(matchingAlert.annual_impact)) || 0,
         };
       } else {
-        guidance = { type: 'competitive', message: '✓ Good value', actionUrl: '/dashboard/deals' };
+        guidance = { type: 'competitive', message: noDealGuidance(s.id, dealIntel).message, actionUrl: '/dashboard/deals' };
       }
 
       return {
@@ -1016,7 +1311,7 @@ export async function generateAnnualReportData(
         priceChange: matchingAlert ? {
           oldAmount: parseFloat(String(matchingAlert.old_amount)),
           newAmount: parseFloat(String(matchingAlert.new_amount)),
-          pctChange: parseFloat(String(matchingAlert.percentage_increase)),
+          pctChange: parseFloat(String(matchingAlert.increase_pct)),
         } : null,
         guidance,
       };
@@ -1031,7 +1326,7 @@ export async function generateAnnualReportData(
       merchantName: normaliseMerchantName(a.merchant_name),
       oldAmount: parseFloat(String(a.old_amount)),
       newAmount: parseFloat(String(a.new_amount)),
-      pctChange: parseFloat(String(a.percentage_increase)),
+      pctChange: parseFloat(String(a.increase_pct)),
       annualImpact: parseFloat(String(a.annual_impact)),
       status: a.status,
     }));
@@ -1040,14 +1335,39 @@ export async function generateAnnualReportData(
   // --- Disputes ---
   const disputeItems: DisputeItem[] = disputes.map(d => ({
     id: d.id,
-    company: d.provider_name || d.company_name || 'Unknown',
-    issue: (d.description || `Dispute for ${d.disputed_amount ? '£'+d.disputed_amount : 'unknown amount'}`).substring(0, 100),
+    company: d.provider_name || 'Unknown',
+    issue: (d.issue_summary || `Dispute for ${d.disputed_amount ? '£'+d.disputed_amount : 'unknown amount'}`).substring(0, 100),
     dateFiled: d.created_at ? new Date(d.created_at).toLocaleDateString('en-GB') : '',
     status: d.status || 'open',
   }));
 
   const totalDisputedAmount = disputes.reduce((sum, d) => sum + (parseFloat(String(d.disputed_amount)) || 0), 0);
-  const disputesRecovered = disputes.reduce((sum, d) => sum + (parseFloat(String(d.money_recovered)) || 0), 0);
+  // recovered_amount_gbp is the canonical mirror; money_recovered is the
+  // legacy column. Take whichever is populated per dispute.
+  const recoveredFor = (d: { money_recovered?: number | string | null; recovered_amount_gbp?: number | string | null }) =>
+    Math.max(parseFloat(String(d.money_recovered)) || 0, parseFloat(String(d.recovered_amount_gbp)) || 0);
+  const disputesRecovered = disputes.reduce((sum, d) => sum + recoveredFor(d), 0);
+
+  // --- Disputes recovery story (v4) ---
+  const RESOLVED_STATUSES = new Set(['resolved_won', 'resolved_partial', 'resolved_lost', 'closed']);
+  const disputeWins = disputes.filter(d => d.outcome === 'won' || d.status === 'resolved_won').length;
+  const disputePartials = disputes.filter(d => d.outcome === 'partial' || d.status === 'resolved_partial').length;
+  const disputeLosses = disputes.filter(d => d.outcome === 'lost' || d.status === 'resolved_lost').length;
+  const disputesInProgress = disputes.filter(d => !d.outcome && !RESOLVED_STATUSES.has(String(d.status || ''))).length;
+  const resolutionTimes = disputes
+    .map(d => Number(d.resolution_time_days))
+    .filter(n => Number.isFinite(n) && n > 0);
+  const disputesDetail: DisputesRecoverySummary = {
+    totalDisputes: disputes.length,
+    totalRecovered: parseFloat(disputesRecovered.toFixed(2)),
+    wins: disputeWins,
+    partialWins: disputePartials,
+    lost: disputeLosses,
+    inProgress: disputesInProgress,
+    averageResolutionDays: resolutionTimes.length > 0
+      ? Math.round(resolutionTimes.reduce((a, b) => a + b, 0) / resolutionTimes.length)
+      : null,
+  };
 
   // --- Legacy calculations ---
   const taskMoneyRecovered = tasks.reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
@@ -1080,9 +1400,7 @@ export async function generateAnnualReportData(
   const uniqueMonths = new Set(transactions.map(tx => tx.timestamp?.substring(0, 7)).filter(Boolean));
   const dataMonths = uniqueMonths.size;
 
-  // Financial Health Score
-  const activeBanks = bankConns.filter(b => b.status === 'active').length;
-  const activeEmails = emailConns.filter(e => e.status === 'active').length;
+  // Financial Health Score (real inputs, 2026-08-20)
   const actionedAlerts = allPriceAlerts.filter(a => a.status === 'actioned').length;
 
   // Convert monthlyTrends to the ScoreInput format (need income and outgoings)
@@ -1091,21 +1409,49 @@ export async function generateAnnualReportData(
     outgoings: mt.spend,
   }));
 
+  const monthsWithData = Math.max(1, monthlyTrends.filter(m => m.hasData).length);
+  const avgMonthlyIncome = totalIncome > 0 ? Math.round(totalIncome / monthsWithData) : 0;
+  const avgMonthlyOutgoings = totalOutgoings > 0 ? Math.round(totalOutgoings / monthsWithData) : 0;
+
+  // Budget adherence — average monthly spend per category vs limit.
+  const budgetInputs = budgets
+    .filter(b => Number(b.monthly_limit) > 0)
+    .map(b => {
+      const key = normalizeSpendingCategoryKey(b.category);
+      const catTotal = categoryTotals[key]?.total || 0;
+      return {
+        monthly_limit: Number(b.monthly_limit) || 0,
+        spent: catTotal / monthsWithData,
+      };
+    });
+
+  // Liquid savings — sum of connected account balances.
+  const liquidSavings = bankConns
+    .filter(b => b.status === 'active')
+    .reduce((sum, b) => sum + (parseFloat(String(b.current_balance)) || 0), 0);
+
+  // Debt from Money Hub liabilities.
+  const totalLiabilities = liabilities.reduce((s, l) => s + (parseFloat(String(l.outstanding_balance)) || 0), 0);
+  const totalMonthlyDebtPayments = liabilities.reduce((s, l) => s + (parseFloat(String(l.monthly_payment)) || 0), 0);
+  const creditCardBalance = liabilities
+    .filter(l => l.liability_type === 'credit_card')
+    .reduce((s, l) => s + (parseFloat(String(l.outstanding_balance)) || 0), 0);
+
   const financialHealth = calculateHealthScore({
-    monthlyIncome: totalIncome > 0 ? Math.round(totalIncome / monthlyTrends.length) : 0,
-    monthlyOutgoings: totalOutgoings > 0 ? Math.round(totalOutgoings / monthlyTrends.length) : 0,
-    budgets: [],
+    monthlyIncome: avgMonthlyIncome,
+    monthlyOutgoings: avgMonthlyOutgoings,
+    budgets: budgetInputs,
     monthlyTrends: monthlyTrendsForScore,
-    liquidSavings: 0,
-    goals: [],
-    totalMonthlyDebtPayments: 0,
-    totalDebt: 0,
-    previousMonthDebt: 0,
-    creditCardBalance: 0,
+    liquidSavings: Math.max(0, liquidSavings),
+    goals: goals.map(g => ({ target_amount: g.target_amount, current_amount: g.current_amount })),
+    totalMonthlyDebtPayments,
+    totalDebt: totalLiabilities,
+    previousMonthDebt: totalLiabilities,
+    creditCardBalance,
     creditCardLimit: 0,
     expectedBillsPaid: activeSubs.length,
     expectedBillsTotal: activeSubs.length,
-    contractsTracked: activeSubs.length,
+    contractsTracked: activeSubs.filter(s => s.contract_end_date).length,
     contractsTotal: activeSubs.length,
     alertsActioned: actionedAlerts,
     alertsTotal: allPriceAlerts.length,
@@ -1141,7 +1487,104 @@ export async function generateAnnualReportData(
   }
   savingsActions.sort((a, b) => b.annualSaving - a.annualSaving);
 
-  // Executive Summary (template-based)
+  // --- v4 sections (2026-08-20) ---
+
+  // Email scanner findings summary
+  const findingTypeTotals = new Map<string, { count: number; totalAmount: number }>();
+  let findingsPotentialValue = 0;
+  for (const f of emailFindingRows) {
+    const type = String(f.finding_type || 'other');
+    const amount = parseFloat(String(f.amount)) || 0;
+    const entry = findingTypeTotals.get(type) || { count: 0, totalAmount: 0 };
+    entry.count += 1;
+    entry.totalAmount += amount;
+    findingTypeTotals.set(type, entry);
+    if (f.status !== 'dismissed') findingsPotentialValue += amount;
+  }
+  const emailFindings: EmailFindingsSummary = {
+    totalFindings: emailFindingRows.length,
+    newFindings: emailFindingRows.filter(f => f.status === 'new').length,
+    actionedFindings: emailFindingRows.filter(f => f.status === 'actioned').length,
+    refundOpportunities: emailFindingRows.filter(f => f.finding_type === 'refund_opportunity').length,
+    totalPotentialValue: parseFloat(findingsPotentialValue.toFixed(2)),
+    urgentCount: emailFindingRows.filter(f => f.urgency === 'immediate').length,
+    byType: Array.from(findingTypeTotals.entries())
+      .map(([type, v]) => ({ type, count: v.count, totalAmount: parseFloat(v.totalAmount.toFixed(2)) }))
+      .sort((a, b) => b.count - a.count),
+  };
+
+  // Upcoming committed payments (next 30 days, outgoing)
+  const upcomingItems = upcomingPaymentRows.map(p => ({
+    counterparty: cleanMerchantName(String(p.counterparty || '')) || 'Unknown',
+    amount: Math.abs(parseFloat(String(p.amount)) || 0),
+    expectedDate: String(p.expected_date || ''),
+    source: String(p.source || ''),
+  }));
+  const upcomingPayments: UpcomingPaymentsSummary = {
+    next30DayCount: upcomingItems.length,
+    totalCommitted: parseFloat(upcomingItems.reduce((s, p) => s + p.amount, 0).toFixed(2)),
+    items: upcomingItems.slice(0, 20),
+  };
+
+  // Verified savings — confirmed outcomes only
+  const verifiedSavings: VerifiedSavingsSummary = {
+    count: verifiedSavingRows.length,
+    totalSaved: parseFloat(verifiedSavingRows.reduce((s, v) => s + (parseFloat(String(v.amount_saved)) || 0), 0).toFixed(2)),
+    totalAnnualSaving: parseFloat(verifiedSavingRows.reduce((s, v) => s + (parseFloat(String(v.annual_saving)) || 0), 0).toFixed(2)),
+    items: verifiedSavingRows.slice(0, 20).map(v => ({
+      savingType: String(v.saving_type || 'other'),
+      title: String(v.title || 'Verified saving'),
+      amountSaved: parseFloat(String(v.amount_saved)) || 0,
+      annualSaving: parseFloat(String(v.annual_saving)) || 0,
+      confirmedAt: v.confirmed_at ? String(v.confirmed_at) : null,
+    })),
+  };
+
+  // Budgets vs actual (average monthly spend per category)
+  const budgetsVsActual: BudgetVsActual[] = budgets
+    .filter(b => Number(b.monthly_limit) > 0)
+    .map(b => {
+      const key = normalizeSpendingCategoryKey(b.category);
+      const actual = (categoryTotals[key]?.total || 0) / monthsWithData;
+      const limit = Number(b.monthly_limit) || 0;
+      const ratio = limit > 0 ? actual / limit : 0;
+      return {
+        category: key,
+        label: getReportCategoryLabel(key),
+        monthlyLimit: parseFloat(limit.toFixed(2)),
+        actualMonthlyAverage: parseFloat(actual.toFixed(2)),
+        status: (ratio > 1 ? 'over' : ratio > 0.8 ? 'close' : 'under') as BudgetVsActual['status'],
+      };
+    })
+    .sort((a, b) => (b.actualMonthlyAverage / (b.monthlyLimit || 1)) - (a.actualMonthlyAverage / (a.monthlyLimit || 1)));
+
+  // Net worth — manually tracked assets minus liabilities (no Open
+  // Banking balances here, matching Money Hub's FCA-compliant approach)
+  const totalAssets = assets.reduce((s, a) => s + (parseFloat(String(a.estimated_value)) || 0), 0);
+  const netWorth: NetWorthSummary = {
+    totalAssets: parseFloat(totalAssets.toFixed(2)),
+    totalLiabilities: parseFloat(totalLiabilities.toFixed(2)),
+    netWorth: parseFloat((totalAssets - totalLiabilities).toFixed(2)),
+    goals: goals.slice(0, 10).map(g => ({
+      name: g.name,
+      targetAmount: g.target_amount,
+      currentAmount: g.current_amount,
+      progressPct: g.target_amount > 0 ? Math.min(100, parseFloat(((g.current_amount / g.target_amount) * 100).toFixed(1))) : 0,
+    })),
+  };
+
+  const reportWindow: ReportWindow = {
+    start: yearStartDt.toISOString(),
+    end: yearEnd,
+    label: windowLabel,
+  };
+
+  // Executive Summary (template fallback; the API route replaces this
+  // with an AI-written summary when the Anthropic call succeeds)
+  const topCategory = spendingByCategory[0] || null;
+  const savingsRatePct = totalIncome > 0
+    ? parseFloat((((totalIncome - totalOutgoings) / totalIncome) * 100).toFixed(1))
+    : null;
   const executiveSummary = buildExecutiveSummary({
     monthlySpend: totalOutgoings,
     activeSubs: activeSubs.length,
@@ -1151,7 +1594,28 @@ export async function generateAnnualReportData(
     disputes: disputes.length,
     monthlySubCost: monthlySubscriptionCost,
     totalDisputedAmount,
+    disputesRecovered,
+    topCategoryLabel: topCategory?.label ?? null,
+    topCategoryTotal: topCategory?.total ?? null,
+    savingsRatePct,
+    windowLabel,
   });
+
+  // Data-driven next actions fallback (the API route replaces these
+  // with AI-written actions when available).
+  const nextActions: string[] = [];
+  for (const action of savingsActions.slice(0, 3)) {
+    nextActions.push(`${action.description} (${action.provider}): save around £${action.annualSaving} a year.`);
+  }
+  if (emailFindings.refundOpportunities > 0) {
+    nextActions.push(`Review ${emailFindings.refundOpportunities} refund opportunit${emailFindings.refundOpportunities === 1 ? 'y' : 'ies'} found in your email scans.`);
+  }
+  if (disputesInProgress > 0) {
+    nextActions.push(`Chase your ${disputesInProgress} open dispute${disputesInProgress === 1 ? '' : 's'} for a response.`);
+  }
+  if (nextActions.length === 0) {
+    nextActions.push('Connect more accounts so we can find savings across everything you pay for.');
+  }
 
   const userName = profile?.full_name || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'User';
   const userPlan = profile?.subscription_tier
@@ -1191,14 +1655,16 @@ export async function generateAnnualReportData(
   try {
     const { data: prevTx } = await admin
       .from('bank_transactions')
-      .select('amount')
+      .select('amount, is_pending, transfer_pair_id')
       .eq('user_id', userId)
+      .is('deleted_at', null)
       .gte('timestamp', prevYearStartDt.toISOString())
       .lt('timestamp', prevYearEndDt.toISOString());
     if (prevTx && prevTx.length > 0) {
       let prevIncome = 0;
       let prevSpend = 0;
       for (const t of prevTx) {
+        if (!isCountableTransaction(t as TxRow)) continue;
         const amt = Number(t.amount) || 0;
         if (amt > 0) prevIncome += amt;
         else prevSpend += Math.abs(amt);
@@ -1252,6 +1718,16 @@ export async function generateAnnualReportData(
     projectedAnnualIncome,
     savingsRateByMonth,
     yoy,
+
+    // v4 fields (2026-08-20)
+    reportWindow,
+    emailFindings,
+    upcomingPayments,
+    verifiedSavings,
+    disputesDetail,
+    budgetsVsActual,
+    netWorth,
+    nextActions,
 
     // Legacy fields
     subscriptionsCancelled: cancelledSubs.length,
@@ -1349,33 +1825,56 @@ function buildExecutiveSummary(data: {
   disputes: number;
   monthlySubCost: number;
   totalDisputedAmount?: number;
+  disputesRecovered?: number;
+  topCategoryLabel?: string | null;
+  topCategoryTotal?: number | null;
+  savingsRatePct?: number | null;
+  windowLabel?: string;
 }): string {
   const parts: string[] = [];
+  const gbp = (n: number, dp = 0) => `£${n.toLocaleString('en-GB', { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+  const windowPhrase = data.windowLabel ? `Over the last 12 months (${data.windowLabel})` : 'Over the last 12 months';
 
   if (data.monthlySpend > 0 || data.activeSubs > 0) {
-    const spendStr = data.monthlySpend > 0 ? `£${data.monthlySpend.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
-    const subsStr = data.activeSubs > 0 ? `${data.activeSubs} active subscriptions and regular payments totalling £${data.monthlySubCost.toLocaleString('en-GB', { minimumFractionDigits: 0 })}/month` : '';
-    
+    const spendStr = data.monthlySpend > 0 ? gbp(data.monthlySpend, 2) : '';
+    const subsStr = data.activeSubs > 0 ? `${data.activeSubs} active subscription${data.activeSubs === 1 ? '' : 's'} and regular payments totalling ${gbp(data.monthlySubCost)} a month` : '';
+
     if (spendStr && subsStr) {
-      parts.push(`Over the past 12 months, you spent approximately ${spendStr} across ${subsStr}.`);
+      parts.push(`${windowPhrase}, you spent approximately ${spendStr}, including ${subsStr}.`);
     } else if (spendStr) {
-      parts.push(`Over the past 12 months, your total spending was ${spendStr}.`);
+      parts.push(`${windowPhrase}, your total spending was ${spendStr}.`);
     } else if (subsStr) {
       parts.push(`You currently have ${subsStr}.`);
     }
   }
 
+  if (data.topCategoryLabel && data.topCategoryTotal && data.topCategoryTotal > 0) {
+    parts.push(`Your biggest spending category was ${data.topCategoryLabel} at ${gbp(data.topCategoryTotal)}.`);
+  }
+
+  if (typeof data.savingsRatePct === 'number') {
+    if (data.savingsRatePct >= 0) {
+      parts.push(`You kept ${data.savingsRatePct.toFixed(1)}% of your income after spending.`);
+    } else {
+      parts.push(`Your spending was higher than your income over this period.`);
+    }
+  }
+
   if (data.disputes > 0) {
-    const dispAmountStr = data.totalDisputedAmount ? ` worth £${data.totalDisputedAmount.toLocaleString('en-GB', { minimumFractionDigits: 0 })} in potential recovery` : '';
-    parts.push(`You have ${data.disputes} open dispute${data.disputes !== 1 ? 's' : ''}${dispAmountStr}.`);
+    if (data.disputesRecovered && data.disputesRecovered > 0) {
+      parts.push(`Your ${data.disputes} dispute${data.disputes !== 1 ? 's' : ''} have recovered ${gbp(data.disputesRecovered)} so far.`);
+    } else {
+      const dispAmountStr = data.totalDisputedAmount ? ` worth ${gbp(data.totalDisputedAmount)} in potential recovery` : '';
+      parts.push(`You have ${data.disputes} dispute${data.disputes !== 1 ? 's' : ''}${dispAmountStr}.`);
+    }
   }
 
   if (data.priceAlertCount > 0) {
-    parts.push(`We detected ${data.priceAlertCount} price increase${data.priceAlertCount !== 1 ? 's' : ''} costing you an extra £${data.priceAlertCost.toLocaleString('en-GB', { minimumFractionDigits: 0 })}/yr.`);
+    parts.push(`We detected ${data.priceAlertCount} price increase${data.priceAlertCount !== 1 ? 's' : ''} costing you an extra ${gbp(data.priceAlertCost)} a year.`);
   }
 
   if (data.potentialSavings > 0) {
-    parts.push(`Based on your spending patterns, we've identified potential savings of £${data.potentialSavings.toLocaleString('en-GB', { minimumFractionDigits: 0 })}/yr.`);
+    parts.push(`Based on live market comparisons, we have identified potential savings of ${gbp(data.potentialSavings)} a year.`);
   }
 
   return parts.join(' ') || 'Your financial report is ready. Connect your bank account and add subscriptions to unlock personalised insights.';

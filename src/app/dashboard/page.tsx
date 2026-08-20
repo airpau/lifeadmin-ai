@@ -17,6 +17,7 @@ import {
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 import SavingsHero from '@/components/dashboard/SavingsHero';
+import ConnectionHub from '@/components/dashboard/ConnectionHub';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
@@ -139,6 +140,17 @@ export default function DashboardPage() {
       }
     };
   }, []);
+
+  // Auto-open the bank picker when arriving with ?connect_bank=1.
+  // Used by the onboarding wizard (and anywhere else that wants to
+  // deep-link straight into the Yapily institution picker) so callers
+  // never have to hit /api/auth/yapily without an institutionId, which
+  // returns a 400 JSON error.
+  useEffect(() => {
+    if (searchParams.get('connect_bank') === '1') {
+      setShowBankPicker(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (searchParams.get('signup') === '1') {
@@ -1057,11 +1069,28 @@ export default function DashboardPage() {
     </div>
   );
 
+  // The ConnectionHub is the single, prominent "connect your stuff"
+  // surface at the top of the overview. While it is visible, the other
+  // setup nudges (Next-up banner's bank/email steps, OnboardingFlow's
+  // bank card, the right-rail Connections card's connect buttons) stand
+  // down so a fresh user sees ONE clear call to action, not a pile-up
+  // of three banners all saying "connect a bank".
+  const connectionHubVisible = !bankConnected || !emailConnected;
+
   return (
     <div>
       <PlanLimitsBanner />
       <SavingsHero />
       {userTier === 'free' && <UpgradePrompt variant="banner" />}
+
+      {connectionHubVisible && (
+        <ConnectionHub
+          bankConnected={bankConnected}
+          emailConnected={emailConnected}
+          activeBankCount={bankAccounts.filter((b) => b.status === 'active').length}
+          onConnectBank={() => setShowBankPicker(true)}
+        />
+      )}
 
       {syncMessage && (
         <div
@@ -1145,6 +1174,10 @@ export default function DashboardPage() {
         bankConnected={bankConnected}
         subscriptionCount={subscriptionCount}
         tier={userTier}
+        // The hub above already owns the bank CTA while it's visible —
+        // suppress OnboardingFlow's bank card so we never show two
+        // "connect a bank" banners at once. Its letter step still shows.
+        suppressBankStep={connectionHubVisible}
       />
 
       {/* ─── Page title row ─────────────────────────────────────────── */}
@@ -1471,13 +1504,14 @@ export default function DashboardPage() {
               but on phones the rail stacks *below* the main column —
               without this banner, a fresh user on iPhone has to scroll
               past 1200px of widgets before they see their first
-              setup cue. Only renders while any core step is missing. */}
-          {(!bankConnected || !emailConnected || complaintsGenerated === 0) && (() => {
-            const nextStep = !bankConnected
-              ? { label: 'Connect a bank to unlock price alerts & auto-detected subscriptions', cta: 'Connect bank →', onClick: () => { if (!connectBankDirect()) setShowBankPicker(true); }, href: null }
-              : !emailConnected
-              ? { label: 'Connect an email inbox to catch hidden bills and forgotten subs', cta: 'Connect email →', onClick: null, href: '/dashboard/profile?connect_email=true' }
-              : { label: 'Write your first dispute letter — we\'ll cite the exact UK law', cta: 'Start a letter →', onClick: null, href: '/dashboard/complaints' };
+              setup cue. Only renders while any core step is missing.
+              De-dup with the ConnectionHub: while the hub is visible
+              (any connection missing) it owns the bank/email CTAs, so
+              this banner suppresses those steps entirely and only
+              surfaces its remaining step — "write your first letter" —
+              once BOTH connections are done. */}
+          {!connectionHubVisible && complaintsGenerated === 0 && (() => {
+            const nextStep = { label: 'Write your first dispute letter — we\'ll cite the exact UK law', cta: 'Start a letter →', onClick: null as (() => void) | null, href: '/dashboard/complaints' as string | null };
             return (
               <div
                 className="card"
@@ -2084,24 +2118,31 @@ export default function DashboardPage() {
                     </div>
                   ))
                 )}
-                <div style={{ display: 'flex', gap: 6, paddingTop: 10 }}>
-                  <button
-                    onClick={() => {
-                      if (!connectBankDirect()) setShowBankPicker(true);
-                    }}
-                    className="cta-ghost"
-                    style={{ fontSize: 11.5, padding: '6px 10px', flex: 1, justifyContent: 'center' }}
-                  >
-                    <Building2 className="h-3 w-3" /> Bank
-                  </button>
-                  <Link
-                    href="/dashboard/profile?connect_email=true"
-                    className="cta-ghost"
-                    style={{ fontSize: 11.5, padding: '6px 10px', flex: 1, justifyContent: 'center' }}
-                  >
-                    <Mail className="h-3 w-3" /> Email
-                  </Link>
-                </div>
+                {/* Connect buttons hidden while the ConnectionHub is on
+                    screen — the hub is the single connect surface, and
+                    a fresh user shouldn't see the same two CTAs twice.
+                    Once both are connected the hub goes away and these
+                    return for adding extra accounts. */}
+                {!connectionHubVisible && (
+                  <div style={{ display: 'flex', gap: 6, paddingTop: 10 }}>
+                    <button
+                      onClick={() => {
+                        if (!connectBankDirect()) setShowBankPicker(true);
+                      }}
+                      className="cta-ghost"
+                      style={{ fontSize: 11.5, padding: '6px 10px', flex: 1, justifyContent: 'center' }}
+                    >
+                      <Building2 className="h-3 w-3" /> Bank
+                    </button>
+                    <Link
+                      href="/dashboard/profile?connect_email=true"
+                      className="cta-ghost"
+                      style={{ fontSize: 11.5, padding: '6px 10px', flex: 1, justifyContent: 'center' }}
+                    >
+                      <Mail className="h-3 w-3" /> Email
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
           </div>

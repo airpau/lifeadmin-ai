@@ -130,6 +130,17 @@ const SAMPLE_ANNUAL: AnnualReportData = {
     spendDeltaPct: -7.1,
     netDeltaPct: 23.6,
   },
+  // v4 sample fields
+  reportWindow: {
+    start: '2026-01-01T00:00:00Z',
+    end: '2026-12-31T23:59:59Z',
+    label: 'January 2026 to December 2026',
+  },
+  nextActions: [
+    'Switch your energy tariff comparison: save around £180 a year.',
+    'Chase your open British Gas dispute for a response.',
+    'Review the 2 refund opportunities found in your email scans.',
+  ],
   // v3 sample fields — "How you've used Paybacker" section
   toolUsage: {
     pocketAgent: {
@@ -211,12 +222,11 @@ export default function FinancialReport({ data, type }: FinancialReportProps) {
   // sample overlay even though their real data had loaded. Now derived
   // from the prop (the only legit way to enter the SAMPLE state).
   //
-  // The Quick Summary button passes `type='on_demand'` with an
-  // OnDemandReportData payload, but this component is shaped entirely
-  // around AnnualReportData (monthlyTrends, toolUsage, etc.). Render
-  // the sample for that case until on-demand has its own renderer —
-  // matches the legacy pre-fix behaviour for that path.
-  const isSample = type === 'sample' || type === 'on_demand' || !data;
+  // Bug fix 2026-08-20: a real on-demand report was ALSO being thrown
+  // away and replaced with the locked sample, so a Pro user who clicked
+  // "Quick Summary" saw fake data. On-demand payloads now get their own
+  // renderer below.
+  const isSample = type === 'sample' || !data;
   const report: AnnualReportData = (data as AnnualReportData) || SAMPLE_ANNUAL;
 
   const handleDownloadPdf = async () => {
@@ -230,6 +240,11 @@ export default function FinancialReport({ data, type }: FinancialReportProps) {
       setPdfLoading(false);
     }
   };
+
+  // Real Quick Summary — render the on-demand payload, never the sample.
+  if (!isSample && type === 'on_demand') {
+    return <OnDemandSummary data={data as OnDemandReportData} />;
+  }
 
   /* ---- Annual report (sample preview for non-Pro users) ---- */
   const annual = (isSample ? SAMPLE_ANNUAL : report) as AnnualReportData;
@@ -265,10 +280,10 @@ export default function FinancialReport({ data, type }: FinancialReportProps) {
             <div>
               <p className="text-mint-400 text-sm font-medium mb-1">Paybacker Financial Report</p>
               <h1 className="text-3xl md:text-4xl font-bold text-white font-[family-name:var(--font-heading)]">
-                Your {annual.year} Financial Report
+                Your Last 12 Months
               </h1>
               <p className="text-slate-400 mt-2">
-                Member for {annual.daysAsMember} days
+                {annual.reportWindow?.label ? `${annual.reportWindow.label} · ` : ''}Member for {annual.daysAsMember} days
               </p>
             </div>
             {!isSample && (
@@ -382,7 +397,7 @@ export default function FinancialReport({ data, type }: FinancialReportProps) {
             {annual.spendingByCategory.slice(0, 10).map((cat) => (
               <div key={cat.category}>
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-300 capitalize">{cat.category}</span>
+                  <span className="text-slate-300">{cat.label || cat.category}</span>
                   <span className="text-white font-medium">
                     {formatGBP(cat.total)}{' '}
                     <span className="text-slate-500">({cat.percentage}%)</span>
@@ -484,7 +499,118 @@ export default function FinancialReport({ data, type }: FinancialReportProps) {
             Total money recovered + annual savings from cancelled subscriptions
           </p>
         </div>
+
+        <p className="text-xs text-slate-500 text-center mt-6">
+          This report is a factual summary of your own accounts and activity. It is general information, not financial advice.
+        </p>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  On-demand (Quick Summary) renderer                                 */
+/* ------------------------------------------------------------------ */
+
+function OnDemandSummary({ data }: { data: OnDemandReportData }) {
+  return (
+    <div className="space-y-6">
+      {/* Hero */}
+      <div className="bg-gradient-to-br from-navy-900 via-navy-900 to-mint-400/5 border border-navy-700/50 rounded-2xl p-8">
+        <p className="text-mint-400 text-sm font-medium mb-1">Paybacker Quick Summary</p>
+        <h1 className="text-3xl font-bold text-white font-[family-name:var(--font-heading)]">
+          {data.currentMonth}
+        </h1>
+        <p className="text-slate-400 mt-2">
+          Generated {new Date(data.generatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+        </p>
+      </div>
+
+      {/* Snapshot */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="Health Score" value={`${data.financialHealth.overall}/100`} icon={<Star className="h-5 w-5" />} color="mint" />
+        <StatCard label="Income This Month" value={formatGBP(data.currentMonthIncome)} icon={<TrendingUp className="h-5 w-5" />} color="green" />
+        <StatCard label="Spend This Month" value={formatGBP(data.currentMonthSpend)} icon={<ShoppingCart className="h-5 w-5" />} color="red" />
+        <StatCard label="Net Position" value={formatGBP(data.netPosition)} icon={<BarChart3 className="h-5 w-5" />} color={data.netPosition >= 0 ? 'mint' : 'red'} />
+      </div>
+
+      {/* Subscriptions */}
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6">
+        <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
+          <CreditCard className="h-5 w-5 text-mint-400" /> Subscriptions
+        </h3>
+        <p className="text-sm text-slate-400 mb-4">
+          {data.totalSubscriptions} active · {formatGBP(data.totalMonthlyCost)}/month
+          {data.potentialAnnualSavings > 0 ? ` · potential savings ${formatGBP(data.potentialAnnualSavings)}/yr` : ''}
+        </p>
+        <div className="space-y-2">
+          {data.topSubscriptions.map((sub) => (
+            <div key={sub.id} className="flex items-center justify-between bg-navy-950/50 border border-navy-700/40 rounded-lg p-3">
+              <div className="min-w-0">
+                <p className="text-white text-sm font-medium truncate">{sub.name}</p>
+                <p className="text-xs text-slate-400 truncate">{sub.guidance.message}</p>
+              </div>
+              <p className="text-white text-sm font-semibold whitespace-nowrap ml-3">{formatGBP(sub.monthlyCost)}/mo</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Alerts */}
+      {(data.priceAlerts.length > 0 || data.activeDisputeCount > 0 || data.pendingActionCount > 0) && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-amber-400" /> Needs Your Attention
+          </h3>
+          <div className="space-y-2 text-sm">
+            {data.priceAlerts.map((a) => (
+              <div key={a.id} className="flex items-center justify-between">
+                <span className="text-slate-300">{a.merchantName}: price up {a.pctChange.toFixed(1)}%</span>
+                <span className="text-red-400 font-semibold">+{formatGBP(a.annualImpact)}/yr</span>
+              </div>
+            ))}
+            {data.activeDisputeCount > 0 && (
+              <p className="text-slate-300">{data.activeDisputeCount} dispute{data.activeDisputeCount === 1 ? '' : 's'} in progress</p>
+            )}
+            {data.pendingActionCount > 0 && (
+              <p className="text-slate-300">{data.pendingActionCount} letter{data.pendingActionCount === 1 ? '' : 's'} waiting for your review</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Savings plan */}
+      {data.savingsActions.length > 0 && (
+        <div className="bg-gradient-to-br from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <PiggyBank className="h-5 w-5 text-mint-400" /> Savings Plan
+            </h3>
+            <p className="text-mint-400 font-bold">{formatGBP(data.totalPotentialSaving)}/yr</p>
+          </div>
+          <div className="space-y-2">
+            {data.savingsActions.slice(0, 6).map((action, i) => (
+              <a
+                key={i}
+                href={action.actionUrl}
+                target={action.actionUrl.startsWith('http') ? '_blank' : undefined}
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 bg-navy-950/50 border border-navy-700/40 rounded-lg p-3 hover:border-mint-400/40 transition-all"
+              >
+                <span>{action.difficultyEmoji}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium truncate">{action.description} ({action.provider})</p>
+                  <p className="text-mint-400 text-xs">Save {formatGBP(action.annualSaving)}/yr</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-slate-500 text-center">
+        This report is a factual summary of your own accounts and activity. It is general information, not financial advice.
+      </p>
     </div>
   );
 }

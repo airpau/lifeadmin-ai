@@ -164,11 +164,22 @@ export async function POST(request: NextRequest) {
       const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
       const merchant = (dispute.provider_name as string) || 'a supplier';
       const url = `paybacker.co.uk/dashboard/disputes/${dispute.id}`;
-      await sendWhatsAppTemplate({
-        to: session.whatsapp_phone,
-        templateName: 'paybacker_dispute_created',
-        parameters: [merchant, url],
-      });
+      await sendWhatsAppTemplate(
+        {
+          to: session.whatsapp_phone,
+          templateName: 'paybacker_dispute_created',
+          parameters: [merchant, url],
+        },
+        {
+          // Digest metadata: a deferred send lands in the evening digest
+          // with a deep link to this specific dispute.
+          userId: user.id,
+          eventType: 'dispute_created',
+          provider: merchant,
+          url,
+          dedupKey: `dispute_created_${dispute.id}`,
+        },
+      );
     }
   } catch (e) {
     console.warn('[disputes] paybacker_dispute_created send failed', e);

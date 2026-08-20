@@ -248,7 +248,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid outcome. Must be one of: ' + validOutcomes.join(', ') }, { status: 400 });
     }
 
-    const moneyRecovered = body.money_recovered ? parseFloat(body.money_recovered) : 0;
+    // Accept both string ('4990.21') and number payloads; guard NaN so a
+    // malformed value records 0 rather than failing the numeric column.
+    const moneyRecoveredRaw = body.money_recovered ? parseFloat(body.money_recovered) : 0;
+    const moneyRecovered = Number.isFinite(moneyRecoveredRaw) ? moneyRecoveredRaw : 0;
 
     // Outcome audit payload — set on every code path (RPC success + fallback).
     // PATCH is user-driven from the web UI: confidence='confirmed', set_by='user'.
@@ -410,7 +413,12 @@ export async function PATCH(
   if (body.provider_name) allowedFields.provider_name = body.provider_name;
   if (body.desired_outcome !== undefined) allowedFields.desired_outcome = body.desired_outcome;
   if (body.disputed_amount !== undefined) allowedFields.disputed_amount = body.disputed_amount ? parseFloat(body.disputed_amount) : null;
-  if (body.money_recovered !== undefined) allowedFields.money_recovered = parseFloat(body.money_recovered);
+  if (body.money_recovered !== undefined) {
+    // Guard null / non-numeric input: parseFloat(null) is NaN and would
+    // fail the numeric column write.
+    const parsed = body.money_recovered == null ? NaN : parseFloat(body.money_recovered);
+    allowedFields.money_recovered = Number.isFinite(parsed) ? parsed : null;
+  }
   if (body.outcome_notes !== undefined) allowedFields.outcome_notes = body.outcome_notes;
   if (body.account_number !== undefined) allowedFields.account_number = body.account_number;
   if (body.issue_summary !== undefined) allowedFields.issue_summary = body.issue_summary;
