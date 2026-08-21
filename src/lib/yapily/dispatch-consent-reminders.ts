@@ -16,7 +16,8 @@ import { isAtLeastPro } from '@/lib/tier-rank';
 import { getEffectiveTier } from '@/lib/plan-limits';
 import {
   daysUntil,
-  pickReminderChannel,
+  reminderChannelChain,
+  isUrgentReminder,
   reminderDeadline,
   reminderReferenceKey,
   reminderStage,
@@ -209,7 +210,7 @@ export async function dispatchConsentReminders(
     // old code called sendWhatsAppTemplate directly, which never reads
     // tier, so the registry's proOnly flag did nothing on this path.
     const tier = await getEffectiveTier(c.user_id);
-    const choice = pickReminderChannel({
+    const chain = reminderChannelChain({
       tier,
       isPro: isAtLeastPro(tier),
       whatsappPhone: (waSession?.whatsapp_phone as string | null) ?? null,
@@ -217,13 +218,13 @@ export async function dispatchConsentReminders(
       email: (profile?.email as string | null) ?? null,
     });
 
-    if (!choice) {
+    if (chain.length === 0) {
       record(null, 'user has no email, Telegram or eligible WhatsApp channel', false);
       continue;
     }
 
     if (opts.dryRun) {
-      record(choice.channel, `${choice.reason} (dry run — nothing sent)`, false);
+      record(chain[0].channel, `${chain[0].reason} (dry run — nothing sent)`, false);
       continue;
     }
 
@@ -235,77 +236,130 @@ export async function dispatchConsentReminders(
         .trim()
         .split(/\s+/)[0] || '';
 
-    let sent = false;
-    try {
-      if (choice.channel === 'whatsapp') {
-        const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
-        const res = await sendWhatsAppTemplate({
-          to: waSession!.whatsapp_phone as string,
-          templateName: 'paybacker_reconnect_required',
-          parameters: [bankName, RENEW_URL],
-        });
-        // sendWhatsAppTemplate resolves successfully for blocked,
-        // deferred and suppressed sends, returning a synthetic
-        // providerMessageId. Counting those as delivered is how the old
-        // code overstated its WhatsApp numbers AND wrote a
-        // notification_log row that permanently suppressed the retry.
-        const id = (res as { providerMessageId?: string } | null)?.providerMessageId ?? '';
-        sent = !/^(blocked|deferred|suppressed):/.test(id);
-        if (!sent) {
-          record(choice.channel, `WhatsApp send was ${id.split(':')[0]} — will retry tomorrow`, false);
-          continue;
-        }
-      } else if (choice.channel === 'telegram') {
-        const { sendProactiveAlert } = await import('@/lib/telegram/user-bot');
-        const label =
-          daysLeft > 0
-            ? `Your ${bankName} connection expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
-            : daysLeft === 0
-              ? `Your ${bankName} connection expires today`
-              : `Your ${bankName} connection has stopped`;
-        await sendProactiveAlert({
-          chatId: tgSession!.telegram_chat_id as number,
-          issue: {
-            id: c.id,
-            title: `🔐 ${label}`,
-            detail:
-              daysLeft >= 0
-                ? `UK rules mean we have to ask you to confirm every 90 days. It takes one tap and you will not need to log in to your bank: ${RENEW_URL}`
-                : `We have paused reading your ${bankName} transactions until you confirm. One tap restores it, no bank login needed: ${RENEW_URL}`,
-            amount_impact: null,
-            issue_type: 'consent_renewal',
-          },
-        });
-        sent = true;
-      } else {
-        const { sendConsentRenewalReminderEmail } = await import(
-          '@/lib/email/consent-renewal-reminder'
-        );
-        sent = await sendConsentRenewalReminderEmail(profile!.email as string, firstName, {
-          bankName,
-          daysLeft,
-        });
-        if (!sent) {
-          // Don't log — a transient Resend failure should retry
-          // tomorrow rather than being suppressed for good.
-          record(choice.channel, 'email provider reported failure — will retry tomorrow', false);
-          continue;
-        }
-      }
+    // ── Try the chain, stop at the first delivery ────────────────
+    //
+    // One message per connection per day. The loop is a fallback, not a
+    // fan-out: we break the moment something is accepted.
+    const urgent = isUrgentReminder(daysLeft);
+    const label =
+      daysLeft > 0
+        ? `Your ${bankName} connection expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
+        : daysLeft === 0
+          ? `Your ${bankName} connection expires today`
+          : `Your ${bankName} connection has stopped`;
 
-      await supabase.from('notification_log').insert({
-        user_id: c.user_id,
-        notification_type: REMINDER_NOTIFICATION_TYPE,
-        reference_key: refKey,
-      });
-      record(choice.channel, choice.reason, true);
-    } catch (e) {
-      console.warn(
-        `[consent-reminders] ${choice.channel} send failed for connection=${c.id}`,
-        e,
-      );
-      record(choice.channel, `send threw: ${e instanceof Error ? e.message : 'unknown'}`, false);
+    let delivered: { channel: ReminderChannel; reason: string } | null = null;
+    const attempts: string[] = [];
+
+    for (const choice of chain) {
+      try {
+        if (choice.channel === 'whatsapp') {
+          const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
+          const res = await sendWhatsAppTemplate(
+            {
+              to: waSession!.whatsapp_phone as string,
+              templateName: 'paybacker_reconnect_required',
+              parameters: [bankName, RENEW_URL],
+            },
+            // ctx was missing entirely before, so per-user suppression,
+            // the notification preference, policy attribution and the
+            // free in-window text path were all skipped on this send.
+            {
+              userId: c.user_id,
+              eventType: 'reconnect_required',
+              // Never suppress: this is a regulatory deadline, not an
+              // optional insight the intelligence ledger should be
+              // allowed to rank away.
+              suppressible: false,
+              // Bypasses quiet hours and the 2-paid-templates-per-day
+              // cap only in the final 24h and after — see
+              // isUrgentReminder for why not earlier.
+              allowUrgent: urgent,
+              // Used as a FREE in-window text when the user is inside
+              // the 24h customer-service window, and as the bullet if
+              // the send is batched to the 18:00 digest.
+              textFallback: `${label}. One tap to fix it: ${RENEW_URL}`,
+              dedupKey: refKey,
+              provider: bankName,
+              url: RENEW_URL,
+            },
+          );
+
+          const id = (res as { providerMessageId?: string } | null)?.providerMessageId ?? '';
+          const outcome = /^(blocked|deferred|suppressed):/.exec(id)?.[1];
+
+          // `deferred` is NOT a failure. The facade has queued it for
+          // the 18:00 evening digest and it will arrive today; falling
+          // through to email would send the same person two reminders
+          // for one event. Only `blocked` and `suppressed` mean nothing
+          // will be delivered.
+          if (outcome === 'blocked' || outcome === 'suppressed') {
+            attempts.push(`whatsapp ${outcome}`);
+            continue;
+          }
+          delivered = {
+            channel: 'whatsapp',
+            reason: outcome === 'deferred'
+              ? `${choice.reason} (queued for the 18:00 digest)`
+              : choice.reason,
+          };
+        } else if (choice.channel === 'telegram') {
+          const { sendProactiveAlert } = await import('@/lib/telegram/user-bot');
+          await sendProactiveAlert({
+            chatId: tgSession!.telegram_chat_id as number,
+            issue: {
+              id: c.id,
+              title: `🔐 ${label}`,
+              detail:
+                daysLeft >= 0
+                  ? `UK rules mean we have to ask you to confirm every 90 days. It takes one tap and you will not need to log in to your bank: ${RENEW_URL}`
+                  : `We have paused reading your ${bankName} transactions until you confirm. One tap restores it, no bank login needed: ${RENEW_URL}`,
+              amount_impact: null,
+              issue_type: 'consent_renewal',
+            },
+          });
+          delivered = { channel: 'telegram', reason: choice.reason };
+        } else {
+          const { sendConsentRenewalReminderEmail } = await import(
+            '@/lib/email/consent-renewal-reminder'
+          );
+          const ok = await sendConsentRenewalReminderEmail(
+            profile!.email as string,
+            firstName,
+            { bankName, daysLeft },
+          );
+          if (!ok) {
+            attempts.push('email provider reported failure');
+            continue;
+          }
+          delivered = { channel: 'email', reason: choice.reason };
+        }
+        break;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'unknown';
+        console.warn(
+          `[consent-reminders] ${choice.channel} send failed for connection=${c.id}: ${msg}`,
+        );
+        attempts.push(`${choice.channel} threw: ${msg}`);
+      }
     }
+
+    if (!delivered) {
+      // Nothing logged, so tomorrow's run tries again from the top.
+      record(chain[0].channel, `no channel accepted (${attempts.join('; ')}) — retrying tomorrow`, false);
+      continue;
+    }
+
+    await supabase.from('notification_log').insert({
+      user_id: c.user_id,
+      notification_type: REMINDER_NOTIFICATION_TYPE,
+      reference_key: refKey,
+    });
+    record(
+      delivered.channel,
+      attempts.length ? `${delivered.reason} (after: ${attempts.join('; ')})` : delivered.reason,
+      true,
+    );
   }
 
   return result;
