@@ -92,13 +92,32 @@ export function computeTransactionWindow(
 
   if (!latestTransactionAt) return full();
 
-  const latest = new Date(latestTransactionAt);
-  if (Number.isNaN(latest.getTime())) return full();
+  const raw = new Date(latestTransactionAt);
+  if (Number.isNaN(raw.getTime())) return full();
 
-  // A watermark in the future (bank clock skew, or a future-dated
-  // transaction we stored) would otherwise produce an empty or
-  // inverted window. Fall back rather than silently sync nothing.
-  if (latest.getTime() > now.getTime()) return full();
+  // ── Future-dated rows are NORMAL, not an error ────────────────────
+  //
+  // Caught in production on 2026-08-21, first run after deploy: the
+  // window came back as 91 days for an account whose newest stored
+  // transaction was dated five days ahead.
+  //
+  // NatWest and HSBC return scheduled payments as ordinary transaction
+  // rows dated on the day they are DUE — the whole reason
+  // future-dated.ts and the `before = tomorrow` bound exist. So a
+  // watermark in the future is the everyday case for exactly the
+  // accounts we most want to sync incrementally, not the clock-skew
+  // anomaly the first version of this guard assumed.
+  //
+  // Clamping to `now` is safe and is the right answer: a stored row
+  // dated next Tuesday means we already have everything up to today,
+  // so today is a valid floor to resume from.
+  //
+  // A date absurdly far ahead is a different thing — corrupt data or a
+  // parsing bug — and should not silently narrow the window.
+  const ABSURD_FUTURE_DAYS = 365;
+  if (raw.getTime() - now.getTime() > ABSURD_FUTURE_DAYS * dayMs) return full();
+
+  const latest = raw.getTime() > now.getTime() ? now : raw;
 
   if (now.getTime() - latest.getTime() > STALE_WATERMARK_DAYS * dayMs) return full();
 

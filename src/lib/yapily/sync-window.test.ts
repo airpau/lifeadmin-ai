@@ -73,11 +73,24 @@ describe('computeTransactionWindow', () => {
     assert.ok(Date.parse(w.from) >= fullFrom, 'incremental window escaped the 90-day floor');
   });
 
-  it('falls back to full history on a future-dated watermark', () => {
-    // Bank clock skew, or a future-dated row we stored. Without this
-    // guard the window would be inverted and the sync would return
-    // nothing, silently.
-    const w = computeTransactionWindow(new Date(NOW.getTime() + 3 * DAY).toISOString(), NOW);
+  it('stays incremental when the newest stored row is future-dated', () => {
+    // Regression, caught in production 2026-08-21 on the first run
+    // after deploy. NatWest and HSBC return scheduled payments as
+    // ordinary transactions dated on the DUE date, so the newest stored
+    // row is routinely a few days ahead of now. The original guard
+    // treated that as clock skew and fell back to a 91-day window on
+    // every single run — for exactly the accounts that most need the
+    // incremental path.
+    const w = computeTransactionWindow(new Date(NOW.getTime() + 5 * DAY).toISOString(), NOW);
+    assert.equal(w.mode, 'incremental');
+    // Clamped to now, then backed off by the overlap.
+    assert.equal(w.from, new Date(NOW.getTime() - INCREMENTAL_OVERLAP_DAYS * DAY).toISOString());
+  });
+
+  it('falls back to full history on an absurdly future watermark', () => {
+    // A year out is not a scheduled payment, it is corrupt data or a
+    // parsing bug, and should not silently narrow the window.
+    const w = computeTransactionWindow(new Date(NOW.getTime() + 400 * DAY).toISOString(), NOW);
     assert.equal(w.mode, 'full_history');
   });
 
