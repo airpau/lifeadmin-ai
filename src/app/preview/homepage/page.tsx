@@ -1077,8 +1077,9 @@ export default function HomepageV3PreviewPage() {
                 that should not be there. It writes the letter citing the exact
                 UK statute or regulator rule, links the official source, and
                 keeps the case moving to the ombudsman deadline.
-                <br />
-                You keep 100% of anything that comes back. We never take a cut.
+                <span className="hero-sub__claim">
+                  You keep 100% of anything that comes back. We never take a cut.
+                </span>
               </p>
               <div className="hero-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">

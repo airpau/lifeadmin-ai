@@ -261,8 +261,9 @@
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 84px 32px 0;
-  font-size: 13.5px;
+  gap: 4px 0;
+  padding: 76px 32px 0;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary, #4B5563);
   letter-spacing: 0.01em;
@@ -287,21 +288,21 @@
  * Hero
  * ========================================================================= */
 
-.m-v2-root .hero { padding: 32px 0 120px; }
+.m-v2-root .hero { padding: 24px 0 104px; }
 
 .m-v2-root .hero-grid {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 56px;
-  padding-top: 40px;
+  padding-top: 28px;
   max-width: 1080px;
   margin: 0 auto;
 }
 .m-v2-root .hero-copy {
   text-align: center;
   align-items: center;
-  max-width: 760px;
+  max-width: 720px;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -312,12 +313,18 @@
 .m-v2-root .hero-cta-row { justify-content: center; }
 .m-v2-root .hero-ticker { justify-content: center; align-self: center; }
 
+/* Headline. The old `var(--fs-display)` (up to 104px) forced every line
+   to wrap two or three times inside the copy column, which is what made
+   the hero read as scattered. This clamp keeps each of the three written
+   lines on one visual line down to roughly 800px viewports. */
 .m-v2-root .hero h1 {
-  font-size: var(--fs-display);
-  line-height: 1.02;
+  font-size: clamp(38px, 5.4vw, 68px);
+  line-height: 1.06;
   letter-spacing: var(--track-tight);
   font-weight: 700;
-  margin: 18px 0 24px;
+  margin: 20px 0 22px;
+  max-width: 18ch;
+  text-wrap: balance;
 }
 
 .m-v2-root .hero h1 .l1 { color: var(--text-primary); display: block; }
@@ -327,30 +334,53 @@
 .m-v2-root .hero h1 .l3 { color: var(--accent-orange-deep); display: block; }
 
 .m-v2-root .hero-sub {
-  font-size: 19px;
+  font-size: 18px;
+  line-height: 1.6;
   color: var(--text-secondary);
-  max-width: 540px;
-  margin-bottom: 28px;
+  max-width: 560px;
+  margin-bottom: 26px;
   text-wrap: pretty;
 }
 
-.m-v2-root .hero-cta-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+/* Second sentence of the sub — the promise, not the mechanism. Given its
+   own line and weight so it stops running into the paragraph above. */
+.m-v2-root .hero-sub .hero-sub__claim {
+  display: block;
+  margin-top: 12px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.m-v2-root .hero-cta-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+/* Secondary hero CTAs sit visually below the primary action rather than
+   competing with it: same pill, lighter weight, slightly smaller. */
+.m-v2-root .hero-cta-row .btn-ghost {
+  padding: 13px 18px;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
 
 /* Qualifier under the hero CTA row, explaining that /check needs no
    account. Sits between the buttons and the ticker so it reads as part
    of the CTA block rather than as body copy. */
 .m-v2-root .hero-cta-note {
-  margin: 14px 0 0;
-  font-size: 14px;
-  line-height: 1.5;
+  margin: 16px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
   color: var(--text-tertiary);
-  max-width: 520px;
-  text-wrap: pretty;
+  max-width: 480px;
+  text-align: center;
+  text-wrap: balance;
 }
 
 .m-v2-root .hero-ticker {
-  margin-top: 22px;
-  font-size: 14px;
+  margin-top: 24px;
+  max-width: 620px;
+  text-align: center;
+  line-height: 1.55;
+  font-size: 13.5px;
   color: var(--accent-orange-deep);
   font-weight: 500;
   display: inline-flex; align-items: center; gap: 10px;
