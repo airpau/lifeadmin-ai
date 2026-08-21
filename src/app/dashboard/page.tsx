@@ -1079,6 +1079,93 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {/* ─── Page title row ─────────────────────────────────────────────
+          First thing on the page: who you are, what's waiting, and the
+          primary actions — including "Connect bank", which users
+          previously had to scroll to the bottom of the page to find. */}
+      <div className="page-title-row">
+        <div>
+          <h1 className="page-title">{greeting} 👋</h1>
+          <p className="page-sub">
+            {/* Hold off the headline number until both data sources are
+                in. Showing it the moment price-alerts arrive (and again
+                a few seconds later when the deals fetch finishes) makes
+                the value tick up visibly — looks broken. Match the
+                action-centre card's gating below. */}
+            {dealsLoading ? (
+              <>Loading your action centre…</>
+            ) : combinedActions > 0 ? (
+              <>
+                You have{' '}
+                <strong style={{ color: 'var(--mint-deep)' }}>
+                  {combinedActions} action{combinedActions === 1 ? '' : 's'}
+                  {potentialSavings > 0 ? ` worth ${formatGBP(potentialSavings)}/yr` : ''}
+                </strong>{' '}
+                waiting. Start with the biggest wins.
+              </>
+            ) : (
+              <>Your financial snapshot and quick actions.</>
+            )}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link className="cta-ghost" href="/dashboard/export">Export data</Link>
+          <Link className="cta-ghost" href="/dashboard/subscriptions">Review subs</Link>
+          <button
+            className="cta"
+            onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
+            title="Connect a bank account via secure Open Banking"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <Building2 className="h-4 w-4" /> Connect bank
+          </button>
+        </div>
+      </div>
+
+      {/* ─── KPI row ────────────────────────────────────────────────────
+          Key numbers directly under the title so the page reads
+          top-down: numbers → alerts → actions → detail. */}
+      <div className="kpi-row c4" style={{ marginBottom: 16 }}>
+        <Link href="/dashboard/subscriptions" className="kpi-card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+          <div className="k-label"><CreditCard className="h-3.5 w-3.5" /> Subscriptions & bills</div>
+          <div className="k-val">{subscriptionCount}</div>
+          <div className="k-delta">{formatGBP(monthlySpend)}/mo</div>
+        </Link>
+        <Link href="/dashboard/complaints" className="kpi-card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+          <div className="k-label"><FileText className="h-3.5 w-3.5" /> Disputes</div>
+          <div className="k-val">{complaintsGenerated}</div>
+          <div className="k-delta">Filed</div>
+        </Link>
+        <div className="kpi-card">
+          <div className="k-label"><PiggyBank className="h-3.5 w-3.5" /> Potential savings</div>
+          <div className="k-val green">{formatGBP(potentialSavings)}</div>
+          <div className="k-delta">Per year</div>
+        </div>
+        {bankConnected ? (
+          <Link href="/dashboard/money-hub" className="kpi-card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+            <div className="k-label"><Building2 className="h-3.5 w-3.5" /> Bank</div>
+            <div className="k-val">
+              {bankAccounts.some((b) => b.status === 'active') ? 'Connected' : 'Expired'}
+            </div>
+            <div className="k-delta">
+              {bankAccounts.some((b) => b.status === 'active')
+                ? `${bankAccounts.length} bank${bankAccounts.length === 1 ? '' : 's'} linked`
+                : 'Needs reconnect'}
+            </div>
+          </Link>
+        ) : (
+          <button
+            onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
+            className="kpi-card"
+            style={{ display: 'block', textAlign: 'left', cursor: 'pointer', color: 'inherit' }}
+          >
+            <div className="k-label"><Building2 className="h-3.5 w-3.5" /> Bank</div>
+            <div className="k-val">Not set</div>
+            <div className="k-delta">Connect a bank to unlock alerts →</div>
+          </button>
+        )}
+      </div>
+
       <PlanLimitsBanner />
       <SavingsHero />
       {userTier === 'free' && <UpgradePrompt variant="banner" />}
@@ -1179,38 +1266,6 @@ export default function DashboardPage() {
         // "connect a bank" banners at once. Its letter step still shows.
         suppressBankStep={connectionHubVisible}
       />
-
-      {/* ─── Page title row ─────────────────────────────────────────── */}
-      <div className="page-title-row">
-        <div>
-          <h1 className="page-title">{greeting} 👋</h1>
-          <p className="page-sub">
-            {/* Hold off the headline number until both data sources are
-                in. Showing it the moment price-alerts arrive (and again
-                a few seconds later when the deals fetch finishes) makes
-                the value tick up visibly — looks broken. Match the
-                action-centre card's gating below. */}
-            {dealsLoading ? (
-              <>Loading your action centre…</>
-            ) : combinedActions > 0 ? (
-              <>
-                You have{' '}
-                <strong style={{ color: 'var(--mint-deep)' }}>
-                  {combinedActions} action{combinedActions === 1 ? '' : 's'}
-                  {potentialSavings > 0 ? ` worth ${formatGBP(potentialSavings)}/yr` : ''}
-                </strong>{' '}
-                waiting. Start with the biggest wins.
-              </>
-            ) : (
-              <>Your financial snapshot and quick actions.</>
-            )}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Link className="cta-ghost" href="/dashboard/export">Export data</Link>
-          <Link className="cta" href="/dashboard/subscriptions">Review subs →</Link>
-        </div>
-      </div>
 
       {/* ─── Hero Action Centre ─────────────────────────────────────── */}
       <div
@@ -1460,38 +1515,6 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* ─── KPI row ────────────────────────────────────────────────── */}
-      <div className="kpi-row c4" style={{ marginBottom: 16 }}>
-        <Link href="/dashboard/subscriptions" className="kpi-card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
-          <div className="k-label"><CreditCard className="h-3.5 w-3.5" /> Subscriptions & bills</div>
-          <div className="k-val">{subscriptionCount}</div>
-          <div className="k-delta">{formatGBP(monthlySpend)}/mo</div>
-        </Link>
-        <Link href="/dashboard/complaints" className="kpi-card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
-          <div className="k-label"><FileText className="h-3.5 w-3.5" /> Disputes</div>
-          <div className="k-val">{complaintsGenerated}</div>
-          <div className="k-delta">Filed</div>
-        </Link>
-        <div className="kpi-card">
-          <div className="k-label"><PiggyBank className="h-3.5 w-3.5" /> Potential savings</div>
-          <div className="k-val green">{formatGBP(potentialSavings)}</div>
-          <div className="k-delta">Per year</div>
-        </div>
-        <Link href="/dashboard/profile" className="kpi-card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
-          <div className="k-label"><Building2 className="h-3.5 w-3.5" /> Bank</div>
-          <div className="k-val">
-            {bankConnected ? (bankAccounts.some((b) => b.status === 'active') ? 'Connected' : 'Expired') : 'Not set'}
-          </div>
-          <div className="k-delta">
-            {bankConnected
-              ? bankAccounts.some((b) => b.status === 'active')
-                ? `${bankAccounts.length} bank${bankAccounts.length === 1 ? '' : 's'} linked`
-                : 'Needs reconnect'
-              : 'Add a bank to unlock alerts'}
-          </div>
-        </Link>
       </div>
 
       {/* ─── Two-column body ───────────────────────────────────────── */}
