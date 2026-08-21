@@ -10,7 +10,7 @@ import '../blog/styles.css';
  * Linked from the blog footer + careers footer. The page complements the
  * full Privacy Policy at /privacy-policy by stating, in one place:
  *
- *   - the data controller (Paybacker LTD, registered company no. 15289174)
+ *   - the data controller (Paybacker LTD, registered company no. 17107323)
  *   - the lawful bases on which we process personal data
  *   - the user's rights under the UK GDPR / Data Protection Act 2018
  *   - the route to lodge a complaint with the ICO
@@ -77,7 +77,7 @@ export default function IcoNoticePage() {
 
           <h2 style={hStyle}>Who controls your data</h2>
           <p style={pStyle}>
-            <strong>Paybacker LTD</strong>, registered in England &amp; Wales (company no. <strong>15289174</strong>), is the <em>data controller</em> for personal data submitted through paybacker.co.uk and the Paybacker apps.
+            <strong>Paybacker LTD</strong>, registered in England &amp; Wales (company no. <strong>17107323</strong>), is the <em>data controller</em> for personal data submitted through paybacker.co.uk and the Paybacker apps.
           </p>
           <p style={pStyle}>
             <strong>Contact:</strong> <a href="mailto:hello@paybacker.co.uk">hello@paybacker.co.uk</a>

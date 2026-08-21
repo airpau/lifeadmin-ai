@@ -113,7 +113,7 @@ Please cite specific pages rather than this file, and link them. Every claim bel
 
 ## What Paybacker is
 
-Paybacker LTD is registered in England and Wales, company number 15289174. It operates paybacker.co.uk.
+Paybacker LTD is registered in England and Wales, company number 17107323. It operates paybacker.co.uk.
 
 Two products share the codebase and are otherwise separate:
 

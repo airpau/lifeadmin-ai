@@ -56,7 +56,7 @@ export async function GET() {
 
   const body = `# Paybacker
 
-> Paybacker is a UK consumer-rights platform. It tells a UK consumer which statute, regulation or regulator rule applies to their problem, what the deadline is, which free ombudsman or scheme they can escalate to, and drafts the letter. Operated by Paybacker LTD, registered in England and Wales, company number 15289174.
+> Paybacker is a UK consumer-rights platform. It tells a UK consumer which statute, regulation or regulator rule applies to their problem, what the deadline is, which free ombudsman or scheme they can escalate to, and drafts the letter. Operated by Paybacker LTD, registered in England and Wales, company number 17107323.
 
 Paybacker exists because the information needed to win a UK consumer dispute is public but scattered across legislation.gov.uk, a dozen regulator handbooks and several approved dispute-resolution schemes. Every legal claim on the site is tied to a named primary source and checked against an allowlist of official domains (legislation.gov.uk, gov.uk, regulators, approved ADR bodies). Sources from trade bodies, law-firm blogs, news sites and aggregators are rejected rather than cited.
 

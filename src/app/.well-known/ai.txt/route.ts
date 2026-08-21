@@ -12,7 +12,7 @@ export const dynamic = 'force-static';
 const BODY = `# ai.txt — Paybacker
 
 Site: https://paybacker.co.uk
-Operator: Paybacker LTD, registered in England and Wales, company number 15289174
+Operator: Paybacker LTD, registered in England and Wales, company number 17107323
 Contact: hello@paybacker.co.uk
 Last updated: 2026-08-16
 

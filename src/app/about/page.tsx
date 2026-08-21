@@ -125,7 +125,7 @@ function MarkFoot() {
           </div>
         </div>
         <div className="footer-bottom">
-          <div>© 2026 Paybacker LTD · Company no. 15289174 · Registered in England &amp; Wales</div>
+          <div>© 2026 Paybacker LTD · Company no. 17107323 · Registered in England &amp; Wales</div>
           <div>paybacker.co.uk · Made in London 🇬🇧</div>
         </div>
       </div>
@@ -521,7 +521,7 @@ export default function AboutPage() {
             </h2>
             <p style={{ fontSize: 17, lineHeight: 1.55, color: 'var(--text-secondary)', margin: '0 auto', maxWidth: 640 }}>
               Paybacker LTD is a privately-owned UK company, incorporated in
-              London in March 2026. Company number 15289174, registered in
+              London in March 2026. Company number 17107323, registered in
               England &amp; Wales. We&rsquo;re a small team and keep it that
               way on purpose &mdash; every feature we ship is reviewed by a
               human who actually uses it to fight their own bills. If you

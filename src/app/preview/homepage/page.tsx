@@ -2254,7 +2254,7 @@ export default function HomepageV3PreviewPage() {
             </div>
           </div>
           <div className="footer-bottom">
-            <div>© 2026 Paybacker LTD · Company no. 15289174 · Registered in England &amp; Wales</div>
+            <div>© 2026 Paybacker LTD · Company no. 17107323 · Registered in England &amp; Wales</div>
             <div>paybacker.co.uk · Made in London 🇬🇧</div>
           </div>
         </div>

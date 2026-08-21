@@ -232,7 +232,7 @@ export default function LegalMethodologyPage() {
         Methodology questions:{" "}
         <a href="mailto:hello@paybacker.co.uk">hello@paybacker.co.uk</a>.
         Paybacker LTD is registered in England &amp; Wales (company no.
-        15289174).
+        17107323).
       </p>
     </PostShell>
   );
