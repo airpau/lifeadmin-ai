@@ -133,6 +133,15 @@ describe('does not flag a correct caption', () => {
     assert.deepEqual(findBrandSpellingErrors('Sorted. #payback #moneysaving'), []);
   });
 
+  test('#MoneyBack is allowed — a real hashtag from the live page', () => {
+    // Taken verbatim from the 24 Apr 2026 Facebook post. An earlier version of
+    // this guard flagged it, which would have skipped a perfectly good caption.
+    assert.deepEqual(
+      findBrandSpellingErrors('#Paybacker #AIDisputes #ConsumerRightsUK #Ofcom #MoneyBack'),
+      [],
+    );
+  });
+
   test('the lowercase domain is not mistaken for prose', () => {
     assert.deepEqual(findBrandSpellingErrors('Visit paybacker.co.uk today'), []);
   });

@@ -17,6 +17,9 @@ const ALLOWED_BACK_WORDS = new Set([
   'back', 'backs', 'backed', 'backing', 'backdate', 'backdated', 'background',
   'backup', 'backlog', 'cashback', 'feedback', 'chargeback', 'chargebacks',
   'clawback', 'setback', 'rollback', 'buyback',
+  // Found by scanning live posts: #MoneyBack has been used as a hashtag since
+  // April. Without it the guard would skip a post for a correct caption.
+  'moneyback', 'getmoneyback', 'moneybacks',
 ]);
 
 // Words that are fine in lower case but suspicious capitalised. "payback" is
