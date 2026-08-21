@@ -158,18 +158,37 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Run the existing post-sync enrichment chain. These are RPCs that
-  // categorise + detect recurring patterns; they're idempotent so
-  // running them after every sync is safe.
-  try {
-    await detectRecurring(userId, supabase);
-  } catch (err) {
-    console.error('[yapily.initial-sync] detectRecurring failed:', err);
-  }
-
+  // ── Post-sync enrichment. ORDER IS LOAD-BEARING. ─────────────────
+  //
+  // detectRecurring used to run FIRST, before any of the RPCs below.
+  // That was wrong in a way that only hurt brand new users, on the
+  // single most important sync they ever run.
+  //
+  // detectRecurring decides what to exclude by reading `category`,
+  // `user_category` and `transfer_pair_id` on each transaction. On a
+  // first sync all three are still NULL, because the RPCs that
+  // populate them had not run yet. So isExcludedTransactionCategory
+  // returned false for everything, and internal transfers, ATM
+  // withdrawals, fees and credit-card settlement payments were all
+  // eligible to be filed as subscriptions.
+  //
+  // That would be recoverable if the user could just dismiss them. They
+  // cannot: dismissal writes a permanent tombstone, and detectRecurring
+  // treats a dismissed row as a block on ever re-detecting that
+  // merchant. So one bad first sync poisoned a user's subscription list
+  // for good.
+  //
+  // The chain now matches cron/bank-sync exactly: deduplicate, fix
+  // merchant names, categorise, mark internal transfers, flag recurring
+  // rows, and only THEN detect subscriptions from properly labelled
+  // data. deduplicate_bank_transactions and mark_internal_transfers
+  // were missing here entirely, so transfer_pair_id stayed NULL until
+  // the next 15-minute cron regardless.
   const postSyncFunctions = [
+    'deduplicate_bank_transactions',
     'fix_ee_card_merchant_names',
     'auto_categorise_transactions',
+    'mark_internal_transfers',
     'detect_and_sync_recurring_transactions',
   ] as const;
   for (const fn of postSyncFunctions) {
@@ -180,6 +199,13 @@ export async function POST(request: NextRequest) {
       const msg = err instanceof Error ? err.message : 'unknown';
       console.error(`[yapily.initial-sync] ${fn} threw:`, msg);
     }
+  }
+
+  // Subscriptions last, from categorised, transfer-aware data.
+  try {
+    await detectRecurring(userId, supabase);
+  } catch (err) {
+    console.error('[yapily.initial-sync] detectRecurring failed:', err);
   }
 
   // Update connection sync timestamp

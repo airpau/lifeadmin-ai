@@ -237,30 +237,55 @@ export async function GET(request: NextRequest) {
 
   const results = { enriched: 0, detected: 0, created: 0, skipped: 0 };
 
-  // Step 1: Enrich merchant_name on any new unmatched transactions
+  // ── Who is in scope for this run? ────────────────────────────────
+  //
+  // Resolved FIRST so the enrichment below can be scoped to it.
+  //
+  // Two bugs fixed here on 2026-08-21:
+  //
+  //   1. The merchant_name enrichment underneath used to run with no
+  //      user filter at all. On a service-role client that meant every
+  //      daily run rewrote merchant_name across EVERY user's
+  //      transactions, not just the ones being processed. It is now
+  //      bounded to `userIds`.
+  //
+  //   2. This query had no ORDER BY under its limit(1000), so once the
+  //      table passed a thousand rows the set of users the cron
+  //      actually processed was whatever Postgres happened to return.
+  //      Ordering by timestamp makes it "the most recently active
+  //      users", which is at least a defensible rule.
+  //
+  // The `.not('merchant_name', 'is', null)` filter also had to go: it
+  // excluded exactly the users whose transactions the enrichment step
+  // was about to populate, so a brand new connection could sit
+  // unprocessed until something else filled a merchant name in.
+  const { data: users } = await supabase
+    .from('bank_transactions')
+    .select('user_id')
+    .gte('timestamp', sixMonthsAgo.toISOString())
+    .order('timestamp', { ascending: false })
+    .limit(1000);
+
+  const userIds = [...new Set((users || []).map(u => u.user_id))];
+
+  // Step 1: Enrich merchant_name on any new unmatched transactions,
+  // for the users in scope only.
   const { data: rules } = await supabase
     .from('merchant_rules')
     .select('raw_name, display_name');
 
-  if (rules) {
+  if (rules && userIds.length > 0) {
     for (const rule of rules) {
       await supabase
         .from('bank_transactions')
         .update({ merchant_name: rule.display_name })
+        .in('user_id', userIds)
         .is('merchant_name', null)
         .ilike('description', `%${rule.raw_name}%`);
     }
   }
 
   // Step 2: Find recurring patterns — group by merchant_name + user_id
-  const { data: users } = await supabase
-    .from('bank_transactions')
-    .select('user_id')
-    .not('merchant_name', 'is', null)
-    .gte('timestamp', sixMonthsAgo.toISOString())
-    .limit(1000);
-
-  const userIds = [...new Set((users || []).map(u => u.user_id))];
 
   for (const userId of userIds) {
     // Get all transactions with merchant_name for this user in last 6 months
