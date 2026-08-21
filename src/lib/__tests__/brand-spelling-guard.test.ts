@@ -19,7 +19,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { findBrandSpellingErrors } from '../../app/api/cron/social-post/route.ts';
+import { findBrandSpellingErrors } from '../social/brand-spelling.ts';
 
 describe('catches the misspellings that actually shipped', () => {
   test('Parybacker', () => {
@@ -36,7 +36,9 @@ describe('catches the misspellings that actually shipped', () => {
     );
   });
 
-  for (const variant of ['Paybacked', 'PayBacker', 'Paybackr', 'Payback']) {
+  // "payback" is ordinary English and allowed in lower case (below), but
+  // capitalised it reads as the model reaching for the brand and missing.
+  for (const variant of ['Paybacked', 'PayBacker', 'Paybackr', 'Payback', 'Paybacks']) {
     test(`near-miss: ${variant}`, () => {
       const found = findBrandSpellingErrors(`${variant} writes the letter for you.`);
       assert.ok(found.includes(variant), `expected ${variant} to be flagged, got ${JSON.stringify(found)}`);
@@ -111,6 +113,25 @@ describe('does not flag a correct caption', () => {
       );
     });
   }
+
+  // Lower-case "payback" is ordinary English, and likely copy for a refunds
+  // product. Case is what separates it from a botched brand name.
+  for (const phrase of [
+    'the payback is immediate',
+    'paybacks like this add up',
+    'average payback of £180 a year',
+  ]) {
+    test(`lower-case payback is allowed: "${phrase}"`, () => {
+      assert.deepEqual(
+        findBrandSpellingErrors(`Paybacker helps. ${phrase}. Try it free at paybacker.co.uk`),
+        [],
+      );
+    });
+  }
+
+  test('#payback hashtag is allowed', () => {
+    assert.deepEqual(findBrandSpellingErrors('Sorted. #payback #moneysaving'), []);
+  });
 
   test('the lowercase domain is not mistaken for prose', () => {
     assert.deepEqual(findBrandSpellingErrors('Visit paybacker.co.uk today'), []);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { findBrandSpellingErrors } from '@/lib/social/brand-spelling';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -61,64 +62,6 @@ async function generateImage(prompt: string): Promise<string | null> {
     console.error('[social-post] Image generation error:', err.message);
     return null;
   }
-}
-
-const BRAND = 'Paybacker';
-const BRAND_DOMAIN = 'paybacker.co.uk';
-
-// Ordinary English words that legitimately contain "back". Without these the
-// guard would reject every caption that says "get your money back", which is
-// most of them. Anything containing "back" that is NOT on this list and NOT
-// exactly "Paybacker" is treated as a misspelt brand name.
-// Deliberately absent: "payback" / "paybacks". Real words, but one character
-// from the brand, so they are worth a skip rather than a publish.
-const ALLOWED_BACK_WORDS = new Set([
-  'back', 'backs', 'backed', 'backing', 'backdate', 'backdated', 'background',
-  'backup', 'backlog', 'cashback', 'feedback', 'chargeback', 'chargebacks',
-  'clawback', 'setback', 'rollback', 'buyback',
-]);
-
-/**
- * Find every token in a caption that looks like a misspelt brand name.
- *
- * Live posts have gone out reading "Parybacker" and "Parabacked", so the
- * prompt rule alone is not enough: this runs after generation and before the
- * first Graph API call.
- *
- * URLs and hashtags carry the brand lower-cased by convention, so they are
- * checked against their own canonical forms and then stripped before the
- * word-level scan. Otherwise the required "Try it free at paybacker.co.uk"
- * CTA would fail on every single post.
- */
-export function findBrandSpellingErrors(caption: string): string[] {
-  const bad: string[] = [];
-
-  // Domains: any host containing "back" must be exactly paybacker.co.uk.
-  for (const m of caption.matchAll(/\b[\w.-]*back[\w.-]*\.(?:co\.uk|com|uk)\b/gi)) {
-    if (m[0].toLowerCase() !== BRAND_DOMAIN) bad.push(m[0]);
-  }
-
-  // Hashtags: #paybacker in any casing is fine.
-  for (const m of caption.matchAll(/#(\w*back\w*)/gi)) {
-    const tag = m[1].toLowerCase();
-    if (tag !== BRAND.toLowerCase() && !ALLOWED_BACK_WORDS.has(tag)) bad.push(m[0]);
-  }
-
-  // Prose: every remaining token containing "back" must be exactly the brand
-  // or an ordinary English word.
-  const prose = caption
-    .replace(/https?:\/\/\S+/gi, ' ')
-    .replace(/\b[\w.-]+\.(?:co\.uk|com|uk)\b/gi, ' ')
-    .replace(/#\w+/g, ' ');
-
-  for (const m of prose.matchAll(/\w*back\w*/gi)) {
-    const token = m[0];
-    if (token === BRAND) continue;
-    if (ALLOWED_BACK_WORDS.has(token.toLowerCase())) continue;
-    bad.push(token);
-  }
-
-  return [...new Set(bad)];
 }
 
 /**
