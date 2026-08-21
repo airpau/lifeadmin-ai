@@ -176,9 +176,15 @@ async function fetchMessagesByFilter(
   maxResults = 100
 ): Promise<GraphMessage[]> {
   const allMessages: GraphMessage[] = [];
-  // 2-year lookback
-  const twoYearsAgo = new Date(Date.now() - 730 * 24 * 60 * 60 * 1000).toISOString();
-  const dateFilter = `receivedDateTime ge ${twoYearsAgo}`;
+  // Server-side date bound.
+  //
+  // This was a hardcoded 730 days, so Outlook downloaded two years of
+  // messages from Graph for every user and the tier cap was then applied
+  // client-side after the fetch. No token cost, but a lot of pointless
+  // bandwidth and latency on a path where nothing beyond the cap was
+  // ever going to be looked at. Now bounded to the real window.
+  const cutoff = new Date(Date.now() - OUTLOOK_FETCH_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const dateFilter = `receivedDateTime ge ${cutoff}`;
   const fullFilter = `${dateFilter} and (${filter})`;
 
   let url: string | null =
@@ -296,7 +302,11 @@ const KQL_GOVERNMENT =
  * had a date bound on the `$search` path, so leaving paid tiers unbounded
  * keeps existing paid behaviour byte-for-byte identical.
  */
-const FULL_SWEEP_DAYS = 730;
+const FULL_SWEEP_DAYS = 90;
+
+/** Server-side Graph fetch bound. Matches the deepest window any tier
+ *  gets; see FULL_EMAIL_SCAN_DAYS in src/lib/email-scan-window.ts. */
+const OUTLOOK_FETCH_DAYS = 90;
 
 export async function scanOutlookForOpportunities(
   accessToken: string,

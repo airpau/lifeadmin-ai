@@ -25,10 +25,19 @@ import { PLAN_LIMITS, getEffectiveTier, type PlanTier } from './plan-limits';
 import { isPlanTier } from './tier-rank';
 
 /**
- * The full sweep, in days. Paid tiers get this; it is also the value the
- * marketing copy means by "2 years of history".
+ * The deepest sweep any tier gets, in days.
+ *
+ * Dropped from 730 to 90 on 2026-08-21 when the paid window was levelled
+ * to match free. It MUST move in step with PLAN_LIMITS[*].emailScanDays:
+ * `capped` below is `days < FULL_EMAIL_SCAN_DAYS`, so leaving this at 730
+ * while every tier scans 90 would mark every scan as capped and show a
+ * paying customer an upsell for a window that no longer exists.
+ *
+ * Kept as a named constant rather than deleted because the tier hook is
+ * still wired up. If a deeper window is ever worth selling again, this
+ * and the plan limits are the two numbers to change.
  */
-export const FULL_EMAIL_SCAN_DAYS = 730;
+export const FULL_EMAIL_SCAN_DAYS = 90;
 
 export interface EmailScanWindow {
   /** Lookback in days actually applied to this scan. */

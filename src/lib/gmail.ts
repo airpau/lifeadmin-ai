@@ -291,22 +291,26 @@ export async function scanEmailsForOpportunities(
     userId?: string | null;
     /**
      * Tier lookback cap in days (PLAN_LIMITS[tier].emailScanDays).
-     * Free = 90, paid = 730. Defaults to 730 so any caller that has not
-     * been updated keeps the historic behaviour.
+     *
+     * 90 on every tier since 2026-08-21. The default below is now 90
+     * rather than 730: a caller that forgets to pass this should get
+     * the cheap window, not the expensive one. Failing open on cost is
+     * how an unbounded bill happens quietly.
      */
     lookbackDays?: number;
   }
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number; cacheHits?: number }> {
-  // Build the recency clause once. The window is a TIER LIMIT — free
-  // users get 90 days, paid users the full 2 years. Depth is the single
-  // largest AI cost in the product, so this is the enforcement point for
-  // the Gmail path: every one of the 15 parallel queries below is
-  // rewritten through withRecency() with this one clause.
+  // Build the recency clause once. Depth is the single largest AI cost
+  // in the product, so this is the enforcement point for the Gmail path:
+  // every one of the 15 parallel queries below is rewritten through
+  // withRecency() with this one clause. The `newer_than:730d` still
+  // written into those query literals is overwritten here and never
+  // reaches Gmail.
   //
   // When sinceISO is supplied (incremental scan) we narrow further, but
-  // never wider than the tier cap — a dormant account with a stale
-  // last_scanned_at must not silently re-open the 2-year sweep.
-  const lookbackDays = Math.max(1, options?.lookbackDays ?? 730);
+  // never wider than the cap — a dormant account with a stale
+  // last_scanned_at must not silently re-open a deeper sweep.
+  const lookbackDays = Math.max(1, options?.lookbackDays ?? 90);
   const windowFloorMs = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
   const cursorMs = options?.sinceISO ? new Date(options.sinceISO).getTime() : NaN;
   const sinceClause = Number.isFinite(cursorMs)
