@@ -151,6 +151,7 @@ Hero messaging to build posts around:
 - A dispute letter citing the exact UK consumer law, drafted in 30 seconds, free, in your Telegram at 3am
 
 Hard rules for every post:
+- The brand name is ALWAYS spelled "Paybacker". Never any other spelling. Not "Parybacker", not "Parabacked", not "Paybacked", not "Pay Backer", not "PayBacker". Check every occurrence before you return. Live posts have gone out to Facebook reading "Parybacker" and "Parabacked" — this is the single most damaging mistake you can make here, because it publishes under our own brand.
 - Never compare Paybacker to solicitors, lawyers, claims firms or legal services
 - Never promise an outcome or quote a success rate
 - Focus on what the product does, not who it is cheaper than
