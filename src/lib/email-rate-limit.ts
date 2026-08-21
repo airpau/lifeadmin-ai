@@ -31,19 +31,42 @@ const MARKETING_EMAIL_TYPES = [
   'founding_reminder',
   'weekly_money_digest',
   'onboarding_email',
-  // Contract and overcharge alerts are marketing-adjacent — they count toward
-  // the daily cap so users can't receive both a deal email AND a contract alert
-  'contract_expiry_alert',
+  // contract_end_alert stays marketing: /api/cron/contract-expiry looks up the
+  // best available deal and the email renders live "Switch to X and save
+  // £Y/year" rows with a deal_url. That is an offer, so it counts.
   'contract_end_alert',
-  'overcharge_alert',
 ];
 
 // These are transactional and bypass the limit
+// Transactional emails bypass the cap entirely.
+//
+// The test is not "does it contain a link" — it is whether someone who opted
+// out of ALL marketing would still want the message. A service message that
+// carries an offer is marketing; one that only tells the user something about
+// their own money is not.
 const TRANSACTIONAL_TYPES = [
   'welcome_email',
   'ticket_reply',
   'password_reset',
   'dispute_reminder_email',
+
+  // "You were overcharged" is the core thing this product exists to tell
+  // people. Capping it means a user does not find out they lost money because
+  // a deals email took the slot that morning. The only outbound link is
+  // "Review & switch" pointing at their own subscriptions page — no offer, no
+  // provider, no price. If that link ever starts reading as promotional,
+  // soften the link rather than capping the message.
+  'overcharge_alert',
+
+  // /api/cron/contract-expiry-alerts hardcodes every deal field to null
+  // (deal_provider, deal_price, potential_saving_monthly, deal_url), so the
+  // deal rows never render and the subject falls back to "review before
+  // auto-renewal". As sent, it carries no promotional content at all.
+  //
+  // ⚠️ If you ever wire real deal data into that cron, this stops being true
+  // and the type belongs back in MARKETING_EMAIL_TYPES. The sibling
+  // contract_end_alert is the worked example of what that looks like.
+  'contract_expiry_alert',
 ];
 
 /**

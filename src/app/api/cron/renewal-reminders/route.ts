@@ -137,17 +137,17 @@ export async function GET(request: NextRequest) {
     const effectiveTier = trialActive ? 'pro' : (user.subscription_tier || 'free');
     if (effectiveTier === 'free') continue;
 
-    // Global daily email rate limit. A hit cap must suppress the EMAIL only —
-    // returning early here muted Telegram, WhatsApp and push as well, which
-    // the email cap has no say over (same defect as contract-expiry-alerts,
-    // PR#532). The dispatcher declares `rateLimited` but never enforces it,
-    // so gating the email payload is the caller's job.
+    // The 30/14/7 renewal warning is a service message on a paid tier. The
+    // deals block inside it is marketing. So a hit cap strips the offer rather
+    // than suppressing the email: the user still gets the warning they pay
+    // for, and we send no marketing over the cap.
     //
-    // Dedup is unaffected: the task rows below are written on ANY delivery,
-    // so a cap-suppressed morning still marks the window done and the Pocket
-    // Agent digest is not repeated tomorrow.
+    // (Before PR#534 a hit cap `continue`d past the whole dispatch, muting
+    // Telegram, WhatsApp and push as well — channels the EMAIL cap has no say
+    // over. Dedup is written on ANY delivery, so a capped morning still marks
+    // the window done and the Pocket Agent digest is not repeated tomorrow.)
     const rateCheck = await canSendEmail(supabase, userId, 'renewal_reminder');
-    const emailAllowed = rateCheck.allowed;
+    const includeDeals = rateCheck.allowed;
 
     const userName = user.first_name || user.full_name?.split(' ')[0] || 'there';
 
@@ -166,7 +166,7 @@ export async function GET(request: NextRequest) {
       provider_type: sub.provider_type,
     }));
 
-    const { subject, html } = buildRenewalEmail(userName, renewals, soonest);
+    const { subject, html } = buildRenewalEmail(userName, renewals, soonest, { includeDeals });
 
     // Build the WhatsApp + Telegram digest from the shared helper so the
     // amount is rendered with its REAL billing cycle (no fabricated
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
     const dispatchResult = await sendNotification(supabase, {
       userId,
       event: 'renewal_reminder',
-      email: emailAllowed ? { subject, html } : undefined,
+      email: { subject, html },
       telegram: { text: digest.telegram },
       whatsapp: {
         templateName: 'paybacker_pocket_agent_reply',
