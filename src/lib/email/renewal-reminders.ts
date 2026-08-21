@@ -32,8 +32,14 @@ function isScheduledPayment(sub: RenewalSubscription): boolean {
 export function buildRenewalEmail(
   userName: string,
   renewals: RenewalSubscription[],
-  daysUntilRenewal: number
+  daysUntilRenewal: number,
+  options: { includeDeals?: boolean } = {}
 ): { subject: string; html: string } {
+  // The 30/14/7 renewal warning is a service message the user pays for; the
+  // deals block inside it is marketing. When the daily marketing cap is hit we
+  // still send the warning, with the offer stripped, rather than suppressing
+  // the whole email. See the caller in /api/cron/renewal-reminders.
+  const { includeDeals = true } = options;
   const totalRenewing = renewals.reduce((sum, r) => sum + r.amount, 0);
 
   const subscriptions = renewals.filter(r => !isScheduledPayment(r));
@@ -123,8 +129,9 @@ export function buildRenewalEmail(
     </table>`;
   }
 
-  // Deals section — only shown when there are cancellable subscriptions
-  const dealsSection = hasSubscriptions ? `
+  // Deals section — only shown when there are cancellable subscriptions, and
+  // only when marketing content is permitted for this send.
+  const dealsSection = hasSubscriptions && includeDeals ? `
     <div style="background: #FFFFFF; border: 1px solid #05966944; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
       <div style="color: #059669; font-weight: 700; font-size: 14px; margin-bottom: 12px;">Better deals available</div>
       <div style="color: #6B7280; font-size: 13px; line-height: 1.6; margin-bottom: 16px;">
