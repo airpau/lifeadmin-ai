@@ -111,6 +111,26 @@ export interface YapilyAuthResponse {
     createdAt: string;
     authorisationUrl: string;
     qrCodeUrl?: string;
+    // ── Consent lifecycle fields (Yapily Consent schema) ──
+    //
+    // Present on GET /consents/{id} and on the POST
+    // /consents/{id}/extend response. Absent from the initial
+    // POST /account-auth-requests response, hence all optional.
+    //
+    // Source of truth for the 90-day clock. Before 2026-08-21 we
+    // stamped consent_expires_at as `now + 90d` locally and never
+    // read Yapily's own dates back, so our copy silently drifted
+    // from theirs. Read these instead of assuming.
+    consentToken?: string;
+    featureScope?: string[];
+    authorizedAt?: string;
+    /** When the consent will expire. Re-authorisation needed after. */
+    expiresAt?: string;
+    /** When the PSU last confirmed access (UK reconfirmation). */
+    lastConfirmedAt?: string;
+    /** Deadline for the next UK 90-day reconfirmation. */
+    reconfirmBy?: string;
+    institutionConsentId?: string;
   };
 }
 

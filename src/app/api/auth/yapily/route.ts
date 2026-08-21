@@ -4,10 +4,8 @@ import { createClient as createAdmin } from '@supabase/supabase-js';
 import {
   createAccountAuthorisation,
   createHostedConsentRequest,
-  getInstitutionFeatures,
   isHostedPagesEnabled,
 } from '@/lib/yapily';
-import { UPCOMING_FEATURE_SCOPES } from '@/lib/yapily/upcoming';
 import { TIER_CONFIG, type BankTier } from '@/lib/bank-tier-config';
 import { getEffectiveTier } from '@/lib/plan-limits';
 import { isPlanTier } from '@/lib/tier-rank';
@@ -114,41 +112,28 @@ export async function GET(request: NextRequest) {
   ).toString('base64');
   const redirectWithState = `${callbackUrl}?state=${encodeURIComponent(state)}`;
 
-  // ── Scope intersection (Yapily build review step 10) ──
+  // ── No featureScope: request an unrestricted consent ──
   //
-  // Only request feature scopes the chosen institution actually
-  // advertises. Asking a bank for ACCOUNT_DIRECT_DEBITS when it doesn't
-  // support them can widen the consent screen the user sees for no
-  // benefit, and guarantees downstream 4xx traffic against Yapily.
+  // Removed 2026-08-21 on Migle Ivanauskaite's (Yapily) explicit
+  // instruction during the pre-launch review.
   //
-  // getInstitutions() is cached for an hour, so this costs no extra API
-  // call. Fail-open: an empty feature list means the lookup failed, and
-  // we fall back to the full scope set rather than silently requesting a
-  // narrower consent than the product needs.
-  let requestedScopes: readonly string[] = UPCOMING_FEATURE_SCOPES;
-  try {
-    const institutionFeatures = await getInstitutionFeatures(institutionId);
-    if (institutionFeatures.length > 0) {
-      const intersected = UPCOMING_FEATURE_SCOPES.filter((s) =>
-        institutionFeatures.includes(s),
-      );
-      if (intersected.length > 0) {
-        requestedScopes = intersected;
-        const dropped = UPCOMING_FEATURE_SCOPES.filter((s) => !intersected.includes(s));
-        if (dropped.length > 0) {
-          console.log(
-            `[yapily.auth] institution=${institutionId} does not advertise ${dropped.join(', ')} — requesting ${intersected.length}/${UPCOMING_FEATURE_SCOPES.length} scopes`,
-          );
-        }
-      }
-    }
-  } catch (err) {
-    console.warn(
-      `[yapily.auth] feature lookup failed for institution=${institutionId}, requesting full scope set:`,
-      err instanceof Error ? err.message : err,
-    );
-  }
-
+  // What used to happen: we sent an explicit featureScope array,
+  // intersected against the institution's advertised feature list.
+  // That looked tidy but was actively harmful. Naming a scope makes it
+  // a HARD REQUIREMENT of the consent — if the bank doesn't implement
+  // exactly that feature, or reports its capabilities differently to
+  // how it behaves, the authorisation itself fails rather than simply
+  // omitting the feature. We were narrowing a consent we had no
+  // reliable basis to narrow, and eating bank-specific errors for it.
+  //
+  // Omitting featureScope entirely makes Yapily grant every feature the
+  // institution actually supports. That is a superset of what the
+  // intersection produced, so nothing downstream loses access; the
+  // upcoming-payments endpoints simply become available on more banks.
+  //
+  // Do NOT reintroduce a featureScope array here to "be explicit". The
+  // capability check belongs at CALL time (see sync-upcoming, which
+  // gates on the consent's granted featureScope), not at CONSENT time.
   try {
     if (isHostedPagesEnabled()) {
       // Hosted Pages flow (Migle's onboarding plan, 29 Apr 2026).
@@ -161,10 +146,7 @@ export async function GET(request: NextRequest) {
       // so Yapily skips its own picker (per HostedAccountRequest spec
       // — institutionIdentifiers + institutionId pre-selects).
       //
-      // featureScope (resolved 29 Apr from the OpenAPI spec): passed
-      // via the `accountRequest.featureScope` body field. Mirrors the
-      // upcoming-payments scopes we already request on the legacy
-      // /account-auth-requests path.
+      // No featureScope — see the note above.
       const hosted = await createHostedConsentRequest({
         applicationUserId: user.id,
         redirectUrl: redirectWithState,
@@ -172,7 +154,6 @@ export async function GET(request: NextRequest) {
         institutionId,
         language: 'EN',
         location: 'GB',
-        featureScope: requestedScopes,
       });
 
       // Track this in-flight request so the abandonment poller can
@@ -213,11 +194,11 @@ export async function GET(request: NextRequest) {
 
     // Legacy flow — kept reachable behind the flag so we can roll back
     // by flipping one env var.
+    // No featureScope argument — see the note above.
     const authData = await createAccountAuthorisation(
       institutionId,
       redirectWithState,
       user.id,
-      requestedScopes,
     );
     console.log(
       `Yapily auth (legacy): created authorisation for user=${user.id} institution=${institutionId}`

@@ -18,6 +18,8 @@ import {
   isHostedPagesEnabled,
   classifyYapilyError,
   isRetryableYapilyStatus,
+  isUnsupportedFeatureError,
+  reconfirmConsent,
   getAllTransactions,
 } from './yapily.ts';
 
@@ -447,6 +449,12 @@ describe('classifyYapilyError', () => {
     [404, 'not_found'],
     [409, 'conflict'],
     [429, 'rate_limit'],
+    // 424/501 mean "this bank does not implement this endpoint".
+    // 501 is deliberately checked BEFORE the generic 5xx branch — it
+    // used to fall through to 'server' and get retried three times per
+    // account per run against a bank that would never support it.
+    [424, 'unsupported'],
+    [501, 'unsupported'],
     [500, 'server'],
     [503, 'server'],
   ];
@@ -470,6 +478,65 @@ describe('classifyYapilyError', () => {
     assert.equal(isRetryableYapilyStatus(401), false);
     assert.equal(isRetryableYapilyStatus(403), false);
     assert.equal(isRetryableYapilyStatus(409), false);
+  });
+
+  it('never retries an unsupported-feature status, including 501', () => {
+    // The regression this guards: 501 satisfies `status >= 500`, so the
+    // original predicate treated a permanently unimplemented bank
+    // endpoint as a transient Yapily outage.
+    assert.equal(isRetryableYapilyStatus(424), false);
+    assert.equal(isRetryableYapilyStatus(501), false);
+  });
+
+  it('identifies unsupported-feature errors by status', () => {
+    assert.equal(isUnsupportedFeatureError(Object.assign(new Error('x'), { status: 424 })), true);
+    assert.equal(isUnsupportedFeatureError(Object.assign(new Error('x'), { status: 501 })), true);
+    assert.equal(isUnsupportedFeatureError(Object.assign(new Error('x'), { status: 500 })), false);
+    assert.equal(isUnsupportedFeatureError(new Error('network down')), false);
+  });
+});
+
+describe('reconfirmConsent (POST /consents/{id}/extend)', () => {
+  it('sends the mandatory lastConfirmedAt field', async () => {
+    // The bug this locks down: until 2026-08-21 this call sent NO body
+    // at all. lastConfirmedAt is required by ExtendConsentRequest, so
+    // every 90-day renewal returned 400 and the user was told to
+    // disconnect and reconnect their bank.
+    setEnvFor(() => {});
+    globalThis.fetch = mockFetch(200, {
+      data: {
+        id: 'consent-1',
+        status: 'AUTHORIZED',
+        lastConfirmedAt: '2026-08-21T10:00:00.000Z',
+        reconfirmBy: '2026-11-19T10:00:00.000Z',
+      },
+    });
+
+    await reconfirmConsent('consent-1');
+
+    const call = recorded[0]!;
+    assert.equal(call.method, 'POST');
+    assert.match(call.url, /\/consents\/consent-1\/extend$/);
+    const body = call.body as Record<string, unknown>;
+    assert.equal(typeof body.lastConfirmedAt, 'string');
+  });
+
+  it('never sends a future lastConfirmedAt', async () => {
+    // Yapily rejects a future timestamp with
+    // "lastConfirmedAt cannot be a future date and time". A few seconds
+    // of clock skew between Vercel and Yapily is enough to trip that on
+    // a bare new Date(), so the value is back-dated.
+    setEnvFor(() => {});
+    globalThis.fetch = mockFetch(200, { data: { id: 'consent-2' } });
+
+    const before = Date.now();
+    // Pass an explicitly future date — it must still be clamped.
+    await reconfirmConsent('consent-2', new Date(before + 60 * 60 * 1000));
+
+    const body = recorded[0]!.body as Record<string, unknown>;
+    const sent = Date.parse(body.lastConfirmedAt as string);
+    assert.ok(Number.isFinite(sent), 'lastConfirmedAt must parse as a date');
+    assert.ok(sent < before, `expected a back-dated timestamp, got ${body.lastConfirmedAt}`);
   });
 });
 

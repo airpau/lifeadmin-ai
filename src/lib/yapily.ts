@@ -52,6 +52,8 @@ function getAuthHeader(): string {
 //   not_found    404     — resource gone. Usually idempotent success on DELETE.
 //   conflict     409     — concurrent modification. Re-read, then retry once.
 //   rate_limit   429     — back off, honour Retry-After, then retry.
+//   unsupported  424/501 — this bank does not implement the endpoint.
+//                          PERMANENT. Never retry; record and stop asking.
 //   server       5xx     — transient on Yapily's side. Retry with backoff.
 //   unknown      anything else.
 
@@ -62,8 +64,38 @@ export type YapilyErrorClass =
   | 'not_found'
   | 'conflict'
   | 'rate_limit'
+  | 'unsupported'
   | 'server'
   | 'unknown';
+
+/**
+ * Statuses meaning "this institution does not implement this endpoint".
+ *
+ * 424 FAILED_DEPENDENCY is Yapily's documented code: "Returned by any
+ * Financial Data and any Payments endpoint when the feature to be
+ * accessed is not supported by the Institution."
+ *
+ * 501 NOT_IMPLEMENTED is what Migle Ivanauskaite (Yapily) flagged on the
+ * 2026-08-20 pre-launch call as the code we were generating against
+ * banks that don't expose direct-debits / periodic-payments /
+ * scheduled-payments.
+ *
+ * Both are properties of the BANK, not of the request or of Yapily's
+ * health, so they will never resolve by trying again. Treating them as
+ * retryable (which `status >= 500` silently did to 501) meant three
+ * calls per unsupported endpoint, per account, per run, forever — the
+ * exact avoidable traffic Yapily asked us to stop generating.
+ */
+export const YAPILY_UNSUPPORTED_STATUSES: readonly number[] = [424, 501];
+
+export function isUnsupportedFeatureStatus(status: number | undefined): boolean {
+  return typeof status === 'number' && YAPILY_UNSUPPORTED_STATUSES.includes(status);
+}
+
+/** True when the thrown error means "this bank doesn't do that". */
+export function isUnsupportedFeatureError(err: unknown): boolean {
+  return isUnsupportedFeatureStatus((err as { status?: number } | null)?.status);
+}
 
 export function classifyYapilyError(err: unknown): YapilyErrorClass {
   const status = (err as { status?: number } | null)?.status;
@@ -73,14 +105,20 @@ export function classifyYapilyError(err: unknown): YapilyErrorClass {
   if (status === 403) return 'consent';
   if (status === 404) return 'not_found';
   if (status === 409) return 'conflict';
+  // Checked before the generic 5xx branch — 501 is in this set and
+  // would otherwise be swallowed as a transient server error.
+  if (isUnsupportedFeatureStatus(status)) return 'unsupported';
   if (status === 429) return 'rate_limit';
   if (status >= 500) return 'server';
   return 'unknown';
 }
 
 /** Error classes worth retrying. 4xx (other than 429) never is — the
- * request itself is the problem, so retrying just burns quota. */
+ * request itself is the problem, so retrying just burns quota. 424/501
+ * are excluded even though 501 is nominally 5xx: an unimplemented bank
+ * endpoint is permanent, not transient. */
 export function isRetryableYapilyStatus(status: number): boolean {
+  if (isUnsupportedFeatureStatus(status)) return false;
   return status === 429 || status >= 500;
 }
 
@@ -582,6 +620,12 @@ export async function getAllTransactions(
 
 // ── Consent Renewal ──
 
+/** Back-date applied to lastConfirmedAt so clock skew can't produce a
+ * "future date" 400 from Yapily. 30s is comfortably above observed
+ * Vercel↔Yapily drift and far below anything a regulator would call a
+ * material misstatement of when the user confirmed. */
+const EXTEND_CONSENT_CLOCK_SKEW_MS = 30_000;
+
 /**
  * Reconfirms (extends) an existing consent for the UK 90-day renewal cycle.
  * Uses POST /consents/{consentId}/extend per Migle (6 May 2026) — the
@@ -594,12 +638,33 @@ export async function getAllTransactions(
  * so call sites can pick whichever reads clearer in context.
  */
 export async function reconfirmConsent(
-  consentId: string
+  consentId: string,
+  lastConfirmedAt?: Date | string,
 ): Promise<YapilyAuthResponse['data']> {
+  // `lastConfirmedAt` is MANDATORY on ExtendConsentRequest. Sending an
+  // empty body (what this did until 2026-08-21) returns
+  // 400 BAD_REQUEST — so the 90-day renewal path was never actually
+  // working. Verified against the OpenAPI spec at
+  // docs.yapily.com/api-reference/consents/extend-consent (v12.16.0).
+  //
+  // Yapily rejects a future date ("lastConfirmedAt cannot be a future
+  // date and time"), and clock skew between our Vercel function and
+  // Yapily's servers is enough to trip that on an exact `new Date()`.
+  // Back-date by CLOCK_SKEW_MS so a few seconds of drift can't turn a
+  // successful reconfirmation into a 400 the user sees as "please
+  // disconnect and reconnect your bank".
+  const raw = lastConfirmedAt ? new Date(lastConfirmedAt) : new Date();
+  if (Number.isNaN(raw.getTime())) {
+    throw new Error(`reconfirmConsent: invalid lastConfirmedAt "${String(lastConfirmedAt)}"`);
+  }
+  const now = Date.now();
+  const stamped = new Date(Math.min(raw.getTime(), now) - EXTEND_CONSENT_CLOCK_SKEW_MS);
+
   const response = await yapilyRequest<YapilyAuthResponse>(
     `/consents/${consentId}/extend`,
     {
       method: 'POST',
+      body: JSON.stringify({ lastConfirmedAt: stamped.toISOString() }),
     }
   );
 

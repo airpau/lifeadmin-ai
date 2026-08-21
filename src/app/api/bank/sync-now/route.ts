@@ -5,6 +5,7 @@ import { getAccounts, getAllTransactions, triageConsentFailure } from '@/lib/yap
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { recordConsentFailure, clearConsentFailures } from '@/lib/yapily/consent-failure-tracker';
+import { staleClaimCutoff } from '@/lib/yapily/sync-scheduler';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
 import { isAtLeastPro } from '@/lib/tier-rank';
@@ -214,6 +215,32 @@ export async function POST(request: NextRequest) {
     let consentExpiryDetected = false;
     const accountErrors: string[] = [];
 
+    // ── Claim the connection ──────────────────────────────────────
+    //
+    // Same guard as the cron (see api/cron/bank-sync/route.ts). The
+    // 6-hour manual cooldown above stops a user spamming the button,
+    // but it does nothing about a manual sync landing on top of a
+    // scheduled one: both would then issue Yapily calls carrying the
+    // SAME consent token at the same moment. Migle flagged that
+    // specifically — it produces spurious 400s and can trip consent
+    // expiry, which drops the bank connection entirely.
+    //
+    // Rather than fail the user's click, we let them know the sync is
+    // already running.
+    const { data: claimedRows } = await admin
+      .from('bank_connections')
+      .update({ sync_claimed_at: new Date().toISOString() })
+      .eq('id', conn.id)
+      .or(`sync_claimed_at.is.null,sync_claimed_at.lt.${staleClaimCutoff()}`)
+      .select('id');
+
+    if (!claimedRows || claimedRows.length === 0) {
+      accountErrors.push('sync already in progress');
+      console.log(`[sync-now] conn=${conn.id} already claimed — skipping`);
+      continue;
+    }
+
+    try {
       if (!conn.consent_token) {
         await supabase
           .from('bank_connections')
@@ -499,6 +526,16 @@ export async function POST(request: NextRequest) {
       transactions_synced: connectionReturned,
       transactions_new: connectionSynced,
     });
+    } finally {
+      // In `finally` because the block above exits via `continue` on
+      // several paths. A claim left set would make this connection
+      // invisible to the cron until the stale cutoff — a slow leak that
+      // presents as "this user's bank just stopped syncing".
+      await admin
+        .from('bank_connections')
+        .update({ sync_claimed_at: null })
+        .eq('id', conn.id);
+    }
   }
 
   // Post-sync DB processing: fix merchant names, auto-categorise, detect recurring

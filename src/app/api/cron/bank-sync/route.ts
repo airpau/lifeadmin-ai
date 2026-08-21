@@ -16,8 +16,37 @@ import {
 } from '@/lib/bank-tier-config';
 import { PAID_PLAN_TIERS } from '@/lib/tier-rank';
 import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits';
+import {
+  SYNC_INTERVAL_MINUTES,
+  computeNextSyncAt,
+  assignSyncOffsetMinutes,
+  staleClaimCutoff,
+} from '@/lib/yapily/sync-scheduler';
 
 export const maxDuration = 60;
+
+/**
+ * Hard cap on connections touched in one run.
+ *
+ * With a 15-minute cron over a 240-minute cycle there are 16 runs per
+ * cycle, so this is a per-run slice, not a per-cycle limit — anything
+ * not reached stays due and is picked up by the next run a quarter of
+ * an hour later. The cap exists so a backlog (after an outage, say)
+ * drains gradually instead of becoming exactly the synchronised burst
+ * the stagger is meant to prevent.
+ */
+const MAX_CONNECTIONS_PER_RUN = 25;
+
+/**
+ * Pause between connections inside one run. Yapily's ceiling is 30
+ * requests/second; a single connection can issue several calls
+ * (accounts + paged transactions), so this keeps even a full 25-row
+ * run comfortably beneath it without eating meaningful wall-clock time
+ * against maxDuration.
+ */
+const INTER_CONNECTION_DELAY_MS = 400;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface BankConnection {
   id: string;
@@ -25,6 +54,10 @@ interface BankConnection {
   provider: string;
   consent_token: string | null;
   consent_expires_at: string | null;
+  /** Stagger bookkeeping — see src/lib/yapily/sync-scheduler.ts. */
+  sync_offset_minutes: number | null;
+  next_sync_at: string | null;
+  sync_claimed_at: string | null;
   /** Yapily's underlying consent identifier. Needed so a 401/403 can be
    *  verified via GET /consents/{id} instead of guessed from the error
    *  message (build review step 6). Null on legacy pre-hosted-pages rows. */
@@ -49,7 +82,17 @@ function getAdmin() {
 }
 
 /**
- * Tiered bank sync cron — runs daily at 3am (configured in vercel.json).
+ * Tiered bank sync cron.
+ *
+ * Schedule (vercel.json): every 15 minutes. That is NOT how often any
+ * one connection is refreshed — it is how often we check what is due.
+ * Each connection refreshes once per SYNC_INTERVAL_MINUTES (4 hours) on
+ * its own offset, so the work is spread across the day instead of
+ * arriving as a burst on the hour. See src/lib/yapily/sync-scheduler.ts
+ * for why, and for the Yapily constraints that forced it.
+ *
+ * (The previous comment here claimed "runs daily at 3am" long after the
+ * schedule had become 5x daily. If you change the cadence, change this.)
  *
  * Tier behaviour:
  *   Every paid tier — synced every day (fetches last 90 days of transactions)
@@ -133,8 +176,25 @@ export async function GET(request: NextRequest) {
 
   const orderedUserIds = sortedProfiles.map((p) => p.id);
 
-  // Fetch active bank connections for these users.
-  // Also include 'token_expired' connections — we attempt a token refresh and reset to active on success
+  // ── Fetch connections that are DUE, not every connection ──
+  //
+  // This is the heart of the staggering change (Migle, 20 Aug 2026).
+  // Previously this selected every active connection and the loop below
+  // walked all of them back to back, so all users and all of a single
+  // user's banks hit Yapily inside the same few seconds — bursting
+  // against the 30 req/sec ceiling, and worse, issuing concurrent calls
+  // on the same consent token, which produces spurious 400s and can
+  // trip consent expiry.
+  //
+  // Now each connection carries its own next_sync_at (offset by
+  // sync_offset_minutes within the 4-hour cycle) and we only pick up
+  // what is actually due. next_sync_at IS NULL is included so a
+  // connection created before this migration, or one whose offset has
+  // not been assigned yet, still gets synced and then scheduled.
+  //
+  // Also include 'token_expired' connections — we attempt a token
+  // refresh and reset to active on success.
+  const dueCutoff = new Date().toISOString();
   const { data: connections, error: connError } = await supabase
     .from('bank_connections')
     .select('*')
@@ -142,10 +202,19 @@ export async function GET(request: NextRequest) {
     .eq('provider', 'yapily')
     .is('archived_at', null)
     .is('deleted_at', null)
-    .in('user_id', orderedUserIds.length > 0 ? orderedUserIds : ['00000000-0000-0000-0000-000000000000']);
+    .or(`next_sync_at.is.null,next_sync_at.lte.${dueCutoff}`)
+    .in('user_id', orderedUserIds.length > 0 ? orderedUserIds : ['00000000-0000-0000-0000-000000000000'])
+    .order('next_sync_at', { ascending: true, nullsFirst: true })
+    .limit(MAX_CONNECTIONS_PER_RUN);
 
   if (connError || !connections || connections.length === 0) {
-    return NextResponse.json({ ok: true, synced: 0, reason: 'No active bank connections' });
+    return NextResponse.json({
+      ok: true,
+      synced: 0,
+      reason: connError
+        ? `Connection fetch failed: ${connError.message}`
+        : 'No bank connections due for sync',
+    });
   }
 
   // Sort connections to match tier order
@@ -174,6 +243,8 @@ export async function GET(request: NextRequest) {
 
   const results: SyncResult[] = [];
   let totalApiCalls = 0;
+  let skippedAlreadyClaimed = 0;
+  let connectionsStarted = 0;
 
   for (const connection of sortedConnections as BankConnection[]) {
     // Re-check ceiling on every iteration to stop mid-run if needed
@@ -198,6 +269,42 @@ export async function GET(request: NextRequest) {
     let syncToDate: string | null = null;
     let totalReturned = 0; // raw transactions seen across all accounts
     let totalSkippedAsDuplicate = 0;
+
+    // ── Claim the connection ──────────────────────────────────────
+    //
+    // The scheduler makes a collision unlikely, but "unlikely" is not
+    // "impossible": a manual /api/bank/sync-now, a retried cron
+    // invocation, or two overlapping runs after a slow function can all
+    // reach the same row. Two concurrent calls carrying the SAME consent
+    // token is precisely the pattern Migle flagged as producing 400s and
+    // tripping consent expiry, so it is worth a guard rather than a
+    // comment saying it shouldn't happen.
+    //
+    // The UPDATE ... WHERE claim-is-empty-or-stale is the lock: only one
+    // caller's update can match, and `.select()` tells us whether we
+    // were that caller. A claim older than SYNC_CLAIM_STALE_MINUTES is
+    // treated as abandoned so a timed-out function can't pin a
+    // connection permanently.
+    const claimedAt = new Date().toISOString();
+    const { data: claimed } = await supabase
+      .from('bank_connections')
+      .update({ sync_claimed_at: claimedAt })
+      .eq('id', connection.id)
+      .or(`sync_claimed_at.is.null,sync_claimed_at.lt.${staleClaimCutoff()}`)
+      .select('id');
+
+    if (!claimed || claimed.length === 0) {
+      skippedAlreadyClaimed++;
+      console.log(
+        `[bank-sync] conn=${connection.id} already claimed by another run — skipping this cycle`,
+      );
+      continue;
+    }
+
+    // Space calls out within the run as well as across the day. Skipped
+    // for the first connection so a single due connection syncs promptly.
+    if (connectionsStarted > 0) await sleep(INTER_CONNECTION_DELAY_MS);
+    connectionsStarted++;
 
     try {
       let totalSynced = 0;
@@ -616,6 +723,32 @@ export async function GET(request: NextRequest) {
         api_calls: connectionApiCalls,
         error: err.message,
       });
+    } finally {
+      // ── Release the claim and schedule the next run ──────────────
+      //
+      // In `finally` deliberately: the body above exits via `continue`
+      // on several paths (no consent token, expired consent, consent
+      // failure threshold) as well as via the catch. If any of those
+      // left sync_claimed_at set, the connection would be skipped by
+      // every subsequent run until the stale cutoff — a slow leak that
+      // would look like "some users just stopped syncing".
+      //
+      // next_sync_at advances even on failure. A connection that is
+      // failing should retry on its normal cadence, not spin: without
+      // this, a permanently broken connection would stay `lte(now)`
+      // forever and consume a slot in every single run.
+      const offset =
+        connection.sync_offset_minutes ??
+        assignSyncOffsetMinutes(connection.user_id, 0);
+
+      await supabase
+        .from('bank_connections')
+        .update({
+          sync_claimed_at: null,
+          sync_offset_minutes: offset,
+          next_sync_at: computeNextSyncAt(offset).toISOString(),
+        })
+        .eq('id', connection.id);
     }
 
     totalApiCalls += connectionApiCalls;
@@ -644,7 +777,8 @@ export async function GET(request: NextRequest) {
   const errors = results.filter((r) => r.error).length;
 
   console.log(
-    `Bank sync complete: connections=${results.length} txs=${totalTxs} ` +
+    `Bank sync complete: due=${sortedConnections.length} connections=${results.length} ` +
+    `skippedClaimed=${skippedAlreadyClaimed} txs=${totalTxs} ` +
     `recurring=${totalRecurring} errors=${errors} api_calls=${totalApiCalls} ` +
     `monday=${isMonday} tiers_synced=${tiersToSync.join(',')}`
   );
@@ -653,7 +787,10 @@ export async function GET(request: NextRequest) {
     ok: true,
     is_monday: isMonday,
     tiers_synced: tiersToSync,
+    connections_due: sortedConnections.length,
     connections_processed: results.length,
+    skipped_already_claimed: skippedAlreadyClaimed,
+    sync_interval_minutes: SYNC_INTERVAL_MINUTES,
     total_transactions: totalTxs,
     total_recurring: totalRecurring,
     total_api_calls: totalApiCalls,

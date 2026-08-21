@@ -28,17 +28,38 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Parse body ──
-  let body: { connectionId?: string };
+  let body: { connectionId?: string; confirmed?: boolean };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { connectionId } = body;
+  const { connectionId, confirmed } = body;
   if (!connectionId) {
     return NextResponse.json(
       { error: 'connectionId is required' },
+      { status: 400 }
+    );
+  }
+
+  // ── Explicit reconfirmation gate (FCA PS21/19, UK AIS 90-day rule) ──
+  //
+  // Reconfirmation replaces 90-day SCA, but only if it is EXPLICIT. Per
+  // Yapily's guidance ("a user selects a checkbox to confirm consent"),
+  // the user must take a deliberate, unambiguous action — a page load,
+  // a dismissed banner, or an implicit "they're still using the app"
+  // signal is not reconfirmation, and calling /extend off the back of
+  // one would be us asserting to Yapily something the user never said.
+  //
+  // The client sends confirmed:true only when the checkbox is ticked.
+  if (confirmed !== true) {
+    return NextResponse.json(
+      {
+        error:
+          'Explicit confirmation is required. Tick the box to confirm you still want Paybacker to access this account.',
+        confirmationRequired: true,
+      },
       { status: 400 }
     );
   }
@@ -99,12 +120,38 @@ export async function POST(request: NextRequest) {
 
   // ── Call Yapily reconfirmConsent ──
   try {
-    await reconfirmConsent(connection.yapily_consent_id);
-
-    // Success — extend consent by 90 days
     const now = new Date();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 90);
+    // Pass the moment the user ticked the box. reconfirmConsent
+    // back-dates it slightly so clock skew can't trigger Yapily's
+    // "lastConfirmedAt cannot be a future date and time" 400.
+    const consent = await reconfirmConsent(connection.yapily_consent_id, now);
+
+    // ── Trust Yapily's dates over our own arithmetic ──
+    //
+    // The extend response returns the authoritative Consent object,
+    // including reconfirmBy (the next reconfirmation deadline) and
+    // expiresAt. We used to hardcode `now + 90 days` on our side and
+    // never read these back, so our expiry copy drifted from Yapily's
+    // and the reminder cron fired against a date Yapily didn't share.
+    //
+    // Prefer reconfirmBy: it is the date that actually gates data
+    // access under the UK reconfirmation regime. Fall back to
+    // expiresAt, then to +90d only if Yapily returned neither.
+    const fallback = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    const parse = (v?: string) => {
+      if (!v) return null;
+      const d = new Date(v);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const reconfirmBy = parse(consent?.reconfirmBy);
+    const yapilyExpiresAt = parse(consent?.expiresAt);
+    const expiresAt = reconfirmBy ?? yapilyExpiresAt ?? fallback;
+
+    if (!reconfirmBy && !yapilyExpiresAt) {
+      console.warn(
+        `[renew-consent] Yapily returned neither reconfirmBy nor expiresAt for consent=${connection.yapily_consent_id} — falling back to now+90d. Check the extend response shape.`,
+      );
+    }
 
     await admin
       .from('bank_connections')
@@ -112,23 +159,29 @@ export async function POST(request: NextRequest) {
         status: 'active',
         consent_granted_at: now.toISOString(),
         consent_expires_at: expiresAt.toISOString(),
+        consent_last_confirmed_at: now.toISOString(),
+        consent_reconfirm_by: reconfirmBy?.toISOString() ?? null,
         // Threshold counter resets on renewal — the renewed consent is a
         // fresh credential, so any past sync failures are no longer
         // relevant.
         consent_failure_count: 0,
         consent_last_failure_at: null,
+        // Let the staggered scheduler pick this connection up on its
+        // normal slot rather than immediately — reconfirmation restores
+        // access, it isn't a request for fresh data.
         updated_at: now.toISOString(),
       })
       .eq('id', connectionId);
 
     console.log(
-      `Consent renewed: connection=${connectionId} user=${user.id} expires=${expiresAt.toISOString()}`
+      `Consent renewed: connection=${connectionId} user=${user.id} expires=${expiresAt.toISOString()} reconfirmBy=${reconfirmBy?.toISOString() ?? 'n/a'}`
     );
 
     return NextResponse.json({
       ok: true,
       message: 'Bank consent renewed successfully',
       consent_expires_at: expiresAt.toISOString(),
+      reconfirm_by: reconfirmBy?.toISOString() ?? null,
     });
   } catch (err) {
     console.error('Consent renewal failed:', err);

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import { getAccounts, getHostedConsentRequest } from '@/lib/yapily';
+import { getAccounts, getHostedConsentRequest, getConsent } from '@/lib/yapily';
 import { snapshotAccounts, upsertYapilyConnection } from '@/lib/yapily/connection-store';
+import { assignSyncOffsetMinutes, computeNextSyncAt } from '@/lib/yapily/sync-scheduler';
 
 /**
  * GET /api/yapily/callback?consent=xxx&consent-id=xxx&state=xxx
@@ -249,6 +250,89 @@ export async function GET(request: NextRequest) {
     (upsertResult.previousConnectionIds.length ? ` (demoted ${upsertResult.previousConnectionIds.length} stale rows)` : ''),
   );
 
+  // ── Record consent metadata + schedule the connection ────────────
+  //
+  // Two jobs, one UPDATE, both best-effort — a failure here degrades
+  // scheduling and reporting but must never cost the user a connection
+  // they just successfully authorised at their bank.
+  //
+  // 1. CONSENT METADATA. We now create consents WITHOUT a featureScope
+  //    (Migle, 2026-08-21), which means the bank decides what the
+  //    consent covers and the consent object is the only record of it.
+  //    Capturing featureScope here is what lets sync-upcoming gate on
+  //    what was actually granted rather than on what the institution
+  //    advertises in general. We also take Yapily's own expiresAt and
+  //    reconfirmBy in preference to the `now + 90 days` we computed
+  //    above — that local guess is a fallback, not the truth.
+  //
+  // 2. STAGGER SLOT. Assign this connection a position in the 4-hour
+  //    refresh cycle, offset from the user's existing connections so
+  //    their banks refresh roughly 75 minutes apart rather than all at
+  //    once on the same consent-adjacent burst. See
+  //    src/lib/yapily/sync-scheduler.ts.
+  try {
+    const adminSched = createAdmin(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+
+    // Index among the user's other live connections. Counting rows
+    // OTHER than this one gives 0 for a first bank, 1 for a second, and
+    // so on — which is exactly the slot index the offset helper wants.
+    const { count: siblingCount } = await adminSched
+      .from('bank_connections')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('provider', 'yapily')
+      .is('deleted_at', null)
+      .is('archived_at', null)
+      .neq('id', upsertResult.connectionId);
+
+    const offset = assignSyncOffsetMinutes(user.id, siblingCount ?? 0);
+
+    const scheduleUpdate: Record<string, unknown> = {
+      sync_offset_minutes: offset,
+      next_sync_at: computeNextSyncAt(offset).toISOString(),
+      // A fresh authorisation re-opens the once-per-consent endpoints
+      // and invalidates anything we previously learned was unsupported
+      // (the bank may have shipped support, or the old consent may
+      // simply not have covered it).
+      upcoming_endpoints_fetched_at: null,
+      unsupported_features: [],
+    };
+
+    if (yapilyConsentId) {
+      try {
+        const consent = await getConsent(yapilyConsentId);
+        if (Array.isArray(consent?.featureScope) && consent.featureScope.length) {
+          scheduleUpdate.consent_feature_scope = consent.featureScope;
+        }
+        if (consent?.expiresAt) scheduleUpdate.consent_expires_at = consent.expiresAt;
+        if (consent?.reconfirmBy) scheduleUpdate.consent_reconfirm_by = consent.reconfirmBy;
+        if (consent?.lastConfirmedAt) {
+          scheduleUpdate.consent_last_confirmed_at = consent.lastConfirmedAt;
+        }
+      } catch (err) {
+        // Non-fatal: we keep the locally computed 90-day expiry and the
+        // fail-open capability path in sync-upcoming.
+        console.warn(
+          `[yapily.callback] consent metadata fetch failed for ${yapilyConsentId} (non-fatal):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    await adminSched
+      .from('bank_connections')
+      .update(scheduleUpdate)
+      .eq('id', upsertResult.connectionId);
+  } catch (err) {
+    console.error(
+      '[yapily.callback] consent metadata / schedule update failed (non-fatal):',
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   // ── Mark the pending Hosted Pages request resolved (if any) ──
   // The abandonment poller treats anything still 'pending' after 15 min
   // as abandoned. Closing the loop here keeps its working set small.
@@ -309,16 +393,27 @@ export async function GET(request: NextRequest) {
     }),
   }).catch((err) => console.error('[yapily.callback] initial-sync trigger failed:', err));
 
-  // ── Also kick the upcoming-payments sync once. The cron at 06:00 UTC
-  // pulls scheduled payments + standing orders + direct debits, but on a
-  // fresh connect the user expects "Upcoming pending payments" to
-  // populate immediately rather than waiting for tomorrow. The endpoint
-  // is single-use per consent for each deterministic source, so calling
-  // it here is safe — the cron will short-circuit when it next runs.
-  fetch(`${appUrl}/api/cron/sync-upcoming`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
-  }).catch((err) => console.error('[yapily.callback] sync-upcoming trigger failed:', err));
+  // ── Kick the upcoming-payments sync for THIS CONNECTION ONLY ─────
+  //
+  // On a fresh connect the user expects "Upcoming payments" to populate
+  // straight away rather than waiting for the 06:00 cron. More than
+  // convenience: Yapily only allows the direct-debits /
+  // periodic-payments / scheduled-payments endpoints to be called once,
+  // shortly after authorisation — so this immediate run IS our one
+  // chance to harvest them, and waiting for the cron risks missing the
+  // window entirely.
+  //
+  // The `?connectionId=` scope was added 2026-08-21. Without it this
+  // call ran the cron over EVERY user's connections on every single
+  // bank connect — a full-tenant fan-out triggered by one person
+  // linking one account.
+  fetch(
+    `${appUrl}/api/cron/sync-upcoming?connectionId=${encodeURIComponent(upsertResult.connectionId)}`,
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+    },
+  ).catch((err) => console.error('[yapily.callback] sync-upcoming trigger failed:', err));
 
   return NextResponse.redirect(
     new URL(`${returnTo}?connected=true${upsertResult.reused ? '&merged=1' : ''}`, request.url),

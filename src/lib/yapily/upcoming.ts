@@ -9,11 +9,17 @@
 // at src/lib/yapily.ts). The core fetch helper from yapily.ts isn't
 // exported, so we keep this module self-contained.
 
+import { classifyYapilyError, type YapilyErrorClass } from '@/lib/yapily';
+
 const YAPILY_BASE_URL = 'https://api.yapily.com';
 
 function authHeader(): string {
-  const uuid = process.env.YAPILY_APPLICATION_UUID;
-  const secret = process.env.YAPILY_APPLICATION_SECRET;
+  // .trim() mirrors src/lib/yapily.ts getAuthHeader(). Vercel's env
+  // store can preserve a trailing newline, which produced a malformed
+  // Basic header and a 401 on 2026-04-28. This module had its own
+  // untrimmed copy and would have hit the same bug independently.
+  const uuid = process.env.YAPILY_APPLICATION_UUID?.trim();
+  const secret = process.env.YAPILY_APPLICATION_SECRET?.trim();
   if (!uuid || !secret) {
     throw new Error('YAPILY_APPLICATION_UUID and YAPILY_APPLICATION_SECRET must be set');
   }
@@ -91,9 +97,17 @@ async function yapilyGet<T>(path: string, consentToken: string): Promise<T> {
       tracingId = res.headers.get('Tracing-Id') || res.headers.get('tracing-id') || undefined;
     }
     if (tracingId) msg += ` [tracingId=${tracingId}]`;
-    const err = new Error(msg) as Error & { status?: number; tracingId?: string };
+    const err = new Error(msg) as Error & {
+      status?: number;
+      tracingId?: string;
+      errorClass?: YapilyErrorClass;
+    };
     err.status = res.status;
     err.tracingId = tracingId;
+    // Decorate with the same class the main client attaches, so callers
+    // can branch on 'unsupported' (424/501) and permanently stop asking
+    // this bank for this endpoint rather than retrying nightly.
+    err.errorClass = classifyYapilyError(err);
     throw err;
   }
 
