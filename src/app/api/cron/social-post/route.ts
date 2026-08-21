@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { findBrandSpellingErrors } from '@/lib/social/brand-spelling';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -132,7 +133,10 @@ export async function GET(request: NextRequest) {
     .limit(5);
   const recentTopics = (recentPosts || []).map(p => p.caption?.substring(0, 100)).join('\n');
 
-  // Step 3: Use Claude to write a topical, engaging post based on research
+  // Step 3: Use Claude to write a topical, engaging post based on research.
+  // Wrapped in a function so the brand-spelling guard below can ask for
+  // exactly one retry before giving up and skipping the post.
+  async function writeCaption(correction?: string): Promise<{ caption: string; imagePrompt: string }> {
   const postRes = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 800,
@@ -151,6 +155,7 @@ Hero messaging to build posts around:
 - A dispute letter citing the exact UK consumer law, drafted in 30 seconds, free, in your Telegram at 3am
 
 Hard rules for every post:
+- The brand name is ALWAYS spelled "Paybacker". Never any other spelling. Not "Parybacker", not "Parabacked", not "Paybacked", not "Pay Backer", not "PayBacker". Check every occurrence before you return. Live posts have gone out to Facebook reading "Parybacker" and "Parabacked". This is the single most damaging mistake you can make here, because it publishes under our own brand.
 - Never compare Paybacker to solicitors, lawyers, claims firms or legal services
 - Never promise an outcome or quote a success rate
 - Focus on what the product does, not who it is cheaper than
@@ -178,7 +183,11 @@ Rules:
 Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract description for image, e.g. glowing WiFi signal waves, shield protecting coins, house with energy bolt. Do NOT include any colour codes or hex values. Do NOT include any text or words in the image description."}`,
     messages: [{
       role: 'user',
-      content: `Today's UK consumer news:\n${researchContext || 'No research available - write about a general UK consumer rights topic.'}\n\nRecent posts (avoid repeating):\n${recentTopics || 'None yet'}`,
+      content: `Today's UK consumer news:\n${researchContext || 'No research available - write about a general UK consumer rights topic.'}\n\nRecent posts (avoid repeating):\n${recentTopics || 'None yet'}${
+        correction
+          ? `\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED. It misspelled the brand name as: ${correction}. The brand name is spelled "Paybacker" and nothing else. Write the post again and check every occurrence.`
+          : ''
+      }`,
     }],
   });
 
@@ -201,6 +210,53 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
 
   if (!caption) {
     caption = 'UK consumers are owed billions in unclaimed refunds. Energy overcharges, broadband price rises, flight delay compensation. Paybacker writes the formal complaint letter for you, citing exact UK law, in 30 seconds.\n\nTry it free at paybacker.co.uk\n\n#consumerrights #fintech #moneysaving #ukfinance #paybacker';
+  }
+
+  return { caption, imagePrompt };
+  }
+
+  // ── Brand-spelling guard ─────────────────────────────────────────────
+  // The prompt rule makes a misspelling unlikely; this makes it impossible to
+  // publish one. Runs before the image is generated and before any Graph API
+  // call, so a rejected caption costs one Haiku call and nothing else.
+  let { caption, imagePrompt } = await writeCaption();
+  let offenders = findBrandSpellingErrors(caption);
+
+  if (offenders.length > 0) {
+    console.warn(`[social-post] brand misspelling ${JSON.stringify(offenders)}, regenerating once`);
+    ({ caption, imagePrompt } = await writeCaption(offenders.map((o) => `"${o}"`).join(', ')));
+    offenders = findBrandSpellingErrors(caption);
+  }
+
+  if (offenders.length > 0) {
+    // Failed twice. Skip the post entirely rather than publish under a
+    // misspelt brand, and tell the founder why.
+    const detail = offenders.map((o) => `"${o}"`).join(', ');
+    console.error(`[social-post] brand misspelling after retry, skipping post: ${detail}`);
+
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+    if (token && chatId) {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: Number(chatId),
+          text:
+            `Daily social post SKIPPED: brand name misspelled after one retry.\n\n` +
+            `Flagged: ${detail}\n\n` +
+            `Nothing was published to Facebook, Instagram or X.\n\n` +
+            `Caption was:\n${caption.substring(0, 500)}`,
+        }),
+      }).catch(() => {});
+    }
+
+    return NextResponse.json({
+      ok: false,
+      skipped: true,
+      reason: 'brand_misspelling',
+      offenders,
+    });
   }
 
   // Generate image based on AI-chosen prompt
