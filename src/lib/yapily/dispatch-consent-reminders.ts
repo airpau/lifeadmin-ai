@@ -213,6 +213,8 @@ export async function dispatchConsentReminders(
     const chain = reminderChannelChain({
       tier,
       isPro: isAtLeastPro(tier),
+      // Gates WhatsApp to the days its fixed approved copy is true.
+      daysLeft,
       whatsappPhone: (waSession?.whatsapp_phone as string | null) ?? null,
       telegramChatId: (tgSession?.telegram_chat_id as number | null) ?? null,
       email: (profile?.email as string | null) ?? null,

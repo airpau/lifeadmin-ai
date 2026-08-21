@@ -93,9 +93,47 @@ export function reminderStage(daysLeft: number): ReminderStage {
 
 export type ReminderChannel = 'whatsapp' | 'telegram' | 'email';
 
+/**
+ * Is the approved WhatsApp template's wording actually TRUE today?
+ *
+ * `paybacker_reconnect_required` is Meta-approved with a fixed body:
+ *
+ *   "Your {{1}} connection has expired. Reconnect here: {{2}}
+ *    — alerts pause until you do."
+ *
+ * Only the two variables are ours; the sentence is frozen. So at T-7,
+ * when the user has a full week of working bank feed left, that
+ * template would tell them their connection HAS EXPIRED and that alerts
+ * have stopped. Both false, and alarming in a way that damages trust in
+ * every alert we send afterwards.
+ *
+ * Caught on 2026-08-21 by firing a real T-0 test send and reading the
+ * message that arrived. It only announces itself when you look at the
+ * words a human receives, not at the return value.
+ *
+ * So WhatsApp is restricted to the days its copy is true — the deadline
+ * itself and after. Advance warnings go by Telegram or email, where we
+ * control the wording and can say "expires in 5 days" accurately.
+ *
+ * The fix is not to weaken this check: it is to submit an advance-notice
+ * template to Meta ("Your {{1}} connection needs reconfirming within
+ * {{2}} days") and widen this once approved.
+ */
+export function whatsappCopyIsTruthful(daysLeft: number | undefined): boolean {
+  // Undefined means the caller isn't day-aware; be conservative.
+  if (daysLeft === undefined) return false;
+  return daysLeft <= 0;
+}
+
 export interface ChannelAvailability {
   /** Effective plan tier, for the WhatsApp Pro gate. */
   tier: string;
+  /**
+   * Days until the deadline. Needed because channel eligibility is not
+   * purely about what the user has linked — the approved WhatsApp
+   * template's wording is only accurate from T-0 onward.
+   */
+  daysLeft?: number;
   /** Active, non-opted-out whatsapp_sessions row. */
   whatsappPhone: string | null;
   /** Active telegram_sessions row. */
@@ -161,22 +199,33 @@ export function pickReminderChannel(a: ChannelAvailability): ChannelChoice | nul
 export function reminderChannelChain(a: ChannelAvailability): ChannelChoice[] {
   const chain: ChannelChoice[] = [];
 
-  if (a.whatsappPhone && a.isPro) {
+  if (a.whatsappPhone && a.isPro && whatsappCopyIsTruthful(a.daysLeft)) {
     chain.push({ channel: 'whatsapp', reason: 'Pro tier with an active opted-in WhatsApp session' });
+  } else if (a.whatsappPhone && a.isPro) {
+    // Eligible for WhatsApp, but the only approved template would lie.
+    // Falls through to Telegram / email below.
   }
+  const whatsappSkipReason = !a.whatsappPhone
+    ? null
+    : !a.isPro
+      ? 'WhatsApp session exists but tier is below Pro'
+      : !whatsappCopyIsTruthful(a.daysLeft)
+        ? 'WhatsApp skipped — the approved template says "has expired", which is not true yet'
+        : null;
+
   if (a.telegramChatId) {
     chain.push({
       channel: 'telegram',
-      reason: a.whatsappPhone && !a.isPro
-        ? 'WhatsApp session exists but tier is below Pro — using Telegram'
+      reason: whatsappSkipReason
+        ? `${whatsappSkipReason} — using Telegram`
         : 'active Telegram session',
     });
   }
   if (a.email) {
     chain.push({
       channel: 'email',
-      reason: a.whatsappPhone && !a.isPro && !a.telegramChatId
-        ? 'WhatsApp session exists but tier is below Pro, and no Telegram — using email'
+      reason: whatsappSkipReason && !a.telegramChatId
+        ? `${whatsappSkipReason}, and no Telegram — using email`
         : 'email',
     });
   }
