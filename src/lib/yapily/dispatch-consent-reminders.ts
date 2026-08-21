@@ -12,12 +12,9 @@
 // function, not merely resemble each other.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { isAtLeastPro } from '@/lib/tier-rank';
-import { getEffectiveTier } from '@/lib/plan-limits';
 import {
   daysUntil,
-  reminderChannelChain,
-  isUrgentReminder,
+  pickReminderChannel,
   reminderDeadline,
   reminderReferenceKey,
   reminderStage,
@@ -59,10 +56,8 @@ export interface ReminderRunResult {
 }
 
 /** Where the user goes to fix it. Money Hub carries the one-click
- *  reconfirmation banner; /dashboard/connections does not exist and was
- *  a 404 in every WhatsApp reconnect prompt sent before 2026-07-29. */
+ *  reconfirmation banner. */
 const RENEW_PATH = '/dashboard/money-hub';
-const RENEW_URL = `https://paybacker.co.uk${RENEW_PATH}`;
 
 export interface DispatchOptions {
   /** Don't send or log anything; just report what would happen. */
@@ -85,7 +80,7 @@ export async function dispatchConsentReminders(
   const result: ReminderRunResult = {
     remindersSent: 0,
     remindersSkipped: 0,
-    sentByChannel: { whatsapp: 0, telegram: 0, email: 0 },
+    sentByChannel: { email: 0 },
     outcomes: [],
   };
 
@@ -170,7 +165,7 @@ export async function dispatchConsentReminders(
       continue;
     }
 
-    // ── One message per connection per day, whatever the channel ──
+    // ── One email per connection per day ──
     const refKey = reminderReferenceKey(c.id, now.toISOString());
     if (!opts.dryRun) {
       const { data: already } = await supabase
@@ -184,49 +179,23 @@ export async function dispatchConsentReminders(
       }
     }
 
-    // ── Which channels does this user actually have? ──
-    const [{ data: profile }, { data: waSession }, { data: tgSession }] = await Promise.all([
-      supabase
-        .from('profiles')
-        .select('email, first_name, full_name')
-        .eq('id', c.user_id)
-        .maybeSingle(),
-      supabase
-        .from('whatsapp_sessions')
-        .select('whatsapp_phone')
-        .eq('user_id', c.user_id)
-        .eq('is_active', true)
-        .is('opted_out_at', null)
-        .maybeSingle(),
-      supabase
-        .from('telegram_sessions')
-        .select('telegram_chat_id')
-        .eq('user_id', c.user_id)
-        .eq('is_active', true)
-        .maybeSingle(),
-    ]);
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('email, first_name, full_name')
+      .eq('id', c.user_id)
+      .maybeSingle();
 
-    // Tier is read here, not assumed from the template registry. The
-    // old code called sendWhatsAppTemplate directly, which never reads
-    // tier, so the registry's proOnly flag did nothing on this path.
-    const tier = await getEffectiveTier(c.user_id);
-    const chain = reminderChannelChain({
-      tier,
-      isPro: isAtLeastPro(tier),
-      // Gates WhatsApp to the days its fixed approved copy is true.
-      daysLeft,
-      whatsappPhone: (waSession?.whatsapp_phone as string | null) ?? null,
-      telegramChatId: (tgSession?.telegram_chat_id as number | null) ?? null,
+    const choice = pickReminderChannel({
       email: (profile?.email as string | null) ?? null,
     });
 
-    if (chain.length === 0) {
-      record(null, 'user has no email, Telegram or eligible WhatsApp channel', false);
+    if (!choice) {
+      record(null, 'no email address on the profile', false);
       continue;
     }
 
     if (opts.dryRun) {
-      record(chain[0].channel, `${chain[0].reason} (dry run — nothing sent)`, false);
+      record(choice.channel, `${choice.reason} (dry run, nothing sent)`, false);
       continue;
     }
 
@@ -238,11 +207,15 @@ export async function dispatchConsentReminders(
         .trim()
         .split(/\s+/)[0] || '';
 
-    // ── Try the chain, stop at the first delivery ────────────────
+    // ── Send the email, and always leave an in-app notification ──
     //
-    // One message per connection per day. The loop is a fallback, not a
-    // fan-out: we break the moment something is accepted.
-    const urgent = isUrgentReminder(daysLeft);
+    // Two things happen on a reminder day and they are not the same
+    // kind of thing. The email is the SEND, deduped to one per
+    // connection per day. The in-app notification is a note left for
+    // when the user next opens Paybacker; it costs nothing, interrupts
+    // nobody, and is the row a mobile push will read once the app
+    // exists. Emma does the same, and it is the reason someone who
+    // ignores email still finds out.
     const label =
       daysLeft > 0
         ? `Your ${bankName} connection expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
@@ -250,105 +223,65 @@ export async function dispatchConsentReminders(
           ? `Your ${bankName} connection expires today`
           : `Your ${bankName} connection has stopped`;
 
+    const body =
+      daysLeft >= 0
+        ? `UK rules mean we have to ask you to confirm every 90 days. It takes one tap and you will not need to log in to your bank.`
+        : `We have paused reading your ${bankName} transactions until you confirm. One tap restores it, and you will not need to log in to your bank.`;
+
     let delivered: { channel: ReminderChannel; reason: string } | null = null;
     const attempts: string[] = [];
 
-    for (const choice of chain) {
-      try {
-        if (choice.channel === 'whatsapp') {
-          const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
-          const res = await sendWhatsAppTemplate(
-            {
-              to: waSession!.whatsapp_phone as string,
-              templateName: 'paybacker_reconnect_required',
-              parameters: [bankName, RENEW_URL],
-            },
-            // ctx was missing entirely before, so per-user suppression,
-            // the notification preference, policy attribution and the
-            // free in-window text path were all skipped on this send.
-            {
-              userId: c.user_id,
-              eventType: 'reconnect_required',
-              // Never suppress: this is a regulatory deadline, not an
-              // optional insight the intelligence ledger should be
-              // allowed to rank away.
-              suppressible: false,
-              // Bypasses quiet hours and the 2-paid-templates-per-day
-              // cap only in the final 24h and after — see
-              // isUrgentReminder for why not earlier.
-              allowUrgent: urgent,
-              // Used as a FREE in-window text when the user is inside
-              // the 24h customer-service window, and as the bullet if
-              // the send is batched to the 18:00 digest.
-              textFallback: `${label}. One tap to fix it: ${RENEW_URL}`,
-              dedupKey: refKey,
-              provider: bankName,
-              url: RENEW_URL,
-            },
-          );
+    // In-app first, deliberately. If the email provider is down, the
+    // user should still find the notice waiting for them in the
+    // product rather than nothing at all.
+    try {
+      await supabase.from('user_notifications').insert({
+        user_id: c.user_id,
+        type: 'consent_renewal',
+        title: label,
+        body,
+        link_url: RENEW_PATH,
+        metadata: {
+          connection_id: c.id,
+          bank_name: bankName,
+          days_left: daysLeft,
+          stage: reminderStage(daysLeft),
+        },
+      });
+    } catch (e) {
+      // Non-fatal. The email below is the channel we count.
+      console.warn(
+        `[consent-reminders] in-app notification insert failed for connection=${c.id}`,
+        e,
+      );
+      attempts.push('in-app notification insert failed');
+    }
 
-          const id = (res as { providerMessageId?: string } | null)?.providerMessageId ?? '';
-          const outcome = /^(blocked|deferred|suppressed):/.exec(id)?.[1];
-
-          // `deferred` is NOT a failure. The facade has queued it for
-          // the 18:00 evening digest and it will arrive today; falling
-          // through to email would send the same person two reminders
-          // for one event. Only `blocked` and `suppressed` mean nothing
-          // will be delivered.
-          if (outcome === 'blocked' || outcome === 'suppressed') {
-            attempts.push(`whatsapp ${outcome}`);
-            continue;
-          }
-          delivered = {
-            channel: 'whatsapp',
-            reason: outcome === 'deferred'
-              ? `${choice.reason} (queued for the 18:00 digest)`
-              : choice.reason,
-          };
-        } else if (choice.channel === 'telegram') {
-          const { sendProactiveAlert } = await import('@/lib/telegram/user-bot');
-          await sendProactiveAlert({
-            chatId: tgSession!.telegram_chat_id as number,
-            issue: {
-              id: c.id,
-              title: `🔐 ${label}`,
-              detail:
-                daysLeft >= 0
-                  ? `UK rules mean we have to ask you to confirm every 90 days. It takes one tap and you will not need to log in to your bank: ${RENEW_URL}`
-                  : `We have paused reading your ${bankName} transactions until you confirm. One tap restores it, no bank login needed: ${RENEW_URL}`,
-              amount_impact: null,
-              issue_type: 'consent_renewal',
-            },
-          });
-          delivered = { channel: 'telegram', reason: choice.reason };
-        } else {
-          const { sendConsentRenewalReminderEmail } = await import(
-            '@/lib/email/consent-renewal-reminder'
-          );
-          const ok = await sendConsentRenewalReminderEmail(
-            profile!.email as string,
-            firstName,
-            { bankName, daysLeft },
-          );
-          if (!ok) {
-            attempts.push('email provider reported failure');
-            continue;
-          }
-          delivered = { channel: 'email', reason: choice.reason };
-        }
-        break;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'unknown';
-        console.warn(
-          `[consent-reminders] ${choice.channel} send failed for connection=${c.id}: ${msg}`,
-        );
-        attempts.push(`${choice.channel} threw: ${msg}`);
+    try {
+      const { sendConsentRenewalReminderEmail } = await import(
+        '@/lib/email/consent-renewal-reminder'
+      );
+      const ok = await sendConsentRenewalReminderEmail(
+        profile!.email as string,
+        firstName,
+        { bankName, daysLeft },
+      );
+      if (ok) {
+        delivered = { channel: 'email', reason: choice.reason };
+      } else {
+        attempts.push('email provider reported failure');
       }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'unknown';
+      console.warn(
+        `[consent-reminders] email send failed for connection=${c.id}: ${msg}`,
+      );
+      attempts.push(`email threw: ${msg}`);
     }
 
     if (!delivered) {
       // Nothing logged, so tomorrow's run tries again from the top.
-      record(chain[0].channel, `no channel accepted (${attempts.join('; ')}) — retrying tomorrow`, false);
+      record(choice.channel, `email not delivered (${attempts.join('; ')}), retrying tomorrow`, false);
       continue;
     }
 
