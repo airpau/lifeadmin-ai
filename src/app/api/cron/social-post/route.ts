@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { findBrandSpellingErrors } from '@/lib/social/brand-spelling';
+import { findUnverifiableClaims, describeClaims } from '@/lib/social/claims-guard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -18,6 +19,18 @@ async function getPageToken(systemToken: string): Promise<string> {
   const res = await fetch(`${API}/${PAGE_ID}?fields=access_token&access_token=${systemToken}`);
   const data = await res.json();
   return data.access_token || systemToken;
+}
+
+/** Fire-and-forget Telegram note to the founder. Never throws. */
+async function alertFounder(text: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+  if (!token || !chatId) return;
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: Number(chatId), text }),
+  }).catch(() => {});
 }
 
 async function generateImage(prompt: string): Promise<string | null> {
@@ -83,19 +96,61 @@ export async function GET(request: NextRequest) {
   const supabase = getAdmin();
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // Deduplication: skip if we already posted to Facebook today
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const { count: todayPosts } = await supabase
-    .from('content_drafts')
-    .select('id', { count: 'exact', head: true })
-    .eq('platform', 'facebook')
-    .eq('status', 'posted')
-    .gte('posted_at', todayStart.toISOString());
+  // ── Daily claim lock ─────────────────────────────────────────────────
+  // The old check counted rows already marked 'posted'. That row was written
+  // AFTER all three platforms had been published to, so any run that posted to
+  // Facebook and then timed out (maxDuration is 120s and the chain is
+  // Perplexity + Sonnet + fal.ai + three Graph calls) left no evidence behind,
+  // and the next invocation posted the day's content a second time. That is
+  // what produced the duplicate pairs on 21 Aug, 22 Jun and 24 Apr 2026.
+  //
+  // We now claim the day BEFORE doing any work. The claim is a row carrying a
+  // unique dedup_key, so two concurrent invocations cannot both win: the
+  // second gets a 23505 unique violation and exits. The row is settled to
+  // 'posted' at the end, or released only on paths that published nothing.
+  const postDate = new Date().toISOString().slice(0, 10); // UTC, matches cron schedule
+  const dedupKey = `social-post:${postDate}`;
 
-  if ((todayPosts || 0) > 0) {
-    return NextResponse.json({ skipped: true, reason: 'Already posted to Facebook today' });
+  const { data: claim, error: claimErr } = await supabase
+    .from('content_drafts')
+    .insert({
+      platform: 'facebook',
+      content_type: 'text_post',
+      status: 'publishing',
+      dedup_key: dedupKey,
+      post_date: postDate,
+      // content_drafts.caption is NOT NULL, and the real caption does not exist
+      // yet at claim time. Placeholder is overwritten when the row is settled.
+      caption: `[claimed ${postDate}, generating]`,
+    })
+    .select('id')
+    .single();
+
+  if (claimErr || !claim) {
+    // 23505 is the expected path: today is already claimed.
+    const alreadyClaimed = claimErr?.code === '23505';
+    if (!alreadyClaimed) {
+      console.error('[social-post] could not claim today:', claimErr?.message);
+    }
+    return NextResponse.json({
+      skipped: true,
+      reason: alreadyClaimed ? 'Already claimed for today' : 'Claim failed',
+      detail: alreadyClaimed ? undefined : claimErr?.message,
+    });
   }
+
+  const claimId = claim.id as string;
+
+  /**
+   * Release the day's claim so a later invocation can retry.
+   *
+   * ONLY safe on paths that published nothing. Once a Graph API call has been
+   * made we keep the claim regardless of outcome, because a partial success
+   * (Facebook posted, Instagram failed) must not licence a second full post.
+   */
+  const releaseClaim = async () => {
+    await supabase.from('content_drafts').delete().eq('id', claimId);
+  };
 
   // Step 1: Research trending UK consumer topics via Perplexity
   let researchContext = '';
@@ -136,7 +191,10 @@ export async function GET(request: NextRequest) {
   // Step 3: Use Claude to write a topical, engaging post based on research.
   // Wrapped in a function so the brand-spelling guard below can ask for
   // exactly one retry before giving up and skipping the post.
-  async function writeCaption(correction?: string): Promise<{ caption: string; imagePrompt: string }> {
+  async function writeCaption(
+    correction?: string,
+    claimsCorrection?: string,
+  ): Promise<{ caption: string; imagePrompt: string }> {
   const postRes = await anthropic.messages.create({
     // Sonnet, not Haiku. This runs once a day for roughly 800 tokens, so the
     // cost difference is pennies a month against ~£0.19/day total spend, and
@@ -150,18 +208,44 @@ Your job: write ONE social media post based on today's UK consumer news. Connect
 
 ## THE #1 FEATURE — ALWAYS LEAD WITH THIS
 
-The Paybacker Telegram bot is our most compelling product feature. Every post should either be about the bot directly, or mention it. Generic "AI finance app" messaging is weak. Specific Telegram bot demos are the ads.
+The Paybacker Telegram bot is our most compelling product feature. Every post should either be about the bot directly, or mention it. Generic "AI finance app" messaging is weak. Specific Telegram bot capabilities are the ads.
 
-Hero messaging to build posts around:
-- "Paybacker's AI bot lives in your Telegram. It spotted £162 in overcharges in 30 seconds."
+Hero messaging to build posts around. Describe the capability, never attach a recovered amount or a timing claim to a real user:
+- Paybacker's AI bot lives in your Telegram and reads your bank feed, so it can see a charge you would have to go looking for
 - Evening money wrap-up pushed to your phone at 9pm — no app to open, no login
 - Ask it anything in plain English: "have my bills gone up this year?" — it reads your real transactions and answers instantly
-- A dispute letter citing the exact UK consumer law, drafted in 30 seconds, free, in your Telegram at 3am
+- A dispute letter citing the exact UK consumer law, drafted in seconds, free, in your Telegram at 3am
+
+## CLAIMS POLICY — THIS IS NOT NEGOTIABLE
+
+On 21 August 2026 Meta restricted link sharing on paybacker.co.uk under its
+Fraud, Scams and Deceptive Practices standard. The cause was a run of posts
+carrying invented performance figures and fabricated customer stories. Twenty-one
+posts had to be deleted. If you reintroduce any of it, the domain gets
+restricted again and the business loses its distribution.
+
+You may state:
+- what the product does
+- statutory entitlements that exist in UK law, with the instrument named — "up to £520 per passenger under UK261", "Section 75 covers £100 to £30,000"
+- published third-party research, with the source named in the sentence — "Citizens Advice costs the loyalty penalty at around £4 billion a year"
+- our own prices: Free, Essential £4.99/mo, Pro £9.99/mo
+
+You may NOT state, under any framing, including hypothetical, illustrative or "for example":
+- a success rate, response rate, or upheld rate of any kind, in percentages or in words ("four in ten", "most users")
+- a total recovered, reclaimed or clawed back by users, for any period
+- an average or typical or median saving, reclaim, refund or response time per user
+- any statistic about our own user base — how many subscriptions they have, what they spend, what they recover
+- a named or initialled customer story, quote or case study, whether or not it is marked as an example. No "Priya's contract", no "— Paul R., Bristol"
+- a specific outcome attributed to a named provider — "Virgin Media reversed the hike"
+- that Paybacker is FCA-regulated, FCA-authorised, FCA-backed or FCA-approved. We are NOT. Yapily, our Open Banking provider, is. If you mention the FCA at all, it must be about Yapily or about a regulator's own rules, never a badge on us. Never use #FCARegulated.
+- a comparison to what a solicitor, lawyer, claims firm or claims-management company charges
+
+If a post feels weak without a number, the post is about the wrong thing. Write
+about the mechanism instead: which rule applies, what the provider is obliged to
+do, what the product checks.
 
 Hard rules for every post:
 - The brand name is ALWAYS spelled "Paybacker". Never any other spelling. Not "Parybacker", not "Parabacked", not "Paybacked", not "Pay Backer", not "PayBacker". Check every occurrence before you return. Live posts have gone out to Facebook reading "Parybacker" and "Parabacked". This is the single most damaging mistake you can make here, because it publishes under our own brand.
-- Never compare Paybacker to solicitors, lawyers, claims firms or legal services
-- Never promise an outcome or quote a success rate
 - Focus on what the product does, not who it is cheaper than
 
 Other Paybacker features you can mention:
@@ -190,6 +274,10 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
       content: `Today's UK consumer news:\n${researchContext || 'No research available - write about a general UK consumer rights topic.'}\n\nRecent posts (avoid repeating):\n${recentTopics || 'None yet'}${
         correction
           ? `\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED. It misspelled the brand name as: ${correction}. The brand name is spelled "Paybacker" and nothing else. Write the post again and check every occurrence.`
+          : ''
+      }${
+        claimsCorrection
+          ? `\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED by the claims guard. It contained: ${claimsCorrection}\n\nThese are claims we cannot evidence, and they are the exact category of copy that got paybacker.co.uk restricted by Meta on 21 August 2026. Write the post again with NO success rate, NO recovery total, NO average or typical user outcome, NO statistic about our own users, NO named customer story, NO FCA authorisation claim about Paybacker, and NO solicitor cost comparison. Describe what the product does and which UK rule applies. If the angle only works with a number you cannot source, pick a different angle.`
           : ''
       }`,
     }],
@@ -238,28 +326,70 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
     const detail = offenders.map((o) => `"${o}"`).join(', ');
     console.error(`[social-post] brand misspelling after retry, skipping post: ${detail}`);
 
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
-    if (token && chatId) {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: Number(chatId),
-          text:
-            `Daily social post SKIPPED: brand name misspelled after one retry.\n\n` +
-            `Flagged: ${detail}\n\n` +
-            `Nothing was published to Facebook, Instagram or X.\n\n` +
-            `Caption was:\n${caption.substring(0, 500)}`,
-        }),
-      }).catch(() => {});
-    }
+    await alertFounder(
+      `Daily social post SKIPPED: brand name misspelled after one retry.\n\n` +
+        `Flagged: ${detail}\n\n` +
+        `Nothing was published to Facebook, Instagram or X.\n\n` +
+        `Caption was:\n${caption.substring(0, 500)}`,
+    );
+
+    // Nothing was published, so the day is free for a retry.
+    await releaseClaim();
 
     return NextResponse.json({
       ok: false,
       skipped: true,
       reason: 'brand_misspelling',
       offenders,
+    });
+  }
+
+  // ── Unverifiable-claims guard ────────────────────────────────────────
+  // The prompt forbids success rates, recovery totals, invented user stats,
+  // testimonials and FCA authorisation claims. It forbade most of them while
+  // the posts Meta restricted us for were going out, because the same prompt
+  // also supplied a hero line containing a recovery figure. Prompt rules are
+  // not controls. This is the control.
+  let claims = findUnverifiableClaims(caption);
+
+  if (claims.length > 0) {
+    console.warn(`[social-post] unverifiable claims ${describeClaims(claims)}, regenerating once`);
+    ({ caption, imagePrompt } = await writeCaption(undefined, describeClaims(claims)));
+    claims = findUnverifiableClaims(caption);
+
+    // A regenerated caption still has to clear the brand check.
+    const reOffenders = findBrandSpellingErrors(caption);
+    if (reOffenders.length > 0) {
+      console.error(`[social-post] brand misspelling on claims retry, skipping: ${reOffenders.join(', ')}`);
+      await alertFounder(
+        `Daily social post SKIPPED: brand misspelled on the claims-guard retry.\n\n` +
+          `Flagged: ${reOffenders.join(', ')}\n\nNothing was published.`,
+      );
+      await releaseClaim();
+      return NextResponse.json({ ok: false, skipped: true, reason: 'brand_misspelling', offenders: reOffenders });
+    }
+  }
+
+  if (claims.length > 0) {
+    // Failed twice. Publishing an unevidenced money claim while the domain is
+    // under Meta review is the one outcome worth failing the whole job over.
+    const detail = describeClaims(claims);
+    console.error(`[social-post] unverifiable claims after retry, skipping post: ${detail}`);
+
+    await alertFounder(
+      `Daily social post SKIPPED: unverifiable claim after one retry.\n\n` +
+        `Flagged: ${detail}\n\n` +
+        `Nothing was published to Facebook, Instagram or X.\n\n` +
+        `Caption was:\n${caption.substring(0, 500)}`,
+    );
+
+    await releaseClaim();
+
+    return NextResponse.json({
+      ok: false,
+      skipped: true,
+      reason: 'unverifiable_claim',
+      claims,
     });
   }
 
@@ -342,27 +472,29 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
     results.twitter = { error: err.message };
   }
 
-  // Log to content_drafts
-  await supabase.from('content_drafts').insert({
-    platform: 'facebook',
-    content_type: 'text_post',
-    caption,
-    asset_url: imageUrl,
-    status: 'posted',
-    posted_at: new Date().toISOString(),
-  });
+  // Settle the claim we took at the top. This UPDATES the existing row rather
+  // than inserting a new one, so the dedup_key stays unique for the day and
+  // the row survives even if a platform failed — a partial success must not
+  // licence a second full post.
+  await supabase
+    .from('content_drafts')
+    .update({
+      caption,
+      asset_url: imageUrl,
+      status: 'posted',
+      posted_at: new Date().toISOString(),
+      performance_metrics: results,
+    })
+    .eq('id', claimId);
 
   // Notify founder via Telegram
-  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
-  const founderChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
-  if (telegramToken && founderChatId) {
-    const msg = `Daily social post published:\n\nFB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\nIG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\nX: ${results.twitter?.ok ? 'Posted' : results.twitter?.error || 'Failed'}\n\nCaption: ${caption.substring(0, 150)}...`;
-    await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: Number(founderChatId), text: msg }),
-    }).catch(() => {});
-  }
+  await alertFounder(
+    `Daily social post published:\n\n` +
+      `FB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\n` +
+      `IG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\n` +
+      `X: ${results.twitter?.ok ? 'Posted' : results.twitter?.error || 'Failed'}\n\n` +
+      `Caption: ${caption.substring(0, 150)}...`,
+  );
 
   return NextResponse.json({ ok: true, caption: caption.substring(0, 100), ...results });
 }
