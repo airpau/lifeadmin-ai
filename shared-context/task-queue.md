@@ -47,6 +47,7 @@
 - [x] ~~Create Meta ad creatives~~ — NOT NEEDED (working in dev mode)
 - [ ] Fix any bugs from Paul's manual testing
 - [ ] Set EMAIL_ENCRYPTION_KEY in Vercel env — required for Yahoo Mail IMAP password encryption (generate 64-char hex: `openssl rand -hex 32`)
+- [ ] `content_drafts` is not a faithful record of what published (found 2026-08-21). Rows marked `status='posted'` carry captions that do not match what actually went out to Facebook. Verified from the other direction: a full Graph API sweep of 51 FB posts + 42 IG media found none of the misspelt brand copy that those rows contain, so the drafts are drafts, not a publish log. Two consequences: (1) anything auditing published content from this table will be wrong, and (2) `/api/cron/social-post` uses it as its **dedup gate** — it counts `platform='facebook' AND status='posted' AND posted_at >= today` and skips the day's post if >0, so a row that does not correspond to a real publish silently suppresses a real post. Decide whether the table is a draft store or a publish log; if both, split the states (`drafted` / `published`) and record the real post_id returned by the Graph API.
 
 ## Completed 26 Mar (80+ items)
 
