@@ -59,6 +59,34 @@ export const CADENCE_WINDOWS: Record<RecurringCadence, [number, number, number]>
 /** How far back a series may reach. Anything older is ignored. */
 export const LOOKBACK_DAYS = 396; // ~13 months
 
+/**
+ * Lookback for the ANNUAL pass only.
+ *
+ * Annual billing was undetectable by arithmetic until 2026-08-21. The
+ * general rules need 3 occurrences with every interval inside one
+ * cadence window; two yearly intervals span at least 720 days, and the
+ * lookback was 396. So `CADENCE_WINDOWS.yearly` existed, `toBillingCycle`
+ * could return 'yearly', and nothing could ever reach either. Annual
+ * insurance, breakdown cover, Amazon Prime, domain renewals: invisible.
+ *
+ * The general window is deliberately NOT widened to fix this. Doing that
+ * would feed older payments into every merchant's interval list, and
+ * because qualification requires `intervals.every(inside one window)`,
+ * a merchant billed monthly today but also two years ago would gain one
+ * enormous interval and stop qualifying. Widening the window would have
+ * broken working detections to enable a new one.
+ *
+ * Instead the annual pass is separate and additive: same amount and
+ * liveness rules, its own wider window, and only ever tried after the
+ * general pass has already failed.
+ */
+export const ANNUAL_LOOKBACK_DAYS = 800; // ~26 months, two yearly cycles plus slack
+
+/** Occurrences needed for the annual pass. Two payments a year apart is
+ *  the most evidence an annual subscription can offer inside any
+ *  reasonable window, so requiring a third would keep it undetectable. */
+export const MIN_OCCURRENCES_ANNUAL = 2;
+
 /** Minimum occurrences for a normal merchant. */
 export const MIN_OCCURRENCES = 3;
 
@@ -329,5 +357,100 @@ export function qualifyRecurringSeries(
     occurrencesUsed: kept.length,
     usedDayKeys: kept.map((r) => r.dayKey),
     reason: 'qualified',
+  };
+}
+
+
+/**
+ * Annual-only qualification pass.
+ *
+ * Run ONLY after `qualifyRecurringSeries` has failed, and only for
+ * merchants that look like a candidate. Deliberately narrow: it accepts
+ * exactly one interval, and that interval must sit inside the yearly
+ * window. Everything else — amount consistency, the minimum amount, the
+ * liveness check — matches the general path, because those rules are
+ * about whether a series is real, not about how often it bills.
+ *
+ * A single interval is weaker evidence than the three-plus the general
+ * path demands, which is why this is not simply folded into the main
+ * function by lowering MIN_OCCURRENCES. Lowering that globally would let
+ * any two coincidental same-priced payments 30 days apart become a
+ * subscription. Confining the relaxation to a 360-370 day gap keeps it
+ * to the case where the strictness was the bug.
+ */
+export function qualifyAnnualSeries(
+  occurrences: RecurringOccurrence[],
+  now: Date = new Date(),
+): QualificationResult {
+  const rows: Array<{ date: Date; dayKey: string; amount: number }> = [];
+  for (const occ of occurrences) {
+    const d = occ.date instanceof Date ? occ.date : new Date(occ.date);
+    if (Number.isNaN(d.getTime())) continue;
+    const amount = Math.abs(Number(occ.amount) || 0);
+    if (amount < 0.01) continue;
+    rows.push({ date: d, dayKey: d.toISOString().slice(0, 10), amount });
+  }
+
+  const cutoff = now.getTime() - ANNUAL_LOOKBACK_DAYS * 86_400_000;
+  const recent = rows.filter((r) => r.date.getTime() >= cutoff);
+  if (recent.length < MIN_OCCURRENCES_ANNUAL) {
+    return fail('annual_too_few_occurrences', recent.length);
+  }
+
+  recent.sort((a, b) => a.date.getTime() - b.date.getTime());
+  const seenDays = new Set<string>();
+  const deduped: typeof recent = [];
+  for (const r of recent) {
+    if (seenDays.has(r.dayKey)) continue;
+    seenDays.add(r.dayKey);
+    deduped.push(r);
+  }
+  if (deduped.length < MIN_OCCURRENCES_ANNUAL) {
+    return fail('annual_too_few_distinct_days', deduped.length);
+  }
+
+  const med = medianOf(deduped.map((r) => r.amount));
+  const lo = med * (1 - AMOUNT_TOLERANCE);
+  const hi = med * (1 + AMOUNT_TOLERANCE);
+  const kept = deduped.filter((r) => r.amount >= lo && r.amount <= hi);
+  if (kept.length < MIN_OCCURRENCES_ANNUAL) {
+    return fail('annual_amounts_not_consistent', kept.length);
+  }
+
+  const medianAmount = medianOf(kept.map((r) => r.amount));
+  if (medianAmount < MIN_AMOUNT_GBP) {
+    return fail('annual_below_minimum_amount', kept.length);
+  }
+
+  const intervals: number[] = [];
+  for (let i = 1; i < kept.length; i++) {
+    const days = Math.round(
+      (kept[i].date.getTime() - kept[i - 1].date.getTime()) / 86_400_000,
+    );
+    if (days >= 1) intervals.push(days);
+  }
+  if (intervals.length < 1) return fail('annual_no_intervals', kept.length);
+
+  const [yLo, yHi, yCanon] = CADENCE_WINDOWS.yearly;
+  if (!intervals.every((d) => d >= yLo && d <= yHi)) {
+    return fail('annual_intervals_not_yearly', kept.length);
+  }
+
+  // Liveness, same rule as the general path: something cancelled 18
+  // months ago must not reappear as a live subscription.
+  const lastSeen = kept[kept.length - 1].date;
+  const daysSinceLast = (now.getTime() - lastSeen.getTime()) / 86_400_000;
+  if (daysSinceLast > yCanon * RECENCY_MULTIPLIER) {
+    return fail('annual_series_lapsed', kept.length);
+  }
+
+  return {
+    qualifies: true,
+    cadence: 'yearly',
+    billingCycle: toBillingCycle('yearly'),
+    medianAmount: Math.round(medianAmount * 100) / 100,
+    occurrencesUsed: kept.length,
+    usedDayKeys: kept.map((r) => r.dayKey),
+    reason: 'qualified_annual',
   };
 }

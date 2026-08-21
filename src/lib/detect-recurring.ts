@@ -2,11 +2,12 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { deriveRecurringGroup } from './subscription-key';
 import { isPayrollLike } from './subscriptions/payroll-filter';
 import {
-  LOOKBACK_DAYS,
+  ANNUAL_LOOKBACK_DAYS,
   isCouncilTaxMerchant,
   isExcludedTransactionCategory,
   isHighVarianceMerchant,
   qualifyRecurringSeries,
+  qualifyAnnualSeries,
 } from './subscriptions/recurring-qualification';
 
 const STRIP_SUFFIXES = /\b(ltd|limited|plc|llp|inc|corp|group|uk|co\.uk)\b/gi;
@@ -137,11 +138,24 @@ export async function detectRecurring(
     rulesMap.set(rule.raw_name_normalised, rule);
   }
 
-  // Fetch debit transactions inside the 13-month lookback window only.
+  // Fetch debits inside the ANNUAL window, not the 13-month one.
+  //
+  // Widened 2026-08-21 so the annual pass has something to work with:
+  // two yearly payments are 360+ days apart, so a 396-day fetch could
+  // only ever contain one of them.
+  //
+  // This does NOT widen the general path. qualifyRecurringSeries applies
+  // its own LOOKBACK_DAYS cutoff internally, so monthly and weekly
+  // detection still sees exactly the same 396 days it always did. That
+  // separation is deliberate: feeding older payments into every
+  // merchant's interval list would break working detections, because
+  // qualification requires every interval to sit inside one cadence
+  // window and an old payment adds an enormous one.
+  //
   // Ordered newest-first so that if the PostgREST row cap bites on a
   // heavy account, we keep the RECENT payments the liveness check needs
   // (and txs[0] carries the freshest merchant_name/description).
-  const lookbackStart = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString();
+  const lookbackStart = new Date(Date.now() - ANNUAL_LOOKBACK_DAYS * 86_400_000).toISOString();
   const { data: transactions, error } = await supabase
     .from('bank_transactions')
     .select('id, merchant_name, description, amount, timestamp, recurring_group, category, user_category, transfer_pair_id')
@@ -214,10 +228,30 @@ export async function detectRecurring(
 
     // Qualification core: cadence windows, median amount trim, recency.
     const highVariance = isHighVarianceMerchant(displayName, txs[0].description);
-    const result = qualifyRecurringSeries(
-      txs.map((t) => ({ date: t.timestamp, amount: Math.abs(Number(t.amount)) })),
-      { highVariance }
-    );
+    const occurrences = txs.map((t) => ({
+      date: t.timestamp,
+      amount: Math.abs(Number(t.amount)),
+    }));
+    let result = qualifyRecurringSeries(occurrences, { highVariance });
+
+    // Annual pass, additive and only after the general one has failed.
+    //
+    // The general rules need 3 occurrences with every interval inside
+    // one cadence window, over a 396-day lookback. Two yearly intervals
+    // span 720+ days, so annual billing could never qualify: the
+    // `yearly` cadence window existed and nothing could reach it.
+    // Annual insurance, breakdown cover, Prime, domain renewals were
+    // all invisible.
+    //
+    // High-variance merchants (groceries, fuel, retail) are excluded
+    // from this pass. Two same-priced supermarket shops a year apart is
+    // a coincidence, not a subscription, and with only one interval to
+    // go on there is not enough evidence to tell the difference.
+    if (!result.qualifies && !highVariance) {
+      const annual = qualifyAnnualSeries(occurrences);
+      if (annual.qualifies) result = annual;
+    }
+
     if (!result.qualifies || !result.billingCycle || result.medianAmount == null) {
       continue;
     }
