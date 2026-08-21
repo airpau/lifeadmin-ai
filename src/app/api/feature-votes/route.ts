@@ -9,10 +9,14 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
+// Keys must match VOTE_OPTIONS in src/app/preview/homepage/page.tsx.
+// 'household' is retired from the homepage list (the feature shipped) but is
+// kept accepted here so historic rows and any cached client still resolve.
 const FEATURE_KEYS = new Set([
   'native_app',
   'sms_agent',
   'household',
+  'landlord_disputes',
   'autopilot',
   'insurance',
 ])

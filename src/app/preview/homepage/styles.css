@@ -937,6 +937,80 @@
 
 .m-v2-root .price-card .cta { margin-top: auto; }
 
+/* Dispute Pro recovery strip
+   --------------------------
+   Sits below the Free/Essential/Pro grid rather than becoming a fourth
+   column: four cards at 1240px leave each under ~270px, which breaks the
+   nested WhatsApp bullet list inside the Pro card. Orange rather than mint
+   so it reads as a different ladder (recovery, not tracking), matching the
+   recovery band on /pricing. Two columns on desktop, one below 980px. */
+
+.m-v2-root .recovery-strip {
+  margin-top: 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+  background: #fff;
+  border: 1px solid var(--accent-orange);
+  border-radius: var(--r-card);
+  padding: 32px;
+  box-shadow: 0 30px 60px -30px rgba(217, 119, 6, 0.28);
+}
+
+.m-v2-root .recovery-strip__lead { display: flex; flex-direction: column; align-items: flex-start; }
+
+.m-v2-root .recovery-strip__badge {
+  background: var(--accent-orange-deep);
+  color: #fff;
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700;
+  padding: 6px 12px; border-radius: 999px;
+  margin-bottom: 14px;
+}
+
+.m-v2-root .recovery-strip__tier { font-size: 14px; color: var(--text-tertiary); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.m-v2-root .recovery-strip__price { font-size: 44px; font-weight: 700; letter-spacing: -0.02em; margin: 10px 0 4px; font-variant-numeric: tabular-nums; }
+
+.m-v2-root .recovery-strip__price .per { font-size: 16px; color: var(--text-tertiary); font-weight: 500; }
+
+.m-v2-root .recovery-strip__annual { color: var(--accent-orange-deep); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+
+.m-v2-root .recovery-strip__sub { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin: 16px 0 22px; }
+
+.m-v2-root .recovery-strip__list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 14px; }
+
+.m-v2-root .recovery-strip__list li {
+  font-size: 15px; color: var(--text-secondary); line-height: 1.55;
+  padding-left: 28px; position: relative;
+}
+
+.m-v2-root .recovery-strip__list li::before {
+  content: ''; position: absolute; left: 0; top: 4px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background-color: rgba(245, 158, 11, 0.14);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M3.5 8.2l3 2.8 6-6.5' stroke='%23B45309' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat; background-position: center;
+}
+
+.m-v2-root .recovery-strip__list li strong { color: var(--text-primary); }
+
+.m-v2-root .btn.btn-orange { background: var(--accent-orange-deep); color: #fff; border: 1px solid transparent; }
+
+.m-v2-root .btn.btn-orange:hover { transform: translateY(-1px) scale(1.02); filter: brightness(1.06); }
+
+/* One-off escalation pack note — a line of copy, not a plan. */
+.m-v2-root .oneoff-note {
+  margin: 20px 0 0;
+  padding: 18px 22px;
+  border: 1px dashed var(--divider);
+  border-radius: 16px;
+  background: var(--surface-base);
+  font-size: 14px; line-height: 1.6; color: var(--text-secondary);
+}
+
+.m-v2-root .oneoff-note strong { color: var(--text-primary); }
+
 .m-v2-root .compare-link { text-align: center; margin-top: 36px; font-size: 14px; color: var(--text-secondary); }
 
 .m-v2-root .compare-link a { color: var(--accent-mint-deep); text-decoration: none; font-weight: 600; }
@@ -1040,6 +1114,8 @@
   .m-v2-root .hero-grid { gap: 40px; }
   .m-v2-root .hero-visual { height: 520px; }
   .m-v2-root .stats-grid, .m-v2-root .pillar-grid, .m-v2-root .how-steps, .m-v2-root .category-grid, .m-v2-root .pricing-grid { grid-template-columns: 1fr; }
+  .m-v2-root .recovery-strip { grid-template-columns: 1fr; gap: 24px; }
+  .m-v2-root .recovery-strip .cta { align-self: stretch; }
   .m-v2-root .trust-row { grid-template-columns: repeat(2, 1fr); gap: 16px; }
   .m-v2-root .footer-grid { grid-template-columns: 1fr 1fr; }
   .m-v2-root .nav-links { display: none; }
@@ -1062,6 +1138,9 @@
      is ever swapped back into the hero. */
   .m-v2-root .stats-section, .m-v2-root .pillars-section, .m-v2-root .deals-section, .m-v2-root .pricing-section { padding: 80px 0; }
   .m-v2-root .how-section, .m-v2-root .final-cta { padding: 100px 0; }
+  .m-v2-root .recovery-strip { padding: 24px 20px; }
+  .m-v2-root .recovery-strip__price { font-size: 38px; }
+  .m-v2-root .oneoff-note { padding: 16px 18px; }
 }
 
 /* ============================================================

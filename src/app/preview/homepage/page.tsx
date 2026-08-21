@@ -137,7 +137,14 @@ function Counter({
   instant = false,
 }: CounterProps) {
   const ref = useRef<HTMLSpanElement | null>(null);
-  const [value, setValue] = useState(instant ? to : 0);
+  // Seed with the FINAL value, not 0. The server-rendered HTML (and the
+  // first client render, which must match it) therefore always contains
+  // the real number — "£1,000+", "30", "100%" — rather than "£0+". That
+  // matters for anything that reads the markup without executing JS:
+  // LLM crawlers, search engines, previews, no-JS browsers. The count-up
+  // is a client-only flourish: the effect below drops the value back to 0
+  // once hydrated and animates up when the element scrolls into view.
+  const [value, setValue] = useState(to);
   const started = useRef(false);
 
   useEffect(() => {
@@ -147,11 +154,9 @@ function Counter({
     const prefersReduced =
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReduced || typeof IntersectionObserver === 'undefined') {
-      setValue(to);
-      started.current = true;
-      return;
-    }
+    // No animation available or wanted: leave the seeded final value alone.
+    if (prefersReduced || typeof IntersectionObserver === 'undefined') return;
+    setValue(0);
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -911,7 +916,12 @@ const VOTE_STORAGE_KEY = 'pb_feature_votes';
 const VOTE_OPTIONS: ReadonlyArray<{ key: string; label: string }> = [
   { key: 'native_app', label: 'Native iPhone and Android app' },
   { key: 'sms_agent', label: 'Pocket Agent over SMS, no smartphone needed' },
-  { key: 'household', label: 'Shared household accounts' },
+  // 'household' (shared household accounts) was removed on 2026-08-21: it is
+  // built, so inviting votes for it was misleading. Replaced with an option
+  // that genuinely is not built. Do not re-add household here, and do not
+  // advertise the Household plan anywhere on this page while
+  // NEXT_PUBLIC_HOUSEHOLD_PLAN_ENABLED is off.
+  { key: 'landlord_disputes', label: 'Deposit and landlord disputes' },
   { key: 'autopilot', label: 'Savings autopilot that switches you automatically' },
   { key: 'insurance', label: 'Car and home insurance disputes' },
 ];
@@ -2024,6 +2034,67 @@ export default function HomepageV3PreviewPage() {
               </Link>
             </Reveal>
           </div>
+
+          {/* Dispute Pro — deliberately a full-width strip, not a fourth
+              column. The Pro card carries a nested WhatsApp sub-list, so a
+              4-up grid at 1240px squeezes every card under ~270px and the
+              nested bullets wrap to three lines each. The strip also mirrors
+              /pricing, where Dispute Pro sits in a separate "recovery band"
+              below the Free/Essential/Pro ladder: the two are priced against
+              different things (a subscription tracker vs a recovery), so they
+              should not read as one continuous ladder. Collapses to a single
+              column at 980px alongside the grid above it. */}
+          <Reveal className="recovery-strip">
+            <div className="recovery-strip__lead">
+              <span className="recovery-strip__badge">Best for open disputes</span>
+              <div className="recovery-strip__tier">Dispute Pro</div>
+              <div className="recovery-strip__price">
+                £19.99<span className="per">/month</span>
+              </div>
+              <div className="recovery-strip__annual">
+                or £199.99 a year · saves £39.89 · about 17% off
+              </div>
+              <p className="recovery-strip__sub">
+                For the months you are actively chasing money back. A single
+                upheld dispute is commonly worth £100 to £520, so this tier is
+                priced against the recovery rather than against a budgeting
+                app. You still keep 100% of whatever comes back: there is no
+                success fee on any plan.
+              </p>
+              <Link
+                className="btn btn-orange cta"
+                href="/auth/signup"
+                style={{ justifyContent: 'center' }}
+              >
+                Start Dispute Pro →
+              </Link>
+            </div>
+            <ul className="recovery-strip__list">
+              <li>Everything in Pro, including the WhatsApp Pocket Agent</li>
+              <li>
+                <strong>Ombudsman escalation packs included</strong> on every
+                dispute, £14.99 each on other plans
+              </li>
+              <li>
+                <strong>Front of the Dispute Agent queue</strong>, so your cases
+                are reviewed first on every run
+              </li>
+              <li>
+                Watchdog checks your inbox for replies every{' '}
+                <strong>15 minutes</strong>, not 30
+              </li>
+            </ul>
+          </Reveal>
+
+          {/* One-off purchase, so deliberately not a pricing card. */}
+          <p className="oneoff-note">
+            <strong>Mid-dispute and need to escalate?</strong> An Ombudsman
+            escalation pack is £14.99 as a one-off, on any plan including Free.
+            It is the referral letter for the ombudsman that covers your case,
+            your dispute correspondence bundled as numbered exhibits, and the
+            deadlines tracked. You buy it from inside the dispute it applies to,
+            with no subscription.
+          </p>
 
           <p className="compare-link">
             <Link href="/pricing">See the full feature comparison →</Link>
