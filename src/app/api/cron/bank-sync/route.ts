@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAccounts, getAllTransactions, triageConsentFailure } from '@/lib/yapily';
+import {
+  getAccounts,
+  getAllTransactions,
+  triageConsentFailure,
+  yapilySleep,
+  PER_CONSENT_CALL_DELAY_MS,
+} from '@/lib/yapily';
+import { resolveTransactionWindow } from '@/lib/yapily/sync-window';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { recordConsentFailure, clearConsentFailures } from '@/lib/yapily/consent-failure-tracker';
@@ -23,7 +30,14 @@ import {
   staleClaimCutoff,
 } from '@/lib/yapily/sync-scheduler';
 
-export const maxDuration = 60;
+// Raised from 60s on 2026-08-21. Migle's polling guidance costs
+// wall-clock time on purpose: 5s between accounts on the same consent,
+// and a retry ladder starting at 5s rather than 500ms. A single
+// connection with three accounts that hits one retry now needs well
+// over a minute of mostly-sleeping. The stagger means each run has few
+// connections to do, so the extra ceiling is headroom, not typical
+// runtime.
+export const maxDuration = 300;
 
 /**
  * Hard cap on connections touched in one run.
@@ -227,9 +241,12 @@ export async function GET(request: NextRequest) {
     return tierA - tierB;
   });
 
-  // Default lookback ceiling — individual connections may use a later floor (see below).
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  // (The fixed 90-day lookback that used to live here is gone. The
+  //  window is now resolved per account from the newest stored
+  //  transaction — see resolveTransactionWindow. The old comment
+  //  promised "individual connections may use a later floor (see
+  //  below)"; no such floor was ever implemented, so every run pulled
+  //  the full 90 days and discarded ~99% at the dedup layer.)
 
   type SyncResult = {
     user_id: string;
@@ -383,13 +400,35 @@ export async function GET(request: NextRequest) {
         // Decrypt consent token
         const consentToken = decrypt(connection.consent_token);
 
+        // ── GET /accounts, at most once per connection ───────────────
+        //
+        // This used to be two independent calls in the same iteration:
+        // one to backfill bank_name, one to backfill the account hashes.
+        // Their guards both trip for the same connection state, so the
+        // common backfill case fired two identical GET /accounts calls
+        // back to back on the same consent token — the exact pattern
+        // Migle warned produces race conditions and can prematurely
+        // expire a consent.
+        //
+        // Memoised: whichever backfill needs it first pays for the call,
+        // the second reuses the result. Migle's guidance is "account IDs
+        // cached and reused", and account_ids on the row IS that cache —
+        // so on a healthy connection we now make zero /accounts calls.
+        let _accountsPromise: ReturnType<typeof getAccounts> | null = null;
+        const loadAccounts = () => {
+          if (!_accountsPromise) {
+            connectionApiCalls++;
+            _accountsPromise = getAccounts(consentToken);
+          }
+          return _accountsPromise;
+        };
+
         // Backfill bank name if missing
         let accountIds = connection.account_ids || [];
 
         if (accountIds.length === 0 || !connection.bank_name) {
           try {
-            const accounts = await getAccounts(consentToken);
-            connectionApiCalls++;
+            const accounts = await loadAccounts();
             const bankName = accounts[0]?.institution?.name || null;
             const displayNames = accounts.map((a) =>
               a.accountNames?.[0]?.name || a.type || 'Account'
@@ -423,8 +462,9 @@ export async function GET(request: NextRequest) {
 
         if (storedHashes.length === 0 || storedHashes.length < accountIds.length) {
           try {
-            const accounts = await getAccounts(consentToken);
-            connectionApiCalls++;
+            // Reuses the response above when the bank-name backfill
+            // already fetched it — see loadAccounts().
+            const accounts = await loadAccounts();
             const snapshots = snapshotAccounts(accounts);
             const newHashes = snapshots.map((s) => s.accountIdentificationsHash ?? '');
             const newDisplayNames = snapshots.map((s) => s.displayName);
@@ -466,12 +506,8 @@ export async function GET(request: NextRequest) {
         // Replaced 2026-04-28 — the OLD upsert pattern keyed on
         // (user_id, transaction_id) and Yapily reissues IDs across
         // calls, so each cron run was inserting phantom duplicates.
-        const fromDate = ninetyDaysAgo.toISOString();
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const toDate = tomorrow.toISOString();
-        syncFromDate = fromDate;
-        syncToDate = toDate;
+
+        let accountsPolled = 0;
 
         for (let i = 0; i < accountIds.length; i++) {
           const accountId = accountIds[i];
@@ -480,6 +516,35 @@ export async function GET(request: NextRequest) {
             console.warn(`Bank sync: connection ${connection.id} account ${accountId} has no stored hash — skipping`);
             continue;
           }
+
+          // ── Space calls on the SAME consent token ────────────────
+          //
+          // Migle: "Data endpoints are not polled multiple times for
+          // the same consent without a delay between calls … can cause
+          // race conditions, unexpected errors, or premature consent
+          // expiry." Skipped before the first account so a
+          // single-account connection is not slowed down for nothing.
+          if (accountsPolled > 0) await yapilySleep(PER_CONSENT_CALL_DELAY_MS);
+          accountsPolled++;
+
+          // ── Incremental window ──────────────────────────────────
+          //
+          // Per account, not per connection: two accounts on one bank
+          // can have very different activity, and a dormant savings
+          // account shouldn't drag a busy current account back to a
+          // full 90-day pull. See src/lib/yapily/sync-window.ts.
+          const window = await resolveTransactionWindow(supabase, {
+            userId: connection.user_id,
+            accountId,
+          });
+          const fromDate = window.from;
+          const toDate = window.before;
+          // bank_sync_log records the window actually used, so the log
+          // row shows whether a thin result was a thin window or a real
+          // problem.
+          syncFromDate = fromDate;
+          syncToDate = toDate;
+
           try {
             // Use the paginating helper so a high-volume account
             // doesn't lose recent transactions behind Yapily's

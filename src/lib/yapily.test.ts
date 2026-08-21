@@ -94,23 +94,34 @@ afterEach(() => {
 describe('isHostedPagesEnabled', () => {
   const originalFlag = process.env.YAPILY_HOSTED_PAGES_ENABLED;
 
-  it('returns false when the flag is absent', () => {
+  // Semantics inverted 2026-08-21. Hosted Pages is now the canonical
+  // consent journey and the env var is a kill switch, not a feature
+  // flag: only an explicit "false" reverts to /account-auth-requests.
+  //
+  // The direction matters. Under the old "explicitly true enables"
+  // rule, a missing or misspelled env var silently reverted the
+  // cutover — which is exactly how the hosted path sat as dead code
+  // from April to August without anyone noticing.
+
+  it('returns true when the flag is absent', () => {
     delete process.env.YAPILY_HOSTED_PAGES_ENABLED;
-    assert.equal(isHostedPagesEnabled(), false);
+    assert.equal(isHostedPagesEnabled(), true);
   });
 
-  it('returns false for arbitrary non-true values', () => {
+  it('returns true for arbitrary values that are not "false"', () => {
     process.env.YAPILY_HOSTED_PAGES_ENABLED = 'yes';
-    assert.equal(isHostedPagesEnabled(), false);
+    assert.equal(isHostedPagesEnabled(), true);
     process.env.YAPILY_HOSTED_PAGES_ENABLED = '1';
-    assert.equal(isHostedPagesEnabled(), false);
+    assert.equal(isHostedPagesEnabled(), true);
+    process.env.YAPILY_HOSTED_PAGES_ENABLED = '';
+    assert.equal(isHostedPagesEnabled(), true);
   });
 
-  it('returns true only for the exact string "true" (case-insensitive)', () => {
-    process.env.YAPILY_HOSTED_PAGES_ENABLED = 'true';
-    assert.equal(isHostedPagesEnabled(), true);
-    process.env.YAPILY_HOSTED_PAGES_ENABLED = 'TRUE';
-    assert.equal(isHostedPagesEnabled(), true);
+  it('returns false only for the exact string "false" (case-insensitive)', () => {
+    process.env.YAPILY_HOSTED_PAGES_ENABLED = 'false';
+    assert.equal(isHostedPagesEnabled(), false);
+    process.env.YAPILY_HOSTED_PAGES_ENABLED = 'FALSE';
+    assert.equal(isHostedPagesEnabled(), false);
   });
 
   if (originalFlag === undefined) delete process.env.YAPILY_HOSTED_PAGES_ENABLED;
@@ -625,8 +636,12 @@ describe('error handling per class', () => {
         return true;
       },
     );
-    // Initial attempt + MAX_RETRIES (2) = 3 total.
-    assert.equal(m.calls(), 3);
+    // Initial attempt + MAX_RETRIES (3) = 4 total.
+    //
+    // MAX_RETRIES went 2 → 3 on 2026-08-21 alongside the move to
+    // Migle's 5s → 10s → 20s backoff ladder. Retry-After: 0 in this
+    // mock keeps the test instant despite the real base delay being 5s.
+    assert.equal(m.calls(), 4);
   });
 
   it('500: retries a transient server error and recovers', async () => {

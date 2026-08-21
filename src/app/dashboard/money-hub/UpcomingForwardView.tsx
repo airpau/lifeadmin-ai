@@ -285,9 +285,31 @@ export default function UpcomingForwardView({
 
       {/* ── Empty states — say what to do, never an empty box ────── */}
       {groups.length === 0 ? (
-        <EmptyState reason={data.emptyReason} onRetry={reload} />
+        <EmptyState
+          reason={data.emptyReason}
+          unsupportedByBank={data.unsupportedByBank}
+          onRetry={reload}
+        />
       ) : (
         <>
+          {/* One bank of several can't share forward data. There IS a
+              list to show, so this is a caveat rather than an empty
+              state — but without it the list silently under-reports and
+              the user has no way to know which bank is missing. */}
+          {data.unsupportedByBank && data.unsupportedByBank.length > 0 && (
+            <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] leading-relaxed text-slate-600">
+              {data.unsupportedByBank.map((b) => b.bankName).join(' and ')}{' '}
+              {data.unsupportedByBank.length === 1 ? "doesn't" : "don't"} share{' '}
+              {humanList(
+                Array.from(new Set(data.unsupportedByBank.flatMap((b) => b.labels))),
+              )}{' '}
+              through Open Banking, so anything from{' '}
+              {data.unsupportedByBank.length === 1 ? 'that account' : 'those accounts'}{' '}
+              only appears here once we&apos;ve spotted the pattern in your
+              transactions.
+            </p>
+          )}
+
           <ol className="mt-4 space-y-3">
             {visibleGroups.map((g) => (
               <li key={g.date}>
@@ -628,11 +650,19 @@ function DetailSheet({
 }
 
 // ─── empty states ──────────────────────────────────────────────────
+/** Joins labels the way a person writes a list. */
+function humanList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`;
+}
+
 function EmptyState({
   reason,
+  unsupportedByBank = [],
   onRetry,
 }: {
   reason: UpcomingApiResponse['emptyReason'];
+  unsupportedByBank?: UpcomingApiResponse['unsupportedByBank'];
   onRetry: () => void;
 }) {
   if (reason === 'no_bank') {
@@ -680,6 +710,42 @@ function EmptyState({
     );
   }
 
+  // ── The bank genuinely cannot supply this ──────────────────────
+  //
+  // Yapily asks integrators to tell the user when a feature is absent
+  // for their institution. The previous copy sent everyone to the
+  // generic state below, which ends "check back after tomorrow's 06:00
+  // sync" — advice that is simply false here. Their bank does not
+  // implement these endpoints, so no sync will ever fill this in, and
+  // we know that for certain because the bank answered 424/501.
+  if (reason === 'bank_unsupported') {
+    const banks = unsupportedByBank.length
+      ? unsupportedByBank.map((b) => b.bankName).join(' and ')
+      : 'Your bank';
+    const missing = humanList(
+      Array.from(new Set(unsupportedByBank.flatMap((b) => b.labels))),
+    ) || 'scheduled payments, standing orders or direct debits';
+
+    return (
+      <div className="mt-4 rounded-xl border border-slate-300 bg-slate-50 p-4 text-center">
+        <Building2 className="mx-auto h-5 w-5 text-slate-400" />
+        <p className="mt-2 text-sm font-semibold text-slate-900">
+          {banks} doesn&apos;t share {missing}
+        </p>
+        <p className="mt-1 text-sm leading-relaxed text-slate-600">
+          Not every UK bank offers these through Open Banking, and yours is one
+          that doesn&apos;t. That&apos;s a limit at their end, not something
+          reconnecting will fix.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          We&apos;ll still spot regular payments from your transaction history
+          once we&apos;ve seen a pattern three times, so this view fills in as we
+          learn your account.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
       <CalendarClock className="mx-auto h-5 w-5 text-slate-400" />
@@ -690,7 +756,7 @@ function EmptyState({
         Your bank isn&apos;t reporting any scheduled payments for these dates, and
         we haven&apos;t seen enough history to predict any yet. We need a pattern
         at least three times before we&apos;ll put a number in front of you. Try a
-        longer window, or check back after tomorrow&apos;s 06:00 sync.
+        longer window, or check back after the next sync.
       </p>
       <button
         onClick={onRetry}

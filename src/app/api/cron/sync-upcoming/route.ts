@@ -255,11 +255,28 @@ export async function GET(request: NextRequest) {
       : [];
     const knownUnsupported = new Set(conn.unsupported_features ?? []);
 
-    const advertised = grantedScope.length > 0 ? grantedScope : institutionFeatures;
-    const featuresKnown = advertised.length > 0;
+    // Each gate can VETO independently; none can override another.
+    //
+    // An earlier draft had the granted scope replace the institution
+    // list when present. That was wrong in one direction that matters:
+    // Migle's spec is explicit that the institution's `features` array
+    // from GET /institutions is the check to make before polling
+    // ("System checks selected institution's features list from GET
+    // /institutions … If required feature is absent: do not call the
+    // endpoint"). A consent can carry a scope the institution does not
+    // in fact implement, and calling on that basis is exactly the 424
+    // traffic we were asked to stop.
+    //
+    // So: call only if nothing known says no.
+    const featuresKnown = grantedScope.length > 0 || institutionFeatures.length > 0;
     const supports = (feature: string) => {
+      // Learned from reality — the bank has already refused this.
       if (knownUnsupported.has(feature)) return false;
-      return !featuresKnown || advertised.includes(feature);
+      // The institution does not advertise it.
+      if (institutionFeatures.length > 0 && !institutionFeatures.includes(feature)) return false;
+      // The consent does not cover it.
+      if (grantedScope.length > 0 && !grantedScope.includes(feature)) return false;
+      return true;
     };
 
     if (!featuresKnown) {
@@ -318,6 +335,13 @@ export async function GET(request: NextRequest) {
                 : `institution=${conn.institution_id} does not advertise ${feature}`
             }`,
           );
+          // Record a metadata-based skip the same way we record a
+          // 424/501, so the user is told their bank doesn't offer this
+          // rather than being left to wonder why the section is empty.
+          // Migle: "Log that the feature is unsupported for the
+          // institution … Inform user that this data is unavailable for
+          // their bank."
+          if (!knownUnsupported.has(feature)) newlyUnsupported.add(feature);
           continue;
         }
         if (ONCE_PER_CONSENT_ENDPOINTS.has(label) && !shouldHarvestOnceOnly) {

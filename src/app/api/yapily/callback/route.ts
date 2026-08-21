@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Verify state (CSRF check) ──
-  let stateData: { userId: string; institutionId: string; returnTo?: string };
+  let stateData: { userId: string; institutionId?: string; returnTo?: string };
   try {
     stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf8'));
   } catch {
@@ -119,7 +119,22 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const institutionId = stateData.institutionId;
+  // ── Which bank did the user actually pick? ───────────────────────
+  //
+  // Since the 2026-08-21 cutover to Yapily's own bank picker, we
+  // usually DON'T know the institution when we build `state` — the user
+  // hasn't chosen yet. So this is now a best-known value that gets
+  // refined as the callback learns more, in order of authority:
+  //
+  //   1. state            — only set on a deep link that named a bank
+  //   2. hosted consent   — institutionIdentifiers.institutionId, i.e.
+  //                         what the user selected in Yapily's UI
+  //   3. accounts[0]      — the institution attached to the returned
+  //                         accounts; the ultimate ground truth, and
+  //                         free, because we fetch accounts anyway
+  //
+  // `let`, not `const`: 2 and 3 overwrite it below.
+  let institutionId = stateData.institutionId || '';
   const returnTo = stateData.returnTo || '/dashboard/money-hub';
 
   // ── Hosted Pages: resolve consentToken + consentId from consentRequestId ──
@@ -176,6 +191,12 @@ export async function GET(request: NextRequest) {
       }
       consentToken = hosted.consentToken;
       yapilyConsentId = hosted.consentId;
+
+      // Source 2: the bank the user chose in Yapily's picker. Only
+      // overwrite when Yapily actually tells us — a deep-linked
+      // institutionId from `state` is still better than nothing.
+      const hostedInstitutionId = hosted.institutionIdentifiers?.institutionId;
+      if (hostedInstitutionId) institutionId = hostedInstitutionId;
     } catch (err) {
       console.error(`[yapily.callback] hosted consent fetch failed for ${consentRequestId}:`, err);
       return NextResponse.redirect(
@@ -218,6 +239,24 @@ export async function GET(request: NextRequest) {
       new URL('/dashboard/money-hub?error=no_usable_accounts', request.url),
     );
   }
+
+  // Source 3, and the authoritative one: the institution attached to
+  // the accounts Yapily just returned. Free — we already made this call.
+  // This is what makes the hosted picker safe: even if Yapily's response
+  // shape changes or institutionIdentifiers comes back empty, we never
+  // persist a connection whose institution_id we had to guess.
+  const resolvedInstitutionId = accounts[0]?.institution?.id || institutionId;
+  if (!resolvedInstitutionId) {
+    // Would previously have written an empty institution_id, which
+    // silently breaks the feature-capability gate in sync-upcoming.
+    console.error(
+      `[yapily.callback] could not resolve an institution for user=${user.id} consentRequestId=${consentRequestId || 'n/a'}`,
+    );
+    return NextResponse.redirect(
+      new URL('/dashboard/money-hub?error=institution_unresolved', request.url),
+    );
+  }
+  institutionId = resolvedInstitutionId;
 
   const bankName = accounts[0]?.institution?.name || institutionId;
 
@@ -344,7 +383,15 @@ export async function GET(request: NextRequest) {
       );
       await adminBg
         .from('yapily_pending_consent_requests')
-        .update({ status: 'completed', resolved_at: new Date().toISOString() })
+        .update({
+          status: 'completed',
+          resolved_at: new Date().toISOString(),
+          // Backfill the bank the user actually picked, replacing the
+          // 'hosted-picker-pending' sentinel we wrote when we didn't
+          // yet know. Keeps the admin view and abandonment reporting
+          // honest about which banks people are choosing.
+          institution_id: institutionId,
+        })
         .eq('consent_request_id', consentRequestId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown';

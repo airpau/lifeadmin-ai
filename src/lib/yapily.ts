@@ -122,18 +122,55 @@ export function isRetryableYapilyStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
-/** Max automatic retries for a retryable status. Kept deliberately low:
- * these run inside Vercel functions with a hard maxDuration, and the
- * sync crons already re-run on their own schedule. */
-const MAX_RETRIES = 2;
-/** Base for exponential backoff, doubled per attempt (500ms, 1000ms). */
-const RETRY_BASE_MS = 500;
-/** Ceiling so a hostile Retry-After can't park a function until timeout. */
-const MAX_RETRY_DELAY_MS = 8_000;
+/** Max automatic retries for a retryable status.
+ *
+ * Three, giving 5s → 10s → 20s of backoff. Bounded by the sync crons'
+ * maxDuration (raised to 300s when this changed) and by the fact that
+ * the crons re-run on their own schedule anyway. */
+const MAX_RETRIES = 3;
 
-function sleep(ms: number): Promise<void> {
+/** Base for exponential backoff.
+ *
+ * Raised from 500ms to 5s on 2026-08-21. Migle Ivanauskaite (Yapily),
+ * verbatim: "Exponential backoff is applied between each poll of data
+ * endpoints: starting at 5s, doubling each time (5s → 10s → 20s → 40s
+ * → ...)."
+ *
+ * Sub-second retries against a rate-limited or struggling API are
+ * counterproductive — they arrive before anything has had a chance to
+ * recover, and count against the same 30 req/sec application-wide
+ * ceiling that caused the problem. */
+const RETRY_BASE_MS = 5_000;
+
+/** Ceiling so a hostile Retry-After can't park a function until timeout.
+ *  40s matches the top of Migle's stated ladder. */
+const MAX_RETRY_DELAY_MS = 40_000;
+
+/**
+ * Minimum gap between consecutive data-endpoint calls made with the
+ * SAME consent token.
+ *
+ * Migle: "Data endpoints are not polled multiple times for the same
+ * consent without a delay between calls … Polling data endpoints
+ * multiple times for the same consent without delay can cause race
+ * conditions, unexpected errors, or premature consent expiry."
+ *
+ * Note the failure mode is not merely a 429. Hammering one consent can
+ * expire it, which drops the user's bank connection and costs them a
+ * full reconnect. Applied between accounts within a connection by both
+ * sync paths.
+ */
+export const PER_CONSENT_CALL_DELAY_MS = 5_000;
+
+/** Sleep helper shared by the retry loop and the per-consent spacing in
+ *  the sync routes. */
+export function yapilySleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/** Internal alias for the exported yapilySleep, kept so the retry loop
+ *  below reads the way it always has. */
+const sleep = yapilySleep;
 
 /**
  * Parses Yapily's Retry-After header. Per RFC 7231 it is either a
@@ -228,35 +265,169 @@ async function yapilyRequest<T>(
 
 // ── Institutions ──
 
-// Module-level cache of the full Yapily institution list. Sized small
-// enough to live in any Vercel function instance and refreshed at most
-// once per hour. Per-instance caching is fine for this surface — the
-// data is stable, the worst case is a few extra API calls when a fresh
-// instance boots, and Yapily's recommendation is "refresh once a week"
-// (we go more aggressive for safety).
-const FEATURE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+// Two-layer cache for the institution list.
+//
+// Migle Ivanauskaite (Yapily), 21 Aug 2026: "GET /institutions: cached
+// for up to 7 days", "refreshed no more than once per week".
+//
+// L1 is this module-level variable — free, but scoped to one Vercel
+// lambda instance, which is why a 1-hour L1 TTL used to mean "refetch
+// on almost every cold start". L2 is a single row in Supabase
+// (yapily_institutions_cache), shared by every instance and every cron,
+// so the weekly refresh is genuinely weekly across the whole app.
+//
+// L2 also gives us a stale copy to fall back on. That matters more than
+// the saved calls: on a fetch failure this used to return [], and the
+// capability gate is fail-open, so a transient Yapily blip turned into
+// calls against endpoints the bank doesn't implement — the precise
+// traffic we were asked to stop generating.
+const INSTITUTIONS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const INSTITUTIONS_CACHE_ID = 'default';
+
 let _institutionsCache: { value: YapilyInstitution[]; loadedAt: number } | null = null;
 
+/** Service-role client, created lazily so importing this module in a
+ *  context without Supabase env vars doesn't throw. */
+function institutionsCacheClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  // Dynamic require keeps @supabase/supabase-js out of any bundle that
+  // imports this module purely for its pure helpers (error classifiers,
+  // the unit tests).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createClient } = require('@supabase/supabase-js') as typeof import('@supabase/supabase-js');
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+interface InstitutionsCacheRow {
+  institutions: YapilyInstitution[];
+  fetched_at: string;
+  application_uuid: string | null;
+}
+
+async function readInstitutionsCache(): Promise<{ value: YapilyInstitution[]; ageMs: number } | null> {
+  const supabase = institutionsCacheClient();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('yapily_institutions_cache')
+      .select('institutions, fetched_at, application_uuid')
+      .eq('id', INSTITUTIONS_CACHE_ID)
+      .maybeSingle<InstitutionsCacheRow>();
+
+    if (error || !data || !Array.isArray(data.institutions) || data.institutions.length === 0) {
+      return null;
+    }
+
+    // Institution availability is per-application. If the credentials
+    // have been rotated to a different app, another app's coverage is
+    // not just stale — it is wrong, and would let the capability gate
+    // approve endpoints this application cannot reach.
+    const currentApp = process.env.YAPILY_APPLICATION_UUID?.trim() || null;
+    if (data.application_uuid && currentApp && data.application_uuid !== currentApp) {
+      console.warn(
+        '[yapily.institutions] cached list belongs to a different application — ignoring and refetching',
+      );
+      return null;
+    }
+
+    const fetchedAt = Date.parse(data.fetched_at);
+    return {
+      value: data.institutions,
+      ageMs: Number.isNaN(fetchedAt) ? Number.POSITIVE_INFINITY : Date.now() - fetchedAt,
+    };
+  } catch (err) {
+    console.warn(
+      '[yapily.institutions] durable cache read failed:',
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+async function writeInstitutionsCache(value: YapilyInstitution[]): Promise<void> {
+  const supabase = institutionsCacheClient();
+  if (!supabase) return;
+  try {
+    const now = new Date().toISOString();
+    await supabase.from('yapily_institutions_cache').upsert(
+      {
+        id: INSTITUTIONS_CACHE_ID,
+        application_uuid: process.env.YAPILY_APPLICATION_UUID?.trim() || null,
+        institutions: value,
+        institution_count: value.length,
+        fetched_at: now,
+        updated_at: now,
+      },
+      { onConflict: 'id' },
+    );
+  } catch (err) {
+    // Non-fatal: we still have the list in memory for this instance.
+    console.warn(
+      '[yapily.institutions] durable cache write failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 /**
- * Fetches all Yapily-supported institutions, filtered to UK only
- * (country code GB). Cached for 1 hour at the module level.
+ * All Yapily-supported institutions, filtered to the UK (country code
+ * GB). Served from memory, then from the durable cache, and only then
+ * from Yapily — at most once a week.
+ *
+ * Never throws on a Yapily failure if ANY cached copy exists, however
+ * old. An institution list from last month is a far better basis for
+ * capability decisions than an empty array.
  */
 export async function getInstitutions(): Promise<YapilyInstitution[]> {
-  if (_institutionsCache && Date.now() - _institutionsCache.loadedAt < FEATURE_CACHE_TTL_MS) {
+  // L1 — same lambda instance, already warm.
+  if (_institutionsCache && Date.now() - _institutionsCache.loadedAt < INSTITUTIONS_TTL_MS) {
     return _institutionsCache.value;
   }
-  const response = await yapilyRequest<YapilyApiResponse<YapilyInstitution[]>>(
-    '/institutions'
-  );
 
-  const institutions = response.data || [];
+  // L2 — shared across instances.
+  const durable = await readInstitutionsCache();
+  if (durable && durable.ageMs < INSTITUTIONS_TTL_MS) {
+    _institutionsCache = { value: durable.value, loadedAt: Date.now() - durable.ageMs };
+    return durable.value;
+  }
 
-  // Filter to UK institutions only
-  const uk = institutions.filter((inst) =>
-    inst.countries?.some((c) => c.countryCode2 === 'GB')
-  );
-  _institutionsCache = { value: uk, loadedAt: Date.now() };
-  return uk;
+  try {
+    const response = await yapilyRequest<YapilyApiResponse<YapilyInstitution[]>>(
+      '/institutions'
+    );
+    const institutions = response.data || [];
+    const uk = institutions.filter((inst) =>
+      inst.countries?.some((c) => c.countryCode2 === 'GB')
+    );
+
+    // Guard against caching a successful-but-empty response. Yapily
+    // returning [] would otherwise poison both layers for a week and
+    // disable every capability check in the product.
+    if (uk.length === 0) {
+      console.error('[yapily.institutions] Yapily returned 0 UK institutions — not caching');
+      if (durable) return durable.value;
+      return [];
+    }
+
+    _institutionsCache = { value: uk, loadedAt: Date.now() };
+    await writeInstitutionsCache(uk);
+    return uk;
+  } catch (err) {
+    // Serve stale rather than empty. See the note above about
+    // fail-open capability checks.
+    if (durable) {
+      const ageDays = Math.round(durable.ageMs / 86_400_000);
+      console.warn(
+        `[yapily.institutions] refresh failed, serving cached list ${ageDays}d old:`,
+        err instanceof Error ? err.message : err,
+      );
+      _institutionsCache = { value: durable.value, loadedAt: Date.now() - durable.ageMs };
+      return durable.value;
+    }
+    throw err;
+  }
 }
 
 /**
@@ -834,13 +1005,24 @@ export async function getHostedConsentRequest(
 }
 
 /**
- * Single source of truth for whether the Hosted Pages flow is on. Read
- * once per request — the flag is meant to be flipped via env, not
- * mid-process. Defaults to false so existing /account-auth-requests
- * code stays the canonical path until we cut over.
+ * Single source of truth for whether the Hosted Pages flow is on.
+ *
+ * Default flipped to TRUE on 2026-08-21. Hosted Pages is now the
+ * canonical consent journey: Yapily renders the bank picker, the
+ * consent screen and any decoupled-auth / QR flows on their own domain.
+ * Migle Ivanauskaite confirmed we can drop our own institution list
+ * entirely by omitting `institutionId` from the request.
+ *
+ * The env var survives as a KILL SWITCH, not a feature flag: setting
+ * YAPILY_HOSTED_PAGES_ENABLED=false in Vercel reverts to the legacy
+ * /account-auth-requests path without a deploy. It is deliberately
+ * "explicitly false disables" rather than "explicitly true enables", so
+ * that a missing or misspelled env var fails towards the flow we
+ * actually want rather than silently reverting the cutover — which is
+ * how the hosted path sat as dead code from April to August.
  */
 export function isHostedPagesEnabled(): boolean {
-  return process.env.YAPILY_HOSTED_PAGES_ENABLED?.toLowerCase() === 'true';
+  return process.env.YAPILY_HOSTED_PAGES_ENABLED?.toLowerCase() !== 'false';
 }
 
 // ── Consent Deletion ──
@@ -1111,9 +1293,10 @@ export type ConsentFailureVerdict =
  * never drift apart.
  *
  * Order of preference:
- *   1. If it isn't a 401/403 at all, it's not a consent problem. Done.
- *   2. Ask Yapily directly via GET /consents/{id} — this is what the
- *      build review asks for and it's deterministic.
+ *   1. If it isn't a 403, it's not a consent problem. Done — and, just
+ *      as importantly, no extra call is made.
+ *   2. Ask Yapily directly via GET /consents/{id} — deterministic, and
+ *      what the build review asks for.
  *   3. If the consent is extendable, extend it here and report
  *      'recovered' so a renewable consent self-heals instead of
  *      counting toward the disconnect threshold.
@@ -1126,7 +1309,35 @@ export async function triageConsentFailure(
   logPrefix = '[yapily.triage]',
 ): Promise<ConsentFailureVerdict> {
   const status = (err as { status?: number } | null)?.status;
-  if (status !== 401 && status !== 403) return 'non_fatal';
+
+  // ── 403 ONLY ───────────────────────────────────────────────────────
+  //
+  // Narrowed from 401|403 on 2026-08-21. Migle Ivanauskaite (Yapily):
+  // "Client attempts to retrieve data directly first (e.g. GET
+  // /transactions); GET /consent is only called if a 403 error is
+  // received."
+  //
+  // 403 means "this consent may no longer authorise the request" —
+  // exactly the question GET /consents/{id} answers.
+  //
+  // 401 means our Basic auth credentials are wrong. That is an
+  // application-level fault affecting EVERY user, and the consent
+  // lookup would fail with the same 401 anyway — so the old behaviour
+  // doubled our request count during precisely the incident where we
+  // could least afford it. We hit this for real on 2026-04-28 when a
+  // trailing newline in the Vercel env produced a malformed header.
+  //
+  // Handle it as what it is: loud, and not a consent problem.
+  if (status === 401) {
+    console.error(
+      `${logPrefix} 401 from Yapily — this is an APPLICATION CREDENTIAL fault, not a user consent problem. ` +
+      `Check YAPILY_APPLICATION_UUID / YAPILY_APPLICATION_SECRET in Vercel (a trailing newline caused this on 2026-04-28). ` +
+      `Not calling GET /consents — it would fail the same way.`,
+    );
+    return 'non_fatal';
+  }
+
+  if (status !== 403) return 'non_fatal';
 
   const verdict = await resolveConsentState(consentId);
 

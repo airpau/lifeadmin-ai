@@ -96,8 +96,39 @@ export interface UpcomingProjection {
 export type UpcomingEmptyReason =
   | 'no_bank'
   | 'consent_expired'
+  /** Every connected bank has told us it does not implement the
+   *  scheduled-payments / standing-orders / direct-debits endpoints.
+   *  Distinct from 'no_forward_data' because waiting will not help. */
+  | 'bank_unsupported'
   | 'no_forward_data'
   | null;
+
+/**
+ * A bank that cannot supply some of the forward-looking data.
+ *
+ * Added 2026-08-21. Migle Ivanauskaite (Yapily) asks integrators to
+ * "inform user that this data is unavailable for their bank" when a
+ * required feature is absent — and we had the opposite: the Upcoming
+ * empty state told people to "check back after tomorrow's 06:00 sync",
+ * for a sync that had permanently stopped calling those endpoints for
+ * them. Telling someone to wait for something that will never arrive is
+ * worse than telling them nothing.
+ */
+export interface UnsupportedBankFeature {
+  connectionId: string;
+  bankName: string;
+  /** Raw Yapily feature names, e.g. ACCOUNT_DIRECT_DEBITS. */
+  features: string[];
+  /** Human labels for the same list, e.g. "direct debits". */
+  labels: string[];
+}
+
+/** Yapily feature names → the words a person would use. */
+const UPCOMING_FEATURE_LABELS: Record<string, string> = {
+  ACCOUNT_SCHEDULED_PAYMENTS: 'scheduled payments',
+  ACCOUNT_PERIODIC_PAYMENTS: 'standing orders',
+  ACCOUNT_DIRECT_DEBITS: 'direct debits',
+};
 
 export interface UpcomingApiResponse {
   days: number;
@@ -119,6 +150,10 @@ export interface UpcomingApiResponse {
   // actually feeds upcoming_payments (currently Yapily only).
   hasUpcomingCapableBank: boolean;
   emptyReason: UpcomingEmptyReason;
+  /** Banks that can't supply some forward data, so the UI can say so
+   *  instead of implying the data is merely late. Empty in the normal
+   *  case. */
+  unsupportedByBank: UnsupportedBankFeature[];
 }
 
 const CERTAINTY_BY_SOURCE: Record<UpcomingSource, UpcomingCertainty> = {
@@ -179,7 +214,9 @@ export async function GET(request: NextRequest) {
 
   let connQuery = supabase
     .from('bank_connections')
-    .select('id, provider, status, current_balance, balance_updated_at')
+    .select(
+      'id, provider, status, current_balance, balance_updated_at, bank_name, unsupported_features',
+    )
     .eq('user_id', user.id)
     .neq('status', 'revoked');
 
@@ -373,6 +410,40 @@ export async function GET(request: NextRequest) {
       (balanceConns[0]?.balance_updated_at as string | null | undefined) ?? null,
   };
 
+  // ── What can't this user's banks tell us? ────────────────────────
+  //
+  // unsupported_features is written by the sync-upcoming cron the first
+  // time a bank answers 424/501 for an endpoint. Until now it was only
+  // read back to skip future calls; nothing ever told the person whose
+  // bank it was.
+  const unsupportedByBank: UnsupportedBankFeature[] = activeConns
+    .map((c) => {
+      const raw = Array.isArray(c.unsupported_features)
+        ? (c.unsupported_features as string[])
+        : [];
+      // Only surface the features that affect THIS view. A bank that
+      // doesn't do IDENTITY is irrelevant on a forward-payments screen.
+      const features = raw.filter((f) => f in UPCOMING_FEATURE_LABELS);
+      if (features.length === 0) return null;
+      return {
+        connectionId: c.id as string,
+        bankName: (c.bank_name as string | null) || 'Your bank',
+        features,
+        labels: features.map((f) => UPCOMING_FEATURE_LABELS[f]),
+      };
+    })
+    .filter((x): x is UnsupportedBankFeature => x !== null);
+
+  // True only when EVERY active bank is missing ALL three forward
+  // endpoints. With one capable bank out of two there is still real
+  // data to show, so the empty state would be misleading.
+  const allBanksLackForwardData =
+    activeConns.length > 0 &&
+    unsupportedByBank.length === activeConns.length &&
+    unsupportedByBank.every(
+      (b) => b.features.length === Object.keys(UPCOMING_FEATURE_LABELS).length,
+    );
+
   const emptyReason: UpcomingEmptyReason =
     rows.length > 0
       ? null
@@ -380,7 +451,9 @@ export async function GET(request: NextRequest) {
         ? 'no_bank'
         : activeConns.length === 0
           ? 'consent_expired'
-          : 'no_forward_data';
+          : allBanksLackForwardData
+            ? 'bank_unsupported'
+            : 'no_forward_data';
 
   const body: UpcomingApiResponse = {
     days,
@@ -398,6 +471,7 @@ export async function GET(request: NextRequest) {
     hasBankConnected,
     hasUpcomingCapableBank,
     emptyReason,
+    unsupportedByBank,
   };
 
   return NextResponse.json(body);

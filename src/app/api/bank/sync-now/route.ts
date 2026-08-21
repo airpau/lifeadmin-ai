@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import { getAccounts, getAllTransactions, triageConsentFailure } from '@/lib/yapily';
+import {
+  getAccounts,
+  getAllTransactions,
+  triageConsentFailure,
+  yapilySleep,
+  PER_CONSENT_CALL_DELAY_MS,
+} from '@/lib/yapily';
+import { resolveTransactionWindow } from '@/lib/yapily/sync-window';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { recordConsentFailure, clearConsentFailures } from '@/lib/yapily/consent-failure-tracker';
@@ -18,7 +25,10 @@ import {
   sendTelegramAlert,
 } from '@/lib/bank-tier-config';
 
-export const maxDuration = 60;
+// Raised with the cron on 2026-08-21: Yapily's polling guidance adds a
+// deliberate 5s gap between accounts on one consent, plus a retry
+// ladder starting at 5s.
+export const maxDuration = 300;
 
 interface BankConnection {
   id: string;
@@ -190,8 +200,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Run sync for each connection
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 89);
+  // (The fixed 89-day lookback that used to live here is gone — the
+  //  window is now resolved per account. It also silently differed from
+  //  the cron's 90, for no reason anyone recorded.)
 
   let totalSynced = 0;
   let totalReturned = 0;
@@ -281,10 +292,23 @@ export async function POST(request: NextRequest) {
 
       const consentToken = decrypt(conn.consent_token);
 
+      // GET /accounts at most once per connection — see the equivalent
+      // note in cron/bank-sync/route.ts. Two independent backfill
+      // guards used to fire two identical calls on the same consent
+      // token, back to back.
+      let _accountsPromise: ReturnType<typeof getAccounts> | null = null;
+      const loadAccounts = () => {
+        if (!_accountsPromise) {
+          apiCallsMade++;
+          _accountsPromise = getAccounts(consentToken);
+        }
+        return _accountsPromise;
+      };
+
       let accountIds = conn.account_ids || [];
       if (accountIds.length === 0 || !conn.bank_name) {
         try {
-          const accounts = await getAccounts(consentToken);
+          const accounts = await loadAccounts();
           const bankName = accounts[0]?.institution?.name || null;
           accountIds = accounts.map((a) => a.id);
           const displayNames = accounts.map((a) => a.accountNames?.[0]?.name || a.type || 'Account');
@@ -321,8 +345,7 @@ export async function POST(request: NextRequest) {
 
       if (storedHashes.length === 0 || storedHashes.length < accountIds.length) {
         try {
-          const accounts = await getAccounts(consentToken);
-          apiCallsMade++;
+          const accounts = await loadAccounts();
           const snapshots = snapshotAccounts(accounts);
           const newHashes = snapshots.map((s) => s.accountIdentificationsHash ?? '');
           const newDisplayNames = snapshots.map((s) => s.displayName);
@@ -367,12 +390,11 @@ export async function POST(request: NextRequest) {
       // 1e033d08 from 2026-05-07). The cron path was fixed then; this
       // manual-sync path was missed, so every "Sync now" click against
       // HSBC Business returned 0 transactions silently.
-      const fromDate = ninetyDaysAgo.toISOString();
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const toDate = tomorrow.toISOString();
-      syncFromDate = fromDate;
-      syncToDate = toDate;
+      // The window is resolved per account below, from the newest
+      // stored transaction — see src/lib/yapily/sync-window.ts. It
+      // still produces full ISO 8601 datetimes, which matters: Yapily
+      // rejects date-only strings on from / before with HTTP 400.
+      let accountsPolled = 0;
 
       for (let i = 0; i < accountIds.length; i++) {
         const accountId = accountIds[i];
@@ -384,6 +406,22 @@ export async function POST(request: NextRequest) {
           console.warn(`Sync: connection ${conn.id} account ${accountId} has no stored hash — skipping`);
           continue;
         }
+
+        // Delay between calls on the same consent token (Migle,
+        // 2026-08-21). Not applied before the first account, so a
+        // single-account "Sync now" click stays snappy.
+        if (accountsPolled > 0) await yapilySleep(PER_CONSENT_CALL_DELAY_MS);
+        accountsPolled++;
+
+        const window = await resolveTransactionWindow(admin, {
+          userId: user.id,
+          accountId,
+        });
+        const fromDate = window.from;
+        const toDate = window.before;
+        syncFromDate = fromDate;
+        syncToDate = toDate;
+
         try {
           // Paginating fetch — see getAllTransactions for the cursor
           // walk. Necessary because Yapily's default page size capped

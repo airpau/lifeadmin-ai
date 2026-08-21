@@ -30,13 +30,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // ── Validate institutionId query param ──
+  // ── institutionId is now OPTIONAL ──
+  //
+  // Changed 2026-08-21. On Hosted Pages, omitting institutionId makes
+  // Yapily render its own bank picker — which is the journey we cut
+  // over to, so the normal case is now NO institutionId at all.
+  // Migle's note: "you don't need to create your own bank list … The
+  // Hosted pages can display a bank list for you if you remove the
+  // institutionId from the payload."
+  //
+  // We still accept one, for two reasons worth keeping:
+  //   • the legacy /account-auth-requests path genuinely requires it,
+  //     so the kill switch has to keep working;
+  //   • deep links (a "reconnect your Barclays" email, support
+  //     tooling) can pre-select the bank and skip a step.
   const { searchParams } = new URL(request.url);
-  const institutionId = searchParams.get('institutionId');
+  const institutionId = searchParams.get('institutionId') || undefined;
+  const hostedPages = isHostedPagesEnabled();
 
-  if (!institutionId) {
+  if (!institutionId && !hostedPages) {
+    // Only reachable via the kill switch. Yapily has no bank-picker of
+    // its own on the legacy path, so without an institution there is
+    // nothing to authorise against.
     return NextResponse.json(
-      { error: 'institutionId query parameter is required' },
+      { error: 'institutionId query parameter is required on the legacy consent flow' },
       { status: 400 }
     );
   }
@@ -135,22 +152,29 @@ export async function GET(request: NextRequest) {
   // capability check belongs at CALL time (see sync-upcoming, which
   // gates on the consent's granted featureScope), not at CONSENT time.
   try {
-    if (isHostedPagesEnabled()) {
-      // Hosted Pages flow (Migle's onboarding plan, 29 Apr 2026).
-      // Yapily renders the bank-picker / consent / decoupled-auth
-      // screens on its own domain; we get back a hostedUrl + a
-      // consentRequestId we'll use in the callback to retrieve the
-      // consentId + consentToken via GET /hosted/consent-requests/{id}.
+    if (hostedPages) {
+      // Hosted Pages flow — canonical since 2026-08-21.
       //
-      // We DO set institutionId because our UI already picks the bank,
-      // so Yapily skips its own picker (per HostedAccountRequest spec
-      // — institutionIdentifiers + institutionId pre-selects).
+      // Yapily renders the bank picker, the consent screen and any
+      // decoupled-auth / QR flows on its own domain; we get back a
+      // hostedUrl + a consentRequestId we use in the callback to
+      // retrieve the consentId + consentToken via
+      // GET /hosted/consent-requests/{id}.
+      //
+      // institutionId is now normally UNDEFINED, and that is the point.
+      // Passing it pre-selects a bank and skips Yapily's picker; omitting
+      // it makes Yapily show its own list, filtered to
+      // institutionCountryCode. That is the behaviour we want — it
+      // retires our hand-rolled institution list, and with it a class of
+      // bug where our cached list disagreed with what Yapily would
+      // actually accept.
       //
       // No featureScope — see the note above.
       const hosted = await createHostedConsentRequest({
         applicationUserId: user.id,
         redirectUrl: redirectWithState,
         institutionCountryCode: 'GB',
+        // Only ever set on a deep link that named a bank.
         institutionId,
         language: 'EN',
         location: 'GB',
@@ -168,7 +192,12 @@ export async function GET(request: NextRequest) {
         await admin.from('yapily_pending_consent_requests').insert({
           user_id: user.id,
           consent_request_id: hosted.consentRequestId,
-          institution_id: institutionId,
+          // institution_id is NOT NULL on this table, and with Yapily's
+          // picker we genuinely don't know the bank yet — the user
+          // hasn't chosen. A sentinel keeps the abandonment poller
+          // working and reads honestly in the admin view; the callback
+          // backfills the real institution once we learn it.
+          institution_id: institutionId ?? 'hosted-picker-pending',
           redirect_url: redirectWithState,
           status: 'pending',
         });
@@ -178,7 +207,7 @@ export async function GET(request: NextRequest) {
       }
 
       console.log(
-        `Yapily auth (hosted): created hosted consent for user=${user.id} institution=${institutionId} consentRequestId=${hosted.consentRequestId}`
+        `Yapily auth (hosted): created hosted consent for user=${user.id} institution=${institutionId ?? 'yapily-picker'} consentRequestId=${hosted.consentRequestId}`
       );
       return NextResponse.json({
         // Frontend-facing URL — kept under both names so existing
@@ -192,11 +221,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Legacy flow — kept reachable behind the flag so we can roll back
-    // by flipping one env var.
+    // Legacy flow — reachable only via the YAPILY_HOSTED_PAGES_ENABLED
+    // kill switch. institutionId is guaranteed present here by the
+    // guard at the top of this handler.
     // No featureScope argument — see the note above.
     const authData = await createAccountAuthorisation(
-      institutionId,
+      institutionId!,
       redirectWithState,
       user.id,
     );
