@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/encrypt';
-import { getInstitutionFeatures } from '@/lib/yapily';
+import { getInstitutionFeatures, isUnsupportedFeatureError } from '@/lib/yapily';
 import {
   getScheduledPayments,
   getPeriodicPayments,
@@ -19,6 +19,7 @@ import {
   getPendingTransactions,
   type UpcomingRow,
 } from '@/lib/yapily/upcoming';
+import { projectMandateOccurrences } from '@/lib/yapily/project-mandates';
 import {
   detectRecurringUpcoming,
   type DetectorTransaction,
@@ -51,7 +52,39 @@ interface BankConnection {
   consent_expires_at: string | null;
   account_ids: string[] | null;
   status: string;
+  /** Yapily consent identifier. A change here means a new authorisation,
+   *  which re-opens the once-per-consent endpoints. */
+  yapily_consent_id: string | null;
+  /** When the authorisation behind the current consent was granted. */
+  consent_granted_at: string | null;
+  /** Set the first time we successfully harvest the once-per-consent
+   *  endpoints on this consent. Non-null means "don't call them again". */
+  upcoming_endpoints_fetched_at: string | null;
+  /** Yapily features this bank returned 424/501 for. Never call again. */
+  unsupported_features: string[] | null;
+  /** featureScope Yapily GRANTED on this consent, captured at callback. */
+  consent_feature_scope: string[] | null;
 }
+
+/**
+ * Endpoints UK banks allow exactly ONCE per consent.
+ *
+ * Yapily's data-restrictions doc: "For UK institutions, certain
+ * endpoints can be accessed once and for a short duration after the
+ * consent has been authorised … To access these endpoints again or
+ * after the valid period, you will have to obtain a new consent or
+ * reauthorise the existing consent."
+ *
+ * Everything in this set is therefore harvested once, cached in
+ * upcoming_endpoint_snapshots, and re-projected locally on later runs.
+ * /transactions is NOT in this set — it is freely re-callable, so
+ * pending transactions continue to be fetched every run.
+ */
+const ONCE_PER_CONSENT_ENDPOINTS = new Set([
+  'scheduled-payments',
+  'periodic-payments',
+  'direct-debits',
+]);
 
 /**
  * Yapily feature names gating each upcoming-payments endpoint.
@@ -93,13 +126,32 @@ export async function GET(request: NextRequest) {
   const supabase = getAdmin();
   const runStartedAt = new Date().toISOString();
 
+  // Optional single-connection scope.
+  //
+  // The Yapily callback calls this route immediately after a bank is
+  // linked, because the once-per-consent endpoints are only open for a
+  // short window after authorisation. Before 2026-08-21 that call had
+  // no scope, so one user connecting one bank ran the whole cron over
+  // every user's connections. With a connectionId we do exactly the
+  // work that connect actually needs.
+  const scopedConnectionId = new URL(request.url).searchParams.get('connectionId');
+
   // Pull active Yapily connections with a non-expired consent.
-  const { data: connections, error: connErr } = await supabase
+  let connectionQuery = supabase
     .from('bank_connections')
-    .select('id, user_id, provider, provider_id, institution_id, consent_token, consent_expires_at, account_ids, status')
+    .select(
+      'id, user_id, provider, provider_id, institution_id, consent_token, consent_expires_at, account_ids, status, ' +
+      'yapily_consent_id, consent_granted_at, upcoming_endpoints_fetched_at, unsupported_features, consent_feature_scope',
+    )
     .eq('provider', 'yapily')
     .eq('status', 'active')
     .is('archived_at', null);
+
+  if (scopedConnectionId) {
+    connectionQuery = connectionQuery.eq('id', scopedConnectionId);
+  }
+
+  const { data: connections, error: connErr } = await connectionQuery;
 
   if (connErr) {
     console.error('[sync-upcoming] connection fetch failed:', connErr.message);
@@ -115,6 +167,12 @@ export async function GET(request: NextRequest) {
     pendingEndpointsFailed: number;
     otherFailures: number;
     endpointsSkippedUnsupported: number;
+    /** Once-per-consent endpoints not called because we already have them. */
+    endpointsSkippedAlreadyHarvested: number;
+    /** Endpoints newly recorded as 424/501 unsupported this run. */
+    endpointsMarkedUnsupported: number;
+    /** Rows re-projected from a stored snapshot instead of a fresh call. */
+    mandateRowsProjected: number;
     alertsDispatched: number;
     telegramAlertsDispatched: number;
     startedAt: string;
@@ -127,6 +185,9 @@ export async function GET(request: NextRequest) {
     pendingEndpointsFailed: 0,
     otherFailures: 0,
     endpointsSkippedUnsupported: 0,
+    endpointsSkippedAlreadyHarvested: 0,
+    endpointsMarkedUnsupported: 0,
+    mandateRowsProjected: 0,
     alertsDispatched: 0,
     telegramAlertsDispatched: 0,
     startedAt: runStartedAt,
@@ -136,7 +197,11 @@ export async function GET(request: NextRequest) {
   today.setUTCHours(0, 0, 0, 0);
   const yesterday = new Date(today.getTime() - 86_400_000).toISOString().slice(0, 10);
 
-  for (const conn of (connections || []) as BankConnection[]) {
+  // `as unknown as` rather than a direct cast: supabase-js parses the
+  // select() string literal to infer the row type, and it cannot do
+  // that through the string concatenation the column list now needs.
+  // The runtime shape is correct; the inference isn't available.
+  for (const conn of (connections || []) as unknown as BankConnection[]) {
     if (!conn.consent_token || !conn.account_ids?.length) continue;
     if (conn.consent_expires_at && new Date(conn.consent_expires_at) < today) continue;
 
@@ -149,34 +214,103 @@ export async function GET(request: NextRequest) {
       continue;
     }
 
-    // ── Endpoint capability verification (build review step 10) ──
+    // ── Endpoint capability verification ────────────────────────────
     //
-    // Not every UK bank exposes every endpoint. Yapily publishes what
-    // each institution supports in the `features` array on
-    // GET /institutions, and asks integrators to check it BEFORE
-    // invoking an endpoint. Previously this loop called all four
-    // endpoints for every bank and swallowed the failures — which meant
-    // we generated avoidable failed requests against Yapily's platform
-    // every night, for every unsupported endpoint, forever.
+    // Three independent gates, cheapest and most authoritative first.
+    // Each answers a different question, and skipping any of them means
+    // generating requests Yapily has told us cannot succeed.
     //
-    // getInstitutions() is cached for an hour at module level, so this
-    // gate costs no additional API calls.
+    // GATE 1 — what did this consent actually GRANT?
+    //   As of 2026-08-21 we no longer send a featureScope when creating
+    //   a consent (Migle's instruction: naming scopes makes them hard
+    //   requirements and causes bank-side failures). So the granted
+    //   scope is decided by the bank and recorded on the consent. Where
+    //   we captured it, it is the most accurate answer available —
+    //   better than the institution's advertised capabilities, which
+    //   describe the bank in general rather than this consent.
     //
-    // Fail-open: if institution_id is missing (legacy rows) or the
-    // feature list comes back empty (lookup failed), we fall back to
-    // attempting the endpoints as before. A degraded lookup must not
-    // silently stop collecting a user's direct debits.
-    const features = conn.institution_id
+    // GATE 2 — what does the institution advertise?
+    //   Fallback for connections created before we captured the granted
+    //   scope. Cached for an hour at module level, so it costs no
+    //   additional API call.
+    //
+    // GATE 3 — what has this bank already told us it can't do?
+    //   unsupported_features accumulates every feature that returned a
+    //   424 or 501 on this consent. Those are permanent facts about the
+    //   bank, not transient errors, so once recorded we never ask again.
+    //   This is the gate that actually stops the recurring failed-call
+    //   traffic, because it learns from reality rather than from
+    //   metadata the bank may report inaccurately.
+    //
+    // Fail-open on gates 1 and 2 only: if we know neither the granted
+    // scope nor the institution's features, we attempt the call. A
+    // degraded metadata lookup must not silently stop collecting a
+    // user's direct debits — and gate 3 will catch it permanently the
+    // first time it genuinely fails.
+    const grantedScope = Array.isArray(conn.consent_feature_scope)
+      ? conn.consent_feature_scope
+      : [];
+    const institutionFeatures = conn.institution_id
       ? await getInstitutionFeatures(conn.institution_id)
       : [];
-    const featuresKnown = features.length > 0;
-    const supports = (feature: string) => !featuresKnown || features.includes(feature);
+    const knownUnsupported = new Set(conn.unsupported_features ?? []);
+
+    // Each gate can VETO independently; none can override another.
+    //
+    // An earlier draft had the granted scope replace the institution
+    // list when present. That was wrong in one direction that matters:
+    // Migle's spec is explicit that the institution's `features` array
+    // from GET /institutions is the check to make before polling
+    // ("System checks selected institution's features list from GET
+    // /institutions … If required feature is absent: do not call the
+    // endpoint"). A consent can carry a scope the institution does not
+    // in fact implement, and calling on that basis is exactly the 424
+    // traffic we were asked to stop.
+    //
+    // So: call only if nothing known says no.
+    const featuresKnown = grantedScope.length > 0 || institutionFeatures.length > 0;
+    const supports = (feature: string) => {
+      // Learned from reality — the bank has already refused this.
+      if (knownUnsupported.has(feature)) return false;
+      // The institution does not advertise it.
+      if (institutionFeatures.length > 0 && !institutionFeatures.includes(feature)) return false;
+      // The consent does not cover it.
+      if (grantedScope.length > 0 && !grantedScope.includes(feature)) return false;
+      return true;
+    };
 
     if (!featuresKnown) {
       console.warn(
-        `[sync-upcoming] no feature list for conn=${conn.id} institution=${conn.institution_id ?? 'null'} — attempting all endpoints (fail-open)`,
+        `[sync-upcoming] no granted scope or feature list for conn=${conn.id} institution=${conn.institution_id ?? 'null'} — attempting all endpoints (fail-open)`,
       );
     }
+
+    // ── Once-per-consent gate ───────────────────────────────────────
+    //
+    // See ONCE_PER_CONSENT_ENDPOINTS above. `upcoming_endpoints_fetched_at`
+    // records when we last harvested them successfully; a
+    // `consent_granted_at` newer than that means the user has
+    // re-authorised, which re-opens the window and justifies one more
+    // harvest.
+    //
+    // This column has existed since the 20260429220000 migration but
+    // was only ever written as null, so the nightly re-poll continued
+    // regardless. Now it does what it was added for.
+    const harvestedAt = conn.upcoming_endpoints_fetched_at
+      ? new Date(conn.upcoming_endpoints_fetched_at).getTime()
+      : null;
+    const grantedAt = conn.consent_granted_at
+      ? new Date(conn.consent_granted_at).getTime()
+      : null;
+    const consentIsFresherThanHarvest =
+      harvestedAt !== null && grantedAt !== null && grantedAt > harvestedAt;
+    const shouldHarvestOnceOnly = harvestedAt === null || consentIsFresherThanHarvest;
+
+    // Accumulates features that fail with 424/501 during this run so we
+    // can persist them once at the end rather than issuing an UPDATE
+    // per failure.
+    const newlyUnsupported = new Set<string>();
+    let harvestSucceeded = false;
 
     for (const accountId of conn.account_ids) {
       const rows: UpsertRow[] = [];
@@ -190,28 +324,139 @@ export async function GET(request: NextRequest) {
         [FEATURE_DIRECT_DEBITS,      'direct-debits',      () => getDirectDebits(accountId, decrypted)],
       ];
 
-      const endpoints: Array<[string, () => Promise<UpcomingRow[]>]> = [];
+      const endpoints: Array<[string, string, () => Promise<UpcomingRow[]>]> = [];
       for (const [feature, label, fn] of candidateEndpoints) {
-        if (supports(feature)) {
-          endpoints.push([label, fn]);
-        } else {
+        if (!supports(feature)) {
           summary.endpointsSkippedUnsupported++;
           console.log(
-            `[sync-upcoming] skipping ${label} for account=${accountId} — institution=${conn.institution_id} does not advertise ${feature}`,
+            `[sync-upcoming] skipping ${label} for account=${accountId} — ${
+              knownUnsupported.has(feature)
+                ? `previously returned 424/501 on this consent`
+                : `institution=${conn.institution_id} does not advertise ${feature}`
+            }`,
           );
+          // Record a metadata-based skip the same way we record a
+          // 424/501, so the user is told their bank doesn't offer this
+          // rather than being left to wonder why the section is empty.
+          // Migle: "Log that the feature is unsupported for the
+          // institution … Inform user that this data is unavailable for
+          // their bank."
+          if (!knownUnsupported.has(feature)) newlyUnsupported.add(feature);
+          continue;
         }
+        if (ONCE_PER_CONSENT_ENDPOINTS.has(label) && !shouldHarvestOnceOnly) {
+          summary.endpointsSkippedAlreadyHarvested++;
+          continue;
+        }
+        endpoints.push([feature, label, fn]);
       }
 
-      for (const [label, fn] of endpoints) {
+      for (const [feature, label, fn] of endpoints) {
         try {
           const fetched = await fn();
           for (const r of fetched) {
             rows.push(toUpsertRow(r, conn, accountId));
           }
+
+          if (ONCE_PER_CONSENT_ENDPOINTS.has(label)) {
+            harvestSucceeded = true;
+            // Keep the payload. This is the only copy we will get until
+            // the user reauthorises, and the daily prune would otherwise
+            // delete the derived rows once their dates passed.
+            await persistSnapshot(supabase, conn, accountId, label, fetched);
+          }
         } catch (err) {
+          // ── 424 / 501: the bank does not implement this endpoint ──
+          //
+          // Yapily returns 424 FAILED_DEPENDENCY when "the feature to be
+          // accessed is not supported by the Institution"; Migle flagged
+          // 501 as the code we were generating in practice. Either way
+          // it is a permanent property of the bank, so retrying is pure
+          // waste — and it used to be worse than waste, because 501 fell
+          // into the `status >= 500` retryable branch and was attempted
+          // three times per account per night, forever.
+          //
+          // Record it and stop asking.
+          if (isUnsupportedFeatureError(err)) {
+            newlyUnsupported.add(feature);
+            summary.endpointsMarkedUnsupported++;
+            console.log(
+              `[sync-upcoming] ${label} unsupported by institution=${conn.institution_id} (conn=${conn.id}) — recording ${feature} and skipping in future runs`,
+            );
+            continue;
+          }
           console.error(`[sync-upcoming] ${label} failed for account=${accountId}`, err);
           summary.otherFailures++;
         }
+      }
+
+      // ── Re-project stored mandates ──────────────────────────────
+      //
+      // Runs on EVERY pass, including the ones where we deliberately
+      // made no once-per-consent calls. Direct debits and standing
+      // orders are recurring by definition; the bank gave us the
+      // amount, counterparty and cadence once, so future occurrences
+      // are arithmetic, not an API call.
+      //
+      // Emitted as predicted_recurring / predicted_income rather than
+      // direct_debit / standing_order on purpose: the mandate is
+      // bank-confirmed but these particular dates are our extrapolation,
+      // and the alerting block below only fires on confirmed sources.
+      // Keeping them predicted means we never push "£62.40 leaving
+      // tomorrow" off the back of a date the bank never gave us.
+      try {
+        const horizonIso = new Date(today.getTime() + FORWARD_HORIZON_DAYS * 86_400_000)
+          .toISOString()
+          .slice(0, 10);
+        const todayIso = today.toISOString().slice(0, 10);
+
+        const { data: snapshots } = await supabase
+          .from('upcoming_endpoint_snapshots')
+          .select('endpoint, rows')
+          .eq('connection_id', conn.id)
+          .eq('account_id', accountId)
+          .in('endpoint', ['direct-debits', 'periodic-payments']);
+
+        for (const snap of snapshots || []) {
+          const storedRows = (Array.isArray(snap.rows) ? snap.rows : []) as UpcomingRow[];
+          for (const r of storedRows) {
+            const rawFrequency = (r.raw as { frequency?: unknown } | null)?.frequency;
+            const occurrences = projectMandateOccurrences({
+              lastKnownDate: r.expectedDate,
+              frequency: rawFrequency,
+              source: snap.endpoint === 'direct-debits' ? 'direct_debit' : 'standing_order',
+              horizonIso,
+              afterIso: todayIso,
+            });
+            for (const expectedDate of occurrences) {
+              rows.push({
+                user_id: conn.user_id,
+                connection_id: conn.id,
+                account_id: accountId,
+                source: r.direction === 'incoming' ? 'predicted_income' : 'predicted_recurring',
+                direction: r.direction,
+                counterparty: r.counterparty,
+                amount: r.amount,
+                currency: r.currency,
+                expected_date: expectedDate,
+                // Below 1.0: the mandate is real, the date is projected.
+                confidence: 0.9,
+                yapily_resource_id: null,
+                yapily_provider_id: conn.provider_id,
+                raw: {
+                  projectedFrom: 'upcoming_endpoint_snapshots',
+                  endpoint: snap.endpoint,
+                  lastKnownDate: r.expectedDate,
+                  frequency: rawFrequency ?? null,
+                },
+              });
+              summary.mandateRowsProjected++;
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[sync-upcoming] mandate projection failed for account=${accountId}`, err);
+        summary.otherFailures++;
       }
 
       // Optional pending transactions — gated on ACCOUNT_TRANSACTIONS,
@@ -428,6 +673,41 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Persist what we learned about this connection ──────────────
+    //
+    // One UPDATE per connection rather than one per failure. Both
+    // fields are "facts about this consent" and only change on a
+    // successful harvest or a newly discovered 424/501.
+    const connectionUpdate: Record<string, unknown> = {};
+
+    if (harvestSucceeded) {
+      // Stamps the once-per-consent gate closed. Until the user
+      // reauthorises (which moves consent_granted_at past this), we
+      // will not call these endpoints again.
+      connectionUpdate.upcoming_endpoints_fetched_at = new Date().toISOString();
+    }
+
+    if (newlyUnsupported.size > 0) {
+      // Union with what was already there — never replace, or a run
+      // that discovers one unsupported feature would forget the others.
+      connectionUpdate.unsupported_features = Array.from(
+        new Set([...(conn.unsupported_features ?? []), ...newlyUnsupported]),
+      );
+    }
+
+    if (Object.keys(connectionUpdate).length > 0) {
+      const { error: updErr } = await supabase
+        .from('bank_connections')
+        .update(connectionUpdate)
+        .eq('id', conn.id);
+      if (updErr) {
+        console.error(
+          `[sync-upcoming] failed to persist endpoint state for conn=${conn.id}: ${updErr.message}`,
+        );
+        summary.otherFailures++;
+      }
+    }
+
     summary.connectionsProcessed++;
   }
 
@@ -613,6 +893,51 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, summary });
+}
+
+/**
+ * Stores the raw result of a once-per-consent endpoint.
+ *
+ * Best-effort by design: a snapshot write failure degrades the forward
+ * view (we lose the ability to re-project this mandate) but must not
+ * abort the run or lose the rows we just wrote to upcoming_payments.
+ *
+ * Upserts on (connection_id, account_id, endpoint) so a reauthorisation
+ * replaces the previous capture rather than accumulating stale mandates
+ * the user may have since cancelled.
+ */
+async function persistSnapshot(
+  supabase: ReturnType<typeof getAdmin>,
+  conn: BankConnection,
+  accountId: string,
+  endpoint: string,
+  rows: UpcomingRow[],
+): Promise<void> {
+  try {
+    const { error } = await supabase.from('upcoming_endpoint_snapshots').upsert(
+      {
+        user_id: conn.user_id,
+        connection_id: conn.id,
+        account_id: accountId,
+        endpoint,
+        consent_id: conn.yapily_consent_id,
+        rows,
+        fetched_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'connection_id,account_id,endpoint' },
+    );
+    if (error) {
+      console.error(
+        `[sync-upcoming] snapshot upsert failed conn=${conn.id} account=${accountId} endpoint=${endpoint}: ${error.message}`,
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[sync-upcoming] snapshot upsert threw conn=${conn.id} endpoint=${endpoint}`,
+      err,
+    );
+  }
 }
 
 function toUpsertRow(r: UpcomingRow, conn: BankConnection, accountId: string): UpsertRow {
