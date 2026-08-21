@@ -95,7 +95,7 @@ function MarkFoot() {
         <div className="footer-grid">
           <div className="footer-brand">
             <div className="logo">Pay<span className="backer">backer</span></div>
-            <p>Find hidden overcharges. Fight unfair bills. Get your money back. Paybacker LTD, registered in England &amp; Wales (company no. 15289174).</p>
+            <p>Find hidden overcharges. Fight unfair bills. Get your money back. Paybacker LTD, registered in England &amp; Wales (company no. 17107323).</p>
           </div>
           <div className="footer-col">
             <h5>Product</h5>

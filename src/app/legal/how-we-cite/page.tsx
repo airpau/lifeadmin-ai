@@ -481,7 +481,7 @@ export default function HowWeCitePage() {
       </p>
       <p>
         Paybacker LTD is registered in England &amp; Wales (company no.
-        15289174).
+        17107323).
       </p>
     </PostShell>
   );

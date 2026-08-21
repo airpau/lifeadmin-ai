@@ -153,7 +153,7 @@ export default function RootLayout({
                   identifier: {
                     '@type': 'PropertyValue',
                     propertyID: 'Companies House company number',
-                    value: '15289174',
+                    value: '17107323',
                   },
                   address: {
                     '@type': 'PostalAddress',

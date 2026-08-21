@@ -166,7 +166,7 @@ export const CORE_ROUTES: RouteEntry[] = [
   {
     path: '/about',
     title: 'About Paybacker',
-    summary: 'Who built Paybacker and why. Paybacker LTD, company no. 15289174, England and Wales.',
+    summary: 'Who built Paybacker and why. Paybacker LTD, company no. 17107323, England and Wales.',
     changeFrequency: 'monthly',
     priority: 0.8,
   },
