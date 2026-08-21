@@ -58,7 +58,7 @@ export async function GET() {
       .is('archived_at', null),
     supabase
       .from('bank_connections')
-      .select('id, bank_name, provider, status, consent_expires_at')
+      .select('id, bank_name, provider, status, consent_expires_at, consent_reconfirm_by, yapily_consent_id')
       .eq('user_id', user.id)
       .is('deleted_at', null)
       .in('status', ['expired', 'expired_legacy', 'token_expired', 'expiring_soon']),
@@ -81,9 +81,32 @@ export async function GET() {
 
   const allBank = bankRes.data ?? [];
 
-  // Already broken — sync has stopped, the user must reconnect.
+  // ── Renewable vs genuinely broken ────────────────────────────────
+  //
+  // A lapsed consent is NOT automatically a dead one. Yapily's UK
+  // reconfirmation guidance is explicit: "If you later receive
+  // reconfirmation from the user, access to the user's data can be
+  // resumed from this date after you have confirmed to Yapily via the
+  // extend consent endpoint." So an `expired` connection that still has
+  // a yapily_consent_id can be restored with one tap and no bank login.
+  //
+  // Before 2026-08-21 every `expired` row was routed to the
+  // reconnect-from-scratch banner instead, which meant:
+  //   • we sent people through a full re-consent they didn't need;
+  //   • the reminder email told them to "tap Renew on Money Hub" while
+  //     the page actually rendered "Reconnect {bank}" pointing at
+  //     /dashboard/subscriptions — a different label on a different
+  //     page, so the instructions were simply wrong.
+  //
+  // `token_expired` and `expired_legacy` stay in the reconnect bucket:
+  // the first is a credential problem, and the second predates
+  // yapily_consent_id so there is no consent to extend.
+  const isRenewable = (c: { status: string; yapily_consent_id?: string | null }) =>
+    (c.status === 'expiring_soon' || c.status === 'expired') && !!c.yapily_consent_id;
+
+  // Already broken — sync has stopped and only a full reconnect fixes it.
   const unhealthyBank = allBank
-    .filter((c) => c.status !== 'expiring_soon')
+    .filter((c) => !isRenewable(c))
     .map((c) => ({
       id: c.id,
       bank_name: c.bank_name ?? 'Bank',
@@ -91,26 +114,28 @@ export async function GET() {
       status: c.status,
     }));
 
-  // Still working, but inside the 7-day warning window. These get the
-  // renewal path (POST /consents/{id}/extend) rather than a full
+  // Renewable via POST /consents/{id}/extend rather than a full
   // re-consent — cheaper for the user and for Yapily.
-  const expiringBank = allBank
-    .filter((c) => c.status === 'expiring_soon')
-    .map((c) => ({
+  const expiringBank = allBank.filter(isRenewable).map((c) => {
+    // reconfirm_by is Yapily's own deadline and wins where present;
+    // consent_expires_at is our locally computed fallback.
+    const deadline = c.consent_reconfirm_by || c.consent_expires_at;
+    return {
       id: c.id,
       bank_name: c.bank_name ?? 'Bank',
       provider: c.provider,
       status: c.status,
-      consent_expires_at: c.consent_expires_at,
-      days_left: c.consent_expires_at
+      consent_expires_at: deadline,
+      // Floored at 0 for display. An already-lapsed connection shows
+      // "has expired" rather than a negative day count.
+      days_left: deadline
         ? Math.max(
             0,
-            Math.ceil(
-              (new Date(c.consent_expires_at).getTime() - now) / (24 * 60 * 60 * 1000),
-            ),
+            Math.ceil((new Date(deadline).getTime() - now) / (24 * 60 * 60 * 1000)),
           )
         : 0,
-    }));
+    };
+  });
 
   return NextResponse.json({
     unhealthy_email: unhealthyEmail,
