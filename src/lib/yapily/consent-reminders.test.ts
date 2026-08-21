@@ -16,9 +16,6 @@ import {
   reminderStage,
   reminderDeadline,
   pickReminderChannel,
-  whatsappCopyIsTruthful,
-  reminderChannelChain,
-  isUrgentReminder,
   reminderReferenceKey,
   reminderSchedule,
   FIRST_REMINDER_DAYS_BEFORE,
@@ -111,169 +108,28 @@ describe('reminderStage', () => {
 });
 
 describe('pickReminderChannel', () => {
-  // daysLeft 0 by default: WhatsApp is only eligible from the deadline
-  // onward, because its approved template says "has expired". These
-  // tests are about the tier and linkage rules, so they sit on a day
-  // where WhatsApp is on the table at all.
-  const base = {
-    tier: 'free',
-    isPro: false,
-    daysLeft: 0,
-    whatsappPhone: null,
-    telegramChatId: null,
-    email: null,
-  };
-
-  it('prefers WhatsApp for a Pro user with a linked number', () => {
-    const c = pickReminderChannel({
-      ...base,
-      tier: 'pro',
-      isPro: true,
-      whatsappPhone: '+447700900000',
-      telegramChatId: 123,
-      email: 'a@b.com',
-    });
-    assert.equal(c?.channel, 'whatsapp');
-  });
-
-  it('does NOT use WhatsApp below Pro even with a linked number', () => {
-    // The gate that was never enforced. The old cron called the
-    // low-level sendWhatsAppTemplate facade directly, which reads
-    // suppression, caps and quiet hours but never tier — so the
-    // registry's `proOnly` flag was decorative and free users on a
-    // linked number were being messaged at our cost.
-    const c = pickReminderChannel({
-      ...base,
-      tier: 'essential',
-      isPro: false,
-      whatsappPhone: '+447700900000',
-      telegramChatId: 123,
-      email: 'a@b.com',
-    });
-    assert.equal(c?.channel, 'telegram');
-  });
-
-  it('falls back to email when WhatsApp is ineligible and there is no Telegram', () => {
-    const c = pickReminderChannel({
-      ...base,
-      whatsappPhone: '+447700900000',
-      email: 'a@b.com',
-    });
+  it('uses email when the profile has one', () => {
+    const c = pickReminderChannel({ email: 'a@b.com' });
     assert.equal(c?.channel, 'email');
-    assert.match(c!.reason, /below Pro/);
   });
 
-  it('uses Telegram on any tier', () => {
-    const c = pickReminderChannel({ ...base, telegramChatId: 999, email: 'a@b.com' });
-    assert.equal(c?.channel, 'telegram');
+  it('returns null with no email address', () => {
+    assert.equal(pickReminderChannel({ email: null }), null);
   });
 
-  it('returns exactly one channel, never a list', () => {
-    // Migle asked us to focus on the primary preferred channel. The old
+  it('is a single channel, not a fan-out', () => {
+    // Migle asked us to focus on one preferred channel. The original
     // code deliberately sent WhatsApp AND email for the same event on
     // the same day, via two disjoint dedup keys.
-    const c = pickReminderChannel({
-      tier: 'pro',
-      isPro: true,
-      daysLeft: 0,
-      whatsappPhone: '+447700900000',
-      telegramChatId: 123,
-      email: 'a@b.com',
-    });
+    //
+    // We then tried a WhatsApp/Telegram/email chain, which a live test
+    // send killed: our one approved WhatsApp template has a frozen body
+    // reading "your connection has expired", so at T-7 it would tell
+    // someone with a working bank feed that it had already stopped.
+    // Email is the channel whose words we actually write.
+    const c = pickReminderChannel({ email: 'a@b.com' });
     assert.equal(typeof c?.channel, 'string');
-  });
-
-  it('returns null when the user has no channel at all', () => {
-    assert.equal(pickReminderChannel(base), null);
-  });
-});
-
-describe('whatsappCopyIsTruthful', () => {
-  it('is false while the connection still works', () => {
-    // The approved template body is frozen by Meta:
-    //   "Your {{1}} connection has expired. Reconnect here: {{2}}
-    //    — alerts pause until you do."
-    // Sending that at T-7 tells someone with a week of working bank
-    // feed left that it has already stopped. Caught on 2026-08-21 by
-    // firing a real test send and reading the message that arrived.
-    assert.equal(whatsappCopyIsTruthful(7), false);
-    assert.equal(whatsappCopyIsTruthful(1), false);
-  });
-
-  it('is true from the deadline onward', () => {
-    assert.equal(whatsappCopyIsTruthful(0), true);
-    assert.equal(whatsappCopyIsTruthful(-2), true);
-  });
-
-  it('is conservative when the caller is not day-aware', () => {
-    assert.equal(whatsappCopyIsTruthful(undefined), false);
-  });
-});
-
-describe('reminderChannelChain', () => {
-  it('offers a fallback so a blocked channel does not lose the day', () => {
-    // A deadline passes once. If WhatsApp refuses at send time — its own
-    // suppression list, a marketing opt-in check — dropping the day's
-    // reminder is worse than trying the next channel.
-    const chain = reminderChannelChain({
-      tier: 'pro',
-      isPro: true,
-      daysLeft: 0,
-      whatsappPhone: '+447700900000',
-      telegramChatId: 123,
-      email: 'a@b.com',
-    });
-    assert.deepEqual(chain.map((c) => c.channel), ['whatsapp', 'telegram', 'email']);
-  });
-
-  it('does NOT use WhatsApp for advance warnings, however eligible the user', () => {
-    // Pro, linked, opted in — and still no WhatsApp at T-5, because the
-    // only approved template would tell them the connection has already
-    // expired. Telegram and email let us say "expires in 5 days".
-    const chain = reminderChannelChain({
-      tier: 'pro',
-      isPro: true,
-      daysLeft: 5,
-      whatsappPhone: '+447700900000',
-      telegramChatId: 123,
-      email: 'a@b.com',
-    });
-    assert.deepEqual(chain.map((c) => c.channel), ['telegram', 'email']);
-    assert.match(chain[0].reason, /has expired/);
-  });
-
-  it('omits WhatsApp entirely below Pro', () => {
-    const chain = reminderChannelChain({
-      tier: 'free',
-      isPro: false,
-      daysLeft: 0,
-      whatsappPhone: '+447700900000',
-      telegramChatId: 123,
-      email: 'a@b.com',
-    });
-    assert.deepEqual(chain.map((c) => c.channel), ['telegram', 'email']);
-  });
-
-  it('is empty when the user has no channel', () => {
-    assert.deepEqual(
-      reminderChannelChain({
-        tier: 'free', isPro: false, daysLeft: 0,
-        whatsappPhone: null, telegramChatId: null, email: null,
-      }),
-      [],
-    );
-  });
-});
-
-describe('isUrgentReminder', () => {
-  it('spends the quiet-hours and daily-cap bypass only at the very end', () => {
-    // Those caps exist to stop us training people to ignore us. At T-7
-    // the user has a week; burning the bypass then is not justified.
-    assert.equal(isUrgentReminder(7), false);
-    assert.equal(isUrgentReminder(2), false);
-    assert.equal(isUrgentReminder(1), true);
-    assert.equal(isUrgentReminder(0), true);
-    assert.equal(isUrgentReminder(-3), true);
+    assert.equal(c?.channel, 'email');
   });
 });
 

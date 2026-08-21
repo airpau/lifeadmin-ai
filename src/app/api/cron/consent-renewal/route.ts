@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
 
   console.log(
     `Consent renewal: expiring_soon=${expiringSoonCount} expired=${expiredCount} ` +
-    `reminders_sent=${remindersSent} (whatsapp=${sentByChannel.whatsapp} telegram=${sentByChannel.telegram} email=${sentByChannel.email}) ` +
+    `reminders_sent=${remindersSent} (email=${sentByChannel.email}, each with an in-app notification) ` +
     `skipped=${remindersSkipped} revokes_retried=${revokesRetried} revokes_succeeded=${revokesSucceeded}`
   );
 
