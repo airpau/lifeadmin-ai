@@ -168,7 +168,7 @@ export async function GET(req: NextRequest) {
     // that here so the cron doesn't grant a benefit that the dashboard
     // refuses.
     // Any paid tier qualifies. A literal essential/pro check would have
-    // locked household and dispute_pro users out of their own scans.
+    // locked household users out of their own scans.
     if (!isAtLeastEssential(tier)) {
       outcomes.push({
         connectionId: c.id,

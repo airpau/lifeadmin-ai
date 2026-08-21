@@ -54,7 +54,7 @@ export async function GET() {
   return NextResponse.json({
     channel: (data as Channel) ?? 'none',
     tier,
-    // isAtLeastPro, not === 'pro' — Dispute Pro and Household include WhatsApp.
+    // isAtLeastPro, not === 'pro' — Household include WhatsApp.
     canUseWhatsapp: isAtLeastPro(tier),
   });
 }
@@ -84,7 +84,7 @@ export async function PUT(req: Request) {
   }
 
   // Pro gate.
-  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
+  // isAtLeastPro, not !== 'pro' — Household is entitled to this too.
   if (channel === 'whatsapp') {
     const tier = await getEffectiveTier(user.id);
     if (!isAtLeastPro(tier)) {

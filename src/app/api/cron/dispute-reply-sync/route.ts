@@ -78,7 +78,10 @@ async function runSync() {
       tierCache.set(link.user_id, tier);
     }
 
-    const interval = PLAN_LIMITS[tier].watchdogSyncIntervalMinutes;
+    // `?? PLAN_LIMITS.free` rather than a bare index: a stored tier
+    // string no longer in the union (e.g. the withdrawn 'dispute_pro')
+    // would otherwise throw here and kill the whole cron run.
+    const interval = (PLAN_LIMITS[tier] ?? PLAN_LIMITS.free).watchdogSyncIntervalMinutes;
 
     // Free tier has manual-only sync — the cron skips them entirely
     if (interval === null) {

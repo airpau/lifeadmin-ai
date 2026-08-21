@@ -13,12 +13,16 @@ import { captureConsumerLead } from '@/lib/consumer-leads/capture';
 export const runtime = 'nodejs';
 
 /**
- * Tiers the `consumer_leads_intended_tier_check` DB constraint accepts.
- * Free is excluded on purpose: there is nothing to abandon on Free.
- * Anything not in this list is dropped to null rather than passed on,
- * so a stale or spoofed client can't fail the insert on the constraint.
+ * Tiers we accept as an intended purchase.
+ *
+ * Free is excluded on purpose: there is nothing to abandon on Free. The
+ * withdrawn 'dispute_pro' is excluded too — the DB constraint still
+ * allows it so historical rows stay valid, but nothing writes it any
+ * more. Anything not in this list is dropped to null rather than passed
+ * on, so a stale or spoofed client can't fail the insert on the
+ * constraint.
  */
-const INTENDED_TIERS = ['essential', 'pro', 'household', 'dispute_pro'] as const;
+const INTENDED_TIERS = ['essential', 'pro', 'household'] as const;
 type IntendedTier = (typeof INTENDED_TIERS)[number];
 
 function parseIntendedTier(value: unknown): IntendedTier | null {

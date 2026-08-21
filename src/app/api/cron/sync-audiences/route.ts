@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
         .not('email', 'is', null)
         // Built from PAID_PLAN_TIERS so a new paid tier lands in the
         // paid_users audience automatically. A hardcoded list would have
-        // left household and dispute_pro subscribers being retargeted by
+        // left household subscribers being retargeted by
         // the free-user acquisition ads.
         .in('subscription_tier', PAID_PLAN_TIERS);
 

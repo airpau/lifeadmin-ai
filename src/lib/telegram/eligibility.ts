@@ -75,8 +75,8 @@ export function isPocketAgentEligible(p: EligibilityProfile): boolean {
  */
 export function isProPocketAgentEligible(p: EligibilityProfile): boolean {
   // isAtLeastPro, not !== 'pro': this gate feeds ~15 cron routes. A literal
-  // equality check would silently cut every Household and Dispute Pro
-  // subscriber out of the entire Telegram/WhatsApp alert stream.
+  // equality check would silently cut every Household subscriber out of
+  // the entire Telegram/WhatsApp alert stream.
   if (!isAtLeastPro(p.subscription_tier ?? 'free')) return false;
   return isPocketAgentEligible(p);
 }

@@ -113,7 +113,7 @@ function getAdmin() {
  *   Free           — synced only on Mondays (fetches last 90 days)
  *
  * Processing order follows PLAN_LIMITS[tier].disputeQueuePriority
- * (lower runs first): Dispute Pro, then Pro/Household, then Essential,
+ * (lower runs first): Pro and Household, then Essential,
  * then Free. This ensures paying users are never deprioritised behind
  * free users when the daily API ceiling starts biting mid-run.
  *
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
   //
   // Built from PAID_PLAN_TIERS rather than a hardcoded ['pro','essential']
   // list. The old literal meant a tier added above Pro (household,
-  // dispute_pro) matched no row in the `.in()` filter below and therefore
+  // household) matched no row in the `.in()` filter below and therefore
   // got ZERO bank syncs — the most expensive plans silently receiving less
   // than Free. Any future tier is picked up automatically.
   const tiersToSync: string[] = isMonday
@@ -172,12 +172,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, synced: 0, reason: 'No eligible users' });
   }
 
-  // Sort: dispute_pro → pro/household → essential → free.
+  // Sort: pro/household → essential → free.
   //
   // `disputeQueuePriority` is the canonical lower-runs-first ordering in
   // PLAN_LIMITS, so it drops straight into a numeric ascending sort. The
   // previous inline map hardcoded pro=0 and gave anything unrecognised a
-  // rank of 3 — i.e. a dispute_pro user would have been sorted BEHIND free
+  // rank above Pro — i.e. that user would have been sorted BEHIND free
   // users when the API ceiling starts biting mid-run. An unknown tier now
   // falls back to the Free priority rather than a magic number, so it can
   // never rank worse than the lowest real tier.

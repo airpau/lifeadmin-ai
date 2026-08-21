@@ -60,7 +60,7 @@ export async function GET(_req: NextRequest) {
   // CSV export is Pro-only per plan-limits.ts. Previously the route only
   // gated on auth, so any authenticated user with the URL could download
   // their full ledger regardless of tier.
-  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
+  // isAtLeastPro, not !== 'pro' — Household is entitled to this too.
   const { getEffectiveTier } = await import('@/lib/plan-limits')
   const { isAtLeastPro } = await import('@/lib/tier-rank')
   const tier = await getEffectiveTier(user.id)

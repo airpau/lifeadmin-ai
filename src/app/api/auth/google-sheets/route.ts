@@ -22,7 +22,7 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
+  // isAtLeastPro, not !== 'pro' — Household is entitled to this too.
   const tier = await getEffectiveTier(user.id)
   if (!isAtLeastPro(tier)) {
     return NextResponse.json(

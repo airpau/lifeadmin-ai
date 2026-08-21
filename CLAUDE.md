@@ -24,6 +24,72 @@ At the END of every session:
 
 ---
 
+## SHIPPING TO PRODUCTION — THE ONLY APPROVED ROUTE
+
+Production is the `master` branch. A push to `master` auto-deploys to
+paybacker.co.uk via Vercel. There is no staging gate, so every push is a
+release.
+
+**The recurring failure this section exists to stop:** work gets committed
+onto whatever branch the working tree happened to be on, nobody notices,
+and it never reaches production. Multiple sessions share this repo and any
+of them can leave the tree on a feature branch. Never assume you are on
+`master` because you were on `master` last time.
+
+### The five steps, every time, no exceptions
+
+1. **Check the branch before you commit.** `git rev-parse --abbrev-ref HEAD`.
+   If it is not `master`, do NOT commit and hope. Stop and use a worktree
+   (step 2).
+2. **Use a detached worktree off `origin/master` for any non-trivial work.**
+   This is the only safe pattern when other sessions share the repo:
+   ```
+   git fetch origin
+   git worktree add --detach /tmp/wt-master origin/master
+   cd /tmp/wt-master
+   ln -sfn <repo>/node_modules node_modules   # typecheck needs deps
+   ```
+   Never `git checkout` a different branch in the shared working tree.
+   You will disrupt whatever another session has staged.
+3. **Typecheck before every push.** `./node_modules/.bin/tsc --noEmit` must
+   be clean. Do not disable typechecking to get a build through. Note
+   `next build` can be OOM-killed in constrained sandboxes; a clean `tsc`
+   plus a successful compile step is the practical gate.
+4. **Commit only your own paths.** Use `git commit -m "..." -- path1 path2`
+   so a partial commit cannot sweep in another session's staged work.
+   Remove the `node_modules` symlink before committing.
+5. **Push explicitly to master, then VERIFY it landed.**
+   ```
+   git push <remote> HEAD:master
+   git log --oneline origin/master -1     # your commit must be on top
+   ```
+   Then confirm the deploy actually went out and the change is live, by
+   curling the affected URL. A push is not a release until the deploy is
+   READY and the page reflects the change.
+
+### Cleaning up
+
+`git worktree remove --force /tmp/wt-master` when done. If a worktree is
+left behind, `git worktree prune`.
+
+### Stale lock files
+
+`.git/index.lock`, `.git/HEAD.lock` and `.git/packed-refs.lock` block all
+git operations. A lock whose mtime is more than 5 minutes old and only
+ageing (not being refreshed) is stale and safe to delete. Never delete a
+fresh lock: another session may be mid-write.
+
+### Never
+
+- Never leave finished work on a feature branch without either merging it
+  to `master` or telling the founder it is parked and why.
+- Never force-push `master`.
+- Never push code you have not typechecked.
+- Never assume the push worked. Verify against `origin/master` and against
+  the live site.
+
+---
+
 ## CRITICAL — READ THIS FIRST
 
 This project has an existing production codebase with real users and live data. Before making ANY change:
@@ -142,8 +208,27 @@ Future Claude sessions MUST treat them as two entities and avoid crossover:
 
 ## PRICING
 
-_Updated 2026-04-22 after Emma-matched tier review — see
-`src/lib/plan-limits.ts` for the authoritative matrix._
+_Updated 2026-08-21. `src/lib/plan-limits.ts` is the authoritative
+matrix and `TIER_PRICE_GBP` in `src/lib/stripe.ts` is the authoritative
+price. Copy follows those files, never the other way round._
+
+**Tiers: Free, Essential £4.99, Pro £9.99, Household £19.99 (up to 4
+people). Plus one non-subscription product: the Ombudsman escalation
+pack, £14.99 one-off, available on every tier including Free.**
+
+A "Dispute Pro" tier existed briefly on 21 Aug 2026 and was withdrawn the
+same day. Its claims did not hold up: it led on included escalation packs
+when the dispute agent already drafts escalation letters on every tier
+including Free, and on dispute-agent queue priority when the cron never
+reaches its 100-dispute cap, so the priority was a difference of nothing.
+Nothing was sold. Do not reintroduce it. Its £19.99 Stripe prices were
+reused for Household, which is why `PRICE_IDS.household_*` reads the
+`STRIPE_DISPUTE_PRO_*` env vars: do NOT delete those env vars.
+
+**Claims discipline for any new tier:** a tier may only advertise a
+benefit that is enforced in code AND genuinely absent from cheaper tiers.
+Check the gate exists before writing the copy. Never advertise priority,
+speed or outcomes you cannot evidence.
 
 **Free — £0:**
 - 2 bank connections with daily auto-sync

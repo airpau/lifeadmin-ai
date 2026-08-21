@@ -503,7 +503,7 @@ ALWAYS say: "Sign up for free and our AI will cite the exact legislation for you
 You do NOT have access to subscription management tools for anonymous users.` : '';
 
     // Rank comparisons rather than `=== 'free' / 'essential' / 'pro'`: with
-    // literal equality a tier ABOVE Pro (Household, Dispute Pro) matched none
+    // literal equality a tier ABOVE Pro (Household) matched none
     // of the three branches, so the model got no plan context at all and
     // would tell a paying subscriber to upgrade. The `isLoggedIn &&` guard on
     // the free branch keeps anonymous visitors block-free exactly as before.
@@ -707,7 +707,7 @@ ${isAtLeastPro(userTier) ? `
           .join('\n\n');
 
         // Priority based on user tier. Rank comparisons, not equality —
-        // Dispute Pro and Household pay more than Pro and must land on
+        // Household pay more than Pro and must land on
         // 'urgent', not drop through to 'medium'.
         const priority = isAtLeastPro(userTier) ? 'urgent'
           : isAtLeastEssential(userTier) ? 'high'

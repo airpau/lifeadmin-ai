@@ -9,7 +9,7 @@ const STRIPE_BASE = 'https://api.stripe.com/v1';
 
 // The local PRICE_ID_TO_TIER map that used to live here was a stale copy of
 // the canonical resolver: it knew only essential/pro, so a household or
-// dispute_pro subscriber whose founding-member window expired resolved to
+// household subscriber whose founding-member window expired resolved to
 // "unknown price" and had their tier wiped. `priceIdToTier` in @/lib/stripe
 // is now the single source of truth (env-overridable current prices plus
 // the archived legacy IDs) and returns null for anything it doesn't know.

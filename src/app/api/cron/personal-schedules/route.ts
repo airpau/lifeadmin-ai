@@ -286,7 +286,7 @@ export async function GET(req: NextRequest) {
 
     if (meta.proOnly) {
       const tier = await getEffectiveTier(row.user_id);
-      // Pro AND ABOVE. household and dispute_pro both include the full Pro
+      // Pro AND ABOVE. household both include the full Pro
       // entitlement set, so an equality check would have denied them.
       if (!isAtLeastPro(tier)) {
         skipped++;

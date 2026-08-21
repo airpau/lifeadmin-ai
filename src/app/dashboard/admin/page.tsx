@@ -235,11 +235,10 @@ export default function AdminPage() {
     );
   }
 
-  // Each paid tier gets its own colour so Household and Dispute Pro rows
+  // Each paid tier gets its own colour so Household rows
   // don't render in the grey "free" treatment. Ranked fallbacks keep any
   // future tier looking paid rather than free.
   const tierColor = (tier: string) => {
-    if (tier === 'dispute_pro') return 'text-violet-500 bg-violet-500/10';
     if (tier === 'household') return 'text-sky-600 bg-sky-500/10';
     if (isAtLeastPro(tier)) return 'text-purple-400 bg-purple-500/10';
     if (isAtLeastEssential(tier)) return 'text-emerald-600 bg-emerald-500/10';

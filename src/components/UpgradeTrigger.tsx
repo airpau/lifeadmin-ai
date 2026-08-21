@@ -64,8 +64,8 @@ export default function UpgradeTrigger({
   }, [type]);
 
   // Never show to paid users (or while tier is still loading).
-  // isPaidTier, not a hardcoded essential/pro list — Household and Dispute Pro
-  // are paid tiers too and must not be nagged to upgrade.
+  // isPaidTier, not a hardcoded essential/pro list — Household is a paid
+  // tier too and must not be nagged to upgrade.
   // Guard: only show when there's something meaningful to say.
   const hidden =
     !userTier || isPaidTier(userTier) ||

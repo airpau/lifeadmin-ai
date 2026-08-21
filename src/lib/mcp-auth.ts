@@ -91,7 +91,7 @@ export async function authenticateMcp(
   }
 
   // Pro gate — re-checked on every call, so downgrades cut off access immediately.
-  // isAtLeastPro, not === 'pro': Household and Dispute Pro both include the
+  // isAtLeastPro, not === 'pro': Household both include the
   // full Pro entitlement set, so a literal equality check would lock out
   // subscribers paying more than Pro.
   const plan = await getUserPlan(row.user_id);

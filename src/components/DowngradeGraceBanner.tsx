@@ -24,8 +24,8 @@ import { tierDisplayName } from '@/lib/tier-utils';
  */
 
 interface GracePeriod {
-  // Any consumer tier can be either end of a downgrade now that Household and
-  // Dispute Pro sit above Pro — e.g. dispute_pro → pro is a real transition.
+  // Any consumer tier can be either end of a downgrade now that Household
+  // sits at Pro's rank — e.g. household → essential is a real transition.
   fromTier: PlanTier;
   toTier: PlanTier;
   graceEndsAt: string;
@@ -72,8 +72,8 @@ export default function DowngradeGraceBanner() {
       <AlertTriangle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${urgent ? 'text-rose-600' : 'text-amber-600'}`} />
       <div className="flex-1 text-sm">
         <p className="font-semibold mb-0.5">
-          {/* tierDisplayName, not CSS capitalize — "dispute_pro" would render
-              as "Dispute_pro" through a text-transform. */}
+          {/* tierDisplayName, not CSS capitalize — a snake_case tier would render
+              as "Household_x" through a text-transform. */}
           Your plan changed to <span>{tierDisplayName(grace.toTier)}</span>{' '}
           — {grace.daysRemaining > 0 ? `${grace.daysRemaining} day${grace.daysRemaining === 1 ? '' : 's'} left` : 'grace period ending today'} to act
         </p>

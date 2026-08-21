@@ -59,17 +59,6 @@ export const TIER_CONFIG = {
     manualSyncDailyLimit: 10,
     upgradeMessage: null,
   },
-  // Dispute Pro: shorter manual-sync cooldown so someone chasing a
-  // disputed transaction can refresh as the merchant refunds.
-  dispute_pro: {
-    maxConnections: Infinity,
-    dailyCron: true,
-    weeklyCron: false,
-    manualSyncAllowed: true,
-    manualSyncCooldownHours: 0,
-    manualSyncDailyLimit: 24,
-    upgradeMessage: null,
-  },
 } as const satisfies Record<BankTier, {
   maxConnections: number;
   dailyCron: boolean;

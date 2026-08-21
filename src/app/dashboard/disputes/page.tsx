@@ -1363,7 +1363,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       {/* Escalation pack. Shows the routing (which body covers this
           dispute, and whether the user is eligible yet) for free, and
           gates only the drafted letter plus the evidence bundle behind
-          the £14.99 one-off or Dispute Pro. Mounts lazily when the
+          the £14.99 one-off, available on every plan. Mounts lazily when the
           section is opened. */}
       <CollapsibleSection title="Escalation pack" icon={Scale}>
         <EscalationPackCard disputeId={disputeId} />

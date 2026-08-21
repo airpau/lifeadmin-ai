@@ -10,7 +10,7 @@
  * Caps at 100 disputes per tick. Defers the rest to the next run. When
  * more than the cap are due, the cap is allocated by plan tier
  * (PLAN_LIMITS[tier].disputeQueuePriority, lower runs first) with
- * created_at as the tiebreak — this is what makes the Dispute Pro
+ * created_at as the tiebreak — this is what makes the paid-tier
  * "priority dispute handling" entitlement real.
  *
  * AI proposes — user approves. We never auto-send a letter. The cron
@@ -113,7 +113,7 @@ async function runAgent() {
   //
   // THIS IS THE ONLY MECHANISM BEHIND THE "priority dispute handling" CLAIM
   // ON THE DISPUTE PRO PLAN. Without it the cron is pure FIFO on created_at
-  // and a Dispute Pro subscriber whose case happens to be newer than 100
+  // and a paid subscriber whose case happens to be newer than 100
   // other due disputes waits a full six hours for the next tick — i.e. the
   // thing they paid extra for does not exist.
   //

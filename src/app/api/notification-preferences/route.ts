@@ -203,7 +203,7 @@ export async function PUT(request: Request) {
     // Pro-tier gate: a non-Pro user can't enable WhatsApp on any event.
     // We force `whatsapp: false` server-side rather than 403 the request,
     // so the rest of their settings still save cleanly.
-    // isAtLeastPro, not === 'pro' — Dispute Pro and Household are entitled to this.
+    // isAtLeastPro, not === 'pro' — Household is entitled to this too.
     const tier = await getEffectiveTier(user.id);
     const isPro = isAtLeastPro(tier);
 

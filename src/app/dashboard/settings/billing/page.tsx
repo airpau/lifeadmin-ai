@@ -26,8 +26,7 @@ const TIER_COPY: Record<Tier, { price: string; cadence: string; include: string 
   free: { price: '£0', cadence: '/forever', include: '3 letters/mo · manual tracker · one-time scans' },
   essential: { price: '£4.99', cadence: '/month', include: 'Unlimited letters · 1 bank + 1 email · daily auto-sync' },
   pro: { price: '£9.99', cadence: '/month', include: 'Unlimited banks + emails · priority support · export + MCP' },
-  household: { price: '£14.99', cadence: '/month', include: 'Everything in Pro, for up to 4 people in one household' },
-  dispute_pro: { price: '£19.99', cadence: '/month', include: 'Everything in Pro · dispute escalation support' },
+  household: { price: '£19.99', cadence: '/month', include: 'Everything in Pro, for up to 4 people · each with their own private login' },
 };
 
 export default function BillingPage() {
@@ -91,7 +90,7 @@ export default function BillingPage() {
   const isFree = tier === 'free' || !profile?.stripe_customer_id;
 
   // Switchable tiers shown in the grid. The current tier is appended when it
-  // sits outside the base three, so a Household or Dispute Pro subscriber
+  // sits outside the base three, so a Household subscriber
   // still sees their own plan marked "Current plan" rather than nothing.
   const switchTiers: Tier[] = ['free', 'essential', 'pro'];
   if (!switchTiers.includes(tier)) switchTiers.push(tier);
@@ -119,7 +118,7 @@ export default function BillingPage() {
       <div
         className="card"
         style={{
-          // Rank checks, not tier equality — Household and Dispute Pro would
+          // Rank checks, not tier equality — Household would
           // otherwise fall through to the plain white "free" treatment.
           background: isAtLeastPro(tier)
             ? 'linear-gradient(135deg,#F0FDF4,#DCFCE7)'
@@ -178,7 +177,7 @@ export default function BillingPage() {
                   background: on ? 'var(--mint-wash)' : '#fff',
                 }}
               >
-                {/* tierDisplayName rather than CSS capitalize — "dispute_pro"
+                {/* tierDisplayName rather than CSS capitalize — a snake_case tier
                     only reads correctly through the display map. */}
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{tierDisplayName(t)}</div>
                 <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-.015em', color: 'var(--text)', margin: '4px 0' }}>

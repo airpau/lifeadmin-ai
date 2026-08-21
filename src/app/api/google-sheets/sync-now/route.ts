@@ -34,7 +34,7 @@ export async function POST(_req: NextRequest) {
   // Google Sheets export is Pro-only per plan-limits.ts — same gate as
   // /api/auth/google-sheets, /api/export/csv and /api/export/xlsx. Without
   // this, a downgraded user could keep syncing indefinitely.
-  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
+  // isAtLeastPro, not !== 'pro' — Household is entitled to this too.
   const { getEffectiveTier } = await import('@/lib/plan-limits')
   const { isAtLeastPro } = await import('@/lib/tier-rank')
   const tier = await getEffectiveTier(user.id)

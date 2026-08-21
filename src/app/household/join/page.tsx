@@ -2,10 +2,8 @@
  * /household/join?token=…
  *
  * Where a Household seat invite lands. Minimal on purpose: this exists so
- * the invite email in /api/household is not a dead link. The OWNER-side
- * member-management UI is still to be built (see the header of
- * src/lib/household.ts), which is why the Household plan is gated behind
- * NEXT_PUBLIC_HOUSEHOLD_PLAN_ENABLED.
+ * the invite email in /api/household is not a dead link. The owner-side
+ * member-management UI lives at /dashboard/settings/household.
  *
  * Flow: signed out, we bounce to signup with the token preserved so the
  * invitee lands back here after confirming their email. Signed in, one

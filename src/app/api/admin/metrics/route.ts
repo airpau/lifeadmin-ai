@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
 
   // Calculate tier breakdown. Counts every profile, defaulting NULL
   // subscription_tier to 'free'. Seeded from ALL_PLAN_TIERS rather than a
-  // hardcoded free/essential/pro trio so Household and Dispute Pro render
+  // hardcoded free/essential/pro trio so Household render
   // as their own buckets instead of appearing only when non-empty.
   const tierBreakdown: Record<string, number> = Object.fromEntries(
     ALL_PLAN_TIERS.map((t) => [t, 0]),
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     revenue: {
       mrr: mrrSummary.mrr,
       arr: mrrSummary.arr,
-      // Sums every paid tier — Household and Dispute Pro subscribers were
+      // Sums every paid tier — Household subscribers were
       // previously excluded from the paying-customer count.
       paying_customers: PAID_PLAN_TIERS.reduce((n, t) => n + (tierBreakdown[t] || 0), 0),
       free_users: tierBreakdown.free || 0,

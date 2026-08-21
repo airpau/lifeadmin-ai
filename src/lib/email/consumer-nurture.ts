@@ -21,7 +21,7 @@ import {
   paragraph,
   unorderedList,
 } from './PaybackerEmailLayout';
-import { TIER_DISPLAY_NAME, TIER_PRICE_GBP, isAtLeastPro } from '@/lib/tier-rank';
+import { TIER_DISPLAY_NAME, TIER_PRICE_GBP, isAtLeastPro, isPlanTier, type PlanTier } from '@/lib/tier-rank';
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
 
@@ -53,11 +53,28 @@ export interface NurtureContext {
 }
 
 /**
- * Tiers a consumer can abandon a checkout on. Mirrors the
- * `consumer_leads_intended_tier_check` constraint. Derived from the
- * canonical tier tables so a price change lands in one place.
+ * Tiers a consumer can abandon a checkout on. Derived from the canonical
+ * PlanTier union so a price change (or a withdrawn tier) lands in one
+ * place.
  */
-export type NurtureTier = 'essential' | 'pro' | 'household' | 'dispute_pro';
+export type NurtureTier = Exclude<PlanTier, 'free'>;
+
+/**
+ * Narrow a raw `consumer_leads.intended_tier` value to a NurtureTier.
+ *
+ * The DB CHECK constraint is deliberately wider than this union — it
+ * still accepts the withdrawn 'dispute_pro' so historical rows stay
+ * valid and readable. Those rows must not crash the nurture cron, so an
+ * unrecognised value resolves to null and the email falls back to its
+ * generic "a paid plan" copy rather than rendering `undefined`.
+ */
+export function normalizeNurtureTier(value: string | null | undefined): NurtureTier | null {
+  if (!value || value === 'free') return null;
+  if (!isPlanTier(value)) return null;
+  // `value` is PlanTier here; the 'free' case was already returned above,
+  // which the compiler cannot see through the isPlanTier type guard.
+  return value === 'free' ? null : value;
+}
 
 function tierName(t: NurtureTier | null): string {
   if (!t) return 'LifeAdmin';
@@ -126,8 +143,8 @@ function build(template: NurtureTemplate, ctx: NurtureContext): BuiltEmail {
 
   if (template === 'email_2_value_nudge') {
     // Rank comparison, not `=== 'pro'`: someone who abandoned a Household
-    // or Dispute Pro checkout should see the richer Pro-and-above bullets,
-    // not the Essential ones.
+    // checkout should see the richer Pro-and-above bullets, not the
+    // Essential ones.
     const isPro = isAtLeastPro(ctx.intendedTier);
     const bullets = isPro
       ? [

@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   const admin = getAdmin();
 
   // Check effective tier (respects onboarding trial).
-  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
+  // isAtLeastPro, not !== 'pro' — Household is entitled to this too.
   const effectiveTier = await getEffectiveTier(user.id);
   if (!isAtLeastPro(effectiveTier)) {
     return NextResponse.json({ error: 'Money Hub AI assistant is available on the Pro plan.', upgradeRequired: true }, { status: 403 });

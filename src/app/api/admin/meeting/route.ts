@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
       .limit(10),
   ]);
 
-  // Seeded from ALL_PLAN_TIERS so Household and Dispute Pro get their own
+  // Seeded from ALL_PLAN_TIERS so Household get their own
   // buckets instead of being invisible.
   const tiers: Record<string, number> = Object.fromEntries(ALL_PLAN_TIERS.map((t) => [t, 0]));
   for (const p of tiersResult.data || []) {
@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
   }
   // Priced from TIER_PRICE_GBP. The old line was `tiers.essential * 9.99 +
   // tiers.pro * 19.99` — stale prices (the same bug already fixed in
-  // src/lib/admin-metrics.ts) AND no Household / Dispute Pro revenue at all.
+  // src/lib/admin-metrics.ts) AND no Household revenue at all.
   // Monthly headline price per subscriber: profiles.subscription_tier carries
   // no billing interval, so yearly subs are approximated. Pre-existing.
   const mrr = PAID_PLAN_TIERS.reduce(

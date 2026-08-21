@@ -33,6 +33,11 @@ const I = {
   menu: 'M3 6h18M3 12h18M3 18h18',
   x: 'M18 6L6 18M6 6l12 12',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  // Two figures — the Household (seat management) nav item. `user` is
+  // already taken by Profile, and reusing it would make the two rows
+  // indistinguishable in the sidebar.
+  users:
+    'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
 } as const;
 
 type IconName = keyof typeof I;
@@ -100,6 +105,12 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: 'Account',
     items: [
       { key: 'export', label: 'Export', icon: 'download', href: '/dashboard/export' },
+      // Shown to everyone, not just Household subscribers. The page has a
+      // proper "you're not on a Household plan" state that explains the
+      // product, so for a single-seat user this row is discovery rather
+      // than dead weight — and gating it would need the tier plumbed into
+      // this static NAV const.
+      { key: 'household', label: 'Household', icon: 'users', href: '/dashboard/settings/household' },
       { key: 'profile', label: 'Profile', icon: 'user', href: '/dashboard/profile' },
     ],
   },
@@ -108,6 +119,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
 function getActiveKey(pathname: string): string {
   if (pathname === '/dashboard') return 'overview';
   if (pathname.startsWith('/dashboard/settings/mcp')) return 'assistant';
+  if (pathname.startsWith('/dashboard/settings/household')) return 'household';
   if (pathname.startsWith('/dashboard/money-hub')) return 'money-hub';
   if (pathname.startsWith('/dashboard/subscriptions')) return 'subscriptions';
   if (pathname.startsWith('/dashboard/disputes')) return 'disputes';
@@ -148,7 +160,7 @@ function tierLabel(
 ): string {
   if (isTrial) return trialDaysLeft ? `Pro Trial · ${trialDaysLeft}d` : 'Pro Trial';
   // Derived from TIER_DISPLAY_NAME rather than an if-chain — an if-chain
-  // silently labelled every new tier (Household, Dispute Pro) as "Free Plan".
+  // silently labelled every new tier (Household) as "Free Plan".
   return `${tierDisplayName(tier)} Plan`;
 }
 

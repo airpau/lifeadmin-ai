@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
         .eq('id', userId)
         .single();
 
-      // Any paid tier, not just essential/pro — household and dispute_pro
+      // Any paid tier, not just essential/pro — household
       // both include price-increase alerts.
       const isPaid = isPaidTier(profile?.subscription_tier);
       const userName = profile?.full_name || profile?.first_name || 'there';

@@ -757,7 +757,7 @@ export default function ProfilePage() {
     const status = profile?.subscription_status ?? '';
     const terminated = ['canceled', 'cancelled', 'expired', 'incomplete_expired'].includes(status);
     // isAtLeastPro, not === 'pro' — saved reports are a Pro entitlement that
-    // Household and Dispute Pro also carry.
+    // Household also carry.
     const isPro = isAtLeastPro(tier) && !terminated;
     if (profile && isPro) {
       fetchSavedReports();
@@ -1156,10 +1156,9 @@ export default function ProfilePage() {
               <div>
                 {/* Badge colour is per-tier, then rank-based as a fallback —
                     an if-chain keyed on 'pro' / 'essential' dropped Household
-                    and Dispute Pro into the grey "Free" styling. */}
+                    into the grey "Free" styling. */}
                 <span className={`inline-block text-sm font-semibold px-3 py-1 rounded-full ${
                   isTrialUser ? 'bg-amber-100 text-amber-600' :
-                  effectiveTier === 'dispute_pro' ? 'bg-violet-500/10 text-violet-600' :
                   effectiveTier === 'household' ? 'bg-sky-500/10 text-sky-600' :
                   isAtLeastPro(effectiveTier) ? 'bg-brand-400/10 text-brand-400' :
                   isAtLeastEssential(effectiveTier) ? 'bg-emerald-500/10 text-emerald-600' :
@@ -1175,25 +1174,34 @@ export default function ProfilePage() {
                     : effectiveTier === 'essential'
                     ? 'Unlimited letters, daily bank sync, full spending dashboard.'
                     : effectiveTier === 'household'
-                    ? 'Everything in Pro, for up to 4 people in your household.'
-                    : effectiveTier === 'dispute_pro'
-                    ? 'Everything in Pro plus dispute escalation support.'
+                    ? 'Everything in Pro, for up to 4 people. Each person has their own private login.'
                     : 'Everything in Essential plus unlimited bank accounts and priority support.'}
                 </p>
               </div>
-              {isTrialUser ? (
-                <Link href="/pricing" className="cta font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-                  Subscribe to keep Pro
-                </Link>
-              ) : effectiveTier === 'free' ? (
-                <Link href="/pricing" className="cta font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-                  Upgrade Plan
-                </Link>
-              ) : (
-                <button onClick={handleManageBilling} disabled={portalLoading} className="cta-ghost px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-                  {portalLoading ? 'Loading...' : 'Manage Billing'}
-                </button>
-              )}
+              <div className="flex flex-wrap items-center gap-2 justify-end">
+                {/* Household owners and members both need a route to seat
+                    management — the sidebar has one, but the plan card is
+                    where someone looks when they are thinking about their
+                    subscription. */}
+                {effectiveTier === 'household' && (
+                  <Link href="/dashboard/settings/household" className="cta-ghost px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                    Manage seats
+                  </Link>
+                )}
+                {isTrialUser ? (
+                  <Link href="/pricing" className="cta font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                    Subscribe to keep Pro
+                  </Link>
+                ) : effectiveTier === 'free' ? (
+                  <Link href="/pricing" className="cta font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                    Upgrade Plan
+                  </Link>
+                ) : (
+                  <button onClick={handleManageBilling} disabled={portalLoading} className="cta-ghost px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                    {portalLoading ? 'Loading...' : 'Manage Billing'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         );
@@ -1341,7 +1349,7 @@ export default function ProfilePage() {
                 <h3 className="text-slate-900 font-semibold">{tierDisplayName(effectiveTier)} Plan</h3>
                 <p className="text-sm text-slate-600">
                   {/* Price from TIER_PRICE_GBP — the old essential/else ternary
-                      billed Household and Dispute Pro users at Pro's £9.99. */}
+                      billed Household users at Pro's £9.99. */}
                   £{TIER_PRICE_GBP[normalizeTier(effectiveTier)].monthly.toFixed(2)}/month
                 </p>
                 {renewalDate && !pendingChange && (

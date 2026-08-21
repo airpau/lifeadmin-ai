@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       // Any paid tier — the old literal array silently excluded household
-      // and dispute_pro from the overcharge alert email.
+      // from the overcharge alert email.
       if (profile && isPaidTier(profile.subscription_tier)) {
         const rateCheck = await canSendEmail(supabase, userId, 'overcharge_alert');
         if (rateCheck.allowed && highScore.length > 0) {

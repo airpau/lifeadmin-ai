@@ -61,7 +61,7 @@ function readUtm(): { utm_source?: string; utm_medium?: string; utm_campaign?: s
   }
 }
 
-type Plan = 'free' | 'essential' | 'pro' | 'household' | 'dispute_pro';
+type Plan = 'free' | 'essential' | 'pro' | 'household';
 
 interface Props {
   plan: Plan;
@@ -91,7 +91,6 @@ function priceIdFor(plan: Plan, cycle: 'monthly' | 'yearly'): string | undefined
     case 'essential':   return (yearly ? PRICE_IDS.essential_yearly   : PRICE_IDS.essential_monthly)   || undefined;
     case 'pro':         return (yearly ? PRICE_IDS.pro_yearly         : PRICE_IDS.pro_monthly)         || undefined;
     case 'household':   return (yearly ? PRICE_IDS.household_yearly   : PRICE_IDS.household_monthly)   || undefined;
-    case 'dispute_pro': return (yearly ? PRICE_IDS.dispute_pro_yearly : PRICE_IDS.dispute_pro_monthly) || undefined;
     default:            return undefined;
   }
 }
@@ -350,7 +349,7 @@ export default function PricingCTA({ plan, className, children, style, billingCy
 
     // Plan name and headline price come from the canonical tier tables,
     // not a `plan === 'pro' ? … : …` ternary. That ternary would have told
-    // a Dispute Pro buyer they were being charged £4.99/month.
+    // a Household buyer they were being charged £4.99/month.
     const planName = TIER_DISPLAY_NAME[plan];
     const headlineMonthly = `£${TIER_PRICE_GBP[plan].monthly.toFixed(2)}`;
     const headlineYearly = `£${TIER_PRICE_GBP[plan].yearly.toFixed(2)}`;

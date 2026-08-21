@@ -46,14 +46,21 @@
  * Cancel the plan and every member reverts to Free automatically on their
  * next tier read — no fan-out write, no orphaned entitlement.
  *
- * WHAT IS NOT BUILT YET
- * ---------------------
- * There is no member-management UI. The API below is complete and safe,
- * but until a `/dashboard/settings/household` page exists an owner has no
- * way to send an invite. The Household card on /pricing is therefore gated
- * behind `NEXT_PUBLIC_HOUSEHOLD_PLAN_ENABLED === 'true'` (default off).
- * Do not flip that flag until the UI ships — selling seats a customer
- * cannot fill is worse than not selling them.
+ * WHERE THE UI LIVES
+ * ------------------
+ * Owner-side seat management: `/dashboard/settings/household`.
+ * Invitee-side acceptance:    `/household/join?token=…`.
+ * API for both:               `/api/household`.
+ *
+ * Until 2026-08-21 there was no owner-side UI, so the plan was hidden
+ * behind `NEXT_PUBLIC_HOUSEHOLD_PLAN_ENABLED` — selling seats a customer
+ * cannot fill is worse than not selling them. The UI now exists and the
+ * flag is gone. If the management page is ever removed, hide the plan
+ * again rather than leaving owners with seats they cannot fill.
+ *
+ * PRICE: £19.99/mo, £199.99/yr as of 2026-08-21 (was £14.99/£149.99).
+ * See src/lib/stripe.ts for why the Stripe price IDs are read from the
+ * `STRIPE_DISPUTE_PRO_*` env vars.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';

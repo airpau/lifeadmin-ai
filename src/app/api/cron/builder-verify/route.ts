@@ -219,7 +219,7 @@ async function notifyTicketUser(
         .single();
       const tier = ((prof as { subscription_tier: string | null } | null)?.subscription_tier ?? 'free').toLowerCase();
       // Consumer side goes through the canonical rank check so household
-      // and dispute_pro qualify. 'b2b' and 'admin' are internal staff /
+      // qualify. 'b2b' and 'admin' are internal staff /
       // partner markers that live outside the consumer PlanTier union, so
       // they stay as explicit special cases.
       const proLike = isAtLeastPro(tier) || tier === 'b2b' || tier === 'admin';

@@ -215,7 +215,7 @@ export default function NotificationsSettingsPage() {
   }
 
   // isAtLeastPro, not === 'pro' — WhatsApp and the other Pro-gated channels
-  // are included in Household and Dispute Pro.
+  // are included in Household.
   const isPro = isAtLeastPro(data.tier);
 
   return (

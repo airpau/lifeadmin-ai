@@ -65,7 +65,7 @@ export async function getUserPlan(userId: string): Promise<UserPlan> {
     && !profile?.trial_expired_at;
 
   // Trial is PROMOTE-ONLY. `tier: 'pro'` unconditionally would have
-  // demoted a Dispute Pro subscriber with an overlapping onboarding trial.
+  // demoted a Household subscriber with an overlapping onboarding trial.
   if (onboardingTrialActive && !isAtLeast(storedTier, 'pro')) {
     const daysLeft = Math.ceil((trialEnd!.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     return { tier: 'pro', status: 'trialing', isActive: true, isTrial: true, isPastDue: false, trialDaysLeft: daysLeft };

@@ -223,8 +223,7 @@ export default function DashboardPage() {
             const amount = (TIER_PRICE_GBP[normalizeTier(tier)]?.monthly ?? 4.99).toFixed(2);
             // Commission groups must match the ones the Stripe webhook reports.
             const commGroup =
-              tier === 'dispute_pro' ? 'DISPUTE_PRO'
-              : tier === 'household' ? 'HOUSEHOLD'
+              tier === 'household' ? 'HOUSEHOLD'
               : tier === 'pro' ? 'PRO'
               : 'ESSENTIAL';
             const orderRef = data.subscriptionId ? `sub-${data.subscriptionId}` : (savedCheckout?.orderRef || `conversion-${tier}-${Date.now()}`);
@@ -2189,7 +2188,7 @@ export default function DashboardPage() {
                   Connect on Telegram →
                 </a>
                 {/* isAtLeastPro, not === 'pro' — WhatsApp is a Pro entitlement
-                    and Household / Dispute Pro both include it. */}
+                    and Household both include it. */}
                 {isAtLeastPro(effectiveTier) && (
                   <Link
                     href="/dashboard/settings/whatsapp"

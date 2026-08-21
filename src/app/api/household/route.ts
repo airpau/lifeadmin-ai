@@ -15,12 +15,9 @@
  * capability here, and the GET response for an owner returns only email +
  * status + role for each seat, never any financial field.
  *
- * ==================== WHAT IS STILL MISSING ====================
- * There is no member-management UI. This API is complete and safe, but an
- * owner cannot reach it from the app yet, which is why the Household card
- * on /pricing is gated behind NEXT_PUBLIC_HOUSEHOLD_PLAN_ENABLED (default
- * off). Do not flip that flag until a /dashboard/settings/household page
- * exists. See the header of src/lib/household.ts.
+ * The owner-side UI lives at /dashboard/settings/household and is the only
+ * consumer of this route. It was the missing piece that kept the Household
+ * plan hidden; both are live as of 2026-08-21.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -91,10 +88,26 @@ export async function GET() {
 
   const tier = await getEffectiveTier(user.id);
 
+  // A member is told exactly ONE thing about the rest of the household:
+  // who is paying. They already know — that person invited them by email —
+  // and without it the settings page can only say "someone". Deliberately
+  // no seat count, no other members, no financial field of any kind.
+  let ownerEmail: string | null = null;
+  if (seat) {
+    const { data: owner } = await admin
+      .from('household_members')
+      .select('invited_email')
+      .eq('household_id', seat.household_id)
+      .eq('role', 'owner')
+      .maybeSingle();
+    ownerEmail = (owner?.invited_email as string | undefined) ?? null;
+  }
+
   return NextResponse.json({
     role: seat ? 'member' : null,
     household: null,
     seat: seat ?? null,
+    owner_email: ownerEmail,
     tier,
   });
 }

@@ -3,11 +3,13 @@
  *
  * Two ways to hold the entitlement:
  *
- *   a) `PLAN_LIMITS[tier].ombudsmanPacksIncluded` — Dispute Pro. No
- *      purchase, unlimited packs.
+ *   a) `PLAN_LIMITS[tier].ombudsmanPacksIncluded` — currently FALSE on
+ *      every tier. The branch is kept so a future bundled plan is a
+ *      one-line change, but nothing reaches it today.
  *   b) A row in `dispute_entitlements` with `status='active'` — bought as
- *      a £14.99 one-off. Works on EVERY tier including Free, which is the
- *      whole point: pay-per-need without subscribing.
+ *      a £14.99 one-off. This is the ONLY live path. It works on every
+ *      tier including Free, which is the whole point: pay-per-need
+ *      without subscribing.
  *
  * Rule that must not be broken: buying a pack NEVER touches
  * `profiles.subscription_tier`. The webhook branches on
@@ -59,7 +61,7 @@ export async function checkEscalationPackAccess(
       allowed: true,
       via: 'tier',
       entitlement: null,
-      reason: 'Included with Dispute Pro',
+      reason: 'Included with your plan',
     };
   }
 

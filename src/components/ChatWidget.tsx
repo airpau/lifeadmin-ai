@@ -337,8 +337,8 @@ export default function ChatWidget() {
                 <p className="text-slate-900 font-medium mb-1">Hi there!</p>
                 <p className="text-slate-500 text-sm mb-3">I can help you organise your finances through conversation. Try asking me to recategorise transactions, find missing subscriptions, check your spending, or dispute a bill.</p>
                 <div className="space-y-2">
-                  {/* isAtLeastEssential, not an essential/pro list — Household and
-                      Dispute Pro users get the paid prompt set too. */}
+                  {/* isAtLeastEssential, not an essential/pro list — Household
+                      users get the paid prompt set too. */}
                   {(isAtLeastEssential(userTier)
                     ? [
                         'Show my subscriptions',

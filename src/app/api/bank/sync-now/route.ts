@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     process.env.NODE_ENV !== 'production' &&
     user.email === 'sheva.tests.2026@outlook.com';
   //
-  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to
+  // isAtLeastPro, not !== 'pro' — Household is entitled to
   // on-demand sync exactly as Pro is.
   const plan = await getUserPlan(user.id);
   if (!isAtLeastPro(plan.tier) && !isTestUser) {

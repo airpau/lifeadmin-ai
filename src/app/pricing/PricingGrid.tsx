@@ -5,38 +5,51 @@
  *
  * Layout
  * ------
- * Row 1  Free · Essential · Pro          the tracking-and-letters ladder
- * Row 2  Dispute Pro · Ombudsman pack    the recovery ladder
- *        (· Household, when enabled)
+ * Row 1  Free · Essential · Pro       the single-person ladder
+ * Row 2  Household · Ombudsman pack   more ways to buy
  *
- * The split is the whole point of the repositioning. Willingness to pay
- * for a dispute anchors to the recovery amount (£100 to £520 a case), not
- * to a budgeting app, so a flat £9.99 for unlimited access leaves money on
- * the table. But the tracking-only audience must keep seeing the low
- * headline price, which is why Free/Essential/Pro stay untouched at the
- * top and the higher-value products sit in a clearly separate band below.
+ * Row 2 exists because both of its products are bought for a different
+ * reason than row 1. Household is bought because more than one person in
+ * the house needs Paybacker; the escalation pack is bought because one
+ * dispute needs escalating. Neither is "a bigger Pro", so neither belongs
+ * in the row-1 ladder where visitors read the cards as a straight upgrade
+ * path.
  *
  * Prices are pinned to CLAUDE.md §PRICING and read from TIER_PRICE_GBP in
  * @/lib/tier-rank, which is the same table the Stripe webhook uses to
  * report sale amounts. Hardcoding them here is how the old version ended
  * up with a card saying one thing and analytics reporting another.
  *
- *   Essential   £4.99/mo  · £44.99/yr
- *   Pro         £9.99/mo  · £94.99/yr
- *   Household   £14.99/mo · £149.99/yr
- *   Dispute Pro £19.99/mo · £199.99/yr
+ *   Essential £4.99/mo  · £44.99/yr
+ *   Pro       £9.99/mo  · £94.99/yr
+ *   Household £19.99/mo · £199.99/yr   (up to 4 people)
  *   Ombudsman escalation pack — £14.99 one-off, no subscription
  *
  * Savings are COMPUTED, not written down, so a price change cannot leave a
- * stale "saves £14.89" behind. The toggle badge says "save up to 25%"
+ * stale "saves £14.89" behind. The toggle badge says "save up to N%"
  * because the tiers do not save the same percentage: Essential is about
- * 25% off, Pro about 21%, Household and Dispute Pro about 17%.
+ * 25% off, Pro about 21%, Household about 17%.
+ *
+ * ---------------------------------------------------------------------
+ * WHAT THE HOUSEHOLD CARD MAY AND MAY NOT CLAIM
+ * ---------------------------------------------------------------------
+ * MAY:  four seats, four separate logins, complete data isolation between
+ *       members, one bill, about £5 a head at four people.
+ * MAY NOT:
+ *   - "Cheaper for a couple." It is not. £19.99 is a penny more than two
+ *     Pro subscriptions (2 x £9.99 = £19.98). For two people the honest
+ *     pitch is one bill and room to add two more, never a saving.
+ *   - Priority queues, faster Watchdog polling, or included escalation
+ *     packs. Household is entitlement-identical to Pro (see PLAN_LIMITS),
+ *     and packs are £14.99 one-off on every plan including Free.
+ *   - Any outcome, success rate or recovery promise.
  *
  * CTAs deliberately avoid any "14-day trial" language — per CLAUDE.md the
  * Pro trial was removed because it produced silent downgrades at expiry.
  *
- * The Household card is gated behind NEXT_PUBLIC_HOUSEHOLD_PLAN_ENABLED
- * because there is no member-management UI yet. See src/lib/household.ts.
+ * NEXT_PUBLIC_HOUSEHOLD_PLAN_ENABLED is gone: the flag existed only
+ * because there was no member-management UI to fill the seats. That UI now
+ * ships at /dashboard/settings/household, so the card is unconditional.
  */
 
 import { useState } from 'react';
@@ -101,8 +114,6 @@ function Price({ tier, isYearly }: { tier: Exclude<PlanTier, 'free'>; isYearly: 
   );
 }
 
-const HOUSEHOLD_ENABLED = process.env.NEXT_PUBLIC_HOUSEHOLD_PLAN_ENABLED === 'true';
-
 export default function PricingGrid() {
   const [cycle, setCycle] = useState<Cycle>('monthly');
   const isYearly = cycle === 'yearly';
@@ -113,7 +124,6 @@ export default function PricingGrid() {
     saving('essential').savedPercent,
     saving('pro').savedPercent,
     saving('household').savedPercent,
-    saving('dispute_pro').savedPercent,
   );
 
   return (
@@ -213,49 +223,54 @@ export default function PricingGrid() {
       </div>
 
       {/* ---------------------------------------------------------------
-          Row 2 — the recovery band. Priced against what a win is worth,
-          not against a budgeting app.
+          Row 2 — bought for a different reason than row 1. See the file
+          header for what the Household card may and may not claim.
           --------------------------------------------------------------- */}
       <div className="recovery-band">
         <div className="recovery-band__head">
-          <h3 className="recovery-band__title">Actively chasing money back?</h3>
+          <h3 className="recovery-band__title">More than one of you? Escalating a dispute?</h3>
           <p className="recovery-band__sub">
-            A single upheld dispute is typically worth £100 to £520. These are
-            priced against that, not against a subscription tracker.
+            Two things people ask us for that are not a bigger version of Pro:
+            cover for everyone in the house, and a one-off pack for the dispute
+            that needs escalating.
           </p>
         </div>
 
-        <div className={`pricing-grid pricing-grid--recovery${HOUSEHOLD_ENABLED ? ' is-three-up' : ''}`}>
-          {HOUSEHOLD_ENABLED && (
-            <div className="price-card price-card--recovery">
-              <div className="tier">Household</div>
-              <Price tier="household" isYearly={isYearly} />
-              <AnnualLine tier="household" isYearly={isYearly} />
-              <ul>
-                <li>Everything in Pro, for up to <strong>4 people</strong></li>
-                <li>Each member gets their own login</li>
-                <li>
-                  <strong>Nobody sees anyone else&rsquo;s money.</strong> Accounts,
-                  transactions, budgets and disputes stay completely private to
-                  each member
-                </li>
-                <li>One bill, one card, one renewal date</li>
-                <li>Works out at {gbp(TIER_PRICE_GBP.household.monthly / 4)} per person a month</li>
-              </ul>
-              <PricingCTA
-                plan="household"
-                billingCycle={cycle}
-                className="btn btn-ghost cta"
-                style={{ justifyContent: 'center' }}
-              >
-                Start Household →
-              </PricingCTA>
-            </div>
-          )}
+        <div className="pricing-grid pricing-grid--recovery">
+          <div className="price-card price-card--recovery">
+            <div className="tier">Household</div>
+            <Price tier="household" isYearly={isYearly} />
+            <AnnualLine tier="household" isYearly={isYearly} />
+            <ul>
+              <li>
+                Everything in Pro, for up to <strong>4 people</strong>. Couples,
+                families, flatmates, whoever shares the bills
+              </li>
+              <li>Each person gets their own login and their own account</li>
+              <li>
+                <strong>Nobody sees anyone else&rsquo;s money.</strong> Accounts,
+                transactions, budgets and disputes stay completely private to
+                each person
+              </li>
+              <li>One bill, one card, one renewal date</li>
+              <li>
+                {gbp(TIER_PRICE_GBP.household.monthly / 4)} each a month with four
+                people. Start with two and add the others whenever you like
+              </li>
+            </ul>
+            <PricingCTA
+              plan="household"
+              billingCycle={cycle}
+              className="btn btn-ghost cta"
+              style={{ justifyContent: 'center' }}
+            >
+              Start Household →
+            </PricingCTA>
+          </div>
 
           {/* Not a subscription. Rendered as a card so it sits in the same
-              consideration set as Dispute Pro, which is the actual choice
-              a mid-dispute user is making: pay once now, or subscribe. */}
+              consideration set as a plan, because "pay once for this one
+              dispute" is a real alternative to upgrading. */}
           <div className="price-card price-card--oneoff">
             <div className="tier">Ombudsman escalation pack</div>
             <div className="price">
@@ -281,8 +296,8 @@ export default function PricingGrid() {
 
         <p className="recovery-band__foot">
           Escalation packs are sold from inside the dispute they apply to, so we
-          can bundle the right evidence. Free and Essential members can buy one
-          without upgrading.
+          can bundle the right evidence. The price is the same £14.99 on every
+          plan including Free, and no plan includes them.
         </p>
       </div>
     </>

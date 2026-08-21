@@ -39,7 +39,7 @@ export default function UpgradeModal({ open, onClose, used, limit, tier }: Upgra
           <p className="text-gray-400">
             You&apos;ve used <span className="text-slate-900 font-semibold">{used} of {limit}</span> complaint{limit !== 1 ? 's' : ''} this month on the{' '}
             {/* tierDisplayName rather than CSS capitalize — an underscored tier
-                key like "dispute_pro" only reads correctly through the map. */}
+                key like "household" only reads correctly through the map. */}
             <span className="text-yellow-400">{tierDisplayName(tier)}</span> plan.
           </p>
         </div>

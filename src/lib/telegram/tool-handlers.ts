@@ -140,7 +140,7 @@ async function requireTier(
   const tier = await getEffectiveTier(userId);
   // Uses the canonical rank map in @/lib/tier-rank rather than a private one.
   // The old inline `{ free: 0, essential: 1, pro: 2 }` with a `?? 0` fallback
-  // ranked Household and Dispute Pro as Free, blocking paid subscribers.
+  // ranked Household as Free, blocking paid subscribers.
   if (isAtLeast(tier, minimum)) return null;
 
   const planName = TIER_DISPLAY_NAME[minimum];
@@ -6442,7 +6442,7 @@ async function setNotificationSchedule(
   }
 
   // Pro-only: custom_prompt.
-  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
+  // isAtLeastPro, not !== 'pro' — Household is entitled to this too.
   if (customPrompt && !isAtLeastPro(tier)) {
     return {
       text:
@@ -8637,7 +8637,7 @@ async function generateReportTool(
   }
 
   // Pro-only — same gate as POST /api/reports/generate.
-  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
+  // isAtLeastPro, not !== 'pro' — Household is entitled to this too.
   const tier = await getEffectiveTier(userId);
   if (!isAtLeastPro(tier)) {
     return {

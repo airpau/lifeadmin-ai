@@ -300,8 +300,9 @@
   text-align: center; margin-top: 22px; font-size: 13px; color: var(--text-tertiary);
 }
 
-/* Two-up by default (Dispute Pro + one-off pack), three-up when the
-   Household plan is enabled via NEXT_PUBLIC_HOUSEHOLD_PLAN_ENABLED. */
+/* Two-up: Household + the one-off escalation pack. The `.is-three-up`
+   modifier below is unused since the Dispute Pro tier was withdrawn
+   (2026-08-21); kept in case row 2 gains a third product. */
 .m-pricing-root .pricing-grid--recovery {
   grid-template-columns: repeat(2, 1fr);
   max-width: 760px;

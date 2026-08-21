@@ -201,7 +201,7 @@ function resolveChannels(
 
   // Pro-only events (morning/evening/payday summaries) skip Free/Essential
   // users entirely — even if they've enabled the channels.
-  // isAtLeastPro, not !== 'pro': Household and Dispute Pro are entitled to
+  // isAtLeastPro, not !== 'pro': Household is entitled to
   // every Pro-only event too.
   if (meta?.proOnly && !isAtLeastPro(routing.tier)) return [];
 

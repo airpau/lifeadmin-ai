@@ -21,7 +21,7 @@ export type NormalizedTier = PlanTier;
  *
  * 2026-08-16: this used to be a `switch` whose `default:` returned 'free'.
  * That was a silent-demotion trap — any tier added above Pro (household,
- * dispute_pro) would have been reported as Free by every consumer of this
+ * would have been reported as Free by every consumer of this
  * function, including the churn-prevention and marketing-automation crons.
  * It now recognises every tier in the canonical PlanTier union and only
  * falls back to 'free' for genuinely unknown strings.

@@ -37,7 +37,7 @@ function getPlanTier(priceId: string): PlanTier | null {
 /**
  * Amount in GBP for analytics / Awin, derived from the canonical price
  * table rather than a `tier === 'pro' ? 9.99 : 4.99` ternary. That ternary
- * priced every non-Pro tier at £4.99, so a £19.99 Dispute Pro sale would
+ * priced every non-Pro tier at £4.99, so a £19.99 Household sale would
  * have been reported to PostHog, Meta and Awin as an Essential sale.
  */
 function amountForTier(tier: PlanTier | null, interval: 'month' | 'year'): number {
@@ -52,7 +52,6 @@ function amountForTier(tier: PlanTier | null, interval: 'month' | 'year'): numbe
  */
 function awinCommissionGroup(tier: PlanTier | null): string {
   switch (tier) {
-    case 'dispute_pro': return 'DISPUTE_PRO';
     case 'household': return 'HOUSEHOLD';
     case 'pro': return 'PRO';
     default: return 'ESSENTIAL';
@@ -148,7 +147,7 @@ export async function POST(request: NextRequest) {
           const email = session.customer_details?.email || session.customer_email || null;
           if (email) {
             // Pull intended tier off the line items if we can.
-            let intendedTier: PlanTier | null = null;
+            let intendedTier: Exclude<PlanTier, 'free'> | null = null;
             let intendedInterval: 'monthly' | 'yearly' | null = null;
             try {
               const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1, expand: ['data.price'] });
@@ -366,7 +365,7 @@ export async function POST(request: NextRequest) {
         if (!updateError) {
           const awinAdvId = process.env.NEXT_PUBLIC_AWIN_ADVERTISER_ID || '125502';
           // Was `tier === 'pro' ? '9.99' : '4.99'`, which would have
-          // reported a £19.99 Dispute Pro sale as £4.99 to Awin.
+          // reported a £19.99 Household sale as £4.99 to Awin.
           const saleAmount = amountForTier(resolvedTier, billingInterval).toFixed(2);
           const commissionGroup = awinCommissionGroup(resolvedTier);
           const orderRef = encodeURIComponent(`sub-${session.subscription || session.id}`);
@@ -392,7 +391,7 @@ export async function POST(request: NextRequest) {
           // PostHog server-side conversion. Amounts come from the single
           // TIER_PRICE_GBP table so a new tier can never be mispriced in
           // analytics (Essential £4.99/£44.99 · Pro £9.99/£94.99 ·
-          // Household £14.99/£149.99 · Dispute Pro £19.99/£199.99).
+          // Household £19.99/£199.99).
           const amountGbp = amountForTier(resolvedTier, billingInterval);
           captureServer('subscription_created', userId, {
             plan: tier,
@@ -471,17 +470,57 @@ export async function POST(request: NextRequest) {
         // and regain it if a past_due card recovers. Runs before the
         // profile write so a failure here still leaves the owner correct.
         try {
-          const { cancelHouseholdPlan } = await import('@/lib/household');
+          const { cancelHouseholdPlan, ensureHouseholdPlan } = await import('@/lib/household');
           if (status === 'canceled' || status === 'incomplete_expired' || status === 'unpaid') {
             await cancelHouseholdPlan(supabase as any, { stripeSubscriptionId: subscription.id });
           } else if (newTier === 'household') {
-            await supabase
-              .from('household_plans')
-              .update({
-                status: status === 'past_due' ? 'past_due' : 'active',
-                updated_at: new Date().toISOString(),
-              })
-              .eq('stripe_subscription_id', subscription.id);
+            // ensureHouseholdPlan (an upsert on owner_user_id), NOT a bare
+            // UPDATE matched on stripe_subscription_id.
+            //
+            // Why this matters: an existing Pro subscriber who moves to
+            // Household through /upgrade is prorated onto the new price by
+            // updating their EXISTING subscription. No new Checkout Session
+            // is created, so `checkout.session.completed` never fires and
+            // the provisioning block above never runs — this event is the
+            // only signal we get. The previous UPDATE matched zero rows for
+            // that customer, so they were billed £19.99, got the tier, and
+            // then hit "You do not have a Household plan" the moment they
+            // tried to invite anyone. The upsert is idempotent, so it is
+            // also safe on the ordinary path where the plan already exists.
+            const { data: owner } = await supabase
+              .from('profiles')
+              .select('id, email')
+              .eq('stripe_customer_id', customerId)
+              .maybeSingle();
+
+            if (owner?.id && owner?.email) {
+              await ensureHouseholdPlan(supabase as any, {
+                ownerUserId: owner.id as string,
+                ownerEmail: owner.email as string,
+                stripeSubscriptionId: subscription.id,
+                stripeCustomerId: customerId,
+              });
+            } else {
+              console.error('[stripe webhook] household sub update: no profile for customer', customerId);
+            }
+
+            // past_due is a retry state, not a termination — the seat stays
+            // live (same rule as the single-user tiers). ensureHouseholdPlan
+            // always writes 'active', so correct it here.
+            if (status === 'past_due') {
+              await supabase
+                .from('household_plans')
+                .update({ status: 'past_due', updated_at: new Date().toISOString() })
+                .eq('stripe_subscription_id', subscription.id);
+            }
+          } else if (newTier !== null) {
+            // Owner moved OFF Household onto another known tier (e.g.
+            // Household → Pro). Their seats have to stop entitling anyone,
+            // or three people keep Pro for free indefinitely. Guarded on
+            // `newTier !== null` so an unrecognised price ID — which every
+            // other call site treats as "skip the write" — cannot revoke a
+            // paying household's seats.
+            await cancelHouseholdPlan(supabase as any, { stripeSubscriptionId: subscription.id });
           }
         } catch (e: any) {
           console.error('[stripe webhook] household status sync failed:', e?.message);
@@ -522,7 +561,7 @@ export async function POST(request: NextRequest) {
           // PostHog server-side funnel — distinguish an upgrade from a
           // downgrade by comparing tier rank. Uses the canonical TIER_RANK
           // from @/lib/tier-rank rather than a private map that hardcoded
-          // Pro as the ceiling (a dispute_pro user's `?? 0` fallback would
+          // Pro as the ceiling (an unknown tier's `?? 0` fallback would
           // have ranked them below Free).
           const oldRank = TIER_RANK[existing.subscription_tier as PlanTier] ?? 0;
           const newRank = TIER_RANK[newTier] ?? 0;

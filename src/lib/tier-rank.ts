@@ -32,10 +32,8 @@ export type PlanTier =
   | 'free'
   | 'essential'
   | 'pro'
-  /** Household plan — up to 4 members, Pro entitlements each. */
-  | 'household'
-  /** Dispute Pro — Pro plus dispute-recovery escalation features. */
-  | 'dispute_pro';
+  /** Household plan — up to 4 people, Pro entitlements each. */
+  | 'household';
 
 /**
  * Ordering used for upgrade/downgrade detection and "at least tier X"
@@ -44,21 +42,21 @@ export type PlanTier =
  * `household` deliberately shares Pro's rank: a household member gets
  * exactly the Pro entitlement set, so moving Pro → Household is neither an
  * upgrade nor a downgrade in capability terms and must not trip the
- * downgrade grace-period machinery.
+ * downgrade grace-period machinery. What Household sells is SEATS, not a
+ * bigger feature set, and that is the only claim we make for it.
  */
 export const TIER_RANK: Record<PlanTier, number> = {
   free: 0,
   essential: 1,
   pro: 2,
   household: 2,
-  dispute_pro: 3,
 };
 
 /** Every known consumer tier, in ascending rank order. */
-export const ALL_PLAN_TIERS: PlanTier[] = ['free', 'essential', 'pro', 'household', 'dispute_pro'];
+export const ALL_PLAN_TIERS: PlanTier[] = ['free', 'essential', 'pro', 'household'];
 
 /** Every tier that is a paid subscription (i.e. not Free). */
-export const PAID_PLAN_TIERS: PlanTier[] = ['essential', 'pro', 'household', 'dispute_pro'];
+export const PAID_PLAN_TIERS: PlanTier[] = ['essential', 'pro', 'household'];
 
 /** True when `tier` is one of the known consumer tiers. */
 export function isPlanTier(tier: string | null | undefined): tier is PlanTier {
@@ -89,10 +87,10 @@ export function isAtLeast(tier: string | null | undefined, minimum: PlanTier): b
  * The workhorse. Replaces every `tier === 'pro'` / `tier !== 'pro'` gate
  * in the codebase.
  *
- * A `dispute_pro` or `household` user MUST pass every check a Pro user
- * passes — they are paying more (or the same, split four ways) and a
- * literal equality check would silently deny them WhatsApp, exports, MCP,
- * unlimited banks, on-demand sync and everything else Pro includes.
+ * A `household` user MUST pass every check a Pro user passes — they are
+ * paying more (split up to four ways) and a literal equality check would
+ * silently deny them WhatsApp, exports, MCP, unlimited banks, on-demand
+ * sync and everything else Pro includes.
  */
 export function isAtLeastPro(tier: string | null | undefined): boolean {
   return isAtLeast(tier, 'pro');
@@ -122,7 +120,6 @@ export const TIER_DISPLAY_NAME: Record<PlanTier, string> = {
   essential: 'Essential',
   pro: 'Pro',
   household: 'Household',
-  dispute_pro: 'Dispute Pro',
 };
 
 /** Headline prices, for confirmation copy and analytics amounts. */
@@ -130,8 +127,10 @@ export const TIER_PRICE_GBP: Record<PlanTier, { monthly: number; yearly: number 
   free: { monthly: 0, yearly: 0 },
   essential: { monthly: 4.99, yearly: 44.99 },
   pro: { monthly: 9.99, yearly: 94.99 },
-  household: { monthly: 14.99, yearly: 149.99 },
-  dispute_pro: { monthly: 19.99, yearly: 199.99 },
+  // Repriced 2026-08-21 from £14.99/£149.99. Household absorbed the
+  // withdrawn Dispute Pro price points; seats are now the only
+  // differentiator, which is the one that actually holds up.
+  household: { monthly: 19.99, yearly: 199.99 },
 };
 
 /** Price of a single Ombudsman escalation pack, in GBP. */

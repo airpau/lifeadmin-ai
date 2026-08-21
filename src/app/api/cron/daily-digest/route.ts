@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
 
       // 6) Send via unified dispatcher
       // Any paid tier, not just essential/pro — a literal check would have
-      // downgraded household and dispute_pro users to the free-tier digest.
+      // downgraded household users to the free-tier digest.
       const isPaid = isPaidTier(user.subscription_tier);
 
       // Telegram/WhatsApp text — short summary

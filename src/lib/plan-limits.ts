@@ -54,11 +54,18 @@ export interface PlanLimits {
   /**
    * Ombudsman escalation packs included with the subscription.
    *
-   * When false the user can still buy a pack as a one-off (£14.99 via
-   * `/api/disputes/[id]/escalation-pack/checkout`) — that is deliberately
-   * available on EVERY tier including Free, because pay-per-need is the
-   * whole point of the product. When true, `hasEscalationPackAccess()`
-   * short-circuits and no purchase is required.
+   * FALSE ON EVERY TIER, DELIBERATELY (2026-08-21). A pack is £14.99 as a
+   * one-off on every plan including Free, because pay-per-need without a
+   * subscription is the whole point of the product. The withdrawn Dispute
+   * Pro tier was the only tier that ever set this true, and "packs
+   * included" was one of the claims that did not survive scrutiny — a
+   * £19.99/mo plan bundling an unlimited £14.99 product is not a promise
+   * we can stand behind.
+   *
+   * The flag is kept rather than deleted so the entitlement resolver in
+   * src/lib/escalation-pack/entitlements.ts keeps its tier branch and a
+   * future bundled plan is a one-line change. Do not set it true without
+   * working out the unit economics first.
    */
   ombudsmanPacksIncluded: boolean;
   /**
@@ -82,36 +89,43 @@ export interface PlanLimits {
 
 /**
  * TIER MATRIX — Free/Essential/Pro confirmed with founder 2026-04-22;
- * Household and Dispute Pro added 2026-08-16.
+ * Household added 2026-08-16, repriced to £19.99/£199.99 on 2026-08-21
+ * when the Dispute Pro tier was withdrawn and merged into it.
  *
  * NOTE (2026-08-20): the DB signup trigger still granted a 7-day trial,
  * contradicting rule 2 below — see the prepared (not yet applied) fix in
  * supabase/migrations/20260820120000_remove_auto_trial_from_signup_trigger.sql.
  *
- *                            Free   Essential  Pro    Household  DisputePro
- * Price / month              £0     £4.99      £9.99  £14.99     £19.99
- * Price / year               —      £44.99     £94.99 £149.99    £199.99
- * Seats                      1      1          1      4          1
- * Bank connections           2      3          ∞      ∞          ∞
- * Email connections          1      3          ∞      ∞          ∞
- * Inbox scan history         90d    2 years    2y     2y         2y
- * AI letters / month         3      ∞          ∞      ∞          ∞
- * Watchdog poll interval     manual 60m        30m    30m        15m
- * Dispute thread links       1      5          ∞      ∞          ∞
- * Renewal reminders          —      ✓          ✓      ✓          ✓
- * AI cancellation emails     —      ✓          ✓      ✓          ✓
- * Money Hub full categories  top 5  full       full   full       full
- * Money Hub budgets / goals  —      ✓          ✓      ✓          ✓
- * Money Hub top merchants    —      —          ✓      ✓          ✓
- * Price-increase alerts      in-app +email     +TG    +TG        +TG
- * Export (CSV / PDF)         —      —          ✓      ✓          ✓
- * Paybacker Assistant (MCP)  —      —          ✓      ✓          ✓
- * Pocket Agent (Telegram)    ✓      ✓          ✓      ✓          ✓
- * WhatsApp Pocket Agent      —      —          ✓      ✓          ✓
- * On-demand bank sync        —      —          ✓      ✓          ✓
- * Priority support ticket    —      —          ✓      ✓          ✓
- * Dispute queue priority     3      2          1      1          0
- * Ombudsman packs included   —      —          —      —          ✓
+ *                            Free   Essential  Pro    Household
+ * Price / month              £0     £4.99      £9.99  £19.99
+ * Price / year               —      £44.99     £94.99 £199.99
+ * Seats                      1      1          1      4
+ * Bank connections           2      3          ∞      ∞
+ * Email connections          1      3          ∞      ∞
+ * Inbox scan history         90d    2 years    2y     2y
+ * AI letters / month         3      ∞          ∞      ∞
+ * Watchdog poll interval     manual 60m        30m    30m
+ * Dispute thread links       1      5          ∞      ∞
+ * Renewal reminders          —      ✓          ✓      ✓
+ * AI cancellation emails     —      ✓          ✓      ✓
+ * Money Hub full categories  top 5  full       full   full
+ * Money Hub budgets / goals  —      ✓          ✓      ✓
+ * Money Hub top merchants    —      —          ✓      ✓
+ * Price-increase alerts      in-app +email     +TG    +TG
+ * Export (CSV / PDF)         —      —          ✓      ✓
+ * Paybacker Assistant (MCP)  —      —          ✓      ✓
+ * Pocket Agent (Telegram)    ✓      ✓          ✓      ✓
+ * WhatsApp Pocket Agent      —      —          ✓      ✓
+ * On-demand bank sync        —      —          ✓      ✓
+ * Priority support ticket    —      —          ✓      ✓
+ * Dispute queue priority     3      2          1      1
+ * Ombudsman packs included   —      —          —      —
+ *
+ * Household is entitlement-identical to Pro on every row above. The ONLY
+ * difference it sells is four seats instead of one. Do not add a
+ * Household-only feature row here to justify the price — if a
+ * differentiator cannot be pointed at in code, it does not go on a
+ * pricing page.
  *
  * NOTE: the pre-2026-08 version of this comment claimed "Dispute-reply
  * watchdog 30m auto (all tiers)" and "Dispute thread links ∞" for every
@@ -127,13 +141,13 @@ export interface PlanLimits {
  *    Onboarding-trial override kept only where `trial_ends_at > now()`,
  *    and it can only ever PROMOTE (see the guard in getEffectiveTier).
  * 4. NEVER gate a Pro feature with `tier === 'pro'`. Use `isAtLeastPro`
- *    from @/lib/tier-rank, or read the flag off PLAN_LIMITS. Household and
- *    Dispute Pro users are entitled to everything Pro gets.
+ *    from @/lib/tier-rank, or read the flag off PLAN_LIMITS. Household
+ *    users are entitled to everything Pro gets.
  */
 /**
- * Pro's feature-flag list. Household and Dispute Pro spread this rather
- * than restating it, so a new Pro feature can never accidentally fail to
- * reach the tiers that sit above Pro.
+ * Pro's feature-flag list. Household spreads this rather than restating
+ * it, so a new Pro feature can never accidentally fail to reach the
+ * seat-based tier.
  */
 const PRO_FEATURES: string[] = [
   'complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions',
@@ -191,12 +205,17 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   },
 
   /**
-   * Household — £14.99/mo, £149.99/yr. Up to 4 members.
+   * Household — £19.99/mo, £199.99/yr. Up to 4 people.
    *
-   * Entitlement-identical to Pro on purpose. A household is four normal,
-   * fully data-isolated Paybacker accounts whose ENTITLEMENT is derived
-   * from one subscription; it is not a shared workspace and there is no
-   * cross-member visibility of any kind. See src/lib/household.ts.
+   * Entitlement-identical to Pro on purpose. A household is up to four
+   * normal, fully data-isolated Paybacker accounts whose ENTITLEMENT is
+   * derived from one subscription; it is not a shared workspace and there
+   * is no cross-member visibility of any kind. See src/lib/household.ts.
+   *
+   * The product it competes with is per-seat pricing: Emma charges £5.99
+   * a seat, so four seats is £23.96. £19.99 for four is about £5 each and
+   * two people sharing still pay under £10 each. Seats are the whole
+   * pitch — see the matrix note above.
    */
   household: {
     complaintsPerMonth: null,
@@ -212,35 +231,6 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     disputeQueuePriority: 1,
     householdSeats: 4,
     features: [...PRO_FEATURES, 'household_seats'],
-  },
-
-  /**
-   * Dispute Pro — £19.99/mo, £199.99/yr.
-   *
-   * For someone actively recovering money, where the willingness to pay
-   * anchors to the recovery (£100-£520 a case) rather than to a budgeting
-   * app. Every differentiator below is enforced by real code — see the
-   * per-field comments. Nothing aspirational is listed.
-   */
-  dispute_pro: {
-    complaintsPerMonth: null,
-    scanRunsPerMonth: null,
-    maxBanks: null,
-    maxEmails: null,
-    emailScanDays: 730,
-    maxSpaces: null,
-    disputeThreadLinks: null,
-    // 15-minute Watchdog polling vs 30 on Pro. Enforced directly by
-    // /api/cron/dispute-reply-sync, which reads this field.
-    watchdogSyncIntervalMinutes: 15,
-    whatsappPocketAgent: true,
-    // Unlimited Ombudsman escalation packs at no extra cost. One pack a
-    // month covers the price difference vs Pro.
-    ombudsmanPacksIncluded: true,
-    // Front of the Dispute Agent queue and the bank-sync queue.
-    disputeQueuePriority: 0,
-    householdSeats: null,
-    features: [...PRO_FEATURES, 'ombudsman_escalation_packs', 'dispute_queue_priority', 'watchdog_15min'],
   },
 };
 
@@ -287,8 +277,8 @@ export async function checkUsageLimit(
 
   // Trial grants Pro — but only ever as a PROMOTION. The pre-2026-08
   // version wrote `onboardingTrialActive ? 'pro' : storedTier`, which
-  // would have demoted a Dispute Pro subscriber to Pro for the duration
-  // of an overlapping onboarding trial. Otherwise trust the stored tier
+  // would demote a tier ranked above Pro for the duration of an
+  // overlapping onboarding trial. Otherwise trust the stored tier
   // verbatim — demotion is webhook-driven (see /api/stripe/webhooks).
   const trialTier: PlanTier = onboardingTrialActive && !isAtLeast(storedTier, 'pro')
     ? 'pro'
@@ -366,7 +356,7 @@ export async function incrementUsage(
  * Two overrides, both PROMOTE-ONLY:
  *   1. An active onboarding trial lifts the user to 'pro' for the trial
  *      window. It can never lower a tier that already ranks at or above
- *      Pro (that would have demoted a Dispute Pro subscriber mid-trial).
+ *      Pro (that would demote a Household subscriber mid-trial).
  *   2. An accepted seat on someone else's Household plan lifts a Free
  *      user to 'household'. Only consulted when the stored tier is
  *      'free', so the common path still costs exactly one query.
@@ -398,9 +388,13 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
 /**
  * Does this user get Ombudsman escalation packs without paying per pack?
  *
- * True only for tiers with `ombudsmanPacksIncluded`. Everyone else —
- * including Free — buys a pack for £14.99 as a one-off. That is the
- * point of the product: pay-per-need without a subscription.
+ * Currently FALSE for every tier — see `ombudsmanPacksIncluded` above.
+ * Every plan, Free included, buys a pack for £14.99 as a one-off. That is
+ * the point of the product: pay-per-need without a subscription.
+ *
+ * Kept as a function rather than inlined `false` so the day a bundled
+ * plan exists, this is already the single place that answers the
+ * question.
  */
 export async function hasIncludedEscalationPacks(userId: string): Promise<boolean> {
   const tier = await getEffectiveTier(userId);
@@ -423,7 +417,10 @@ export async function hasIncludedEscalationPacks(userId: string): Promise<boolea
  */
 export async function canUseWhatsApp(userId: string): Promise<boolean> {
   const tier = await getEffectiveTier(userId);
-  return PLAN_LIMITS[tier].whatsappPocketAgent === true;
+  // `?? PLAN_LIMITS.free` rather than a bare index: a stored tier string
+  // that is no longer in the union (e.g. the withdrawn 'dispute_pro')
+  // would otherwise throw here instead of failing closed.
+  return (PLAN_LIMITS[tier] ?? PLAN_LIMITS.free).whatsappPocketAgent === true;
 }
 
 /**
@@ -480,7 +477,7 @@ export async function checkFreeScanGate(userId: string): Promise<FreeScanGateRes
 export async function checkWatchdogLinkLimit(userId: string): Promise<UsageCheckResult> {
   const admin = getAdmin();
   const tier = await getEffectiveTier(userId);
-  const limit = PLAN_LIMITS[tier].disputeThreadLinks;
+  const limit = (PLAN_LIMITS[tier] ?? PLAN_LIMITS.free).disputeThreadLinks;
 
   if (limit === null) {
     return { allowed: true, used: 0, limit: null, tier, upgradeRequired: false };

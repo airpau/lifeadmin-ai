@@ -107,7 +107,7 @@ export function trackSignupCompleted(opts: { dedupeKey?: string; email?: string 
 export function trackPaidUpgrade(opts: {
   /**
    * Full PlanTier union rather than the old `'essential' | 'pro'` pair.
-   * Household and Dispute Pro are real upgrade destinations, and narrowing
+   * Household are real upgrade destinations, and narrowing
    * here forced every caller to cast — which is exactly how a new tier goes
    * untracked.
    */

@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Pro-only feature.
-  // isAtLeastPro, not !== 'pro' — Dispute Pro and Household are entitled to this.
+  // isAtLeastPro, not !== 'pro' — Household is entitled to this too.
   const plan = await getUserPlan(user.id);
   if (!isAtLeastPro(plan.tier) || !plan.isActive) {
     return NextResponse.json(

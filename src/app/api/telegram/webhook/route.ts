@@ -22,8 +22,8 @@ function getAdmin() {
  *
  * Replaces the two hardcoded `if (tier === 'essential') mrr += 4.99` blocks
  * that appeared twice in this file — they counted nothing for Household
- * (£14.99) or Dispute Pro (£19.99), so those subscribers were invisible in
- * the founder's revenue readout.
+ * (£19.99), so those subscribers were invisible in the founder's
+ * revenue readout.
  *
  * NOTE: `profiles.subscription_tier` carries no billing interval, so this
  * uses the monthly headline price for everyone. That approximation is
@@ -192,7 +192,7 @@ Paid users: ${paidUsers.length}
 Founding members (free Pro): ${foundingMembers}
 Revenue per tier: ${PAID_PLAN_TIERS.map(t => {
         // Built from PAID_PLAN_TIERS + TIER_PRICE_GBP rather than a hardcoded
-        // Essential/Pro pair, so Household and Dispute Pro revenue shows up.
+        // Essential/Pro pair, so Household revenue shows up.
         const c = tiers[t] || 0;
         const p = TIER_PRICE_GBP[t].monthly;
         return `${TIER_DISPLAY_NAME[t]} (${c} x £${p.toFixed(2)} = £${(c * p).toFixed(2)}/mo)`;

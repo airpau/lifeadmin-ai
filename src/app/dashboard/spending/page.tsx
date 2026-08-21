@@ -64,7 +64,7 @@ export default function SpendingPage() {
     );
   }
 
-  // Rank checks, not tier equality — Household and Dispute Pro sit above Pro
+  // Rank checks, not tier equality — Household sit above Pro
   // and are entitled to everything Pro unlocks here.
   const isPaid = isAtLeastEssential(tier);
   const isPro = isAtLeastPro(tier);

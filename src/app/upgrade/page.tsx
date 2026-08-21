@@ -53,10 +53,10 @@ import { ArrowLeft, CheckCircle2, CreditCard, Loader2, ShieldCheck, AlertTriangl
 
 import { TIER_DISPLAY_NAME, TIER_PRICE_GBP } from '@/lib/tier-rank';
 
-type Plan = 'essential' | 'pro' | 'household' | 'dispute_pro';
+type Plan = 'essential' | 'pro' | 'household';
 type Cycle = 'monthly' | 'yearly';
 
-const SELECTABLE_PLANS: Plan[] = ['essential', 'pro', 'dispute_pro', 'household'];
+const SELECTABLE_PLANS: Plan[] = ['essential', 'pro', 'household'];
 
 function isSelectablePlan(v: string | null | undefined): v is Plan {
   return !!v && (SELECTABLE_PLANS as string[]).includes(v);
@@ -92,7 +92,6 @@ const PLAN_HEADLINE: Record<Plan, { monthly: string; yearly: string; cadence: st
   essential:   { monthly: money(TIER_PRICE_GBP.essential.monthly),   yearly: money(TIER_PRICE_GBP.essential.yearly),   cadence: TIER_DISPLAY_NAME.essential },
   pro:         { monthly: money(TIER_PRICE_GBP.pro.monthly),         yearly: money(TIER_PRICE_GBP.pro.yearly),         cadence: TIER_DISPLAY_NAME.pro },
   household:   { monthly: money(TIER_PRICE_GBP.household.monthly),   yearly: money(TIER_PRICE_GBP.household.yearly),   cadence: TIER_DISPLAY_NAME.household },
-  dispute_pro: { monthly: money(TIER_PRICE_GBP.dispute_pro.monthly), yearly: money(TIER_PRICE_GBP.dispute_pro.yearly), cadence: TIER_DISPLAY_NAME.dispute_pro },
 };
 
 /**
@@ -106,7 +105,6 @@ function priceIdFor(plan: Plan, cycle: Cycle): string | undefined {
     case 'essential':   return (yearly ? PRICE_IDS.essential_yearly   : PRICE_IDS.essential_monthly)   || undefined;
     case 'pro':         return (yearly ? PRICE_IDS.pro_yearly         : PRICE_IDS.pro_monthly)         || undefined;
     case 'household':   return (yearly ? PRICE_IDS.household_yearly   : PRICE_IDS.household_monthly)   || undefined;
-    case 'dispute_pro': return (yearly ? PRICE_IDS.dispute_pro_yearly : PRICE_IDS.dispute_pro_monthly) || undefined;
     default:            return undefined;
   }
 }

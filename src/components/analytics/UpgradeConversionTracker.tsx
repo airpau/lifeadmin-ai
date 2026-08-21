@@ -43,8 +43,8 @@ export default function UpgradeConversionTracker({
   amountGbp,
 }: {
   dedupeKey: string;
-  // PlanTier, not 'essential' | 'pro' — a checkout can now land on Household
-  // or Dispute Pro and the conversion still needs to fire.
+  // PlanTier, not 'essential' | 'pro' — a checkout can now land on
+  // Household and the conversion still needs to fire.
   tier: PlanTier;
   billingPeriod: 'monthly' | 'annual';
   amountGbp: number;

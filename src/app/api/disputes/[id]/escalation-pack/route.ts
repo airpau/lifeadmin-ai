@@ -7,10 +7,10 @@
  *        "Buy for £14.99".
  *
  *   POST /api/disputes/[id]/escalation-pack
- *        Generates the pack. Requires either Dispute Pro (packs included)
- *        or an active `dispute_entitlements` row from a £14.99 one-off
- *        purchase. Free and Essential users can hold that entitlement —
- *        that is the entire point of the one-off product.
+ *        Generates the pack. Requires an active `dispute_entitlements`
+ *        row from a £14.99 one-off purchase. NO tier includes packs — a
+ *        user on any plan, Free included, buys one when they need it.
+ *        That is the entire point of the one-off product.
  *
  * Side effect worth knowing about: this route backfills
  * `disputes.fca_8_week_deadline`, a column created by migration
@@ -148,7 +148,8 @@ export async function POST(
         requiresPurchase: true,
         price_gbp: ESCALATION_PACK_PRICE_GBP,
         checkoutUrl: `/api/disputes/${id}/escalation-pack/checkout`,
-        upgradeUrl: '/upgrade?plan=dispute_pro&cycle=monthly',
+        // No `upgradeUrl` on purpose: there is no plan that bundles packs,
+        // so pointing at one would be a false claim.
       },
       { status: 402 },
     );
@@ -211,7 +212,7 @@ export async function POST(
 
   // Consume the entitlement ONLY after a successful save, so a failed
   // generation never costs the user their £14.99. Tier-included access
-  // (Dispute Pro) has no entitlement row to burn.
+  // (no tier grants it today) would have no entitlement row to burn.
   if (access.via === 'entitlement' && access.entitlement) {
     await redeemEntitlement(db, access.entitlement.id, id);
   }

@@ -99,7 +99,7 @@ export default function SpacesSettingsPage() {
 
   const overCap = !!(maxSpaces !== null && spaces.length > maxSpaces);
   // isAtLeastPro, not === 'pro' — unlimited Spaces is a Pro entitlement that
-  // Household and Dispute Pro also carry.
+  // Household also carry.
   const isPro = isAtLeastPro(tier);
 
   const beginCreate = () => {
@@ -241,8 +241,8 @@ export default function SpacesSettingsPage() {
           has more Spaces than their current plan allows — typical after
           a Pro→Essential downgrade. Pro users see nothing here because
           their cap is null (unlimited). */}
-      {/* !isPro (rank-based) rather than tier !== 'pro' — Household and
-          Dispute Pro are uncapped, so they must not see this banner. */}
+      {/* !isPro (rank-based) rather than tier !== 'pro' — Household is
+          uncapped too, so those users must not see this banner. */}
       {overCap && tier && !isPro && (
         <div className="mb-4">
           <UpgradeLock

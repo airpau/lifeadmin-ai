@@ -14,6 +14,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
 import { captureServer } from '@/lib/posthog-server';
+import type { PlanTier } from '@/lib/tier-rank';
 
 export type ConsumerLeadSource =
   | 'signup_form'
@@ -30,9 +31,15 @@ export interface CaptureInput {
   stripeCustomerId?: string | null;
   stripeRecoveryUrl?: string | null;
   // Widened 2026-08-16 alongside the consumer_leads_intended_tier_check
-  // constraint. An abandoned Household / Dispute Pro checkout previously
-  // violated that constraint inside the Stripe webhook and lost the lead.
-  intendedTier?: 'essential' | 'pro' | 'household' | 'dispute_pro' | null;
+  // constraint. An abandoned Household checkout previously violated that
+  // constraint inside the Stripe webhook and lost the lead.
+  //
+  // Derived from PlanTier rather than restated, so a tier added or removed
+  // from the canonical union lands here automatically. The DB constraint
+  // is deliberately WIDER than this union — it still accepts the withdrawn
+  // 'dispute_pro' value so historical rows stay readable. Nothing writes
+  // it any more.
+  intendedTier?: Exclude<PlanTier, 'free'> | null;
   intendedBillingInterval?: 'monthly' | 'yearly' | null;
   ipAddress?: string | null;
   userAgent?: string | null;

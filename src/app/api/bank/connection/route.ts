@@ -37,7 +37,7 @@ export async function GET() {
   const connection = connections.length > 0 ? connections[0] : null;
 
   // For Pro users: include today's manual sync count so the UI can show the daily limit.
-  // isAtLeastPro, not === 'pro' — Dispute Pro and Household get manual sync too,
+  // isAtLeastPro, not === 'pro' — Household get manual sync too,
   // so they need the same counter or the UI would show 0 of 3 used forever.
   let manualSyncsToday = 0;
   if (isAtLeastPro(plan.tier)) {

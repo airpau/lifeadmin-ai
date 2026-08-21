@@ -124,7 +124,7 @@ export async function GET(request: Request) {
       !profile?.trial_expired_at);
     const effectiveTier = (isTestUser || isOnboardingTrial) ? 'pro' : tier;
     // Rank comparisons, not equality: a literal `=== 'essential' || === 'pro'`
-    // list silently treats every tier ABOVE Pro (Household, Dispute Pro) as
+    // list silently treats every tier ABOVE Pro (Household) as
     // Free, which downgrades a paying subscriber's Money Hub.
     const isPaid = isAtLeastEssential(effectiveTier);
     const isPro = isAtLeastPro(effectiveTier);

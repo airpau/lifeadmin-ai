@@ -72,7 +72,7 @@ export default function ExportPage() {
 
   // Pro-only feature per CLAUDE.md tier matrix. Until tier loads, show a
   // lightweight skeleton (no flash of unlocked content for free users).
-  // isAtLeastPro, not !== 'pro' — Household and Dispute Pro include export.
+  // isAtLeastPro, not !== 'pro' — Household include export.
   // A null tier (still loading) fails the check, so the lock still shows first.
   if (!isAtLeastPro(tier)) {
     return (

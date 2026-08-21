@@ -13,8 +13,7 @@
  *    Authoritative pricing is TIER_PRICE_GBP in src/lib/tier-rank.ts:
  *      Essential:   £4.99 / mo  or £44.99 / yr  (yearly ≈ £3.75/mo eqv)
  *      Pro:         £9.99 / mo  or £94.99 / yr  (yearly ≈ £7.92/mo eqv)
- *      Household:  £14.99 / mo  or £149.99 / yr
- *      Dispute Pro:£19.99 / mo  or £199.99 / yr
+ *      Household:  £19.99 / mo  or £199.99 / yr  (up to 4 seats)
  *    `profiles.subscription_tier` does not record billing interval, so
  *    until that column exists we approximate MRR as
  *    count × monthly headline price. The error from yearly subs is at
@@ -100,16 +99,15 @@ export async function computeMrrGbp(
   }
 
   // Counted per paid tier rather than with two hardcoded `essential`/`pro`
-  // counters. Household (£14.99) and Dispute Pro (£19.99) subscribers were
-  // previously counted into neither bucket, so their revenue was missing
-  // from MRR entirely. They are NOT collapsed into Pro — they are priced
-  // differently and need their own line in the breakdown.
+  // counters. Household (£19.99) subscribers were previously counted into
+  // neither bucket, so their revenue was missing from MRR entirely. They
+  // are NOT collapsed into Pro — Household is priced differently and needs
+  // its own line in the breakdown.
   const counts: Record<PlanTier, number> = {
     free: 0,
     essential: 0,
     pro: 0,
     household: 0,
-    dispute_pro: 0,
   };
   for (const row of data || []) {
     const t = row.subscription_tier;

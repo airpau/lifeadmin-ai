@@ -937,13 +937,19 @@
 
 .m-v2-root .price-card .cta { margin-top: auto; }
 
-/* Dispute Pro recovery strip
-   --------------------------
+/* Household strip
+   ---------------
    Sits below the Free/Essential/Pro grid rather than becoming a fourth
    column: four cards at 1240px leave each under ~270px, which breaks the
    nested WhatsApp bullet list inside the Pro card. Orange rather than mint
-   so it reads as a different ladder (recovery, not tracking), matching the
-   recovery band on /pricing. Two columns on desktop, one below 980px. */
+   so it reads as a different kind of purchase (seats for a household, not
+   the next rung on a personal ladder), matching row 2 on /pricing. Two
+   columns on desktop, one below 980px.
+
+   Class names kept as `.recovery-strip` deliberately: this markup replaced
+   the withdrawn Dispute Pro strip in the same slot on 2026-08-21 and the
+   geometry is identical. Renaming the classes would be churn with no
+   reader benefit. */
 
 .m-v2-root .recovery-strip {
   margin-top: 28px;

@@ -36,7 +36,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
-import { sendNurtureEmail, type NurtureTemplate, type NurtureTier } from '@/lib/email/consumer-nurture';
+import { sendNurtureEmail, normalizeNurtureTier, type NurtureTemplate } from '@/lib/email/consumer-nurture';
 import { createOneOffDiscountCoupon } from '@/lib/stripe/coupons';
 import { captureServer } from '@/lib/posthog-server';
 
@@ -66,10 +66,11 @@ interface LeadRow {
   id: string;
   email: string;
   name: string | null;
-  // Widened from the old inline 'essential' | 'pro' — the column can now
-  // hold household / dispute_pro, and NurtureTier is the canonical union
-  // the email builder already understands.
-  intended_tier: NurtureTier | null;
+  // Read as a raw string, not a narrowed union: the CHECK constraint on
+  // this column still permits the withdrawn 'dispute_pro' value so old
+  // rows stay valid. normalizeNurtureTier() drops anything the email
+  // builder no longer knows about.
+  intended_tier: string | null;
   intended_billing_interval: 'monthly' | 'yearly' | null;
   funnel_stage: string;
   captured_at: string;
@@ -180,7 +181,7 @@ async function processLead(
   const sendResult = await sendNurtureEmail(plan.template, {
     email: lead.email,
     name: lead.name,
-    intendedTier: lead.intended_tier,
+    intendedTier: normalizeNurtureTier(lead.intended_tier),
     intendedBillingInterval: lead.intended_billing_interval,
     unsubscribeToken: lead.unsubscribe_token,
     promoCode,

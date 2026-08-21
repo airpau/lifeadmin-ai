@@ -207,7 +207,7 @@ export function NotificationsManager() {
     );
   }
 
-  // isAtLeastPro, not === 'pro' — Household and Dispute Pro carry the full
+  // isAtLeastPro, not === 'pro' — Household carry the full
   // Pro entitlement set, WhatsApp included.
   const isPro = isAtLeastPro(data.tier);
 

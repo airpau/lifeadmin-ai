@@ -90,7 +90,7 @@ export default function McpSettingsPage() {
         const status = profile?.subscription_status;
         const hasStripe = !!profile?.stripe_subscription_id;
         // isAtLeastPro, not === 'pro' — the Paybacker Assistant (MCP) is a Pro
-        // entitlement, so Household and Dispute Pro qualify too.
+        // entitlement, so Household qualify too.
         const pro =
           isAtLeastPro(tier) &&
           (hasStripe

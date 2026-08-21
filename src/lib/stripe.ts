@@ -22,21 +22,47 @@ export const stripe = process.env.STRIPE_SECRET_KEY
  *
  * Essential/Pro keep their hardcoded fallbacks because live subscribers
  * are billed on them and an unset env var must not break an existing
- * customer. The tiers added 2026-08-16 have NO fallback on purpose — an
- * unset env var resolves to '' and `priceIdToTier` returns null for it,
- * which every call site treats as "skip the tier write". Failing closed
- * beats inventing a price ID.
+ * customer. Household has NO fallback on purpose — an unset env var
+ * resolves to '' and `priceIdToTier` returns null for it, which every
+ * call site treats as "skip the tier write". Failing closed beats
+ * inventing a price ID.
+ *
+ * ---------------------------------------------------------------------
+ * WHY HOUSEHOLD READS THE `STRIPE_DISPUTE_PRO_*` ENV VARS (2026-08-21)
+ * ---------------------------------------------------------------------
+ * Household was repriced from £14.99/£149.99 to £19.99/£199.99 when the
+ * short-lived Dispute Pro tier was withdrawn and merged into it. The
+ * £19.99/£199.99 Stripe Prices already existed — they were minted for
+ * Dispute Pro — so Household points at them rather than us creating a
+ * second pair of identically-priced Stripe objects. The env var names are
+ * historical; the Prices they hold are the correct Household prices.
+ *
+ * Renaming the env vars in Vercel is safe to do later: add
+ * `STRIPE_HOUSEHOLD_MONTHLY_PRICE_ID_V2` (or similar) and swap the line
+ * below. Do NOT reuse `STRIPE_HOUSEHOLD_MONTHLY_PRICE_ID` — in production
+ * that still holds the retired £14.99 Price, and it is deliberately kept
+ * resolvable below so any subscriber billed on it keeps their tier.
  */
 export const PRICE_IDS = {
   essential_monthly:  process.env.STRIPE_ESSENTIAL_MONTHLY_PRICE_ID  || 'price_1TEsJe7qw7mEWYpyVIt4i2Iy',
   essential_yearly:   process.env.STRIPE_ESSENTIAL_YEARLY_PRICE_ID   || 'price_1TEsJf7qw7mEWYpysxw2lnL3',
   pro_monthly:        process.env.STRIPE_PRO_MONTHLY_PRICE_ID        || 'price_1TEsJf7qw7mEWYpy4alOarY6',
   pro_yearly:         process.env.STRIPE_PRO_YEARLY_PRICE_ID         || 'price_1TEsJf7qw7mEWYpyJmrhcy8b',
-  household_monthly:  process.env.STRIPE_HOUSEHOLD_MONTHLY_PRICE_ID  || '',
-  household_yearly:   process.env.STRIPE_HOUSEHOLD_YEARLY_PRICE_ID   || '',
-  dispute_pro_monthly: process.env.STRIPE_DISPUTE_PRO_MONTHLY_PRICE_ID || '',
-  dispute_pro_yearly:  process.env.STRIPE_DISPUTE_PRO_YEARLY_PRICE_ID  || '',
+  // £19.99 / £199.99 — see the block above for why these env var names.
+  household_monthly:  process.env.STRIPE_DISPUTE_PRO_MONTHLY_PRICE_ID || '',
+  household_yearly:   process.env.STRIPE_DISPUTE_PRO_YEARLY_PRICE_ID  || '',
 };
+
+/**
+ * Retired £14.99 / £149.99 Household Prices.
+ *
+ * Nothing new is sold on these, but they must stay resolvable to
+ * 'household' forever: if anyone is billed on one, `priceIdToTier` has to
+ * keep returning their tier or the next webhook would skip their tier
+ * write. Same rule as LEGACY_PRICE_ID_TO_TIER below — never remove.
+ */
+const RETIRED_HOUSEHOLD_MONTHLY = process.env.STRIPE_HOUSEHOLD_MONTHLY_PRICE_ID || '';
+const RETIRED_HOUSEHOLD_YEARLY  = process.env.STRIPE_HOUSEHOLD_YEARLY_PRICE_ID  || '';
 
 /**
  * One-off (non-subscription) price IDs.
@@ -117,8 +143,8 @@ export function priceIdToTier(priceId: string | null | undefined): PaidTier | nu
   // that may legitimately be '' when its env var is unset — the `!priceId`
   // guard above means '' can never reach here as the needle, so an unset
   // env var simply never matches rather than matching everything.
-  if (priceId === PRICE_IDS.dispute_pro_monthly || priceId === PRICE_IDS.dispute_pro_yearly) return 'dispute_pro';
   if (priceId === PRICE_IDS.household_monthly || priceId === PRICE_IDS.household_yearly) return 'household';
+  if (priceId === RETIRED_HOUSEHOLD_MONTHLY || priceId === RETIRED_HOUSEHOLD_YEARLY) return 'household';
   if (priceId === PRICE_IDS.pro_monthly || priceId === PRICE_IDS.pro_yearly) return 'pro';
   if (priceId === PRICE_IDS.essential_monthly || priceId === PRICE_IDS.essential_yearly) return 'essential';
   return LEGACY_PRICE_ID_TO_TIER[priceId] ?? null;
@@ -131,13 +157,13 @@ export function priceIdToCycle(priceId: string | null | undefined): 'monthly' | 
     priceId === PRICE_IDS.pro_yearly
     || priceId === PRICE_IDS.essential_yearly
     || priceId === PRICE_IDS.household_yearly
-    || priceId === PRICE_IDS.dispute_pro_yearly
+    || priceId === RETIRED_HOUSEHOLD_YEARLY
   ) return 'yearly';
   if (
     priceId === PRICE_IDS.pro_monthly
     || priceId === PRICE_IDS.essential_monthly
     || priceId === PRICE_IDS.household_monthly
-    || priceId === PRICE_IDS.dispute_pro_monthly
+    || priceId === RETIRED_HOUSEHOLD_MONTHLY
   ) return 'monthly';
   return null;
 }

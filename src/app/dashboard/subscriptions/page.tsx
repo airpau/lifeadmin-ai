@@ -1548,7 +1548,7 @@ export default function SubscriptionsPage() {
                   syncBtnTitle = 'Upgrade to Essential or Pro for more syncs';
                 } else if (!isAtLeastPro(bankTierInfo.tier)) {
                   // Rank check rather than === 'essential' — on-demand sync is a
-                  // Pro entitlement, so Household and Dispute Pro must fall
+                  // Pro entitlement, so Household must fall
                   // through to the enabled branch below, not be locked out here.
                   syncBtnDisabled = true;
                   syncBtnLabel = 'Sync Now (Pro only)';

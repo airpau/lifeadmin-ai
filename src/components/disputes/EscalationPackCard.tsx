@@ -2,7 +2,8 @@
 
 /**
  * EscalationPackCard — the in-dispute surface for the Ombudsman
- * escalation pack (£14.99 one-off, or included with Dispute Pro).
+ * escalation pack — £14.99 as a one-off, on every plan including Free.
+ * No subscription tier bundles it, so this card never up-sells a plan.
  *
  * Sits under the Dispute Agent banner on the dispute detail page. Drops in
  * without touching the 3,000-line disputes-page monolith, same pattern as
@@ -218,12 +219,9 @@ export default function EscalationPackCard({ disputeId }: { disputeId: string })
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
                   {busy ? 'Opening checkout…' : `Get the escalation pack for £${entitlement.price_gbp.toFixed(2)}`}
                 </button>
-                <a
-                  href="/upgrade?plan=dispute_pro&cycle=monthly"
-                  className="text-xs font-medium text-slate-600 underline underline-offset-2 hover:text-slate-900"
-                >
-                  Or get every pack included with Dispute Pro
-                </a>
+                <span className="text-xs text-slate-500">
+                  One payment, no subscription. Same price on every plan.
+                </span>
               </>
             )}
             {entitlement.via === 'tier' && (

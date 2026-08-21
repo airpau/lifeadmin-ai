@@ -52,10 +52,26 @@ import {
   PocketAgentMobileMock,
 } from './mobile-mocks';
 import { createClient } from '@/lib/supabase/client';
+import { TIER_PRICE_GBP } from '@/lib/tier-rank';
 import './styles.css';
 
 // React.CSSProperties doesn't know about CSS custom properties.
 type CSSVarProperties = CSSProperties & Record<`--${string}`, string | number>;
+
+// ---------------------------------------------------------------------------
+// Household pricing — derived, never transcribed.
+//
+// The rest of this page still hardcodes the Free/Essential/Pro headline
+// numbers (they have not moved since launch). Household has moved once
+// already (£14.99 → £19.99 on 2026-08-21), so its numbers are computed from
+// TIER_PRICE_GBP — the same table the Stripe webhook reports sale amounts
+// from — rather than typed in and left to rot.
+// ---------------------------------------------------------------------------
+const money = (n: number) => `£${n.toFixed(2)}`;
+const householdAnnualSaving = TIER_PRICE_GBP.household.monthly * 12 - TIER_PRICE_GBP.household.yearly;
+const householdSavingPercent = Math.round(
+  (householdAnnualSaving / (TIER_PRICE_GBP.household.monthly * 12)) * 100,
+);
 
 // ---------------------------------------------------------------------------
 // Reveal — scroll-triggered fade/slide
@@ -917,10 +933,9 @@ const VOTE_OPTIONS: ReadonlyArray<{ key: string; label: string }> = [
   { key: 'native_app', label: 'Native iPhone and Android app' },
   { key: 'sms_agent', label: 'Pocket Agent over SMS, no smartphone needed' },
   // 'household' (shared household accounts) was removed on 2026-08-21: it is
-  // built, so inviting votes for it was misleading. Replaced with an option
-  // that genuinely is not built. Do not re-add household here, and do not
-  // advertise the Household plan anywhere on this page while
-  // NEXT_PUBLIC_HOUSEHOLD_PLAN_ENABLED is off.
+  // built AND on sale (see the Household strip in the pricing section), so
+  // inviting votes for it was misleading. Replaced with an option that
+  // genuinely is not built. Do not re-add household here.
   { key: 'landlord_disputes', label: 'Deposit and landlord disputes' },
   { key: 'autopilot', label: 'Savings autopilot that switches you automatically' },
   { key: 'insurance', label: 'Car and home insurance disputes' },
@@ -2034,6 +2049,74 @@ export default function HomepageV3PreviewPage() {
               </Link>
             </Reveal>
           </div>
+
+          {/* ==============================================================
+              Household strip.
+              --------------------------------------------------------------
+              Occupies the slot the withdrawn Dispute Pro strip used to
+              hold (commit dae12446), reusing the same `.recovery-strip`
+              styles. It sits below the Free/Essential/Pro grid rather than
+              becoming a fourth column because four cards at 1240px leave
+              each under ~270px, which breaks the nested WhatsApp list in
+              the Pro card.
+
+              HARD LIMITS ON THIS COPY — the Dispute Pro strip was pulled
+              because its differentiators did not survive scrutiny. Do not
+              repeat the mistake here:
+                - Seats are the ONLY differentiator. Household is
+                  entitlement-identical to Pro (src/lib/plan-limits.ts).
+                - No priority queue, no faster Watchdog, no included
+                  escalation packs. None of those are real.
+                - No "cheaper for a couple". £19.99 is a penny more than
+                  two Pro subscriptions. Two people get one bill and room
+                  to grow, not a discount, and we say exactly that.
+                - No outcome or success-rate promises anywhere.
+              Prices come from TIER_PRICE_GBP so the strip cannot drift
+              from what Stripe actually charges.
+              ============================================================== */}
+          <Reveal className="recovery-strip">
+            <div className="recovery-strip__lead">
+              <span className="recovery-strip__badge">For couples and families</span>
+              <div className="recovery-strip__tier">Household</div>
+              <div className="recovery-strip__price">
+                {money(TIER_PRICE_GBP.household.monthly)}<span className="per">/month</span>
+              </div>
+              <div className="recovery-strip__annual">
+                or {money(TIER_PRICE_GBP.household.yearly)} a year · saves {money(householdAnnualSaving)} · about {householdSavingPercent}% off
+              </div>
+              <p className="recovery-strip__sub">
+                Everyone in the house covered by one subscription. Up to four
+                people, each with their own login and their own private view of
+                their own money, on a single bill.
+              </p>
+              <Link className="btn btn-orange cta" href="/pricing" style={{ justifyContent: 'center' }}>
+                See what Household includes →
+              </Link>
+            </div>
+
+            <ul className="recovery-strip__list">
+              <li>
+                <strong>Up to 4 people.</strong> Couples, families, flatmates,
+                whoever shares the bills. Start with two and add the others
+                whenever you like.
+              </li>
+              <li>
+                <strong>Everything in Pro, for each person.</strong> Unlimited AI
+                dispute letters, unlimited bank and email connections, the
+                WhatsApp Pocket Agent, Money Hub and export.
+              </li>
+              <li>
+                <strong>Nobody sees anyone else&rsquo;s money.</strong> Accounts,
+                transactions, budgets and disputes stay completely private to
+                each person. The only thing shared is the bill.
+              </li>
+              <li>
+                <strong>One card, one renewal date.</strong> That works out at{' '}
+                {money(TIER_PRICE_GBP.household.monthly / 4).replace(/\.00$/, '')} each
+                a month with four people.
+              </li>
+            </ul>
+          </Reveal>
 
           {/* One-off purchase, so deliberately not a pricing card. */}
           <p className="oneoff-note">
