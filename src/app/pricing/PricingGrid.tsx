@@ -226,33 +226,6 @@ export default function PricingGrid() {
         </div>
 
         <div className={`pricing-grid pricing-grid--recovery${HOUSEHOLD_ENABLED ? ' is-three-up' : ''}`}>
-          <div className="price-card price-card--recovery">
-            <span className="ribbon ribbon--orange">Best for open disputes</span>
-            <div className="tier">Dispute Pro</div>
-            <Price tier="dispute_pro" isYearly={isYearly} />
-            <AnnualLine tier="dispute_pro" isYearly={isYearly} />
-            <ul>
-              <li>Everything in Pro</li>
-              <li>
-                <strong>Ombudsman escalation packs included</strong>: the referral
-                letter, your evidence bundle and the deadline tracked, on every
-                dispute. {gbp(ESCALATION_PACK_PRICE_GBP)} each otherwise
-              </li>
-              <li><strong>Front of the queue</strong> for the Dispute Agent, so your cases are reviewed first on every run</li>
-              <li>Watchdog checks your inbox every <strong>15 minutes</strong>, not 30</li>
-              <li>On-demand bank sync with no cooldown</li>
-              <li>Support tickets raised at top priority</li>
-            </ul>
-            <PricingCTA
-              plan="dispute_pro"
-              billingCycle={cycle}
-              className="btn btn-orange cta"
-              style={{ justifyContent: 'center' }}
-            >
-              Start Dispute Pro →
-            </PricingCTA>
-          </div>
-
           {HOUSEHOLD_ENABLED && (
             <div className="price-card price-card--recovery">
               <div className="tier">Household</div>

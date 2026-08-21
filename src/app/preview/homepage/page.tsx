@@ -2035,65 +2035,13 @@ export default function HomepageV3PreviewPage() {
             </Reveal>
           </div>
 
-          {/* Dispute Pro — deliberately a full-width strip, not a fourth
-              column. The Pro card carries a nested WhatsApp sub-list, so a
-              4-up grid at 1240px squeezes every card under ~270px and the
-              nested bullets wrap to three lines each. The strip also mirrors
-              /pricing, where Dispute Pro sits in a separate "recovery band"
-              below the Free/Essential/Pro ladder: the two are priced against
-              different things (a subscription tracker vs a recovery), so they
-              should not read as one continuous ladder. Collapses to a single
-              column at 980px alongside the grid above it. */}
-          <Reveal className="recovery-strip">
-            <div className="recovery-strip__lead">
-              <span className="recovery-strip__badge">Best for open disputes</span>
-              <div className="recovery-strip__tier">Dispute Pro</div>
-              <div className="recovery-strip__price">
-                £19.99<span className="per">/month</span>
-              </div>
-              <div className="recovery-strip__annual">
-                or £199.99 a year · saves £39.89 · about 17% off
-              </div>
-              <p className="recovery-strip__sub">
-                For the months you are actively chasing money back. A single
-                upheld dispute is commonly worth £100 to £520, so this tier is
-                priced against the recovery rather than against a budgeting
-                app. You still keep 100% of whatever comes back: there is no
-                success fee on any plan.
-              </p>
-              <Link
-                className="btn btn-orange cta"
-                href="/auth/signup"
-                style={{ justifyContent: 'center' }}
-              >
-                Start Dispute Pro →
-              </Link>
-            </div>
-            <ul className="recovery-strip__list">
-              <li>Everything in Pro, including the WhatsApp Pocket Agent</li>
-              <li>
-                <strong>Ombudsman escalation packs included</strong> on every
-                dispute, £14.99 each on other plans
-              </li>
-              <li>
-                <strong>Front of the Dispute Agent queue</strong>, so your cases
-                are reviewed first on every run
-              </li>
-              <li>
-                Watchdog checks your inbox for replies every{' '}
-                <strong>15 minutes</strong>, not 30
-              </li>
-            </ul>
-          </Reveal>
-
           {/* One-off purchase, so deliberately not a pricing card. */}
           <p className="oneoff-note">
             <strong>Mid-dispute and need to escalate?</strong> An Ombudsman
             escalation pack is £14.99 as a one-off, on any plan including Free.
-            It is the referral letter for the ombudsman that covers your case,
-            your dispute correspondence bundled as numbered exhibits, and the
-            deadlines tracked. You buy it from inside the dispute it applies to,
-            with no subscription.
+            It bundles your dispute correspondence as numbered exhibits and
+            tracks the referral deadline, alongside the escalation letter
+            Paybacker drafts for you on every plan.
           </p>
 
           <p className="compare-link">
