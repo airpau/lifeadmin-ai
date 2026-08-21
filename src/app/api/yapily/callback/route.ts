@@ -346,8 +346,22 @@ export async function GET(request: NextRequest) {
         if (Array.isArray(consent?.featureScope) && consent.featureScope.length) {
           scheduleUpdate.consent_feature_scope = consent.featureScope;
         }
-        if (consent?.expiresAt) scheduleUpdate.consent_expires_at = consent.expiresAt;
         if (consent?.reconfirmBy) scheduleUpdate.consent_reconfirm_by = consent.reconfirmBy;
+
+        // consent_expires_at holds whichever deadline bites FIRST.
+        //
+        // Yapily gives us two dates and they mean different things:
+        // expiresAt is when the consent itself lapses, reconfirmBy is
+        // when UK reconfirmation is due. Data access stops at whichever
+        // arrives first, so that is the date the status-maintenance
+        // sweep and the in-app banner must work from. Keeping the
+        // earlier of the two here means the reminder schedule cannot be
+        // caught out by a consent whose reconfirmation falls due well
+        // before its nominal expiry.
+        const deadlines = [consent?.expiresAt, consent?.reconfirmBy]
+          .filter((d): d is string => typeof d === 'string' && !Number.isNaN(Date.parse(d)))
+          .sort();
+        if (deadlines.length > 0) scheduleUpdate.consent_expires_at = deadlines[0];
         if (consent?.lastConfirmedAt) {
           scheduleUpdate.consent_last_confirmed_at = consent.lastConfirmedAt;
         }

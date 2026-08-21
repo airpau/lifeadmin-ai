@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { dispatchConsentReminders } from '@/lib/yapily/dispatch-consent-reminders';
 
 export const maxDuration = 60;
 
@@ -11,20 +12,43 @@ function getAdmin() {
 }
 
 /**
- * Daily consent renewal cron — checks for expiring and expired bank consents.
+ * Daily consent reminder cron — UK 90-day reconfirmation.
  *
- * Schedule: Daily at 7am — configured in vercel.json
+ * Schedule: daily at 07:00 UTC — configured in vercel.json
  *
- * 1. Finds active connections expiring within 7 days → marks as 'expiring_soon'
- * 2. Finds active/expiring_soon connections already expired → marks as 'expired'
- * 3. WhatsApp reconnect nudge (Pro users with a linked session)
- * 4. Email reminder for EVERY tier (Yapily build review step 9) — the
- *    WhatsApp template is Pro-only, so free and Essential users previously
- *    got no pre-expiry warning at all and simply found their bank feed had
- *    stopped. Deduped per connection per day via notification_log.
- * 5. Drains the upstream-revoke retry queue (build review step 8) — rows
+ * 1. Status maintenance: active → expiring_soon (inside 7 days), and
+ *    → expired once the deadline passes. This drives the in-app banner.
+ * 2. Reminders: every connection whose deadline is between 7 days away
+ *    and 3 days past gets ONE message a day, on ONE channel.
+ * 3. Drains the upstream-revoke retry queue (build review step 8) — rows
  *    where DELETE /consents/{id} failed during disconnect, so the consent
  *    may still be live at the bank while our row says 'revoked'.
+ *
+ * ── Rewritten 2026-08-21 ─────────────────────────────────────────────
+ *
+ * The reminder half of this cron had never worked. Production evidence:
+ * one email sent in the entire history of the system, and that one was
+ * the "already stopped" variant. No user had ever received an advance
+ * warning.
+ *
+ * Two structural bugs, both fixed here:
+ *
+ *   (a) The candidate list was built from the rows returned by the two
+ *       status UPDATEs — i.e. only connections whose status CHANGED on
+ *       that run. A connection flipped to `expiring_soon` on T-7 could
+ *       not be a candidate again until it flipped to `expired` on T-0.
+ *       Ceiling: two messages per connection, ever. Step 2 now SELECTs
+ *       by deadline, independently of any status change, so the daily
+ *       cadence the dedup keys always implied can actually happen.
+ *
+ *   (b) It sent WhatsApp AND email for the same event on the same day,
+ *       via two disjoint dedup keys, with a comment justifying it.
+ *       Migle Ivanauskaite (Yapily) asked us to simplify to a single
+ *       preferred channel. There is now one key per connection per day
+ *       and one channel, chosen by pickReminderChannel.
+ *
+ * It also now reads Yapily's own `consent_reconfirm_by` in preference
+ * to our locally guessed `consent_expires_at`.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -71,131 +95,12 @@ export async function GET(request: NextRequest) {
 
   const expiredCount = expired?.length || 0;
 
-  // ── Step 3: Buzz WhatsApp Pocket Agent users with paybacker_reconnect_required.
-  // Fires once per user-per-connection-per-day via notification_log dedup.
-  // Combines both expiring_soon and expired sets — both states need user action.
-  // Shared candidate set for both the WhatsApp nudge and the email
-  // reminder — every connection that changed state on this run.
-  const candidates = [
-    ...(expiringSoon ?? []),
-    ...(expired ?? []),
-  ] as Array<{
-    id: string;
-    user_id: string;
-    provider: string | null;
-    bank_name: string | null;
-    consent_expires_at: string | null;
-  }>;
-  const today = now.slice(0, 10);
-
-  let whatsappSent = 0;
-  try {
-    const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
-    for (const c of candidates) {
-      const refKey = `reconnect_required_${c.id}_${today}`;
-      const { data: already } = await supabase
-        .from('notification_log')
-        .select('id')
-        .eq('reference_key', refKey)
-        .limit(1);
-      if (already && already.length > 0) continue;
-      const { data: session } = await supabase
-        .from('whatsapp_sessions')
-        .select('whatsapp_phone')
-        .eq('user_id', c.user_id)
-        .eq('is_active', true)
-        .is('opted_out_at', null)
-        .maybeSingle();
-      if (!session?.whatsapp_phone) continue;
-      const provider = c.provider || 'your bank';
-      // /dashboard/connections does not exist — this template pointed
-      // users at a 404 for every reconnect prompt we ever sent. Money Hub
-      // is where bank connections actually live, and it now carries the
-      // one-click renewal banner (build review step 9).
-      const url = 'paybacker.co.uk/dashboard/money-hub';
-      try {
-        await sendWhatsAppTemplate({
-          to: session.whatsapp_phone,
-          templateName: 'paybacker_reconnect_required',
-          parameters: [provider, url],
-        });
-        await supabase.from('notification_log').insert({
-          user_id: c.user_id,
-          notification_type: 'reconnect_required',
-          reference_key: refKey,
-        });
-        whatsappSent += 1;
-      } catch (e) {
-        console.warn('[consent-renewal] reconnect_required send failed', e);
-      }
-    }
-  } catch (e) {
-    console.warn('[consent-renewal] WhatsApp dispatch loop failed', e);
-  }
-
-  // ── Step 4: Email reminder — EVERY tier (build review step 9) ──
-  // The WhatsApp template above is Pro-only. Email is how a free or
-  // Essential user finds out their bank feed is about to stop. Deduped on
-  // its own reference_key so it fires independently of the WhatsApp nudge
-  // (a Pro user legitimately gets both — different channels, same event).
-  let emailsSent = 0;
-  try {
-    const { sendConsentRenewalReminderEmail } = await import(
-      '@/lib/email/consent-renewal-reminder'
-    );
-    for (const c of candidates) {
-      const refKey = `consent_renewal_email_${c.id}_${today}`;
-      const { data: already } = await supabase
-        .from('notification_log')
-        .select('id')
-        .eq('reference_key', refKey)
-        .limit(1);
-      if (already && already.length > 0) continue;
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('email, first_name, full_name')
-        .eq('id', c.user_id)
-        .maybeSingle();
-      const to = profile?.email as string | undefined;
-      if (!to) continue;
-
-      const firstName =
-        ((profile?.first_name as string | null) ||
-          (profile?.full_name as string | null) ||
-          '')
-          .toString()
-          .trim()
-          .split(/\s+/)[0] || '';
-
-      // Whole days remaining; <= 0 flips the copy to "already stopped".
-      const daysLeft = c.consent_expires_at
-        ? Math.ceil(
-            (new Date(c.consent_expires_at).getTime() - Date.now()) / 86_400_000,
-          )
-        : 0;
-
-      try {
-        const ok = await sendConsentRenewalReminderEmail(to, firstName, {
-          bankName: c.bank_name || c.provider || 'your bank',
-          daysLeft,
-        });
-        if (!ok) continue;
-        // Only log AFTER a confirmed send, so a transient Resend failure
-        // gets retried on tomorrow's run instead of being suppressed.
-        await supabase.from('notification_log').insert({
-          user_id: c.user_id,
-          notification_type: 'consent_renewal_email',
-          reference_key: refKey,
-        });
-        emailsSent += 1;
-      } catch (e) {
-        console.warn(`[consent-renewal] reminder email failed for connection=${c.id}`, e);
-      }
-    }
-  } catch (e) {
-    console.warn('[consent-renewal] email dispatch loop failed', e);
-  }
+  // ── Step 2: Send the daily reminder ──────────────────────────────
+  //
+  // Selected by DEADLINE, not by "did the status change on this run".
+  // That distinction is the whole fix — see the header comment.
+  const reminderResult = await dispatchConsentReminders(supabase, new Date());
+  const { sentByChannel, remindersSent, remindersSkipped } = reminderResult;
 
   // ── Step 5: Drain the upstream-revoke retry queue (build review step 8) ──
   // These are connections the user disconnected where DELETE /consents/{id}
@@ -256,15 +161,18 @@ export async function GET(request: NextRequest) {
   }
 
   console.log(
-    `Consent renewal: expiring_soon=${expiringSoonCount} expired=${expiredCount} whatsapp_sent=${whatsappSent} emails_sent=${emailsSent} revokes_retried=${revokesRetried} revokes_succeeded=${revokesSucceeded}`
+    `Consent renewal: expiring_soon=${expiringSoonCount} expired=${expiredCount} ` +
+    `reminders_sent=${remindersSent} (whatsapp=${sentByChannel.whatsapp} telegram=${sentByChannel.telegram} email=${sentByChannel.email}) ` +
+    `skipped=${remindersSkipped} revokes_retried=${revokesRetried} revokes_succeeded=${revokesSucceeded}`
   );
 
   return NextResponse.json({
     ok: true,
     expiring_soon: expiringSoonCount,
     expired: expiredCount,
-    whatsapp_sent: whatsappSent,
-    emails_sent: emailsSent,
+    reminders_sent: remindersSent,
+    reminders_by_channel: sentByChannel,
+    reminders_skipped: remindersSkipped,
     revokes_retried: revokesRetried,
     revokes_succeeded: revokesSucceeded,
   });

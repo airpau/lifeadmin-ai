@@ -56,16 +56,23 @@ export async function sendConsentRenewalReminderEmail(
           paragraph(
             'While the connection is paused we cannot spot price rises, catch duplicate charges, or warn you about direct debits you may not be able to cover.',
           ),
+          // These steps must match what the page actually renders.
+          // Until 2026-08-21 they didn't: an expired connection was
+          // routed to a "Reconnect {bank}" button on a different page,
+          // so anyone following these instructions found no Renew
+          // button anywhere. Both the banner and this list now describe
+          // the same one-tap reconfirmation.
           card(
             orderedList([
               'Open Money Hub',
-              `Find the ${bank} card at the top of the page`,
-              'Tap Renew — it takes about ten seconds',
+              `Find the ${bank} banner at the top of the page`,
+              'Tick the box to confirm you still want us to see this account',
+              'Tap Confirm access — about ten seconds, no bank login',
             ]),
             { eyebrow: 'How to restore it' },
           ),
         ].join('\n'),
-        cta: { label: `Renew ${bank}`, href: moneyHubUrl },
+        cta: { label: `Restore ${bank}`, href: moneyHubUrl },
       }
     : {
         subject: `Your ${bank} connection expires in ${input.daysLeft} ${input.daysLeft === 1 ? 'day' : 'days'}`,
@@ -75,7 +82,7 @@ export async function sendConsentRenewalReminderEmail(
         body: [
           callout(
             'Renew now and nothing changes',
-            'One tap extends your existing permission. You will not need to log in to your bank again, and your transaction history stays exactly as it is.',
+            'One tap extends your existing permission. In almost every case you will not need to log in to your bank again, and your transaction history stays exactly as it is.',
           ),
           paragraph(
             'If you let it lapse, we stop receiving new transactions — which means no price-rise alerts, no duplicate-charge detection, and no low-balance warnings until you reconnect.',
