@@ -16,6 +16,8 @@ import {
   reminderStage,
   reminderDeadline,
   pickReminderChannel,
+  reminderChannelChain,
+  isUrgentReminder,
   reminderReferenceKey,
   reminderSchedule,
   FIRST_REMINDER_DAYS_BEFORE,
@@ -176,6 +178,52 @@ describe('pickReminderChannel', () => {
 
   it('returns null when the user has no channel at all', () => {
     assert.equal(pickReminderChannel(base), null);
+  });
+});
+
+describe('reminderChannelChain', () => {
+  it('offers a fallback so a blocked channel does not lose the day', () => {
+    // A deadline passes once. If WhatsApp refuses at send time — its own
+    // suppression list, a marketing opt-in check — dropping the day's
+    // reminder is worse than trying the next channel.
+    const chain = reminderChannelChain({
+      tier: 'pro',
+      isPro: true,
+      whatsappPhone: '+447700900000',
+      telegramChatId: 123,
+      email: 'a@b.com',
+    });
+    assert.deepEqual(chain.map((c) => c.channel), ['whatsapp', 'telegram', 'email']);
+  });
+
+  it('omits WhatsApp entirely below Pro', () => {
+    const chain = reminderChannelChain({
+      tier: 'free',
+      isPro: false,
+      whatsappPhone: '+447700900000',
+      telegramChatId: 123,
+      email: 'a@b.com',
+    });
+    assert.deepEqual(chain.map((c) => c.channel), ['telegram', 'email']);
+  });
+
+  it('is empty when the user has no channel', () => {
+    assert.deepEqual(
+      reminderChannelChain({ tier: 'free', isPro: false, whatsappPhone: null, telegramChatId: null, email: null }),
+      [],
+    );
+  });
+});
+
+describe('isUrgentReminder', () => {
+  it('spends the quiet-hours and daily-cap bypass only at the very end', () => {
+    // Those caps exist to stop us training people to ignore us. At T-7
+    // the user has a week; burning the bypass then is not justified.
+    assert.equal(isUrgentReminder(7), false);
+    assert.equal(isUrgentReminder(2), false);
+    assert.equal(isUrgentReminder(1), true);
+    assert.equal(isUrgentReminder(0), true);
+    assert.equal(isUrgentReminder(-3), true);
   });
 });
 

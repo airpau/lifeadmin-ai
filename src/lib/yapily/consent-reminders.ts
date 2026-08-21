@@ -139,26 +139,62 @@ export interface ChannelChoice {
  * for the one-per-day slot.
  */
 export function pickReminderChannel(a: ChannelAvailability): ChannelChoice | null {
+  return reminderChannelChain(a)[0] ?? null;
+}
+
+/**
+ * The ordered list of channels to try, best first.
+ *
+ * We attempt ONE and stop as soon as it is delivered — this is not a
+ * fan-out. The list exists because a channel can refuse at send time
+ * for reasons we cannot know in advance: WhatsApp applies its own
+ * suppression list and a marketing opt-in check inside the facade. If
+ * the best channel refuses, dropping the day's reminder entirely would
+ * be the wrong answer for a deadline that only passes once, so we fall
+ * through to the next one.
+ *
+ * Deliberately NOT a reason to fall through: a `deferred` WhatsApp.
+ * That means the facade has queued it for the 18:00 evening digest and
+ * it genuinely will arrive today, so falling through would send the
+ * same person two reminders for one event.
+ */
+export function reminderChannelChain(a: ChannelAvailability): ChannelChoice[] {
+  const chain: ChannelChoice[] = [];
+
   if (a.whatsappPhone && a.isPro) {
-    return { channel: 'whatsapp', reason: 'Pro tier with an active opted-in WhatsApp session' };
+    chain.push({ channel: 'whatsapp', reason: 'Pro tier with an active opted-in WhatsApp session' });
   }
   if (a.telegramChatId) {
-    return {
+    chain.push({
       channel: 'telegram',
-      reason: a.whatsappPhone
-        ? 'WhatsApp session exists but tier is below Pro — falling back to Telegram'
+      reason: a.whatsappPhone && !a.isPro
+        ? 'WhatsApp session exists but tier is below Pro — using Telegram'
         : 'active Telegram session',
-    };
+    });
   }
   if (a.email) {
-    return {
+    chain.push({
       channel: 'email',
-      reason: a.whatsappPhone && !a.isPro
-        ? 'WhatsApp session exists but tier is below Pro, and no Telegram — falling back to email'
-        : 'no messaging channel linked',
-    };
+      reason: a.whatsappPhone && !a.isPro && !a.telegramChatId
+        ? 'WhatsApp session exists but tier is below Pro, and no Telegram — using email'
+        : 'email',
+    });
   }
-  return null;
+  return chain;
+}
+
+/**
+ * Is this reminder urgent enough to bypass WhatsApp's quiet hours and
+ * the 2-paid-templates-per-day cap?
+ *
+ * Only in the last 24 hours and after. Those caps exist to stop us
+ * training people to ignore us, and a T-7 notice does not warrant
+ * spending that budget — the user has a week. A connection expiring
+ * today or already lapsed is different: it stops their bank feed, and
+ * they cannot act on a message they never receive.
+ */
+export function isUrgentReminder(daysLeft: number): boolean {
+  return daysLeft <= 1;
 }
 
 /**
