@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { toMoneyHubAlertRow } from '@/lib/email/scan-persistence';
 
 export const maxDuration = 120;
 import { createClient } from '@/lib/supabase/server';
@@ -363,17 +364,18 @@ IMPORTANT:
 
         // Populate Deals / Alerts
         if (newAlerts.length > 0) {
-          await admin.from('money_hub_alerts').insert(
-            newAlerts.map((o: any) => ({
-              user_id: user.id,
-              type: o.type,
-              title: o.title,
-              description: o.description,
-              value_gbp: o.amount || 0,
-              status: 'active',
-              metadata: o
-            }))
-          ).then(({ error: e }) => { if (e) console.error('[email/scan] money_hub_alerts insert error:', e.message); });
+          // The column is `alert_type`, not `type`, and it is NOT NULL.
+          // Every insert on this path violated the constraint and was
+          // swallowed by the .then() below, so Money Hub alerts from
+          // Outlook and IMAP scans have never landed. Mapped through
+          // toMoneyHubAlertRow so the CHECK constraint is respected too.
+          const alertRows = newAlerts
+            .map((o: any) => toMoneyHubAlertRow(o, user.id))
+            .filter((r): r is Record<string, unknown> => r !== null);
+          if (alertRows.length > 0) {
+          await admin.from('money_hub_alerts').insert(alertRows)
+          .then(({ error: e }) => { if (e) console.error('[email/scan] money_hub_alerts insert error:', e.message); });
+          }
         }
 
         // The dashboard's "Email scanner" card reads from

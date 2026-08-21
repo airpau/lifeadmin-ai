@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { toFindingRow, toMoneyHubAlertRow } from '@/lib/email/scan-persistence';
 
 export const maxDuration = 120;
 import { createClient } from '@/lib/supabase/server';
@@ -158,30 +159,25 @@ export async function POST(request: NextRequest) {
       const standard      = opportunities.filter((o: any) => isNew(o) && !['bill','contract','dispute_response','cancellation_confirmation'].includes(o.type));
       const allNew        = [...bills, ...contracts, ...disputeResps, ...cancels, ...subs, ...priceAlerts, ...standard.filter((o: any) => !subs.includes(o) && !priceAlerts.includes(o))];
 
-      // ---- 1. email_scan_findings — bills, contracts, price alerts ----
-      const findingsToInsert = [...bills, ...contracts, ...priceAlerts];
-      if (findingsToInsert.length > 0) {
-        await admin.from('email_scan_findings').insert(
-          findingsToInsert.map((o: any) => ({
-            user_id: user.id,
-            scan_session_id: sessionId,
-            finding_type: o.type === 'price_increase' ? 'price_increase' : o.type,
-            provider: o.provider || 'Unknown',
-            email_id: o.emailId || null,
-            title: o.title,
-            description: o.description || null,
-            amount: o.amount || o.paymentAmount || null,
-            due_date: o.nextPaymentDate || null,
-            contract_end_date: o.contractEndDate || null,
-            previous_amount: o.previousAmount || null,
-            price_change_date: o.priceChangeDate || null,
-            payment_frequency: o.paymentFrequency || null,
-            confidence: o.confidence || 70,
-            urgency: o.urgency || 'routine',
-            status: 'new',
-            metadata: o,
-          }))
-        ).then(({ error: e }) => { if (e) console.error('[gmail-scan] email_scan_findings insert:', e.message); });
+      // ---- 1. email_scan_findings — EVERY storable finding ----
+      //
+      // This used to be `[...bills, ...contracts, ...priceAlerts]`.
+      // email_scan_findings is the only table the dashboard's Email
+      // Scanner card reads, so every other classification the scanner
+      // produced — subscriptions, renewals, refunds, flight delays, tax
+      // rebates — was computed, paid for, and thrown away. A scan that
+      // found thirty subscriptions and no bills reported "Scan complete
+      // · 0 findings — your inbox looks clean."
+      //
+      // Now: everything new, filtered to the types the CHECK constraint
+      // accepts. toFindingRow returns null for anything else so an
+      // unmapped type drops a row instead of rejecting the batch.
+      const findingRows = allNew
+        .map((o: any) => toFindingRow(o, user.id, sessionId))
+        .filter((r): r is Record<string, unknown> => r !== null);
+      if (findingRows.length > 0) {
+        await admin.from('email_scan_findings').insert(findingRows)
+          .then(({ error: e }) => { if (e) console.error('[gmail-scan] email_scan_findings insert:', e.message); });
       }
 
       // ---- 2. dispute_correspondence — link to open disputes by provider name ----
@@ -407,19 +403,17 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const alerts = newOpportunities.filter((o: any) => o.type !== 'subscription' && o.type !== 'forgotten_subscription');
-        if (alerts.length > 0) {
-          await admin.from('money_hub_alerts').insert(
-            alerts.map((o: any) => ({
-              user_id: user.id,
-              alert_type: o.type,
-              title: o.title,
-              description: o.description,
-              value_gbp: o.amount || 0,
-              status: 'active',
-              metadata: o,
-            }))
-          ).then(({ error: e }) => { if (e) console.error('[gmail-scan] money_hub_alerts insert:', e.message); });
+        // alert_type has a 14-value CHECK constraint and the scanner
+        // emits types outside it. Because this is a single batch, one
+        // unmappable row rejected every valid alert with it. Mapped and
+        // filtered now — see toMoneyHubAlertType.
+        const alertRows = newOpportunities
+          .filter((o: any) => o.type !== 'subscription' && o.type !== 'forgotten_subscription')
+          .map((o: any) => toMoneyHubAlertRow(o, user.id))
+          .filter((r): r is Record<string, unknown> => r !== null);
+        if (alertRows.length > 0) {
+          await admin.from('money_hub_alerts').insert(alertRows)
+            .then(({ error: e }) => { if (e) console.error('[gmail-scan] money_hub_alerts insert:', e.message); });
         }
       }
 
