@@ -178,16 +178,18 @@ async function runAgent() {
       continue;
     }
 
-    // Load the last 30 days of correspondence.
+    // Load the last 30 days of correspondence from the real thread table,
+    // aliasing entry_type/entry_date/title onto the shape the state
+    // machine expects (correspondence_type/email_date/subject).
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: corrRows } = await sb
-      .from('dispute_correspondence')
-      .select('id,dispute_id,correspondence_type,email_date,subject,summary,created_at')
+      .from('correspondence')
+      .select('id,dispute_id,correspondence_type:entry_type,email_date:entry_date,subject:title,summary,created_at')
       .eq('dispute_id', d.id)
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(20);
-    const correspondence = (corrRows ?? []) as CorrespondenceRow[];
+    const correspondence = (corrRows ?? []) as unknown as CorrespondenceRow[];
 
     // Filter intelligence stats to ones relevant for this dispute.
     const relevant: ScopeStats[] = [];
@@ -454,7 +456,7 @@ async function sendEmailFallback(args: {
       label: 'Open the dispute in Paybacker',
       href: dashboardUrl,
     },
-    footnote: 'Sent by the Paybacker Dispute Agent — your AI caseworker.',
+    footnote: 'Sent by the Paybacker Dispute Agent, your AI money agent.',
   });
   return { ok: result.ok, error: result.error };
 }

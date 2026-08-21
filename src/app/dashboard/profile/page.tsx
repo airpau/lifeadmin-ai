@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download, Lock, X, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download, Lock, X, Eye, EyeOff, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
@@ -337,8 +337,12 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                       <p className="text-slate-500 text-[10px]">One-click connect</p>
                     </div>
                   </button>
+                  {/* /api/auth/microsoft, not the older /api/outlook/auth —
+                      the microsoft route enforces the tier email cap and
+                      guards against missing MICROSOFT_CLIENT_ID config,
+                      matching the Gmail flow above. */}
                   <button
-                     onClick={() => { window.location.href = '/api/outlook/auth?returnPath=/dashboard/profile'; }}
+                     onClick={() => { window.location.href = '/api/auth/microsoft?returnPath=/dashboard/profile'; }}
                     className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-emerald-500/50 rounded-lg px-4 py-3 transition-all text-left"
                   >
                     <span className="text-xl">📬</span>
@@ -725,6 +729,12 @@ export default function ProfilePage() {
       const data = await res.json();
       if (!res.ok) {
         setReportError(data.error || 'Failed to generate report');
+        return;
+      }
+      // Annual reports are saved server-side — open the full report page
+      // so the user lands on the rich renderer instead of the inline card.
+      if (type === 'annual' && data.reportId) {
+        router.push(`/dashboard/profile/report?id=${data.reportId}`);
         return;
       }
       setReportData(data.data);
@@ -1243,15 +1253,16 @@ export default function ProfilePage() {
                 <h3 className="text-sm font-semibold text-slate-700 mb-2">Saved Reports</h3>
                 <div className="space-y-2">
                   {savedReports.map((r) => (
-                    <div
+                    <Link
                       key={r.id}
-                      className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/50"
+                      href={`/dashboard/profile/report?id=${r.id}`}
+                      className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/50 hover:bg-slate-100/70 hover:border-slate-300/60 transition-all group"
                     >
                       <div className="flex items-center gap-3">
                         <FileText className="h-4 w-4 text-emerald-600" />
                         <div>
                           <p className="text-slate-900 text-sm font-medium capitalize">
-                            {r.report_type === 'annual' ? `${r.year} Annual Report` : 'Summary Report'}
+                            {r.report_type === 'annual' ? '12-Month Financial Report' : 'Summary Report'}
                           </p>
                           <p className="text-xs text-slate-500">
                             {new Date(r.created_at).toLocaleDateString('en-GB', {
@@ -1262,7 +1273,8 @@ export default function ProfilePage() {
                           </p>
                         </div>
                       </div>
-                    </div>
+                      <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-700 transition-all" />
+                    </Link>
                   ))}
                 </div>
               </div>

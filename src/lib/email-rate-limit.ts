@@ -36,6 +36,10 @@ const MARKETING_EMAIL_TYPES = [
   'contract_expiry_alert',
   'contract_end_alert',
   'overcharge_alert',
+  // Dispute outcome check-in nudges (cron/outcome-checkin) count toward the
+  // cap too: they are helpful but not urgent, so a deal email already sent
+  // today should mute the email leg (other channels still deliver).
+  'outcome_checkin_email',
 ];
 
 // These are transactional and bypass the limit

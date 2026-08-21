@@ -616,6 +616,26 @@
 
 .m-v2-root .stat-card .blurb { color: var(--text-secondary); font-size: 15px; line-height: 1.5; text-wrap: pretty; }
 
+/* Live "recovered so far" stat — small mint pulse dot marking the number
+   as live data (fetched from /api/stats/recovered). Same ring animation
+   as .hero-ticker .pulse but on the mint accent, since the figure is a
+   recovery total, not an alert. */
+.m-v2-root .stat-card .live-dot {
+  display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+  background: var(--accent-mint);
+  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5);
+  animation: livePulse 2.4s infinite;
+}
+
+@keyframes livePulse {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
+  70% { box-shadow: 0 0 0 10px rgba(52, 211, 153, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+
 /* Pillars */
 
 .m-v2-root .pillars-section { padding: 120px 0; }
@@ -981,7 +1001,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .m-v2-root .reveal, .m-v2-root .reveal.in { opacity: 1; transform: none; transition: none; animation: none !important; }
-  .m-v2-root .float, .m-v2-root .pulse, .m-v2-root .nav-progress { animation: none !important; transition: none !important; }
+  .m-v2-root .float, .m-v2-root .pulse, .m-v2-root .live-dot, .m-v2-root .nav-progress { animation: none !important; transition: none !important; }
 }
 
 /* Responsive */
@@ -1006,10 +1026,10 @@
 
 @media (max-width: 480px) {
   .m-v2-root .wrap { padding: 0 20px; }
-  .m-v2-root .hero-visual { height: 440px; }
-  .m-v2-root .dash-card { width: 300px; height: 420px; right: 0; top: 10px; }
-  .m-v2-root .mini-card { width: 200px; height: 280px; left: 0; top: 120px; }
-  .m-v2-root .agent-bubble { width: 240px; right: 0; bottom: 0; }
+  /* NB: the .hero-visual/.dash-card/.mini-card/.agent-bubble rules that
+     used to live here served the parked (never-rendered) HeroVisual
+     component and were deleted as dead CSS. Restore them if HeroVisual
+     is ever swapped back into the hero. */
   .m-v2-root .stats-section, .m-v2-root .pillars-section, .m-v2-root .deals-section, .m-v2-root .pricing-section { padding: 80px 0; }
   .m-v2-root .how-section, .m-v2-root .final-cta { padding: 100px 0; }
 }
@@ -1971,13 +1991,6 @@
      Belt-and-suspenders: JS also blocks visible=true at ≤768px. */
   .m-v2-root .sticky-cta { display: none !important; }
   .mobile-hidden { display: none !important; }
-  .m-v2-root .why-grid,
-  .m-v2-root .subs-grid,
-  .m-v2-root .assistant-grid,
-  .m-v2-root .agent-showcase-grid {
-    grid-template-columns: 1fr;
-    gap: 40px;
-  }
 
   /* Comparison table — horizontal scroll on touch */
   .m-v2-root .compare-table-wrap--dark,
@@ -1986,24 +1999,7 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Any flex feature-row (demo left / text right or vice versa) */
-  .m-v2-root .demo-row,
-  .m-v2-root .feature-row,
-  .m-v2-root .demo-panel {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  /* Demo video containers — full width */
-  .m-v2-root .demo-video,
-  .m-v2-root .demo-panel video,
-  .m-v2-root .demo-row video {
-    width: 100%;
-    max-width: 100%;
-  }
-
   .m-v2-root .arch-grid { grid-template-columns: 1fr; gap: 32px; }
-  .m-v2-root .agent-showcase-grid { margin-top: 40px; }
 }
 
 /* ============================================================
@@ -2013,26 +2009,62 @@
   .m-v2-root .wrap { padding: 0 16px; }
 
   /* Hero headline — clamp min 56px is too large on 390px screens */
-  .m-v2-root .hero h1 { font-size: clamp(30px, 9vw, 44px); line-height: 1.05; }
-  .m-v2-root .hero-sub { font-size: 16px; }
+  .m-v2-root .hero h1 { font-size: clamp(30px, 8vw, 40px); line-height: 1.05; margin: 14px 0 16px; }
+  .m-v2-root .hero-sub { font-size: 16px; margin-bottom: 20px; }
+
+  /* Hero vertical rhythm — the full stack (eyebrow + 3-line H1 + sub +
+     buttons + note + ticker) was taller than two phone screens. Tighten
+     every gap so the primary CTA lands on the first screen. */
+  .m-v2-root .hero { padding: 16px 0 72px; }
+  .m-v2-root .hero-grid { gap: 28px; padding-top: 24px; }
+  .m-v2-root .hero-cta-note { margin-top: 10px; font-size: 13px; }
+  .m-v2-root .hero-ticker { margin-top: 14px; font-size: 13px; text-align: left; }
 
   /* Hero CTAs — stack and go full width */
   .m-v2-root .hero-cta-row {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
   }
   .m-v2-root .hero-cta-row .btn {
     width: 100%;
     justify-content: center;
   }
+  /* Third CTA ("Meet your Pocket Agent") demotes to a plain text link on
+     phones — three stacked pill buttons is too much visual weight. */
+  .m-v2-root .hero-cta-row .btn-tertiary {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 6px 0;
+    width: auto;
+    align-self: center;
+    color: var(--accent-mint-deep);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .m-v2-root .hero-cta-row .btn-tertiary:hover { transform: none; background: transparent; }
 
   /* Final CTA */
   .m-v2-root .final-cta h2 { font-size: clamp(30px, 9vw, 48px); }
   .m-v2-root .fc-btn-row .btn { width: 100%; justify-content: center; }
 
-  /* Trust bar */
-  .m-v2-root .trust-bar { padding-top: 72px; font-size: 12px; gap: 2px 0; }
-  .m-v2-root .trust-bar .dot { margin: 0 6px; }
+  /* Trust bar — a neat 2x2 grid instead of three cramped wrapped lines.
+     Top padding must still clear the fixed nav pill (~88px tall from the
+     top of the viewport): hero top padding is 16px here, so 76px keeps
+     the first row just below the nav while trimming 12px of dead space. */
+  .m-v2-root .trust-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+    justify-items: start;
+    text-align: left;
+    padding: 76px 20px 0;
+    font-size: 12px;
+  }
+  .m-v2-root .trust-bar .dot { display: none; }
+  .m-v2-root .trust-bar__item { gap: 5px; }
   .m-v2-root .trust-bar__icon { width: 13px; height: 13px; }
   .m-v2-root .trust-row { grid-template-columns: 1fr; gap: 12px; }
 
@@ -2091,12 +2123,13 @@
 
 @media (max-width: 980px) {
   .m-v2-root .nav-burger { display: inline-flex; }
-  /* Replace "Start free" button with the burger on very narrow viewports
-     so the pill doesn't fight for space. Keep Start free visible down to
-     480px then hide so only burger remains. */
 }
+/* Keep a compact "Start free" pill next to the burger on small screens.
+   Hiding it entirely (the previous behaviour) left the nav with no CTA
+   at all below 480px. */
 @media (max-width: 480px) {
-  .m-v2-root .nav-start { display: none; }
+  .m-v2-root .nav-pill { padding-left: 14px; gap: 6px; }
+  .m-v2-root .nav-start { padding: 8px 12px; font-size: 13px; }
 }
 
 .m-v2-root .nav-drawer-backdrop {
@@ -2557,4 +2590,465 @@
 @media (max-width: 760px) {
   .m-v2-root .compliance-pipeline__grid { grid-template-columns: 1fr; gap: 12px; }
   .m-v2-root .compliance-pipeline__title { font-size: 26px; }
+}
+/* ============================================================
+   Pricing — free-plan push line above the three cards
+   ============================================================ */
+.m-v2-root .pricing-free-line {
+  margin-top: 14px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   Pocket Agent — "no app" block (why chat beats a native app).
+   Lives inside .feature-copy in the ink section.
+   ============================================================ */
+.m-v2-root .no-app-block {
+  width: 100%;
+  max-width: 560px;
+  align-self: center;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--divider-ink);
+  border-radius: 16px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.m-v2-root .no-app-block__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-on-ink);
+}
+.m-v2-root .no-app-block p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.75);
+}
+.m-v2-root .no-app-block a {
+  color: var(--accent-mint);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ============================================================
+   Feature voting section (#vote)
+   ============================================================ */
+.m-v2-root .vote-section {
+  padding: 96px 0 104px;
+}
+.m-v2-root .vote-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  max-width: 1080px;
+  margin: 48px auto 0;
+}
+.m-v2-root .vote-card {
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-card);
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.m-v2-root .vote-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.m-v2-root .vote-card__label {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+.m-v2-root .vote-card__actions {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.m-v2-root .vote-btn {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: var(--r-pill);
+  background: var(--accent-mint);
+  color: #052E1C;
+  transition: transform 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+.m-v2-root .vote-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #2CC48A;
+  box-shadow: var(--shadow-mint);
+}
+.m-v2-root .vote-btn:disabled { cursor: default; }
+.m-v2-root .vote-btn--voted {
+  background: var(--accent-mint-wash);
+  color: var(--accent-mint-deep);
+  border: 1px solid var(--accent-mint);
+}
+.m-v2-root .vote-count {
+  font-family: var(--font-mono), ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 560px) {
+  .m-v2-root .vote-section { padding: 64px 0 72px; }
+  .m-v2-root .vote-grid { grid-template-columns: 1fr; gap: 12px; margin-top: 32px; }
+  .m-v2-root .vote-card { padding: 18px 20px; gap: 12px; }
+}
+
+/* ============================================================
+   Mobile product mocks (pbm-) — responsive, phone-first cards
+   that replace the scaled 980px demos at <=768px. Minimum font
+   size 12px throughout: these must be READABLE, not decorative.
+   ============================================================ */
+.m-v2-root .pbm-card {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-align: left;
+}
+.m-v2-root .pbm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.m-v2-root .pbm-head__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.m-v2-root .pbm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.m-v2-root .pbm-chip--mint { background: var(--accent-mint-wash); color: var(--accent-mint-deep); }
+.m-v2-root .pbm-chip--red { background: #FEE2E2; color: #B91C1C; }
+.m-v2-root .pbm-chip--law {
+  background: var(--accent-mint-wash);
+  color: #065F46;
+  align-self: flex-start;
+  font-family: var(--font-mono), ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  white-space: normal;
+}
+.m-v2-root .pbm-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-mint-deep);
+  flex-shrink: 0;
+}
+.m-v2-root .pbm-dot--pulse { animation: pbmPulse 2s ease-in-out infinite; }
+@keyframes pbmPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.m-v2-root .pbm-wa-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #25D366;
+  flex-shrink: 0;
+}
+
+/* Money Hub mock */
+.m-v2-root .pbm-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.m-v2-root .pbm-kpi {
+  background: var(--surface-base);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.m-v2-root .pbm-kpi__label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-v2-root .pbm-kpi__value {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.m-v2-root .pbm-kpi__value--mint { color: var(--accent-mint-deep); }
+.m-v2-root .pbm-kpi__value--ink { color: var(--text-primary); }
+.m-v2-root .pbm-kpi__value--orange { color: var(--accent-orange-deep); }
+
+.m-v2-root .pbm-bars { display: flex; flex-direction: column; gap: 8px; }
+.m-v2-root .pbm-bar__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 3px;
+}
+.m-v2-root .pbm-bar__label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.m-v2-root .pbm-bar__value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.m-v2-root .pbm-bar__track {
+  height: 6px;
+  border-radius: 999px;
+  background: #F3F4F6;
+  overflow: hidden;
+}
+.m-v2-root .pbm-bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.m-v2-root .pbm-strip {
+  border-top: 1px solid var(--divider);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.m-v2-root .pbm-strip__label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.m-v2-root .pbm-strip__rows { display: flex; flex-direction: column; gap: 4px; }
+.m-v2-root .pbm-strip__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+.m-v2-root .pbm-strip__name { font-weight: 600; color: var(--text-primary); }
+.m-v2-root .pbm-strip__due { color: var(--text-tertiary); }
+.m-v2-root .pbm-strip__amt {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subscriptions mock */
+.m-v2-root .pbm-scan { display: flex; flex-direction: column; gap: 5px; }
+.m-v2-root .pbm-scan__label { font-size: 12px; color: var(--text-tertiary); font-weight: 500; }
+.m-v2-root .pbm-scan__track {
+  height: 5px;
+  border-radius: 999px;
+  background: #F3F4F6;
+  overflow: hidden;
+}
+.m-v2-root .pbm-scan__fill {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 999px;
+  background: var(--accent-mint);
+  animation: pbmScan 2.6s ease-in-out infinite;
+}
+@keyframes pbmScan {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(260%); }
+}
+.m-v2-root .pbm-rows { display: flex; flex-direction: column; }
+.m-v2-root .pbm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+  border-top: 1px solid var(--divider);
+}
+.m-v2-root .pbm-row__meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.m-v2-root .pbm-row__name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.m-v2-root .pbm-row__sub { font-size: 12px; color: var(--text-tertiary); }
+.m-v2-root .pbm-row__amt {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Disputes mock */
+.m-v2-root .pbm-letter {
+  background: var(--surface-base);
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.m-v2-root .pbm-letter__text {
+  margin: 0;
+  font-family: 'Georgia', serif;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+.m-v2-root .pbm-letter__refund {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px solid var(--divider);
+  padding-top: 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+.m-v2-root .pbm-letter__refund strong {
+  font-size: 18px;
+  color: var(--accent-mint-deep);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.m-v2-root .pbm-btn-row { display: flex; gap: 8px; }
+.m-v2-root .pbm-btn {
+  flex: 1;
+  text-align: center;
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.m-v2-root .pbm-btn--mint { background: var(--accent-mint); color: #052E1C; }
+.m-v2-root .pbm-btn--ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--divider);
+}
+
+/* Pocket Agent mock */
+.m-v2-root .pbm-chat { display: flex; flex-direction: column; gap: 8px; }
+.m-v2-root .pbm-bubble {
+  max-width: 88%;
+  padding: 9px 13px;
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.m-v2-root .pbm-bubble--user {
+  align-self: flex-end;
+  background: var(--accent-mint-wash);
+  color: var(--text-primary);
+  border-bottom-right-radius: 4px;
+}
+.m-v2-root .pbm-bubble--bot {
+  align-self: flex-start;
+  background: var(--surface-ink);
+  color: var(--text-on-ink);
+  border-bottom-left-radius: 4px;
+}
+.m-v2-root .pbm-bubble--alert {
+  align-self: flex-start;
+  background: #FEF3C7;
+  color: var(--accent-orange-deep);
+  border: 1px solid #FDE68A;
+  border-bottom-left-radius: 4px;
+  font-weight: 500;
+}
+.m-v2-root .pbm-bubble__tag {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m-v2-root .pbm-dot--pulse,
+  .m-v2-root .pbm-scan__fill { animation: none; }
+}
+
+/* ============================================================
+   Desktop demo <-> mobile mock switching.
+
+   The 980px-native demos scale down to ~32% on a 390px phone,
+   which renders their copy at ~3px. Below 768px we hide the
+   scaled stages entirely and show the readable pbm- mocks.
+   `.desktop-demo` sits on the same element as `.feature-stage` /
+   `.hero-stage` so the existing container-query scaling still
+   matches between 769px and 1024px.
+   ============================================================ */
+.m-v2-root .mobile-mock { display: none; }
+.m-v2-root .feature-grid .mobile-mock { order: 1; width: 100%; }
+@media (max-width: 768px) {
+  .m-v2-root .desktop-demo { display: none; }
+  .m-v2-root .mobile-mock { display: block; width: 100%; }
+}
+
+/* ============================================================
+   <=820px typography — mobile audit fixes. The display faces
+   (hero clamp floor 56px, section h2 floor 32px, feature titles
+   floor 36px) had no tablet/phone overrides and dominated the
+   viewport. Kept late in the file so these win the cascade over
+   every earlier same-specificity heading rule.
+   ============================================================ */
+@media (max-width: 820px) {
+  .m-v2-root .hero h1 { font-size: clamp(34px, 7vw, 48px); }
+  .m-v2-root .section-head h2,
+  .m-v2-root .how-section h2 { font-size: clamp(24px, 5.5vw, 32px); }
+  .m-v2-root .feature-title { font-size: clamp(26px, 6vw, 34px); }
+  .m-v2-root .feature-copy h3 { font-size: clamp(22px, 5vw, 28px); }
+  .m-v2-root .final-cta h2 { font-size: clamp(34px, 7vw, 48px); }
+
+  /* Hard line-breaks inside desktop headings force awkward mid-sentence
+     wraps on narrow screens — let the text flow naturally instead. */
+  .m-v2-root .br-lg { display: none; }
+}
+
+/* Phone-size re-statement — must follow the <=820px block above so the
+   smaller floors win the cascade on true phone widths. */
+@media (max-width: 560px) {
+  .m-v2-root .hero h1 { font-size: clamp(30px, 8vw, 40px); }
+  .m-v2-root .final-cta h2 { font-size: clamp(30px, 8vw, 44px); }
 }

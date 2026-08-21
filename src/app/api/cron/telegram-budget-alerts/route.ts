@@ -292,9 +292,10 @@ export async function GET(request: NextRequest) {
             eventType: 'budget_alert',
             section: 'budgets',
             line:
-              `${budget.category} at ${Math.round(pct)}% — ` +
-              `£${remaining.toFixed(2)} left until ${endDateStr}`,
+              `${budget.category} budget at ${Math.round(pct)}%: ` +
+              `£${remaining.toFixed(2)} left until ${endDateStr}.`,
             amount: spent,
+            url: 'paybacker.co.uk/dashboard/money-hub',
             templateName: 'paybacker_budget_alert',
             parameters: [
               budget.category,

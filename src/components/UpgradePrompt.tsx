@@ -1,23 +1,67 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { X, Sparkles, ArrowRight } from 'lucide-react';
+import { capture } from '@/lib/posthog';
 
 interface UpgradePromptProps {
   variant: 'banner' | 'modal' | 'inline';
   onClose?: () => void;
 }
 
+// Dismissal persists to localStorage for 7 days (previously useState only,
+// so the prompt reappeared on every page load).
+const DISMISS_KEY = 'pb_upgrade_prompt_dismissed';
+const DISMISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isDismissalActive(): boolean {
+  try {
+    const raw = localStorage.getItem(DISMISS_KEY);
+    if (!raw) return false;
+    const ts = Number(raw);
+    if (!Number.isFinite(ts)) return false;
+    if (Date.now() - ts < DISMISS_TTL_MS) return true;
+    localStorage.removeItem(DISMISS_KEY);
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) {
   const [dismissed, setDismissed] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const viewedFired = useRef(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const isDismissed = isDismissalActive();
+    setDismissed(isDismissed);
+    // Funnel impression — once per mount, only when actually shown.
+    // capture() is consent-gated and no-ops without analytics consent.
+    if (!isDismissed && !viewedFired.current) {
+      viewedFired.current = true;
+      capture('upgrade_prompt_viewed', { variant });
+    }
+  }, [variant]);
 
   const handleClose = () => {
+    try {
+      localStorage.setItem(DISMISS_KEY, String(Date.now()));
+    } catch {
+      // localStorage unavailable — session-only dismissal still applies.
+    }
+    capture('upgrade_prompt_dismissed', { variant });
     setDismissed(true);
     onClose?.();
   };
 
-  if (dismissed) return null;
+  const handleCtaClick = () => {
+    capture('upgrade_prompt_cta_clicked', { variant });
+  };
+
+  if (!mounted || dismissed) return null;
 
   if (variant === 'banner') {
     return (
@@ -30,7 +74,7 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold text-xs px-3 py-1.5 rounded-lg transition-all whitespace-nowrap">
+          <Link href="/pricing" onClick={handleCtaClick} className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold text-xs px-3 py-1.5 rounded-lg transition-all whitespace-nowrap">
             Upgrade
           </Link>
           <button onClick={handleClose} className="text-slate-500 hover:text-slate-900 p-1">
@@ -66,7 +110,7 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
             </ul>
           </div>
           <div className="flex flex-col gap-3">
-            <Link href="/pricing" className="w-full py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-bold rounded-xl transition-all text-center">
+            <Link href="/pricing" onClick={handleCtaClick} className="w-full py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-bold rounded-xl transition-all text-center">
               Upgrade — from £4.99/mo
             </Link>
             <button onClick={handleClose} className="text-slate-500 hover:text-slate-900 text-sm transition-colors">Maybe later</button>
@@ -84,7 +128,7 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
         <p className="text-sm text-slate-900 font-medium">Upgrade your plan</p>
       </div>
       <p className="text-xs text-slate-500 mb-3">Get unlimited letters, bank sync, and full financial insights.</p>
-      <Link href="/pricing" className="inline-flex items-center gap-1 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold text-xs px-3 py-1.5 rounded-lg transition-all">
+      <Link href="/pricing" onClick={handleCtaClick} className="inline-flex items-center gap-1 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold text-xs px-3 py-1.5 rounded-lg transition-all">
         View plans <ArrowRight className="h-3 w-3" />
       </Link>
     </div>

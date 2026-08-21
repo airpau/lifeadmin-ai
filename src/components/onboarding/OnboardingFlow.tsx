@@ -13,6 +13,11 @@ interface OnboardingFlowProps {
   bankConnected: boolean;
   subscriptionCount: number;
   tier: string;
+  /** When true, the "connect your bank" card (step 2) is not rendered.
+   *  The dashboard passes this while its ConnectionHub is on screen so
+   *  the user never sees two competing "connect a bank" banners. The
+   *  letter step and the all-done state are unaffected. */
+  suppressBankStep?: boolean;
 }
 
 const QUICK_ISSUES = [
@@ -29,6 +34,7 @@ export default function OnboardingFlow({
   bankConnected,
   subscriptionCount,
   tier,
+  suppressBankStep = false,
 }: OnboardingFlowProps) {
   const [dismissed, setDismissed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -121,7 +127,11 @@ export default function OnboardingFlow({
     );
   }
 
-  // Step 2 — Has letter but no bank: connect bank
+  // Step 2 — Has letter but no bank: connect bank.
+  // Stands down when the parent already shows a dedicated connect
+  // surface (the dashboard's ConnectionHub) to avoid a banner pile-up.
+  if (suppressBankStep) return null;
+
   return (
     <div className="bg-gradient-to-br from-blue-500/10 via-blue-600/5 to-transparent border border-blue-500/20 rounded-2xl p-6 mb-8 relative">
       <button onClick={handleDismiss} className="absolute top-4 right-4 text-slate-500 hover:text-slate-900 p-1">

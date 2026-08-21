@@ -6,6 +6,7 @@
 export type SyncTrigger = 'cron' | 'manual' | 'initial';
 export type SyncStatus = 'success' | 'failed' | 'skipped';
 import type { PlanTier } from '@/lib/tier-rank';
+import { sendFounderAlert } from '@/lib/telegram/founder-alert';
 
 /**
  * Bank config is keyed by the full PlanTier union so the compiler forces
@@ -105,26 +106,13 @@ export async function getTodayApiCallCount(
 /**
  * Sends a Telegram message to the founder's chat.
  * Non-fatal — errors are swallowed.
+ *
+ * The implementation now lives in src/lib/telegram/founder-alert.ts
+ * (sendFounderAlert) so non-bank code can use it too. Re-exported here
+ * under the original name so the existing bank-sync callers
+ * (/api/cron/bank-sync, /api/bank/sync-now) keep working unchanged.
  */
-export async function sendTelegramAlert(message: string): Promise<void> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
-  if (!token || !chatId) return;
-
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: Number(chatId),
-        text: message,
-        parse_mode: 'Markdown',
-      }),
-    });
-  } catch {
-    // Non-fatal
-  }
-}
+export { sendFounderAlert as sendTelegramAlert } from '@/lib/telegram/founder-alert';
 
 /**
  * Checks current API usage and fires a Telegram alert if we just crossed 80%.
@@ -138,7 +126,7 @@ export async function checkAndAlertCeiling(
 
   // Only fire once — when we first cross the threshold
   if (previousCount < alertThreshold && newCount >= alertThreshold) {
-    await sendTelegramAlert(
+    await sendFounderAlert(
       `⚠️ *Open Banking API usage alert*\n\n` +
       `${newCount}/${GLOBAL_DAILY_API_CEILING} API calls used today ` +
       `(${Math.round((newCount / GLOBAL_DAILY_API_CEILING) * 100)}%).\n` +

@@ -84,6 +84,10 @@ export interface PlanLimits {
  * TIER MATRIX — Free/Essential/Pro confirmed with founder 2026-04-22;
  * Household and Dispute Pro added 2026-08-16.
  *
+ * NOTE (2026-08-20): the DB signup trigger still granted a 7-day trial,
+ * contradicting rule 2 below — see the prepared (not yet applied) fix in
+ * supabase/migrations/20260820120000_remove_auto_trial_from_signup_trigger.sql.
+ *
  *                            Free   Essential  Pro    Household  DisputePro
  * Price / month              £0     £4.99      £9.99  £14.99     £19.99
  * Price / year               —      £44.99     £94.99 £149.99    £199.99

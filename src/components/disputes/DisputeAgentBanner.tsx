@@ -1,15 +1,20 @@
 'use client';
 
 /**
- * Dispute Agent recommendation banner.
+ * Dispute Agent action row.
  *
- * Embeds inside the dispute detail / drawer view. Fetches the latest
- * pending agent decision via /api/disputes/[id]/agent-decisions/latest,
- * lets the user Approve / Override / Snooze, and shows a decision log
- * expander with past actions.
+ * Composes inside the "What happens next" hero card on the dispute
+ * detail page. Fetches the latest pending agent decision via
+ * /api/disputes/[id]/agent-decisions/latest, lets the user
+ * Approve / Override / Snooze, and shows a decision log expander
+ * with past actions.
  *
- * Designed as a self-contained client component so it can be dropped
- * into the existing disputes-page monolith without refactoring it.
+ * The parent owns the card chrome and the single Refresh control:
+ * bumping `refreshKey` makes this component refetch. When the agent
+ * has nothing to recommend but the parent knows the supplier is
+ * waiting on a reply, the parent passes `fallback` and we render
+ * that CTA instead of "all caught up", so the action row never
+ * contradicts the story below it.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -50,6 +55,14 @@ interface ApiResponse {
   history: Decision[];
 }
 
+export interface AgentFallbackAction {
+  /** Primary CTA label, e.g. "Write your reply". */
+  label: string;
+  /** One-line reason shown under the CTA. */
+  reason: string;
+  onClick: () => void;
+}
+
 const ACTION_LABELS: Record<string, string> = {
   send_initial_letter: 'Review and send your letter',
   send_followup: 'Send a followup',
@@ -59,7 +72,7 @@ const ACTION_LABELS: Record<string, string> = {
   manual_review: 'Manual review needed',
   send_letter_before_action: 'Send a Letter Before Action',
   small_claims: 'Open a small-claims case',
-  wait: 'Wait — nothing to do right now',
+  wait: 'Wait, nothing to do right now',
 };
 
 const USER_ACTION_LABELS: Record<string, string> = {
@@ -72,7 +85,17 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
+export function DisputeAgentBanner({
+  disputeId,
+  refreshKey = 0,
+  fallback = null,
+}: {
+  disputeId: string;
+  /** Bump to make the action row refetch the latest agent decision. */
+  refreshKey?: number;
+  /** CTA to show when the agent is quiet but the user still owes a reply. */
+  fallback?: AgentFallbackAction | null;
+}) {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -94,16 +117,16 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
         setData(j);
         setErr(null);
 
-        // Auto-trigger logic: if we are viewing the page and the agent's scheduled 
-        // next action time is in the past, the cron hasn't gotten to it yet. 
+        // Auto-trigger logic: if we are viewing the page and the agent's scheduled
+        // next action time is in the past, the cron hasn't gotten to it yet.
         // Run it immediately so the user doesn't see stale data.
         if (isInitialLoad && !autoTriggered) {
-          const isStale = j.dispute.next_agent_action_at 
+          const isStale = j.dispute.next_agent_action_at
             ? new Date(j.dispute.next_agent_action_at) <= new Date()
             : true; // If null, never run before
-          
+
           const hasPendingAction = j.latest && !j.latest.user_action && j.latest.recommended_action !== 'wait';
-          
+
           if (isStale && !hasPendingAction) {
             setAutoTriggered(true);
             setBusy(true);
@@ -129,8 +152,11 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
   }, [disputeId, autoTriggered]);
 
   useEffect(() => {
-    void load(true);
-  }, [load]);
+    // refreshKey === 0 is the initial page load (auto-trigger allowed);
+    // later bumps from the parent's Refresh control or a data change
+    // just refetch the latest decision.
+    void load(refreshKey === 0);
+  }, [load, refreshKey]);
 
   async function act(action: 'approve' | 'override' | 'snooze') {
     if (!data?.latest) return;
@@ -161,16 +187,16 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
     }
   }
 
-  if (loading) {
+  if (loading && !data) {
     return (
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-emerald-700 mb-4">
-        Loading Dispute Agent…
+      <div className="flex items-center gap-2 text-sm text-emerald-700 py-1">
+        <Sparkles className="h-4 w-4 animate-pulse" /> Checking what to do next…
       </div>
     );
   }
-  if (err) {
+  if (err && !data) {
     return (
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 mb-4">
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
         {err}
       </div>
     );
@@ -181,15 +207,15 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
   const merchant = dispute.provider_name ?? dispute.merchant_normalised ?? 'this merchant';
 
   // Wait recommendations that the user has already approved (or that have no
-  // pending action) shouldn't shout for attention — they're "all caught up".
+  // pending action) shouldn't shout for attention. They're "all caught up",
+  // unless the parent knows better and passed a fallback CTA.
   const isWaitingQuiet = latest && latest.recommended_action === 'wait';
   const isGloballyResolved = isResolved(dispute.status ?? '');
   const showActionable = latest && !isWaitingQuiet && !isGloballyResolved;
+  const showFallback = !showActionable && !isGloballyResolved && !!fallback;
 
   return (
-    <div className="rounded-2xl border border-emerald-200 bg-white p-5 mb-4 shadow-sm">
-      <Header showWhat={showWhat} setShowWhat={setShowWhat} />
-
+    <div>
       {showWhat && <WhatExplainer />}
 
       {showActionable && latest && (
@@ -201,12 +227,24 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
         />
       )}
 
-      {!showActionable && (
+      {showFallback && fallback && (
+        <FallbackCard fallback={fallback} />
+      )}
+
+      {!showActionable && !showFallback && (
         <CaughtUpCard latest={latest} busy={busy} onTrigger={triggerAgent} providerName={merchant} isGloballyResolved={isGloballyResolved} />
       )}
 
-      {history.length > 0 && (
-        <div className="mt-4 border-t border-slate-200 pt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <button
+          type="button"
+          className="text-xs text-slate-500 hover:text-emerald-700 inline-flex items-center gap-1"
+          onClick={() => setShowWhat(!showWhat)}
+        >
+          <Info className="h-3 w-3" />
+          {showWhat ? 'Hide the explainer' : 'How your dispute agent works'}
+        </button>
+        {history.length > 0 && (
           <button
             type="button"
             className="text-xs font-medium text-emerald-700 hover:text-emerald-900 inline-flex items-center gap-1"
@@ -215,33 +253,9 @@ export function DisputeAgentBanner({ disputeId }: { disputeId: string }) {
             <ChevronDown className={`h-3 w-3 transition-transform ${showLog ? 'rotate-180' : ''}`} />
             {showLog ? 'Hide' : 'Show'} past decisions ({history.length})
           </button>
-          {showLog && <DecisionLog history={history} />}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Header({ showWhat, setShowWhat }: { showWhat: boolean; setShowWhat: (v: boolean) => void }) {
-  return (
-    <div className="flex items-start justify-between gap-3 mb-3">
-      <div className="flex items-center gap-2">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-          <Sparkles className="h-4 w-4" />
-        </span>
-        <div>
-          <h3 className="text-sm font-semibold text-slate-900">Dispute Agent</h3>
-          <p className="text-xs text-slate-500">Your AI caseworker for this dispute</p>
-        </div>
+        )}
       </div>
-      <button
-        type="button"
-        className="text-xs text-slate-500 hover:text-emerald-700 inline-flex items-center gap-1"
-        onClick={() => setShowWhat(!showWhat)}
-      >
-        <Info className="h-3 w-3" />
-        {showWhat ? 'Hide' : 'What is this?'}
-      </button>
+      {showLog && <DecisionLog history={history} />}
     </div>
   );
 }
@@ -251,8 +265,8 @@ function WhatExplainer() {
     <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 mb-3 text-xs text-slate-700 leading-relaxed">
       <p className="font-semibold text-slate-900 mb-1">What does the Dispute Agent do?</p>
       <p className="mb-2">
-        Every 6 hours it reviews this dispute — your letters, any replies, deadlines,
-        and how similar disputes have been won by other Paybacker users — and decides
+        Every 6 hours it reviews this dispute: your letters, any replies, deadlines,
+        and how similar disputes have been won by other Paybacker users. Then it decides
         what to do next.
       </p>
       <ul className="space-y-1 list-disc pl-4">
@@ -345,17 +359,41 @@ function ActionableCard({
   );
 }
 
+/**
+ * Rendered when the agent has nothing pending but the parent knows a
+ * supplier reply is sitting unanswered. Keeps the action row honest:
+ * it never says "all caught up" while the story says a reply is due.
+ */
+function FallbackCard({ fallback }: { fallback: AgentFallbackAction }) {
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+      <div className="text-[10px] uppercase tracking-wider text-amber-700 font-semibold mb-2">
+        Recommended next step
+      </div>
+      <button
+        type="button"
+        onClick={fallback.onClick}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        {fallback.label}
+      </button>
+      <p className="mt-2 text-sm text-slate-800 leading-relaxed">{fallback.reason}</p>
+    </div>
+  );
+}
+
 function CaughtUpCard({ latest, busy, onTrigger, providerName, isGloballyResolved }: { latest: Decision | null, busy: boolean, onTrigger: () => void, providerName?: string, isGloballyResolved?: boolean }) {
   const isWaitingForResponse = latest?.recommended_action === 'wait' && (latest.to_state === 'sent' || latest.to_state === 'responded' || latest.to_state === 'escalated');
-  
-  let title = isWaitingForResponse ? `Status: Awaiting Response from ${providerName || 'Provider'}` : 'All caught up — no action needed';
+
+  let title = isWaitingForResponse ? `Status: Awaiting Response from ${providerName || 'Provider'}` : 'All caught up, no action needed';
   let desc = latest ? latest.rationale : 'The agent will review this dispute again at the next 6-hour check. We’ll surface a recommendation if anything changes.';
-  
+
   if (isGloballyResolved) {
     title = 'Dispute Resolved';
     desc = 'This dispute is marked as resolved or closed. Tracking and automated follow-ups are now paused.';
   }
-  
+
   return (
     <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
       <div className="flex items-start gap-2 justify-between">

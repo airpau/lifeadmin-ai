@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { tierDisplayName } from '@/lib/tier-utils';
+import { capture } from '@/lib/posthog';
 
 interface UpgradeModalProps {
   open: boolean;
@@ -13,6 +15,13 @@ interface UpgradeModalProps {
 
 export default function UpgradeModal({ open, onClose, used, limit, tier }: UpgradeModalProps) {
   const router = useRouter();
+
+  // Funnel impression — fires each time the modal opens. capture() is
+  // consent-gated and no-ops without analytics consent.
+  useEffect(() => {
+    if (open) capture('upgrade_modal_viewed', { tier, used, limit });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!open) return null;
 
@@ -55,7 +64,10 @@ export default function UpgradeModal({ open, onClose, used, limit, tier }: Upgra
 
         <div className="flex flex-col gap-3">
           <button
-            onClick={() => router.push('/pricing')}
+            onClick={() => {
+              capture('upgrade_modal_cta_clicked', { tier, used, limit });
+              router.push('/pricing');
+            }}
             className="w-full py-3 px-6 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-bold rounded-xl transition-all"
           >
             Upgrade Now — from £4.99/mo

@@ -2,7 +2,9 @@
 // src/app/onboarding/page.tsx
 // Four-step onboarding wizard ported from batch5 Onboarding.
 // Shown after signup — each step wires to the real OAuth endpoint
-// (bank via /api/auth/yapily, inbox via /api/auth/google or /microsoft).
+// (bank via the BankPickerModal, which picks an institution and then
+// calls /api/auth/yapily?institutionId=...; inbox via /api/auth/google
+// or /api/auth/microsoft).
 // Step progress is read from live account state (has bank connection,
 // has email connection, has run first scan) so refresh-and-resume works.
 
@@ -11,6 +13,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { ArrowRight, Check, Loader2, Mail, CreditCard, Sparkles } from 'lucide-react';
+import BankPickerModal from '@/components/BankPickerModal';
 
 // Step labels reflect the user choice on step 1: they pick bank OR email
 // (OR both). Step 2 then becomes the other, conditionally. Naming stays
@@ -31,6 +34,11 @@ function OnboardingInner() {
   const supabase = createClient();
   const [state, setState] = useState<OnboardingState | null>(null);
   const [loading, setLoading] = useState(true);
+  // Yapily needs an institutionId before /api/auth/yapily can mint an
+  // authorisation URL, so "Connect bank" opens the institution picker
+  // modal rather than linking to the API route directly (which would
+  // 400 with a JSON error).
+  const [showBankPicker, setShowBankPicker] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -423,17 +431,19 @@ function OnboardingInner() {
                   <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.45, margin: 0, flex: 1 }}>
                     We read your transactions to spot forgotten subscriptions, silent price rises, and overcharges. <strong>Most savings come from here.</strong>
                   </p>
-                  <a
-                    href="/api/auth/yapily"
+                  <button
+                    onClick={() => setShowBankPicker(true)}
                     style={{
                       marginTop: 4,
                       padding: '11px 14px',
                       background: '#0B1220',
                       color: '#fff',
+                      border: 0,
                       borderRadius: 9,
                       fontSize: 13,
                       fontWeight: 700,
-                      textDecoration: 'none',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -441,7 +451,7 @@ function OnboardingInner() {
                     }}
                   >
                     Connect bank &rarr;
-                  </a>
+                  </button>
                   <p style={{ fontSize: 11.5, color: '#6B7280', margin: 0, lineHeight: 1.4 }}>
                     Read-only via Yapily (FCA-authorised). No password ever touches Paybacker.
                   </p>
@@ -578,8 +588,8 @@ function OnboardingInner() {
                   title="Also add your bank?"
                   subtitle="Your inbox is connected — nice. A bank connection is where we find the big wins though: silent price rises, duplicate charges, forgotten subscriptions still going out months after you cancelled. Skip if you&rsquo;re not ready; you can add it any time."
                 >
-                  <a
-                    href="/api/auth/yapily"
+                  <button
+                    onClick={() => setShowBankPicker(true)}
                     className="cta"
                     style={{
                       padding: '14px 18px',
@@ -590,7 +600,7 @@ function OnboardingInner() {
                     }}
                   >
                     <CreditCard style={{ width: 16, height: 16 }} /> Connect bank via Yapily
-                  </a>
+                  </button>
                   <p style={{ fontSize: 12.5, color: '#6B7280', marginTop: 10, maxWidth: 440, lineHeight: 1.5, textAlign: 'center' }}>
                     You&rsquo;ll be securely redirected to your bank&rsquo;s own login screen via Yapily (FCA-authorised). No password ever touches Paybacker.
                   </p>
@@ -880,6 +890,8 @@ function OnboardingInner() {
           </button>
         )}
       </div>
+
+      <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />
 
       <style jsx>{`
         .cta {

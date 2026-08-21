@@ -32,6 +32,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { fetchNewMessages } from '@/lib/dispute-sync/fetchers';
 import type { EmailConnection } from '@/lib/dispute-sync/types';
 import { sendNotification } from '@/lib/notifications/dispatch';
+import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -215,6 +216,24 @@ export async function POST(request: Request) {
         deduplicated: true,
       });
     }
+  }
+
+  // 0.5 PLAN GATE — this route spends Anthropic tokens (Haiku extraction
+  // here + Sonnet letter via the sub-call below), so it is metered the
+  // same way as /api/complaints/generate. Checked AFTER the idempotency
+  // return so re-opening an existing dispute is never blocked.
+  const usageCheck = await checkUsageLimit(user.id, 'complaint_generated');
+  if (!usageCheck.allowed) {
+    return NextResponse.json(
+      {
+        error: 'Monthly limit reached. Upgrade for unlimited AI dispute letters.',
+        upgradeRequired: true,
+        used: usageCheck.used,
+        limit: usageCheck.limit,
+        tier: usageCheck.tier,
+      },
+      { status: 403 },
+    );
   }
 
   // 1. Pull the entire thread (since: null = full history) for AI context.
@@ -420,6 +439,18 @@ export async function POST(request: Request) {
     }
   } catch (err) {
     console.error('[from-email] complaint generation failed:', err);
+  }
+
+  // Record usage. When the sub-call to /api/complaints/generate succeeded
+  // it has ALREADY incremented 'complaint_generated' for this user (see
+  // that route, near its recordClaudeCall call), so incrementing again
+  // here would double-count one user action. Only increment when the
+  // letter sub-call did not complete — the Haiku extraction and dispute
+  // creation still consumed AI and must not be free retries.
+  if (!letterGenerated) {
+    await incrementUsage(user.id, 'complaint_generated').catch((e) =>
+      console.error('[from-email] incrementUsage failed:', e),
+    );
   }
 
   return NextResponse.json({

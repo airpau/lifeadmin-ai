@@ -11,8 +11,13 @@
  *   paybacker_outcome_check          T+7d after a dispute letter was
  *                                    sent and outcome is still null.
  *
- *   paybacker_alert_trial_ending     Subscriptions whose trial ends in
- *                                    the next 3 days.
+ *   paybacker_alert_trial_ending     Subscriptions that are GENUINE
+ *                                    trials (word "trial" in the name or
+ *                                    notes) charging in the next 3 days.
+ *                                    All other near-billing rows are
+ *                                    RENEWALS → evening digest free text
+ *                                    (2026-08-20 wrong-info fix, see
+ *                                    runTrialEnding).
  *
  *   paybacker_savings_goal_milestone Goals that have just crossed a
  *                                    25/50/75/100% threshold.
@@ -42,9 +47,10 @@
  * ONE sectioned message at 18:00.
  *
  * Two deliberate exceptions:
- *   - `trial_ending` stays immediate (a trial about to auto-charge is
- *     genuinely time-critical) but still passes through the capped send
- *     facade in src/lib/whatsapp/index.ts.
+ *   - `trial_ending` stays immediate for GENUINE trials only (a trial
+ *     about to auto-charge is time-critical) but still passes through the
+ *     capped send facade in src/lib/whatsapp/index.ts. Ordinary renewals
+ *     go to the evening digest instead (2026-08-20).
  *   - `better_deal_found` is a MARKETING-category template. It keeps its
  *     direct facade send — which now enforces the marketing opt-in +
  *     24h frequency gate — rather than being folded into a UTILITY
@@ -144,7 +150,9 @@ async function runOutcomeCheck(sb: SupabaseClient, today: string): Promise<numbe
         userId: d.user_id,
         eventType: 'outcome_check',
         section: 'other',
-        line: `${d.provider_name ?? 'A recent'} complaint hit 7 days — have they responded? Reply WON, PARTIAL, REJECTED or ONGOING.`,
+        line: `${d.provider_name ?? 'A recent'} complaint hit 7 days. Have they responded? Reply WON, PARTIAL, REJECTED or ONGOING.`,
+        provider: d.provider_name,
+        url: `paybacker.co.uk/dashboard/disputes/${d.id}`,
         templateName: 'paybacker_outcome_check',
         parameters: [d.provider_name ?? 'recent', 'complaint'],
         dedupKey: `outcome_check_${d.id}`,
@@ -163,7 +171,39 @@ async function runOutcomeCheck(sb: SupabaseClient, today: string): Promise<numbe
   return sent;
 }
 
-// ── Detection: paybacker_alert_trial_ending (next 3 days) ────────────
+// ── Detection: upcoming billing dates (next 3 days) ──────────────────
+//
+// 2026-08-20 WRONG-INFO FIX. This block previously treated EVERY active
+// subscription with a near next_billing_date as a free trial about to
+// auto-charge and fired paybacker_alert_trial_ending ("Your Aviva trial
+// ends in 2 days…") at ordinary monthly renewals. The live subscriptions
+// table has NO structured trial marker (contract_type values are utility,
+// fixed_contract, mortgage, membership, loan, subscription — no 'trial';
+// detect-recurring.ts and the email/scan insert paths never write one).
+// The only trial signal that exists anywhere is a loose naming
+// convention: the word "trial" in provider_name or notes (email-scanned
+// rows carry the scanner's description in notes).
+//
+// So: rows matching that convention keep the genuine trial-ending
+// template (time-critical, immediate). Everything else is a RENEWAL and
+// is queued into the 18:00 evening digest as free text — no approved
+// template matches an upcoming per-cycle charge across all contract
+// types (paybacker_alert_renewal says "contract renews … at £X/month",
+// which mis-states annual/quarterly cycles and mortgage/loan payments,
+// and cannot say "today"), and the send facade would otherwise fall back
+// to a paid template out of the 24h window.
+function isTrialSubscription(sub: { provider_name: string; notes: string | null }): boolean {
+  const haystack = `${sub.provider_name ?? ''} ${sub.notes ?? ''}`;
+  return /\btrial\b/i.test(haystack);
+}
+
+/** "today", "tomorrow" or "in N days". */
+function dueWhen(daysLeft: number): string {
+  if (daysLeft <= 0) return 'today';
+  if (daysLeft === 1) return 'tomorrow';
+  return `in ${daysLeft} days`;
+}
+
 async function runTrialEnding(sb: SupabaseClient, today: string): Promise<number> {
   const horizon = new Date();
   horizon.setDate(horizon.getDate() + 3);
@@ -172,7 +212,7 @@ async function runTrialEnding(sb: SupabaseClient, today: string): Promise<number
   const { data: subs } = await sb
     .from('subscriptions')
     .select(
-      'id, user_id, provider_name, amount, billing_cycle, next_billing_date',
+      'id, user_id, provider_name, amount, billing_cycle, next_billing_date, notes',
     )
     .eq('status', 'active')
     .not('next_billing_date', 'is', null)
@@ -189,7 +229,11 @@ async function runTrialEnding(sb: SupabaseClient, today: string): Promise<number
     amount: number | string;
     billing_cycle: string | null;
     next_billing_date: string;
+    notes: string | null;
   }>) {
+    // refKey keeps the historical 'trial_ending_' prefix for BOTH paths so
+    // dedup against previously logged keys is preserved — only the
+    // notification_type distinguishes renewal sends from trial sends.
     const refKey = `trial_ending_${s.id}_${today}`;
     if (await alreadyLogged(sb, refKey)) continue;
     const session = await getActiveSession(sb, s.user_id);
@@ -202,9 +246,39 @@ async function runTrialEnding(sb: SupabaseClient, today: string): Promise<number
       ),
     );
     const amount = `£${Number(s.amount).toFixed(2)}`;
+    const when = dueWhen(daysLeft);
+
+    if (!isTrialSubscription(s)) {
+      // RENEWAL (the default) — never the trial template. Queued into the
+      // evening digest so it goes out in-window as free text.
+      try {
+        const outcome = await enqueueDigestItem(sb, {
+          userId: s.user_id,
+          eventType: 'subscription_renewing',
+          section: 'renewals',
+          line:
+            `Your ${s.provider_name} payment of ${amount} is due ${when}. ` +
+            `Reply CANCEL to draft a cancellation email.`,
+          amount: Number(s.amount) || 0,
+          provider: s.provider_name,
+          url: 'paybacker.co.uk/dashboard/subscriptions',
+          templateName: null,
+          dedupKey: refKey,
+        });
+        if (outcome === 'error') continue;
+        await logSend(sb, s.user_id, 'renewal_due', refKey);
+        sent += 1;
+      } catch (e) {
+        console.warn('[daily-checks] renewal_due enqueue failed', e);
+      }
+      continue;
+    }
+
+    const endsPhrase =
+      daysLeft <= 0 ? 'ends today' : daysLeft === 1 ? 'ends tomorrow' : `ends in ${daysLeft} days`;
     try {
-      // IMMEDIATE by design — a trial about to auto-charge is genuinely
-      // time-critical. Still capped/window-routed by the send facade;
+      // GENUINE TRIAL — IMMEDIATE by design, a trial about to auto-charge
+      // is time-critical. Still capped/window-routed by the send facade;
       // textFallback lets it go out free when the user is in-window.
       await sendWhatsAppTemplate(
         {
@@ -219,9 +293,11 @@ async function runTrialEnding(sb: SupabaseClient, today: string): Promise<number
           eventType: 'trial_ending',
           dedupKey: refKey,
           amount: Number(s.amount) || 0,
+          provider: s.provider_name,
+          url: 'paybacker.co.uk/dashboard/subscriptions',
           textFallback:
-            `Your ${s.provider_name} trial ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'} — ` +
-            `you will be charged ${amount}. Reply CANCEL to draft a cancellation email before then.`,
+            `Your ${s.provider_name} trial ${endsPhrase}. You will be charged ${amount}. ` +
+            `Reply CANCEL to draft a cancellation email before then.`,
         },
       );
       await logSend(sb, s.user_id, 'trial_ending', refKey);
@@ -269,8 +345,9 @@ async function runSavingsMilestones(sb: SupabaseClient, today: string): Promise<
         userId: g.user_id,
         eventType: 'savings_milestone',
         section: 'other',
-        line: `Goal "${g.name}" hit ${crossed}% — £${current.toFixed(2)} saved of £${target.toFixed(2)}`,
+        line: `Goal "${g.name}" hit ${crossed}%: £${current.toFixed(2)} saved of £${target.toFixed(2)}.`,
         amount: current,
+        url: 'paybacker.co.uk/dashboard/money-hub',
         templateName: 'paybacker_savings_goal_milestone',
         parameters: [
           g.name,
@@ -422,6 +499,7 @@ async function runWeeklyRecovery(sb: SupabaseClient, today: string): Promise<num
         section: 'money_in',
         line: `Recovered £${weekAmount.toFixed(2)} for you this week. Lifetime total £${lifetime.toFixed(2)}.`,
         amount: weekAmount,
+        url: 'paybacker.co.uk/dashboard/disputes',
         templateName: 'paybacker_recovery_total_weekly',
         parameters: [weekAmount.toFixed(2), lifetime.toFixed(2)],
         dedupKey: refKey,

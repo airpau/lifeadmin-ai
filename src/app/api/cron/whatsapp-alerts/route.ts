@@ -277,8 +277,10 @@ export async function GET(req: NextRequest) {
           section: 'money_out',
           line:
             `${merchantLabel} charged £${currentAmount.toFixed(2)} vs your usual ` +
-            `£${avg.toFixed(2)} (${percentHigher}% higher)`,
+            `£${avg.toFixed(2)} (${percentHigher}% higher).`,
           amount: currentAmount,
+          provider: merchantLabel,
+          url: 'paybacker.co.uk/dashboard/money-hub',
           templateName: 'paybacker_alert_unusual_charge',
           parameters: [
             merchantLabel,
@@ -374,8 +376,10 @@ export async function GET(req: NextRequest) {
           eventType: 'outcome_check',
           section: 'other',
           line:
-            `${dispute.provider_name} ${actionLabel} dispute — ${daysSince} days since you sent it. ` +
+            `${dispute.provider_name} ${actionLabel} dispute: ${daysSince} days since you sent it. ` +
             `Reply WON, PARTIAL, REJECTED or ONGOING to update it.`,
+          provider: dispute.provider_name,
+          url: `paybacker.co.uk/dashboard/disputes/${dispute.id}`,
           templateName: 'paybacker_outcome_check',
           // {{1}} = merchant, {{2}} = action label (e.g. "energy dispute")
           parameters: [dispute.provider_name, `${actionLabel} dispute`],
@@ -484,8 +488,10 @@ export async function GET(req: NextRequest) {
           userId,
           eventType: 'payment_outgoing',
           section: 'money_out',
-          line: `£${absAmount.toFixed(2)} to ${merchant} (${category})`,
+          line: `£${absAmount.toFixed(2)} to ${merchant} (${category}).`,
           amount: absAmount,
+          provider: merchant,
+          url: 'paybacker.co.uk/dashboard/money-hub',
           templateName: 'paybacker_payment_outgoing',
           parameters: [
             firstName,

@@ -11,12 +11,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import {
   inferDisputeType,
   inferIndustry,
   normaliseMerchant,
 } from '@/lib/dispute-outcome/normalise';
 import { logAlertInteraction, responseTimeFrom } from '@/lib/alert-interactions';
+import { captureServer } from '@/lib/posthog-server';
+import { sendFounderAlert } from '@/lib/telegram/founder-alert';
 
 const VALID_OUTCOMES = ['won', 'partial', 'lost', 'withdrawn', 'timeout', 'still_open'] as const;
 const VALID_SOURCES = ['user', 'ai_extracted', 'admin', 'auto_timeout'] as const;
@@ -57,7 +60,7 @@ export async function POST(
   // Load dispute (RLS scopes to owner)
   const { data: dispute, error: loadErr } = await supabase
     .from('disputes')
-    .select('id, user_id, provider_name, provider_type, issue_type, issue_summary, created_at')
+    .select('id, user_id, provider_name, provider_type, issue_type, issue_summary, created_at, disputed_amount')
     .eq('id', id)
     .eq('user_id', user.id)
     .maybeSingle();
@@ -124,8 +127,111 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to tag outcome' }, { status: 500 });
   }
 
+  // "How we won" snapshot for terminal outcomes: capture the shape of
+  // the campaign (letters sent, laws cited, escalation, timings, money)
+  // at outcome time so the intelligence flywheel can answer "what does
+  // a winning dispute look like" without re-joining at query time.
+  // Every lookup is tolerant — a failed query nulls that field, it
+  // never blocks the outcome write.
+  const disputedAmountRaw = (dispute as { disputed_amount?: unknown }).disputed_amount;
+  const disputedGbp =
+    disputedAmountRaw == null || !Number.isFinite(Number(disputedAmountRaw))
+      ? null
+      : Number(disputedAmountRaw);
+
+  let lettersSent: number | null = null;
+  let correspondenceCount: number | null = null;
+  let lawsCited: Array<{ ref_id: string; law_name: string | null; section: string | null }> | null = null;
+
+  if (isTerminal) {
+    // correspondence rows for this dispute (correspondence.dispute_id
+    // is the FK used across src/lib/dispute-sync and escalation-pack).
+    try {
+      const { count, error } = await supabase
+        .from('correspondence')
+        .select('id', { count: 'exact', head: true })
+        .eq('dispute_id', id);
+      if (!error) correspondenceCount = count ?? 0;
+    } catch (e) {
+      console.warn('[disputes.outcome] correspondence count failed (non-fatal):', e);
+    }
+
+    // Letters we sent (AI-drafted letters in the thread).
+    try {
+      const { count, error } = await supabase
+        .from('correspondence')
+        .select('id', { count: 'exact', head: true })
+        .eq('dispute_id', id)
+        .eq('entry_type', 'ai_letter');
+      if (!error) lettersSent = count ?? 0;
+    } catch (e) {
+      console.warn('[disputes.outcome] letters count failed (non-fatal):', e);
+    }
+
+    // Laws cited: legal_ref_usages rows link to disputes via
+    // artefact_id = dispute id with artefact_kind='dispute_letter'
+    // (same join as the compute-dispute-intelligence cron). The table
+    // is RLS-locked against non-service reads, so use the admin client;
+    // skip silently if the service key isn't configured.
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (url && serviceKey) {
+        const admin = createAdminClient(url, serviceKey);
+        const { data: usageRows, error } = await admin
+          .from('legal_ref_usages')
+          .select('ref_id, legal_references(law_name, section)')
+          .eq('artefact_kind', 'dispute_letter')
+          .eq('artefact_id', id);
+        if (!error && usageRows) {
+          type UsageRow = {
+            ref_id: string;
+            legal_references:
+              | { law_name: string | null; section: string | null }
+              | { law_name: string | null; section: string | null }[]
+              | null;
+          };
+          const seen = new Set<string>();
+          lawsCited = [];
+          for (const row of usageRows as UsageRow[]) {
+            if (!row.ref_id || seen.has(row.ref_id)) continue;
+            seen.add(row.ref_id);
+            const ref = Array.isArray(row.legal_references)
+              ? row.legal_references[0] ?? null
+              : row.legal_references;
+            lawsCited.push({
+              ref_id: row.ref_id,
+              law_name: ref?.law_name ?? null,
+              section: ref?.section ?? null,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[disputes.outcome] laws-cited lookup failed (non-fatal):', e);
+    }
+  }
+
+  const howWon = isTerminal
+    ? {
+        letters_sent: lettersSent,
+        correspondence_count: correspondenceCount,
+        laws_cited: lawsCited,
+        laws_cited_count: lawsCited ? lawsCited.length : null,
+        escalation_path: body.escalation_path ?? null,
+        resolution_time_days: resolutionDays,
+        provider: (dispute.provider_name as string | null) ?? null,
+        industry,
+        recovered_gbp: recovered,
+        disputed_gbp: disputedGbp,
+      }
+    : null;
+
   // Append to outcome event log (history of how the outcome evolved).
-  const { error: evErr } = await supabase.from('dispute_outcome_events').insert({
+  // The how_won column ships in migration 20260820130000; attempt the
+  // insert with it and retry without on error so this code works both
+  // before and after that migration is applied.
+  const baseEvent = {
     dispute_id: id,
     source,
     outcome,
@@ -133,9 +239,48 @@ export async function POST(
     notes: body.notes ?? null,
     ai_evidence_excerpt: body.ai_evidence_excerpt ?? null,
     user_id: user.id,
-  });
+  };
+  let evErr: { message: string } | null = null;
+  if (howWon) {
+    const { error: withHowWonErr } = await supabase
+      .from('dispute_outcome_events')
+      .insert({ ...baseEvent, how_won: howWon });
+    if (withHowWonErr) {
+      console.warn(
+        '[disputes.outcome] event insert with how_won failed, retrying without (column may not exist yet):',
+        withHowWonErr.message,
+      );
+      const { error: retryErr } = await supabase.from('dispute_outcome_events').insert(baseEvent);
+      evErr = retryErr;
+    }
+  } else {
+    const { error: plainErr } = await supabase.from('dispute_outcome_events').insert(baseEvent);
+    evErr = plainErr;
+  }
   if (evErr) {
     console.warn('[disputes.outcome] event-log insert failed (non-fatal):', evErr.message);
+  }
+
+  // Server-side analytics — fire-and-forget, never blocks the response.
+  captureServer('dispute_outcome_recorded', user.id, {
+    outcome,
+    provider: (dispute.provider_name as string | null) ?? null,
+    industry,
+    recovered_gbp: recovered,
+    disputed_gbp: disputedGbp,
+    resolution_days: resolutionDays,
+    letters_sent: lettersSent,
+    laws_cited_count: lawsCited ? lawsCited.length : 0,
+    escalated: (body.escalation_path?.length ?? 0) > 0,
+    source,
+  });
+
+  // Founder alert on real wins — fire-and-forget, never blocks the response.
+  if ((outcome === 'won' || outcome === 'partial') && recovered != null && recovered > 0) {
+    const providerLabel = (dispute.provider_name as string | null) || 'Unknown provider';
+    void sendFounderAlert(
+      `🏆 Dispute ${outcome}: ${providerLabel} £${recovered.toFixed(2)} recovered after ${resolutionDays} days (${lettersSent ?? 0} letters).`,
+    ).catch(() => {});
   }
 
   void logAlertInteraction({

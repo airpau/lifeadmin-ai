@@ -7,7 +7,7 @@ import {
   scanEmailsViaImap,
   decryptPassword,
 } from '@/lib/imap-scanner';
-import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { checkUsageLimit, incrementUsage, checkFreeScanGate } from '@/lib/plan-limits';
 import { resolveEmailScanWindow, buildScanWindowNotice } from '@/lib/email-scan-window';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { getUserPlan } from '@/lib/get-user-plan';
@@ -39,11 +39,24 @@ export async function POST(req: NextRequest) {
     const isAdmin = user.email === 'aireypaul@googlemail.com';
 
     if (!isAdmin) {
+      // Free-tier monthly gate — identical to /api/gmail/scan and
+      // /api/outlook/scan. The old hard 403 here contradicted
+      // PLAN_LIMITS.free (one_time_email_scan, scanRunsPerMonth: 1):
+      // free users get 1 scan per 30 days, then a 429 with the next
+      // available date so the UI can show a countdown + upgrade nudge.
       if (plan.tier === 'free') {
-        return NextResponse.json(
-          { error: 'Inbox scanning is available on Essential and Pro plans. Upgrade to automatically find hidden subscriptions and savings.', upgradeRequired: true },
-          { status: 403 }
-        );
+        const gate = await checkFreeScanGate(user.id);
+        if (!gate.allowed) {
+          return NextResponse.json(
+            {
+              error: `Free tier scans monthly. Next scan available ${gate.nextAvailableISO}. Upgrade for unlimited scans.`,
+              upgrade_url: '/pricing',
+              nextAvailableISO: gate.nextAvailableISO,
+              lastScanISO: gate.lastScanISO,
+            },
+            { status: 429 }
+          );
+        }
       }
 
       if (!usageCheck.allowed) {
@@ -116,9 +129,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Scan emails via IMAP. The lookback is a tier limit — free is 90
-    // days, paid 730. In practice free never reaches here (hard 403
-    // above), so paid behaviour is unchanged; this is defence in depth
-    // so the window can only ever come from one place.
+    // days, paid 730. Free users DO reach here now (one scan per 30
+    // days via checkFreeScanGate above), so the 90-day window applies
+    // to them; resolveEmailScanWindow keeps the window coming from one
+    // place for every tier.
     const scanWindow = await resolveEmailScanWindow(user.id);
     console.log(`[email/scan] Scanning ${conn.email_address} via ${conn.imap_host}:${conn.imap_port} (window=${scanWindow.days}d, tier=${scanWindow.tier})`);
     const emails = await scanEmailsViaImap(

@@ -271,8 +271,10 @@ async function runCron() {
           userId: tx.user_id,
           eventType: 'income_received',
           section: 'money_in',
-          line: `${amount} from ${merchant}`,
+          line: `${amount} from ${merchant}.`,
           amount: Number(tx.amount),
+          provider: merchant,
+          url: 'paybacker.co.uk/dashboard/money-hub',
           templateName: 'paybacker_payment_received',
           parameters: [firstName, merchant, amount, balanceLabel],
           // Transaction id keys the queue row, matching the notification_log

@@ -105,6 +105,10 @@ export interface SendPolicyInput {
   digestSection?: DigestSection;
   /** £ magnitude used to rank "top items" inside a digest section. */
   amount?: number;
+  /** Provider/merchant name — bolded in the digest bullet when deferred. */
+  provider?: string;
+  /** Specific dashboard deep link for the digest item when deferred. */
+  url?: string;
 }
 
 function admin(): SupabaseClient | null {
@@ -353,6 +357,8 @@ async function enqueue(
     section: input.digestSection,
     line,
     amount: input.amount,
+    provider: input.provider,
+    url: input.url,
     templateName: input.templateName,
     parameters: input.parameters,
     dedupKey,
