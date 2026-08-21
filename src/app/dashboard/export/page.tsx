@@ -1,8 +1,13 @@
 'use client'
 // src/app/dashboard/export/page.tsx
 // Export destinations page — send Paybacker data to third-party tools.
-// Currently live: Google Sheets sync, CSV + Excel one-shot download.
-// Coming soon: Notion, YNAB, Actual Budget.
+// Live: Google Sheets sync, CSV + Excel one-shot download.
+//
+// The "Coming soon" block for Notion / YNAB / Actual Budget was removed
+// on 2026-08-21. Three greyed cards with a "Notify me" mailto added no
+// value and made a working export tool read as unfinished, which is
+// exactly how it was misread. If those integrations get built they can
+// be added to the live list.
 //
 // Pro-only per the tier matrix in src/lib/plan-limits.ts. Free + Essential
 // users see the lock screen; the page surface is otherwise identical so
@@ -15,49 +20,6 @@ import DataExportCard from '@/components/DataExportCard'
 import UpgradeLock from '@/components/UpgradeLock'
 import { createClient } from '@/lib/supabase/client'
 import { isAtLeastPro, type PlanTier } from '@/lib/tier-rank'
-
-type ComingSoonDestination = {
-  name: string
-  blurb: string
-  icon: React.ReactNode
-  iconBg: string
-}
-
-const comingSoon: ComingSoonDestination[] = [
-  {
-    name: 'Notion',
-    blurb: 'Sync transactions into a Notion database',
-    iconBg: 'bg-slate-100',
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="2" fill="#0f172a"/>
-        <path d="M7 7h2l4 7V7h2v10h-2l-4-7v7H7z" fill="#ffffff"/>
-      </svg>
-    ),
-  },
-  {
-    name: 'YNAB',
-    blurb: 'Push transactions straight into your YNAB budget',
-    iconBg: 'bg-blue-500/10',
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="4" fill="#3b82f6"/>
-        <text x="12" y="16" textAnchor="middle" fontSize="9" fontWeight="700" fill="white">Y</text>
-      </svg>
-    ),
-  },
-  {
-    name: 'Actual Budget',
-    blurb: 'Send transactions to your self-hosted Actual instance',
-    iconBg: 'bg-amber-500/10',
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="9" fill="#f59e0b"/>
-        <text x="12" y="16" textAnchor="middle" fontSize="10" fontWeight="700" fill="#0f172a">A</text>
-      </svg>
-    ),
-  },
-]
 
 export default function ExportPage() {
   const [tier, setTier] = useState<PlanTier | null>(null);
@@ -72,7 +34,7 @@ export default function ExportPage() {
 
   // Pro-only feature per CLAUDE.md tier matrix. Until tier loads, show a
   // lightweight skeleton (no flash of unlocked content for free users).
-  // isAtLeastPro, not !== 'pro' — Household include export.
+  // isAtLeastPro, not !== 'pro' — Household and Dispute Pro include export.
   // A null tier (still loading) fails the check, so the lock still shows first.
   if (!isAtLeastPro(tier)) {
     return (
@@ -81,7 +43,7 @@ export default function ExportPage() {
           <div>
             <h1 className="page-title">Export</h1>
             <p className="page-sub">
-              Send your Paybacker data to Google Sheets, CSV/Excel, and (soon) Notion / YNAB / Actual Budget.
+              Send your Paybacker data to Google Sheets, or download it as CSV or Excel.
             </p>
           </div>
         </div>
@@ -116,77 +78,9 @@ export default function ExportPage() {
       </div>
 
       {/* Live destinations */}
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '.1em',
-          textTransform: 'uppercase',
-          color: 'var(--text-3)',
-          marginBottom: 8,
-        }}
-      >
-        Available now
-      </div>
       <div className="grid grid-cols-1 gap-3 mb-6">
         <GoogleSheetsConnect />
         <DataExportCard />
-      </div>
-
-      {/* Coming soon */}
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '.1em',
-          textTransform: 'uppercase',
-          color: 'var(--text-3)',
-          marginBottom: 8,
-        }}
-      >
-        Coming soon
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {comingSoon.map((d) => (
-          <div
-            key={d.name}
-            className="card"
-            style={{ padding: 14, opacity: 0.75 }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <div
-                className={`w-10 h-10 rounded-lg ${d.iconBg} flex items-center justify-center flex-shrink-0`}
-              >
-                {d.icon}
-              </div>
-              <div style={{ fontSize: 13.5, fontWeight: 700 }}>{d.name}</div>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  letterSpacing: '.04em',
-                  background: '#F3F4F6',
-                  color: 'var(--text-2)',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Soon
-              </span>
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-2)', lineHeight: 1.4, marginBottom: 10, minHeight: 32 }}>
-              {d.blurb}
-            </div>
-            <Link
-              href={`mailto:hello@paybacker.co.uk?subject=Notify%20me%20about%20${encodeURIComponent(d.name)}`}
-              className="cta-ghost"
-              style={{ padding: '5px 10px', fontSize: 11.5, width: '100%', justifyContent: 'center', display: 'inline-flex' }}
-            >
-              Notify me
-            </Link>
-          </div>
-        ))}
       </div>
 
       {/* Privacy footer */}

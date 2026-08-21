@@ -105,7 +105,8 @@ export default function NetWorthPanel({ data, isPro, refreshData }: { data: any,
           </div>
 
           <p className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-slate-200">
-            Auto-sync with bank balances coming soon. Assets must be added manually.
+            Assets and debts are added by you. Things like property, vehicles and
+            pensions have no Open Banking feed, so there is nothing to sync them from.
           </p>
         </div>
       )}
