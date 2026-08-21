@@ -138,7 +138,11 @@ export async function GET(request: NextRequest) {
   // exactly one retry before giving up and skipping the post.
   async function writeCaption(correction?: string): Promise<{ caption: string; imagePrompt: string }> {
   const postRes = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    // Sonnet, not Haiku. This runs once a day for roughly 800 tokens, so the
+    // cost difference is pennies a month against ~£0.19/day total spend, and
+    // the output publishes unsupervised to Facebook, Instagram and X under
+    // our own brand.
+    model: 'claude-sonnet-5',
     max_tokens: 800,
     system: `You are Casey, the Chief Content Officer for Paybacker, a UK consumer rights fintech platform. You write social media posts that are timely, relevant, and engaging.
 
