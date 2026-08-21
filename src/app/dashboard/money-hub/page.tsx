@@ -1083,6 +1083,19 @@ export default function MoneyHubPage() {
  </button>
  </div>
 
+ {/* Primary bank-connect entry point. Users reported the only
+      discoverable "add bank" affordance was buried at the bottom of
+      the overview page — this puts it in the page header where it's
+      always visible. Same direct-connect fallback as the empty-state
+      CTA below. */}
+ <button
+ onClick={() => { setConnectError(null); if (!connectBankDirect()) setShowBankPicker(true); }}
+ className="flex items-center gap-2 cta transition-all"
+ title="Connect a bank account via secure Open Banking"
+ >
+ <Building2 className="h-4 w-4" />
+ Connect bank
+ </button>
  <button
  onClick={handleSync}
  disabled={syncing || !canSync}
