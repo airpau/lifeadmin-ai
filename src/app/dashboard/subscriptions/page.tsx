@@ -418,9 +418,15 @@ export default function SubscriptionsPage() {
 
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
-      setBankToast('Bank connected! We\'ve synced your last 12 months of transactions.');
+      // Present tense, because it is. The initial 12-month pull is
+      // fired and NOT awaited by the Yapily callback, so when this
+      // toast appears the sync has just started. The old copy read
+      // "We've synced your last 12 months of transactions" over a page
+      // that was still empty, which was simply untrue at the moment the
+      // user read it.
+      setBankToast('Bank connected. We’re pulling in your last 12 months of transactions, this takes a minute or two.');
       capture('bank_connected');
-      const t = setTimeout(() => setBankToast(null), 5000);
+      const t = setTimeout(() => setBankToast(null), 8000);
       return () => clearTimeout(t);
     }
   }, [searchParams]);
@@ -1548,7 +1554,7 @@ export default function SubscriptionsPage() {
                   syncBtnTitle = 'Upgrade to Essential or Pro for more syncs';
                 } else if (!isAtLeastPro(bankTierInfo.tier)) {
                   // Rank check rather than === 'essential' — on-demand sync is a
-                  // Pro entitlement, so Household must fall
+                  // Pro entitlement, so Household and Dispute Pro must fall
                   // through to the enabled branch below, not be locked out here.
                   syncBtnDisabled = true;
                   syncBtnLabel = 'Sync Now (Pro only)';

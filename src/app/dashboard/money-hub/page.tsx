@@ -112,6 +112,12 @@ export default function MoneyHubPage() {
  const [spaces, setSpaces] = useState<Array<{ id: string; name: string; emoji: string | null; is_default: boolean; created_at?: string | null; space_type?: 'personal' | 'business' | 'mixed' }>>([]);
  const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
  const [preferredSpaceId, setPreferredSpaceId] = useState<string | null>(null);
+ // True from the moment the user lands back from their bank until the
+ // background 12-month pull produces accounts. Distinct from `loading`
+ // (first paint) and `switching` (month/Space change) because it can
+ // run for minutes and needs its own copy.
+ const [syncingAfterConnect, setSyncingAfterConnect] = useState(false);
+
  // Separate flag for Space / month switches — initial load uses `loading`.
  // This drives the inline "Switching…" pill so the user gets visible
  // feedback on the (currently slow) /api/money-hub refetch.
@@ -205,6 +211,11 @@ export default function MoneyHubPage() {
  setError(null);
  cacheRef.current.set(cacheKey, d);
  if (d.activeSpace?.id && !activeSpaceId) setActiveSpaceId(d.activeSpace.id);
+ // Returned so callers can act on the payload immediately. The
+ // post-connect poller needs to know whether accounts have arrived
+ // yet, and reading `data` back would give it the previous render's
+ // value.
+ return d;
  }
  else setError(d.error);
  } catch (e: any) {
@@ -213,6 +224,7 @@ export default function MoneyHubPage() {
  setLoading(false);
  setSwitching(false);
  }
+ return null;
  // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [selectedMonth, activeSpaceId, data]);
 
@@ -405,16 +417,59 @@ export default function MoneyHubPage() {
 
  // ─── Initial load ──────────────────────────────────────────────────────
 
- // Handle ?connected=true redirect after bank reconnection
+ // Handle ?connected=true redirect after bank connection.
+ //
+ // The Yapily callback fires /api/yapily/initial-sync and does NOT
+ // await it: a 12-month pull across every account takes a minute or
+ // two. Before 2026-08-21 we refreshed exactly once, immediately, and
+ // that refresh almost always came back with zero accounts. The page
+ // then fell through to the `!data?.accounts?.length` branch and
+ // rendered "Connect your bank to unlock Money Hub" again, which reads
+ // as "the connection failed" seconds after the bank told the user it
+ // had succeeded.
+ //
+ // So: hold a syncing state and keep asking until the data lands.
  useEffect(() => {
- if (searchParams.get('connected') === 'true') {
+ if (searchParams.get('connected') !== 'true') return;
+
  setExpiredConnections([]); // Clear expired state immediately
  setBankPromptDismissed(false);
- showToast('Bank connected! Syncing your transactions...', 'success');
- // Trigger a full refresh to pick up new connection and transactions
- refreshData();
+ setSyncingAfterConnect(true);
+ showToast('Bank connected. Pulling in your transactions...', 'success');
+
+ let cancelled = false;
+ let timer: ReturnType<typeof setTimeout> | null = null;
+ let attempts = 0;
+ const MAX_ATTEMPTS = 40; // 40 x 5s, a little over three minutes
+ const POLL_MS = 5_000;
+
+ const poll = async () => {
+ if (cancelled) return;
+ attempts += 1;
+ const result = await refreshData();
  fetchExpectedBills();
+ if (cancelled) return;
+
+ if (result?.accounts?.length) {
+ setSyncingAfterConnect(false);
+ return;
  }
+ if (attempts >= MAX_ATTEMPTS) {
+ // Give up gracefully rather than spinning forever. A slow bank
+ // or a failed sync should leave the user with the normal empty
+ // state and a working Sync button, not an endless spinner.
+ setSyncingAfterConnect(false);
+ return;
+ }
+ timer = setTimeout(poll, POLL_MS);
+ };
+
+ timer = setTimeout(poll, 1_500);
+
+ return () => {
+ cancelled = true;
+ if (timer) clearTimeout(timer);
+ };
  }, [searchParams]);
 
  // Handle ?error=<code> redirects from the Yapily consent callback.
@@ -729,7 +784,7 @@ export default function MoneyHubPage() {
  // mobile loads. The 24h timestamp is the only signal we need — empty
  // alerts is the steady state for users who've already actioned them.
  useEffect(() => {
- // isAtLeastPro, not === 'pro' — Household get the same
+ // isAtLeastPro, not === 'pro' — Household and Dispute Pro get the same
  // background inbox scan Pro does.
  if (data && isAtLeastPro(data.tier)) {
  const lastScan = localStorage.getItem('pb_last_gmail_scan');
@@ -755,8 +810,8 @@ export default function MoneyHubPage() {
  // render, then once data arrived the hook started running and React
  // tripped (2026-04-28).
  const lockedSpaceIds = useMemo(() => {
-   // isAtLeastPro — unlimited Spaces is a Pro entitlement, so Household
-   // must not be capped back to a single Space.
+   // isAtLeastPro — unlimited Spaces is a Pro entitlement, so Household and
+   // Dispute Pro must not be capped back to a single Space.
    const tierMaxSpaces = isAtLeastPro(data?.tier) ? null : 1;
    if (tierMaxSpaces === null) return new Set<string>();
    const ordered = [...spaces].sort((a, b) => {
@@ -787,6 +842,32 @@ export default function MoneyHubPage() {
  <p className="text-red-400 font-semibold mb-2">Money Hub failed to load</p>
  <p className="text-slate-600 text-sm mb-4">{error}</p>
  <button onClick={() => { setLoading(true); setError(null); refreshData(); }} className="bg-orange-500 hover:bg-amber-300 text-black font-semibold px-4 py-2 rounded-xl text-sm">Retry</button>
+ </div>
+ </div>
+ );
+ }
+
+ // Sync in flight: show progress, not the connect prompt. Rendering
+ // "Connect your bank to unlock Money Hub" here is what made a
+ // successful connection look like a failure.
+ if (!data?.accounts?.length && syncingAfterConnect) {
+ return (
+ <div className="max-w-7xl mx-auto w-full">
+ <div className="text-center py-16">
+ <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-200 mb-4">
+ <RefreshCw className="h-8 w-8 text-emerald-600 animate-spin" />
+ </div>
+ <h2 className="text-3xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">
+ Pulling in your transactions
+ </h2>
+ <p className="text-slate-600 max-w-md mx-auto">
+ Your bank is connected. We&apos;re reading the last 12 months of
+ transactions and working out your subscriptions and regular
+ payments. This usually takes a minute or two.
+ </p>
+ <p className="text-slate-500 text-sm mt-4">
+ You can leave this page. It will all be here when you come back.
+ </p>
  </div>
  </div>
  );
@@ -853,7 +934,7 @@ export default function MoneyHubPage() {
  // and the hardcoded test user already come through as 'pro'. No need for
  // a separate isTestUserOverride branch — the API never populates that flag.
  // Rank checks, not tier equality — an essential/pro literal list silently
- // treated Household as free-tier users.
+ // treated Household and Dispute Pro as free-tier users.
  const isPaid = isAtLeastEssential(data?.tier);
  const isPro = isAtLeastPro(data?.tier);
 
@@ -881,8 +962,8 @@ export default function MoneyHubPage() {
  })();
  const canSync = (() => {
  if (syncing) return false;
- // On-demand sync is a Pro entitlement — isAtLeastPro covers Household,
- // which would otherwise see the button permanently disabled.
+ // On-demand sync is a Pro entitlement — isAtLeastPro covers Household and
+ // Dispute Pro, which would otherwise see the button permanently disabled.
  if (!isAtLeastPro(data.tier)) return false;
  return syncCooldownMinsLeft === 0;
  })();
