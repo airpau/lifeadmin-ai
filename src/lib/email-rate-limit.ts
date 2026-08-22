@@ -23,6 +23,11 @@ const MARKETING_EMAIL_TYPES = [
   'targeted_deal_email',
   'price_increase_alert',
   'daily_digest',
+  // Written by cron/renewal-reminders via markEmailSent, once, and only when
+  // the dispatcher reports a real email delivery. Its per-window DEDUP rows
+  // use `renewal_reminder_dispatch` and must NOT be added here — they are
+  // written on any-channel delivery, so counting them let a Telegram-only
+  // digest burn the user's daily email slot.
   'renewal_reminder',
   'churn_reengagement',
   'churn_inactive_7d',

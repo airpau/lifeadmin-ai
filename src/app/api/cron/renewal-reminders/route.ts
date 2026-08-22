@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { buildRenewalEmail } from '@/lib/email/renewal-reminders';
-import { canSendEmail } from '@/lib/email-rate-limit';
+import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import { isPayrollLike } from '@/lib/subscriptions/payroll-filter';
 import { buildRenewalDigest, formatRenewalAmount } from '@/lib/subscriptions/renewal-digest';
@@ -35,6 +35,24 @@ interface PendingRenewal {
   /** tasks.description key that dedups this (user, window, date) tuple. */
   reminderKey: string;
 }
+
+/**
+ * Task type for the per-window DEDUP rows.
+ *
+ * Deliberately NOT in MARKETING_EMAIL_TYPES (src/lib/email-rate-limit.ts).
+ * These rows record "this renewal window has been covered on some channel",
+ * which says nothing about whether an email went out, so they must not
+ * consume an email cap slot. The counted `renewal_reminder` row is written
+ * separately, only on a real email delivery.
+ */
+const DEDUP_TASK_TYPE = 'renewal_reminder_dispatch';
+
+/**
+ * Legacy type these rows used before the split. Kept on the READ path so
+ * rows written by earlier deploys still dedup, and used as the write
+ * fallback if the migration adding DEDUP_TASK_TYPE has not landed yet.
+ */
+const LEGACY_DEDUP_TASK_TYPE = 'renewal_reminder';
 
 /**
  * Daily renewal reminder cron — 30, 14, and 7 days before renewal.
@@ -108,7 +126,7 @@ export async function GET(request: NextRequest) {
       .from('tasks')
       .select('description')
       .eq('user_id', userId)
-      .eq('type', 'renewal_reminder')
+      .in('type', [DEDUP_TASK_TYPE, LEGACY_DEDUP_TASK_TYPE])
       .in('description', keys);
     const sentKeys = new Set((alreadySent ?? []).map((t) => t.description as string));
 
@@ -227,16 +245,47 @@ export async function GET(request: NextRequest) {
     if (sent) {
       // One task row per covered window so the per-window dedup keys
       // stay exactly as they were before the combine.
+      //
+      // These are DEDUP rows and are written on ANY channel delivery, so
+      // they carry the uncounted type. Writing them as `renewal_reminder`
+      // (a MARKETING_EMAIL_TYPES member) meant a Telegram-only digest —
+      // including one whose email leg the cap had already suppressed —
+      // burned the user's single daily email slot, blocking every later
+      // 08:00 cron from emailing to pay for an email nobody received.
       const coveredKeys = Array.from(new Set(due.map((d) => d.reminderKey)));
-      await supabase.from('tasks').insert(
-        coveredKeys.map((key) => ({
-          user_id: userId,
-          type: 'renewal_reminder',
-          title: `Renewal reminder: ${due.length} subs across ${dueWindows.join('/')}d windows`,
-          description: key,
-          status: 'completed',
-        })),
-      );
+      const title = `Renewal reminder: ${due.length} subs across ${dueWindows.join('/')}d windows`;
+      const dedupRows = coveredKeys.map((key) => ({
+        user_id: userId,
+        type: DEDUP_TASK_TYPE,
+        title,
+        description: key,
+        status: 'completed',
+      }));
+
+      const { error: dedupError } = await supabase.from('tasks').insert(dedupRows);
+
+      if (dedupError) {
+        // Losing the dedup row is worse than over-counting the cap: this
+        // user would be re-sent the same digest on every subsequent run.
+        // If the migration adding DEDUP_TASK_TYPE has not been applied,
+        // the CHECK constraint rejects the insert, so fall back to the
+        // legacy type — that restores the previous (cap-burning but
+        // correct-dedup) behaviour rather than sending on a loop.
+        console.error(
+          `[renewal-reminders] dedup insert failed for ${userId} (${dedupError.message}) — falling back to ${LEGACY_DEDUP_TASK_TYPE}`,
+        );
+        await supabase.from('tasks').insert(
+          dedupRows.map((row) => ({ ...row, type: LEGACY_DEDUP_TASK_TYPE })),
+        );
+      }
+
+      // Cap accounting is now driven by an actual email delivery, not by
+      // "some channel delivered". One row per email, matching the pattern
+      // in contract-expiry-alerts (PR#532).
+      if (dispatchResult.delivered.includes('email')) {
+        await markEmailSent(supabase, userId, 'renewal_reminder', title);
+      }
+
       totalSent++;
     }
 
