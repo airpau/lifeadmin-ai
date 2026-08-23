@@ -202,14 +202,26 @@ export async function POST(request: NextRequest) {
     }
 
     const issueTypeToCategory: Record<string, string[]> = {
-      // 'complaint' is the catch-all letterType for "I'm being charged
-      // something I don't think I owe / didn't agree to". Most of those
-      // involve a payment (card, PayPal, direct debit, BNPL), so we
-      // include 'finance' by default — the dynamic detector below can
-      // still narrow further. Without 'finance' here the engine misses
-      // Payment Services Regs 2017 reg 76 (unauthorised payment refund)
-      // which is often the STRONGEST ground.
-      complaint: ['general', 'finance'],
+      // 'complaint' is the catch-all issue_type, so whatever sits here
+      // is applied to every dispute nobody categorised.
+      //
+      // It used to be ['general', 'finance']. That meant a National Rail
+      // ticket refund fetched all 22 finance refs and displayed Consumer
+      // Credit Act s.75, FCA Handbook CONC 7.7 and FSMA s.225-234 (FOS
+      // jurisdiction) as the user's rights. None of those govern a train
+      // ticket.
+      //
+      // The justification for the default was that the engine would
+      // otherwise miss Payment Services Regs 2017 reg 76. It will not:
+      // the augment('finance', ...) detector below matches paypal,
+      // klarna, chargeback, section 75, credit/debit card, direct debit,
+      // standing order and unauthorised payment/charge/transaction. The
+      // detector is precise where the default was indiscriminate, so the
+      // default goes and the detector does the work.
+      //
+      // Do not reinstate a sector here. If real payment disputes are
+      // missing finance refs, widen the regex, not this line.
+      complaint: ['general'],
       energy_dispute: ['general', 'energy'],
       broadband_complaint: ['general', 'broadband'],
       flight_compensation: ['general', 'travel'],
@@ -232,6 +244,14 @@ export async function POST(request: NextRequest) {
       mobile: ['broadband', 'general'],
       insurance: ['insurance', 'general'],
       travel: ['travel', 'general'],
+      // legal_references holds 10 rows with category='rail' (Rail
+      // Passengers' Rights and Obligations Regulation, Delay Repay,
+      // National Rail Conditions of Travel and so on). Before this,
+      // nothing in the codebase could select them: no issue_type and no
+      // provider_type mapped to 'rail', so those ten rows had never once
+      // reached a letter.
+      rail: ['rail', 'travel', 'general'],
+      transport: ['rail', 'travel', 'general'],
       parking: ['parking', 'general'],
       finance: ['finance', 'general'],
       debt: ['debt', 'finance', 'general'],
@@ -280,6 +300,15 @@ export async function POST(request: NextRequest) {
 
     // Travel signals (flight cancellation / delay).
     augment('travel', /\b(flight|airline|cancel(?:l?ed)?\s*(my\s+)?flight|delay(?:ed)?\s*(my\s+)?flight|baggage|boarding|ryanair|easyjet|jet2|tui|british\s*airways|wizz\s*air|caa\b|uk261|eu261)\b/);
+
+    // Rail signals. Deliberately separate from 'travel' above, whose
+    // regex is aviation-only (flight, airline, baggage, uk261, the
+    // carriers) and therefore never fires on a train dispute.
+    //
+    // 'ticket' on its own is excluded on purpose: it collides with
+    // parking tickets and event tickets, both of which are separate
+    // categories with their own refs.
+    augment('rail', /\b(rail(way)?|train|national\s*rail|trainline|delay\s*repay|season\s*ticket|lner|avanti|northern\s*rail|southeastern|thameslink|greater\s*anglia|south\s*western\s*railway|gwr|crosscountry|transport\s*focus|rail\s*ombudsman)\b/);
 
     // Energy signals.
     augment('energy', /\b(energy|gas|electric(ity)?|ofgem|british\s*gas|octopus(\s*energy)?|edf|ovo|e\.?on|sse\b|scottish\s*power|smart\s*meter|back-?bill)\b/);
@@ -672,7 +701,19 @@ export async function POST(request: NextRequest) {
     // gym, fitness, or other mislabelled 'general' refs never appear in unrelated dispute letters,
     // then further narrow to what the AI actually cited.
     const allFetchedRefs = relevantRefs.length > 0 ? relevantRefs : (legalRefs || []);
-    let matchedRefs = allFetchedRefs;
+
+    // Starts EMPTY. This previously started as allFetchedRefs and was only
+    // narrowed when the cited-ref match found something, so any letter
+    // whose citations did not textually match our rows displayed EVERY
+    // reference the engine could have used, labelled as the rights this
+    // letter relies on. On one rail dispute that was 25 chips, most of
+    // them financial services law.
+    //
+    // The pills are a claim about what backs THIS letter. An empty list is
+    // the correct answer when nothing matched, and it surfaces a real
+    // signal (the model cited something we did not supply) instead of
+    // hiding it behind a wall of chips.
+    let matchedRefs: any[] = [];
 
     if (result.legalReferences && result.legalReferences.length > 0) {
       const citedLower = result.legalReferences.map((r: string) => r.toLowerCase());
@@ -691,10 +732,9 @@ export async function POST(request: NextRequest) {
         if (a.category === 'general' && b.category !== 'general') return 1;
         return 0;
       });
-      // Only filter if we matched at least 1 ref; otherwise fall back to all fetched
-      if (categorySpecific.length > 0) {
-        matchedRefs = categorySpecific;
-      }
+      // No fallback. If categorySpecific is empty the letter cited
+      // nothing we recognise, and the honest rendering is no pills.
+      matchedRefs = categorySpecific;
     }
 
     const rightsPills = matchedRefs.map((r: any) => ({

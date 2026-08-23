@@ -3,9 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { findBrandSpellingErrors } from '@/lib/social/brand-spelling';
 import { findUnverifiableClaims, describeClaims } from '@/lib/social/claims-guard';
+import { generateHiggsfieldImage } from '@/lib/social/higgsfield';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+// 300, not 120. The chain is Perplexity + Sonnet + an ASYNCHRONOUS
+// Higgsfield generation we have to poll + two Graph calls. fal.ai
+// returned inline, so 120 used to be enough. It is not any more.
+export const maxDuration = 300;
 
 const API = 'https://graph.facebook.com/v25.0';
 const PAGE_ID = '1056645287525328';
@@ -34,30 +38,17 @@ async function alertFounder(text: string): Promise<void> {
 }
 
 async function generateImage(prompt: string): Promise<string | null> {
-  // Use fal.ai for image generation (per CLAUDE.md — ALL images through fal.ai)
-  // NO hex colour codes in prompt — AI models render them as visible text
-  const falKey = (process.env.FAL_KEY || '').replace(/\\n/g, '').trim();
-  if (!falKey) return null;
-
+  // Higgsfield, not fal.ai (swapped 2026-08-23). The house style and the
+  // polling live in @/lib/social/higgsfield; this function is now just
+  // "generate, then copy into our own storage".
+  //
+  // The copy is not optional. Higgsfield keeps output URLs for about seven
+  // days, so persisting their URL as asset_url would leave dead images on
+  // the feed and in content_drafts.
   try {
-    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${falKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt: `Dark navy blue background, mint green glowing accents, ${prompt}, absolutely no text no words no letters no numbers no characters, abstract shapes, premium fintech aesthetic, clean modern design, professional social media square post`,
-        image_size: 'square',
-        num_images: 1,
-      }),
-    });
+    const imageUrl = await generateHiggsfieldImage(prompt);
+    if (!imageUrl) { console.error('[social-post] No image URL from Higgsfield'); return null; }
 
-    const falData = await falRes.json();
-    const imageUrl = falData.images?.[0]?.url;
-    if (!imageUrl) { console.error('[social-post] No image URL from fal.ai:', JSON.stringify(falData).substring(0, 200)); return null; }
-
-    // Download from fal.ai and upload to Supabase storage
     const imgRes = await fetch(imageUrl);
     const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
 
@@ -81,6 +72,7 @@ async function generateImage(prompt: string): Promise<string | null> {
  * Daily social media post cron - runs at 10am UK time.
  * Researches trending UK consumer topics via Perplexity, writes a relevant post,
  * generates a branded image, publishes to Facebook + Instagram.
+ * X/Twitter was removed 2026-08-23.
  */
 export async function GET(request: NextRequest) {
   const auth = request.headers.get('authorization');
@@ -198,7 +190,7 @@ export async function GET(request: NextRequest) {
   const postRes = await anthropic.messages.create({
     // Sonnet, not Haiku. This runs once a day for roughly 800 tokens, so the
     // cost difference is pennies a month against ~£0.19/day total spend, and
-    // the output publishes unsupervised to Facebook, Instagram and X under
+    // the output publishes unsupervised to Facebook and Instagram under
     // our own brand.
     model: 'claude-sonnet-5',
     max_tokens: 800,
@@ -329,7 +321,7 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
     await alertFounder(
       `Daily social post SKIPPED: brand name misspelled after one retry.\n\n` +
         `Flagged: ${detail}\n\n` +
-        `Nothing was published to Facebook, Instagram or X.\n\n` +
+        `Nothing was published to Facebook or Instagram.\n\n` +
         `Caption was:\n${caption.substring(0, 500)}`,
     );
 
@@ -379,7 +371,7 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
     await alertFounder(
       `Daily social post SKIPPED: unverifiable claim after one retry.\n\n` +
         `Flagged: ${detail}\n\n` +
-        `Nothing was published to Facebook, Instagram or X.\n\n` +
+        `Nothing was published to Facebook or Instagram.\n\n` +
         `Caption was:\n${caption.substring(0, 500)}`,
     );
 
@@ -396,36 +388,52 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
   // Generate image based on AI-chosen prompt
   const imageUrl = await generateImage(imagePrompt);
 
+  // THE IMAGE IS MANDATORY (2026-08-23).
+  //
+  // Previously a failed generation still published: Facebook got a bare
+  // caption via /feed and Instagram was skipped entirely. On 22 and 23 Aug
+  // that produced exactly nothing on Instagram and a text-only post on
+  // Facebook, because the fal.ai account was locked. A caption with no
+  // image is not the product we want on the feed, so we now abort before
+  // touching the Graph API at all.
+  //
+  // Nothing has been published at this point, so the day's claim is
+  // genuinely safe to release and a later run can retry.
+  if (!imageUrl) {
+    console.error('[social-post] image generation failed, skipping the whole post');
+
+    await alertFounder(
+      `Daily social post SKIPPED: image generation failed.\n\n` +
+        `Nothing was published to Facebook or Instagram.\n\n` +
+        `Check the Higgsfield credentials and account balance at cloud.higgsfield.ai. ` +
+        `The run will retry on the next invocation.`,
+    );
+
+    await releaseClaim();
+
+    return NextResponse.json({ ok: false, skipped: true, reason: 'image_generation_failed' });
+  }
+
   const results: Record<string, any> = {};
 
-  // Post to Facebook
+  // Post to Facebook. Always a /photos post now: the guard above
+  // guarantees an image, so the old /feed text-only fallback is gone.
   try {
     const pageToken = await getPageToken(systemToken);
-    if (imageUrl) {
-      // Photo post via /photos endpoint (proper image, no link preview)
-      const params = new URLSearchParams({
-        message: caption,
-        url: imageUrl,
-        access_token: pageToken,
-      });
-      const res = await fetch(`${API}/${PAGE_ID}/photos`, { method: 'POST', body: params });
-      const data = await res.json();
-      results.facebook = data.error ? { error: data.error.message } : { ok: true, postId: data.id };
-    } else {
-      const params = new URLSearchParams({
-        message: caption,
-        access_token: pageToken,
-      });
-      const res = await fetch(`${API}/${PAGE_ID}/feed`, { method: 'POST', body: params });
-      const data = await res.json();
-      results.facebook = data.error ? { error: data.error.message } : { ok: true, postId: data.id };
-    }
+    const params = new URLSearchParams({
+      message: caption,
+      url: imageUrl,
+      access_token: pageToken,
+    });
+    const res = await fetch(`${API}/${PAGE_ID}/photos`, { method: 'POST', body: params });
+    const data = await res.json();
+    results.facebook = data.error ? { error: data.error.message } : { ok: true, postId: data.id };
   } catch (err: any) {
     results.facebook = { error: err.message };
   }
 
-  // Post to Instagram (requires image)
-  if (imageUrl) {
+  // Post to Instagram. An image is guaranteed by the guard above.
+  {
     try {
       const createParams = new URLSearchParams({
         image_url: imageUrl,
@@ -450,51 +458,59 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
     } catch (err: any) {
       results.instagram = { error: err.message };
     }
-  } else {
-    results.instagram = { skipped: 'No image generated' };
   }
 
-  // Post to X/Twitter (truncate to 280 chars)
-  try {
-    const { postTweet } = await import('@/lib/twitter');
-    // Strip hashtags if needed to fit 280 chars, keep the core message
-    let tweetText = caption;
-    if (tweetText.length > 280) {
-      // Try removing hashtags first
-      tweetText = tweetText.replace(/#\w+/g, '').trim();
-      if (tweetText.length > 280) {
-        tweetText = tweetText.substring(0, 277) + '...';
-      }
-    }
-    const tweet = await postTweet(tweetText);
-    results.twitter = tweet ? { ok: true, tweetId: tweet.id } : { error: 'Post failed' };
-  } catch (err: any) {
-    results.twitter = { error: err.message };
-  }
+  // X/Twitter posting removed 2026-08-23. The credentials had been
+  // unauthorised for days and the only thing the block still produced was a
+  // daily "X: Post failed" line in the founder alert. src/lib/twitter.ts is
+  // left in place for any future reinstatement.
+
+  // Did anything actually reach a platform?
+  //
+  // Until 2026-08-23 this block wrote status='posted' and told the founder
+  // "Daily social post published" unconditionally, so 22 and 23 Aug were
+  // both recorded as published when all three platforms had in fact errored
+  // (dead META_ACCESS_TOKEN, fal.ai locked, X unauthorised). content_drafts
+  // is used as the dedup gate and as an audit trail, so a failed run
+  // recorded as 'posted' is both a silent outage and a corrupt record.
+  const publishedTo = [
+    results.facebook?.ok ? 'Facebook' : null,
+    results.instagram?.ok ? 'Instagram' : null,
+  ].filter(Boolean) as string[];
+  const anyPublished = publishedTo.length > 0;
 
   // Settle the claim we took at the top. This UPDATES the existing row rather
   // than inserting a new one, so the dedup_key stays unique for the day and
   // the row survives even if a platform failed — a partial success must not
   // licence a second full post.
+  //
+  // The row is NOT deleted on total failure either. Releasing the day would
+  // reintroduce the duplicate-post bug the claim lock exists to prevent: a
+  // Graph call that times out after publishing is indistinguishable here from
+  // one that never published. Recording 'failed' keeps the record honest
+  // without licensing a second full post. Retrying a failed day is therefore
+  // a deliberate manual act (delete the row for that dedup_key), not an
+  // accident.
   await supabase
     .from('content_drafts')
     .update({
       caption,
       asset_url: imageUrl,
-      status: 'posted',
-      posted_at: new Date().toISOString(),
+      status: anyPublished ? 'posted' : 'failed',
+      posted_at: anyPublished ? new Date().toISOString() : null,
       performance_metrics: results,
     })
     .eq('id', claimId);
 
   // Notify founder via Telegram
   await alertFounder(
-    `Daily social post published:\n\n` +
+    (anyPublished
+      ? `Daily social post published to ${publishedTo.join(' + ')}:\n\n`
+      : `Daily social post FAILED. Nothing was published.\n\n`) +
       `FB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\n` +
-      `IG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\n` +
-      `X: ${results.twitter?.ok ? 'Posted' : results.twitter?.error || 'Failed'}\n\n` +
+      `IG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\n\n` +
       `Caption: ${caption.substring(0, 150)}...`,
   );
 
-  return NextResponse.json({ ok: true, caption: caption.substring(0, 100), ...results });
+  return NextResponse.json({ ok: anyPublished, caption: caption.substring(0, 100), ...results });
 }

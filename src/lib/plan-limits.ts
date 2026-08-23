@@ -95,36 +95,44 @@ export interface PlanLimits {
 
 /**
  * TIER MATRIX — Free/Essential/Pro confirmed with founder 2026-04-22;
- * Household and Dispute Pro added 2026-08-16.
+ * Household added 2026-08-16. Dispute Pro was added the same day and
+ * WITHDRAWN on 2026-08-21 without ever being sold; Household absorbed
+ * its £19.99/£199.99 price points. Do not reintroduce it. See CLAUDE.md.
  *
  * NOTE (2026-08-20): the DB signup trigger still granted a 7-day trial,
  * contradicting rule 2 below — see the prepared (not yet applied) fix in
  * supabase/migrations/20260820120000_remove_auto_trial_from_signup_trigger.sql.
  *
- *                            Free   Essential  Pro    Household  DisputePro
- * Price / month              £0     £4.99      £9.99  £14.99     £19.99
- * Price / year               —      £44.99     £94.99 £149.99    £199.99
- * Seats                      1      1          1      4          1
- * Bank connections           2      3          ∞      ∞          ∞
- * Email connections          1      3          ∞      ∞          ∞
- * Inbox scan history         90d    2 years    2y     2y         2y
- * AI letters / month         3      ∞          ∞      ∞          ∞
- * Watchdog poll interval     manual 60m        30m    30m        15m
- * Dispute thread links       1      5          ∞      ∞          ∞
- * Renewal reminders          —      ✓          ✓      ✓          ✓
- * AI cancellation emails     —      ✓          ✓      ✓          ✓
- * Money Hub full categories  top 5  full       full   full       full
- * Money Hub budgets / goals  —      ✓          ✓      ✓          ✓
- * Money Hub top merchants    —      —          ✓      ✓          ✓
- * Price-increase alerts      in-app +email     +TG    +TG        +TG
- * Export (CSV / PDF)         —      —          ✓      ✓          ✓
- * Paybacker Assistant (MCP)  —      —          ✓      ✓          ✓
- * Pocket Agent (Telegram)    ✓      ✓          ✓      ✓          ✓
- * WhatsApp Pocket Agent      —      —          ✓      ✓          ✓
- * On-demand bank sync        —      —          ✓      ✓          ✓
- * Priority support ticket    —      —          ✓      ✓          ✓
- * Dispute queue priority     3      2          1      1          0
- * Ombudsman packs included   —      —          —      —          ✓
+ *                            Free   Essential  Pro    Household
+ * Price / month              £0     £4.99      £9.99  £19.99
+ * Price / year               —      £44.99     £94.99 £199.99
+ * Seats                      1      1          1      4
+ * Bank connections           2      3          ∞      ∞
+ * Email connections          1      3          ∞      ∞
+ * Inbox scan history         90d    90d        90d    90d
+ * AI letters / month         3      ∞          ∞      ∞
+ * Watchdog poll interval     manual 60m        30m    30m
+ * Dispute thread links       1      5          ∞      ∞
+ * Renewal reminders          —      ✓          ✓      ✓
+ * AI cancellation emails     —      ✓          ✓      ✓
+ * Money Hub full categories  top 5  full       full   full
+ * Money Hub budgets / goals  —      ✓          ✓      ✓
+ * Money Hub top merchants    —      —          ✓      ✓
+ * Price-increase alerts      in-app +email     +TG    +TG
+ * Export (CSV / PDF)         —      —          ✓      ✓
+ * Paybacker Assistant (MCP)  —      —          ✓      ✓
+ * Pocket Agent (Telegram)    ✓      ✓          ✓      ✓
+ * WhatsApp Pocket Agent      —      —          ✓      ✓
+ * On-demand bank sync        —      —          ✓      ✓
+ * Priority support ticket    —      —          ✓      ✓
+ * Dispute queue priority     3      2          1      1
+ * Ombudsman packs included   —      —          —      —
+ *
+ * No tier now sets ombudsmanPacksIncluded. That is correct after the
+ * Dispute Pro withdrawal: every tier including Free buys an Ombudsman
+ * pack as a £14.99 one-off, which is the pay-per-need model the product
+ * is built around. The field is kept because hasIncludedEscalationPacks()
+ * reads it and a future tier may set it.
  *
  * NOTE: the pre-2026-08 version of this comment claimed "Dispute-reply
  * watchdog 30m auto (all tiers)" and "Dispute thread links ∞" for every
@@ -227,34 +235,6 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     features: [...PRO_FEATURES, 'household_seats'],
   },
 
-  /**
-   * Dispute Pro — £19.99/mo, £199.99/yr.
-   *
-   * For someone actively recovering money, where the willingness to pay
-   * anchors to the recovery (£100-£520 a case) rather than to a budgeting
-   * app. Every differentiator below is enforced by real code — see the
-   * per-field comments. Nothing aspirational is listed.
-   */
-  dispute_pro: {
-    complaintsPerMonth: null,
-    scanRunsPerMonth: null,
-    maxBanks: null,
-    maxEmails: null,
-    emailScanDays: 90,
-    maxSpaces: null,
-    disputeThreadLinks: null,
-    // 15-minute Watchdog polling vs 30 on Pro. Enforced directly by
-    // /api/cron/dispute-reply-sync, which reads this field.
-    watchdogSyncIntervalMinutes: 15,
-    whatsappPocketAgent: true,
-    // Unlimited Ombudsman escalation packs at no extra cost. One pack a
-    // month covers the price difference vs Pro.
-    ombudsmanPacksIncluded: true,
-    // Front of the Dispute Agent queue and the bank-sync queue.
-    disputeQueuePriority: 0,
-    householdSeats: null,
-    features: [...PRO_FEATURES, 'ombudsman_escalation_packs', 'dispute_queue_priority', 'watchdog_15min'],
-  },
 };
 
 function getYearMonth(): string {

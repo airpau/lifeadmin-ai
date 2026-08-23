@@ -6,7 +6,9 @@
 --
 --   1. Dispute Pro       £19.99/mo · £199.99/yr   (new subscription_tier)
 --   2. Ombudsman pack    £14.99 one-off           (dispute_entitlements)
---   3. Household         £14.99/mo · £149.99/yr   (household_plans/_members)
+--   3. Household         £19.99/mo · £199.99/yr   (household_plans/_members)
+--      (repriced from £14.99/£149.99 on 2026-08-21 when Dispute Pro was
+--       withdrawn and Household absorbed its price points)
 --
 -- STRICTLY ADDITIVE. No DROP TABLE, no column removal. The only DROP is the
 -- CHECK constraint on profiles.subscription_tier, which is immediately
@@ -298,26 +300,30 @@ CREATE POLICY "Members can read own seat"
 -- ----------------------------------------------------------------------------
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'update_updated_at_column') THEN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'update_updated_at'
+  ) THEN
     DROP TRIGGER IF EXISTS set_dispute_entitlements_updated_at ON dispute_entitlements;
     CREATE TRIGGER set_dispute_entitlements_updated_at
       BEFORE UPDATE ON dispute_entitlements
-      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+      FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
     DROP TRIGGER IF EXISTS set_escalation_packs_updated_at ON escalation_packs;
     CREATE TRIGGER set_escalation_packs_updated_at
       BEFORE UPDATE ON escalation_packs
-      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+      FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
     DROP TRIGGER IF EXISTS set_household_plans_updated_at ON household_plans;
     CREATE TRIGGER set_household_plans_updated_at
       BEFORE UPDATE ON household_plans
-      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+      FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
     DROP TRIGGER IF EXISTS set_household_members_updated_at ON household_members;
     CREATE TRIGGER set_household_members_updated_at
       BEFORE UPDATE ON household_members
-      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+      FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
   END IF;
 END $$;
 
@@ -347,6 +353,6 @@ COMMENT ON TABLE dispute_entitlements IS
 COMMENT ON TABLE escalation_packs IS
   'Generated Ombudsman escalation artefact: referral letter + evidence bundle + deadlines, per dispute.';
 COMMENT ON TABLE household_plans IS
-  'Household subscription (£14.99/mo, 4 seats). Shares ENTITLEMENT ONLY — never data. Stripe ids live here, not fanned out onto member profiles.';
+  'Household subscription (£19.99/mo, 4 seats). Shares ENTITLEMENT ONLY — never data. Stripe ids live here, not fanned out onto member profiles.';
 COMMENT ON TABLE household_members IS
   'Household seats. Members are fully isolated tenants; the RLS policy restricts each member to their own seat row by design.';
