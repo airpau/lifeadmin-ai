@@ -23,7 +23,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  /* No gap. `.pay` and `.backer` are the two halves of ONE wordmark, so a
+     flex gap here renders the brand as "Pay backer". */
+  gap: 0;
   text-decoration: none;
   margin: 0 auto 20px;
   width: fit-content;
@@ -490,4 +492,52 @@
   .m-land-root .auth-card { padding: 24px 22px 22px; }
   .m-land-root .field-row { grid-template-columns: 1fr; gap: 0; }
   .m-land-root .field-row .field { margin-bottom: 14px; }
+}
+
+/* Password reveal -----------------------------------------------------
+   A masked field with no way to check what was typed is the biggest
+   single cause of abandoned sign-ups on a form that also enforces a
+   strength rule: the user cannot tell a typo from a rule not yet met.
+   The button sits inside the field box, mirroring the lead icon. */
+.m-land-root .field input.has-reveal { padding-right: 44px; }
+.m-land-root .field-control .pw-reveal {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease;
+}
+.m-land-root .field-control .pw-reveal:hover { color: var(--text-primary); background: var(--surface-elevated); }
+.m-land-root .field-control .pw-reveal:focus-visible {
+  outline: 2px solid var(--accent-mint-deep);
+  outline-offset: 1px;
+  color: var(--text-primary);
+}
+
+/* Consent error state -------------------------------------------------
+   The required Terms box gates BOTH sign-up paths. Previously the three
+   buttons were simply disabled until it was ticked, which gave the user
+   a dead form and no reason — the explanatory error in the submit
+   handler was unreachable because the button could never fire it. The
+   buttons now always work and this is what they surface. */
+.m-land-root .consent--error {
+  border-color: var(--danger, #DC2626);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.10);
+}
+.m-land-root .consent__error {
+  margin: 8px 0 0;
+  padding-left: 28px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--danger, #DC2626);
 }
