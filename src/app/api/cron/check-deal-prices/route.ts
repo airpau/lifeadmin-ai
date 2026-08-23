@@ -1,3 +1,21 @@
+// OBSERVE ONLY. This cron must never write a price a user will see.
+//
+// It asks Perplexity what a plan costs. On 23 Aug 2026 that produced,
+// live on the deals page, Lebara 100GB at "from £4.49/mo" (really £20),
+// 50GB at £9 (really £15) and 30GB 12-month at "from £2.49". The
+// headline figures were plausible enough to pass review; the
+// promotional ones were invented outright. Every row also carried
+// last_verified_at, so the product asserted it had checked them.
+//
+// Prices a user sees now come only from `deal-price-refresh`, which
+// fetches the advertiser's own page and verifies a verbatim excerpt
+// against it. This cron keeps its value as a CHANGE DETECTOR: an LLM
+// noticing a price has moved is a fine reason to go and fetch the page.
+// It is not a reason to publish the number it guessed.
+//
+// If you are tempted to restore the writes because the fetch pipeline
+// does not cover a provider yet, don't. No price beats a wrong one.
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -141,7 +159,6 @@ export async function GET(request: NextRequest) {
         .from('affiliate_deals')
         .update({
           price_scan_status: 'failed',
-          price_scan_source: 'perplexity',
           updated_at: new Date().toISOString(),
         })
         .eq('id', deal.id);
@@ -207,18 +224,11 @@ export async function GET(request: NextRequest) {
       };
       summary.changes.push(change);
 
+      // NOT written to affiliate_deals. See the note at the top of this
+      // file: this cron observes, it does not publish.
       await supabase
         .from('affiliate_deals')
-        .update({
-          previous_price_monthly: storedPrice,
-          price_monthly: newPrice,
-          price_promotional: newPromo,
-          price_scan_status: 'updated',
-          price_scan_source: 'perplexity',
-          last_verified_at: now,
-          price_changed_at: now,
-          updated_at: now,
-        })
+        .update({ price_scan_status: 'change_proposed', updated_at: now })
         .eq('id', deal.id);
 
       await supabase.from('deal_price_checks').insert({
@@ -239,14 +249,12 @@ export async function GET(request: NextRequest) {
       }
     } else {
       summary.unchanged++;
+      // No last_verified_at. An LLM agreeing with a stored number is
+      // not verification, and stamping it here is what put "Verified"
+      // badges on prices nobody had checked.
       await supabase
         .from('affiliate_deals')
-        .update({
-          price_scan_status: 'verified',
-          price_scan_source: 'perplexity',
-          last_verified_at: now,
-          updated_at: now,
-        })
+        .update({ price_scan_status: 'unchanged', updated_at: now })
         .eq('id', deal.id);
 
       await supabase.from('deal_price_checks').insert({
