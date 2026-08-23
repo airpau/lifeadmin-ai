@@ -10,6 +10,7 @@ import {
   AlertCircle, Calendar, Zap, Tag, X as XIcon, ChevronDown, Check, Edit3, Trash2,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { cleanMerchantName } from '@/lib/merchant-utils';
 
 interface Payment {
   id: string;
@@ -416,11 +417,22 @@ export default function PaymentsPage() {
         const subs: Payment[] = Array.isArray(data) ? data : data.subscriptions || [];
         const active = subs.filter((s: any) => s.status === 'active');
 
-        // Deduplicate by normalised provider name + billing cycle + amount band.
+        // Deduplicate by cleaned provider name + billing cycle + amount band.
         // Including the amount band preserves two genuinely separate subscriptions
         // to the same provider at different amounts (e.g. two council-tax DDs for
         // different properties, two gym memberships at the same chain, etc.).
         // Within each band, keep the record with the largest amount (most authoritative).
+        //
+        // The key runs through cleanMerchantName so rows that differ only in their
+        // raw bank payload collapse into one card — "PAYPAL *DISNEYPLUS35314369001"
+        // and "DISNEYPLUS" both clean to "Disney+". Keying on the raw name left two
+        // rows that render with the identical display name, inflating both the card
+        // count and the monthly total against the Subscriptions page, which dedupes
+        // on the cleaned name via filterActiveSubscriptions.
+        //
+        // Note: this page deliberately does NOT reuse filterActiveSubscriptions —
+        // that helper strips finance rows, and Regular Payments must still show
+        // mortgages, loans and credit cards.
         const amountBand = (amount: number) => {
           if (amount <= 0) return 0;
           return Math.round(Math.log(Math.max(amount, 0.01)) / Math.log(1.1));
@@ -428,7 +440,8 @@ export default function PaymentsPage() {
         const grouped = new Map<string, Payment>();
         for (const sub of active) {
           const band = amountBand(Math.abs(sub.amount || 0));
-          const key = `${(sub.provider_name || '').toLowerCase().replace(/\s+/g, ' ').trim()}|${sub.billing_cycle}|${band}`;
+          const cleanName = cleanMerchantName(sub.provider_name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+          const key = `${cleanName || (sub.provider_name || '').toLowerCase().trim()}|${sub.billing_cycle}|${band}`;
           const existing = grouped.get(key);
           if (!existing || Math.abs(sub.amount || 0) > Math.abs(existing.amount || 0)) {
             grouped.set(key, sub);
