@@ -11,6 +11,8 @@ import { resolveTransactionWindow } from '@/lib/yapily/sync-window';
 import { decrypt } from '@/lib/encrypt';
 import { snapshotAccounts, upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
 import { recordConsentFailure, clearConsentFailures } from '@/lib/yapily/consent-failure-tracker';
+import { syncConnectionBalances } from '@/lib/yapily/balance-sync';
+import type { YapilyAccount } from '@/types/yapily';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import { dispatchMoneyInAlertsForUser } from '@/lib/alerts/money-in';
@@ -86,6 +88,10 @@ interface BankConnection {
   status: string;
   last_synced_at: string | null;
   connected_at: string | null;
+  /** Opt-in flag for refreshing current_balance / available_balance.
+   *  Off by default — see src/lib/yapily/balance-sync.ts for the cost
+   *  reasoning. Added 20260823120000_bank_balance_sync_opt_in.sql. */
+  balance_sync_enabled?: boolean | null;
 }
 
 function getAdmin() {
@@ -334,6 +340,13 @@ export async function GET(request: NextRequest) {
       // still-valid consent and must not disconnect the bank.
       let consentExpiryDetected = false;
 
+      // Handle to the memoised /accounts loader declared inside the block
+      // below. Hoisted so the post-sync balance refresh can reuse the same
+      // promise instead of paying for a second GET /accounts on the same
+      // consent — which is exactly the double-call pattern Migle warned
+      // causes race conditions and premature consent expiry.
+      let accountsLoader: (() => Promise<YapilyAccount[]>) | null = null;
+
       {
         if (!connection.consent_token) {
           console.error(`Bank sync: no consent token for ${connection.id}`);
@@ -422,6 +435,7 @@ export async function GET(request: NextRequest) {
           }
           return _accountsPromise;
         };
+        accountsLoader = loadAccounts;
 
         // Backfill bank name if missing
         let accountIds = connection.account_ids || [];
@@ -721,6 +735,17 @@ export async function GET(request: NextRequest) {
         }
       } catch (err: any) {
         console.error(`[bank-sync] money-in dispatch threw for user ${connection.user_id}:`, err?.message);
+      }
+
+      // ── Refresh stored balances, opt-in only ─────────────────────
+      //
+      // Reuses the memoised loadAccounts() above, so a connection that
+      // already had to fetch /accounts this run (bank-name or hash
+      // backfill) pays nothing extra. Best-effort by design — see
+      // src/lib/yapily/balance-sync.ts for why this is per-connection
+      // rather than global.
+      if (accountsLoader) {
+        await syncConnectionBalances(supabase, connection, accountsLoader);
       }
 
       // Update last synced; reset token_expired back to active since refresh succeeded
