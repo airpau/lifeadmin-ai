@@ -25,13 +25,35 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const category = searchParams.get('category');
 
+  // Two queries, not an embedded join.
+  //
+  // The first version used `.select('*, affiliate_programmes!inner(...)')`.
+  // PostgREST can only embed across a DECLARED foreign key, and there is
+  // none between affiliate_deals.programme_id and
+  // affiliate_programmes.awin_advertiser_id — a FK cannot be added while
+  // legacy rows carry programme_id 0. So every request 500'd and the
+  // deals page silently lost its database-backed catalogue entirely.
+  //
+  // An explicit id filter is less elegant and actually works.
+  const { data: programmes, error: progError } = await supabase
+    .from('affiliate_programmes')
+    .select('awin_advertiser_id')
+    .eq('is_joined', true);
+
+  if (progError) {
+    console.error('[affiliate-deals] programme lookup failed:', progError.message);
+    // Fail closed: no verified partner list means no deals.
+    return NextResponse.json([]);
+  }
+
+  const joinedIds = (programmes ?? []).map((p) => p.awin_advertiser_id);
+  if (joinedIds.length === 0) return NextResponse.json([]);
+
   let query = supabase
     .from('affiliate_deals')
-    // `!inner` makes the join a filter: a deal whose programme is
-    // missing or no longer joined simply does not come back.
-    .select('*, affiliate_programmes!inner(awin_advertiser_id, name, is_joined)')
+    .select('*')
     .eq('is_active', true)
-    .eq('affiliate_programmes.is_joined', true)
+    .in('programme_id', joinedIds)
     .order('price_monthly', { ascending: true });
 
   if (category) query = query.eq('category', category);
