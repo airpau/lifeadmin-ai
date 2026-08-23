@@ -843,6 +843,14 @@ export default function SubscriptionsPage() {
         setSubscriptions((prev) => prev.map((s) =>
           s.id === sub.id ? { ...s, status: 'cancelled', cancel_requested_at: cancelledAt } : s
         ));
+        // Mirror the status onto the open detail panel, otherwise it keeps
+        // offering cancellation actions for a subscription that is already
+        // cancelled until the panel is reopened.
+        setSelectedSub((prev) =>
+          prev && prev.id === sub.id
+            ? { ...prev, status: 'cancelled', cancel_requested_at: cancelledAt }
+            : prev
+        );
         const totals = payload?.subscription_totals;
         if (totals && typeof totals.monthly_total === 'number') {
           setRpcTotals({
@@ -2959,13 +2967,27 @@ export default function SubscriptionsPage() {
                       This is a statutory charge and cannot be cancelled via letter
                     </div>
                   ) : (
-                    <button
-                      onClick={() => handleCancelRequest(selectedSub)}
-                      className="w-full flex items-center justify-center gap-2 cta font-semibold py-3 rounded-xl transition-all"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      Generate Cancellation Email
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => handleCancelRequest(selectedSub)}
+                        className="w-full flex items-center justify-center gap-2 cta font-semibold py-3 rounded-xl transition-all"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        Generate Cancellation Email
+                      </button>
+                      {/* Same pair of actions the card offers, so the panel
+                          isn't a dead end for someone who already cancelled
+                          direct with the provider. Routed through
+                          attemptMarkCancelled to keep the credit-product
+                          warning in the path. */}
+                      <button
+                        onClick={() => attemptMarkCancelled(selectedSub)}
+                        className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 py-3 rounded-xl transition-all text-sm"
+                      >
+                        <X className="h-4 w-4" />
+                        Mark as Cancelled
+                      </button>
+                    </div>
                   )}
                 </>
               ) : (
