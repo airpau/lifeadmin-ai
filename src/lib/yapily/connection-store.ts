@@ -234,6 +234,76 @@ export async function upsertYapilyConnection(
   const providerIdSeed = incomingHashes[0] || incomingAccountIds[0] || `${input.institutionId}_${Date.now()}`;
   const providerId = `yapily_${input.institutionId}_${providerIdSeed.slice(0, 16)}`;
 
+  // 3b-i. RECLAIM a dead row holding this exact key before attempting an
+  //       insert that is guaranteed to fail.
+  //
+  //       provider_id is deterministic per (user, institution, account),
+  //       and bank_connections_user_provider_unique is UNIQUE(user_id,
+  //       provider_id) with no deleted_at predicate — so it is enforced
+  //       against revoked and soft-deleted rows too. The `live` filter
+  //       above deliberately excludes revoked/revoked_duplicate/archived
+  //       rows from the MERGE logic, which is correct: we must not fold a
+  //       new consent into a row whose transactions the user chose to
+  //       disconnect. But that same exclusion meant a user who
+  //       disconnected a bank could never reconnect it: the merge skipped
+  //       the dead row, the insert then collided with its provider_id,
+  //       and the callback died with
+  //       'duplicate key value violates unique constraint'.
+  //
+  //       Observed 2026-08-23: an HSBC Business reconnect failed twice in
+  //       four minutes this way. The user authenticated successfully at
+  //       the bank each time, Yapily returned a valid consent, and the
+  //       write was rejected — leaving them on a locked Money Hub with no
+  //       error they could act on. This is not HSBC-specific; it is
+  //       reachable by any user who disconnects and reconnects any bank.
+  //
+  //       Reclaiming resets the row to the new consent and clears the
+  //       failure counters, exactly as the merge path does. Transactions
+  //       are keyed by connection_id and are left untouched.
+  const { data: deadHolder } = await admin
+    .from('bank_connections')
+    .select('id, status')
+    .eq('user_id', input.userId)
+    .eq('provider_id', providerId)
+    .maybeSingle();
+
+  if (deadHolder) {
+    console.log(
+      `[yapily.connection-store] reclaiming ${deadHolder.status} connection ${deadHolder.id} for user=${input.userId} institution=${input.institutionId} — provider_id ${providerId} was already taken`,
+    );
+    const { error: reclaimErr } = await admin
+      .from('bank_connections')
+      .update({
+        provider: 'yapily',
+        institution_id: input.institutionId,
+        bank_name: input.bankName,
+        consent_token: encrypt(input.consentToken),
+        yapily_consent_id: input.yapilyConsentId,
+        ...(input.yapilyConsentRequestId !== undefined
+          ? { yapily_consent_request_id: input.yapilyConsentRequestId }
+          : {}),
+        consent_granted_at: now,
+        consent_expires_at: input.consentExpiresAt,
+        upcoming_endpoints_fetched_at: null,
+        account_ids: incomingAccountIds,
+        account_display_names: incomingDisplayNames,
+        account_identifications_hashes: input.accounts.map(
+          (a) => a.accountIdentificationsHash ?? '',
+        ),
+        status: 'active',
+        consent_failure_count: 0,
+        consent_last_failure_at: null,
+        connected_at: now,
+        updated_at: now,
+        deleted_at: null,
+      })
+      .eq('id', deadHolder.id);
+    if (reclaimErr) {
+      throw new Error(`Connection reclaim failed: ${reclaimErr.message}`);
+    }
+    return { connectionId: deadHolder.id, reused: true, previousConnectionIds };
+  }
+
   const { data: inserted, error } = await admin
     .from('bank_connections')
     .insert({
