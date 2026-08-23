@@ -17,6 +17,22 @@ interface Deal {
   awinMid: string;
   providerUrl: string;
   category: string;
+  /**
+   * The pill on the card.
+   *
+   * MUST be a fact, not a projection. Until 2026-08-21 most of these
+   * read "Save up to £150/yr" and similar — string literals typed into
+   * this file, with no source, no date and nothing computing them,
+   * rendered under a header promising "personalised savings based on
+   * your contracts and bills".
+   *
+   * A real saving is only knowable by comparing a real deal price
+   * against what this particular user actually pays. That happens in
+   * AffiliatePlanCard, from `affiliate_deals` and the user's own
+   * `subscriptions.amount`. It does NOT happen here, so this string
+   * must never claim one. "Compare deals", "From £6.50/mo" and a promo
+   * code are all fine. "Save up to £X" is not.
+   */
   promoCode?: string;
   awinUrl?: string; // Override generated Awin URL
   featured?: boolean; // Show "New Deal" badge and pin to top
@@ -24,52 +40,52 @@ interface Deal {
 
 const DEALS: Record<string, Deal[]> = {
   Energy: [
-    { id: 'ovo-energy', provider: 'OVO Energy', headline: 'Fixed rate - lock in your price', saving: 'Save up to £150/yr', awinMid: '5318', providerUrl: 'https://www.ovoenergy.com', category: 'Energy' },
-    { id: 'eon-next', provider: 'E.ON Next', headline: 'Next Drive tariff for EV owners', saving: 'Save up to £120/yr', awinMid: '54765', providerUrl: 'https://www.eonenergy.com', category: 'Energy' },
-    { id: 'edf-energy', provider: 'EDF', headline: 'Fixed price tariffs - price certainty', saving: 'Save up to £140/yr', awinMid: '1887', providerUrl: 'https://www.edfenergy.com', category: 'Energy' },
-    { id: 'msm-energy', provider: 'MoneySuperMarket', headline: 'Compare energy tariffs from all suppliers', saving: 'Save up to £200/yr', awinMid: '22713', providerUrl: 'https://www.moneysupermarket.com/gas-and-electricity/', category: 'Energy' },
+    { id: 'ovo-energy', provider: 'OVO Energy', headline: 'Fixed rate - lock in your price', saving: 'Compare deals', awinMid: '5318', providerUrl: 'https://www.ovoenergy.com', category: 'Energy' },
+    { id: 'eon-next', provider: 'E.ON Next', headline: 'Next Drive tariff for EV owners', saving: 'Compare deals', awinMid: '54765', providerUrl: 'https://www.eonenergy.com', category: 'Energy' },
+    { id: 'edf-energy', provider: 'EDF', headline: 'Fixed price tariffs - price certainty', saving: 'Compare deals', awinMid: '1887', providerUrl: 'https://www.edfenergy.com', category: 'Energy' },
+    { id: 'msm-energy', provider: 'MoneySuperMarket', headline: 'Compare energy tariffs from all suppliers', saving: 'Compare deals', awinMid: '22713', providerUrl: 'https://www.moneysupermarket.com/gas-and-electricity/', category: 'Energy' },
   ],
   Broadband: [
-    { id: 'bt-broadband', provider: 'BT', headline: 'Full Fibre 500 - superfast speeds', saving: 'Save up to £240/yr', awinMid: '3041', providerUrl: 'https://www.bt.com/broadband', category: 'Broadband' },
-    { id: 'sky-broadband', provider: 'Sky', headline: 'Ultrafast broadband + streaming', saving: 'Save up to £180/yr', awinMid: '11005', providerUrl: 'https://www.sky.com/shop/broadband', category: 'Broadband' },
-    { id: 'virgin-media', provider: 'Virgin Media', headline: "Gig1 - UK's fastest widely available broadband", saving: 'Save up to £200/yr', awinMid: '6399', providerUrl: 'https://www.virginmedia.com', category: 'Broadband' },
-    { id: 'ee-broadband', provider: 'EE', headline: 'Full Fibre with smart hub included', saving: 'Save up to £180/yr', awinMid: '3516', providerUrl: 'https://shop.ee.co.uk/broadband', category: 'Broadband' },
-    { id: 'plusnet', provider: 'Plusnet', headline: 'Award-winning broadband from Yorkshire', saving: 'Save up to £160/yr', awinMid: '2973', providerUrl: 'https://www.plus.net', category: 'Broadband' },
-    { id: 'talktalk', provider: 'TalkTalk', headline: 'Affordable fibre broadband', saving: 'Save up to £140/yr', awinMid: '3674', providerUrl: 'https://www.talktalk.co.uk', category: 'Broadband' },
-    { id: 'hyperoptic', provider: 'Hyperoptic', headline: '1Gbps full fibre - no speed caps', saving: 'Save up to £200/yr', awinMid: '5737', providerUrl: 'https://www.hyperoptic.com', category: 'Broadband' },
-    { id: 'community-fibre', provider: 'Community Fibre', headline: 'London full fibre - ultrafast speeds', saving: 'Save up to £180/yr', awinMid: '19595', providerUrl: 'https://communityfibre.co.uk', category: 'Broadband' },
+    { id: 'bt-broadband', provider: 'BT', headline: 'Full Fibre 500 - superfast speeds', saving: 'Compare deals', awinMid: '3041', providerUrl: 'https://www.bt.com/broadband', category: 'Broadband' },
+    { id: 'sky-broadband', provider: 'Sky', headline: 'Ultrafast broadband + streaming', saving: 'Compare deals', awinMid: '11005', providerUrl: 'https://www.sky.com/shop/broadband', category: 'Broadband' },
+    { id: 'virgin-media', provider: 'Virgin Media', headline: "Gig1 - UK's fastest widely available broadband", saving: 'Compare deals', awinMid: '6399', providerUrl: 'https://www.virginmedia.com', category: 'Broadband' },
+    { id: 'ee-broadband', provider: 'EE', headline: 'Full Fibre with smart hub included', saving: 'Compare deals', awinMid: '3516', providerUrl: 'https://shop.ee.co.uk/broadband', category: 'Broadband' },
+    { id: 'plusnet', provider: 'Plusnet', headline: 'Award-winning broadband from Yorkshire', saving: 'Compare deals', awinMid: '2973', providerUrl: 'https://www.plus.net', category: 'Broadband' },
+    { id: 'talktalk', provider: 'TalkTalk', headline: 'Affordable fibre broadband', saving: 'Compare deals', awinMid: '3674', providerUrl: 'https://www.talktalk.co.uk', category: 'Broadband' },
+    { id: 'hyperoptic', provider: 'Hyperoptic', headline: '1Gbps full fibre - no speed caps', saving: 'Compare deals', awinMid: '5737', providerUrl: 'https://www.hyperoptic.com', category: 'Broadband' },
+    { id: 'community-fibre', provider: 'Community Fibre', headline: 'London full fibre - ultrafast speeds', saving: 'Compare deals', awinMid: '19595', providerUrl: 'https://communityfibre.co.uk', category: 'Broadband' },
     { id: 'msm-broadband', provider: 'MoneySuperMarket', headline: 'Compare broadband deals from all providers', saving: 'Compare deals', awinMid: '25756', providerUrl: 'https://www.moneysupermarket.com/broadband/', category: 'Broadband' },
-    { id: 'onestream', provider: 'Onestream', headline: 'Simple, affordable full fibre broadband', saving: 'Save up to £160/yr', awinMid: '23296', providerUrl: 'https://www.onestream.co.uk', category: 'Broadband' },
+    { id: 'onestream', provider: 'Onestream', headline: 'Simple, affordable full fibre broadband', saving: 'Compare deals', awinMid: '23296', providerUrl: 'https://www.onestream.co.uk', category: 'Broadband' },
     { id: 'broadband-genie', provider: 'Broadband Genie', headline: 'Independent broadband comparison', saving: 'Find cheapest deals', awinMid: '12213', providerUrl: 'https://www.broadbandgenie.co.uk', category: 'Broadband' },
   ],
   Insurance: [
-    { id: 'compare-the-market', provider: 'Compare the Market', headline: 'Compare 100+ insurers in minutes', saving: 'Save up to £300/yr', awinMid: '3738', providerUrl: 'https://www.comparethemarket.com', category: 'Insurance' },
-    { id: 'moneysupermarket', provider: 'MoneySuperMarket', headline: 'Car, home & life insurance', saving: 'Save up to £250/yr', awinMid: '12049', providerUrl: 'https://www.moneysupermarket.com/car-insurance/', category: 'Insurance' },
-    { id: 'gocompare-car', provider: 'GoCompare Car', headline: 'Compare car insurance quotes', saving: 'Save up to £280/yr', awinMid: '117439', providerUrl: 'https://www.gocompare.com/car-insurance/', category: 'Insurance' },
-    { id: 'gocompare-home', provider: 'GoCompare Home', headline: 'Compare home insurance quotes', saving: 'Save up to £200/yr', awinMid: '117441', providerUrl: 'https://www.gocompare.com/home-insurance/', category: 'Insurance' },
+    { id: 'compare-the-market', provider: 'Compare the Market', headline: 'Compare 100+ insurers in minutes', saving: 'Compare deals', awinMid: '3738', providerUrl: 'https://www.comparethemarket.com', category: 'Insurance' },
+    { id: 'moneysupermarket', provider: 'MoneySuperMarket', headline: 'Car, home & life insurance', saving: 'Compare deals', awinMid: '12049', providerUrl: 'https://www.moneysupermarket.com/car-insurance/', category: 'Insurance' },
+    { id: 'gocompare-car', provider: 'GoCompare Car', headline: 'Compare car insurance quotes', saving: 'Compare deals', awinMid: '117439', providerUrl: 'https://www.gocompare.com/car-insurance/', category: 'Insurance' },
+    { id: 'gocompare-home', provider: 'GoCompare Home', headline: 'Compare home insurance quotes', saving: 'Compare deals', awinMid: '117441', providerUrl: 'https://www.gocompare.com/home-insurance/', category: 'Insurance' },
     { id: 'rac-breakdown', provider: 'RAC', headline: 'Breakdown cover from £6.50/mo', saving: 'Roadside peace of mind', awinMid: '3790', providerUrl: 'https://www.rac.co.uk/breakdown-cover', category: 'Insurance' },
     { id: 'aa-breakdown', provider: 'The AA', headline: 'UK breakdown cover - roadside assistance', saving: 'Cover from £4/mo', awinMid: '3932', providerUrl: 'https://www.theaa.com/breakdown-cover', category: 'Insurance' },
   ],
   Mobile: [
-    { id: 'giffgaff', provider: 'giffgaff', headline: 'Flexible SIM plans - no contract required', saving: 'Save up to £200/yr', awinMid: '3599', providerUrl: 'https://www.giffgaff.com', awinUrl: 'https://www.awin1.com/cread.php?awinmid=3599&awinaffid=2825812&ued=https%3A%2F%2Fwww.giffgaff.com', category: 'Mobile', featured: true },
-    { id: 'id-mobile', provider: 'iD Mobile', headline: 'SIM-only from £6/mo', saving: 'Save up to £240/yr', awinMid: '6366', providerUrl: 'https://www.idmobile.co.uk', category: 'Mobile' },
-    { id: 'smarty', provider: 'SMARTY', headline: 'Fair data - unused data rolled over', saving: 'Save up to £200/yr', awinMid: '10933', providerUrl: 'https://smarty.co.uk', category: 'Mobile' },
+    { id: 'giffgaff', provider: 'giffgaff', headline: 'Flexible SIM plans - no contract required', saving: 'Compare deals', awinMid: '3599', providerUrl: 'https://www.giffgaff.com', awinUrl: 'https://www.awin1.com/cread.php?awinmid=3599&awinaffid=2825812&ued=https%3A%2F%2Fwww.giffgaff.com', category: 'Mobile', featured: true },
+    { id: 'id-mobile', provider: 'iD Mobile', headline: 'SIM-only from £6/mo', saving: 'Compare deals', awinMid: '6366', providerUrl: 'https://www.idmobile.co.uk', category: 'Mobile' },
+    { id: 'smarty', provider: 'SMARTY', headline: 'Fair data - unused data rolled over', saving: 'Compare deals', awinMid: '10933', providerUrl: 'https://smarty.co.uk', category: 'Mobile' },
     { id: 'lebara5', provider: 'Lebara', headline: 'Use code LEBARA5 for £5 off', saving: 'Save £5 off your first month', awinMid: '30681', providerUrl: 'https://www.lebara.co.uk/en/best-sim-only-deals.html', awinUrl: 'https://www.awin1.com/cread.php?awinmid=30681&awinaffid=2825812&ued=https%3A%2F%2Fwww.lebara.co.uk%2Fen%2Fbest-sim-only-deals.html', promoCode: 'LEBARA5', category: 'Mobile' },
     { id: 'lebara10', provider: 'Lebara', headline: 'Use code LEBARA10 for £10 off', saving: 'Save £10 off your first month', awinMid: '30681', providerUrl: 'https://www.lebara.co.uk/en/best-sim-only-deals.html', awinUrl: 'https://www.awin1.com/cread.php?awinmid=30681&awinaffid=2825812&ued=https%3A%2F%2Fwww.lebara.co.uk%2Fen%2Fbest-sim-only-deals.html', promoCode: 'LEBARA10', category: 'Mobile' },
     { id: 'lebara-save50', provider: 'Lebara', headline: 'Use code SAVE50 for 50% off', saving: 'Save 50% off your first month', awinMid: '30681', providerUrl: 'https://www.lebara.co.uk/en/best-sim-only-deals.html', awinUrl: 'https://www.awin1.com/cread.php?awinmid=30681&awinaffid=2825812&ued=https%3A%2F%2Fwww.lebara.co.uk%2Fen%2Fbest-sim-only-deals.html', promoCode: 'SAVE50', category: 'Mobile' },
-    { id: 'ee-mobile', provider: 'EE', headline: "UK's largest 5G network", saving: 'Save up to £200/yr', awinMid: '31423', providerUrl: 'https://shop.ee.co.uk/sim-only', category: 'Mobile' },
-    { id: 'tesco-mobile', provider: 'Tesco Mobile', headline: 'Clubcard prices on SIM plans', saving: 'Save up to £180/yr', awinMid: '101917', providerUrl: 'https://www.tescomobile.com', category: 'Mobile' },
-    { id: 'voxi', provider: 'VOXI', headline: 'Endless social media data included', saving: 'Save up to £160/yr', awinMid: '10951', providerUrl: 'https://www.voxi.co.uk', category: 'Mobile' },
-    { id: 'talkmobile', provider: 'Talkmobile', headline: 'Low-cost SIM plans on the Vodafone network', saving: 'Save up to £180/yr', awinMid: '2351', providerUrl: 'https://www.talkmobile.co.uk', category: 'Mobile' },
-    { id: 'asda-mobile', provider: 'Asda Mobile', headline: 'Budget-friendly SIM bundles', saving: 'Save up to £160/yr', awinMid: '6250', providerUrl: 'https://mobile.asda.com/bundles', category: 'Mobile' },
-    { id: 'honest-mobile', provider: 'Honest Mobile', headline: 'Ethical mobile - plants trees with every plan', saving: 'Save up to £140/yr', awinMid: '20890', providerUrl: 'https://www.honestmobile.co.uk', category: 'Mobile' },
+    { id: 'ee-mobile', provider: 'EE', headline: "UK's largest 5G network", saving: 'Compare deals', awinMid: '31423', providerUrl: 'https://shop.ee.co.uk/sim-only', category: 'Mobile' },
+    { id: 'tesco-mobile', provider: 'Tesco Mobile', headline: 'Clubcard prices on SIM plans', saving: 'Compare deals', awinMid: '101917', providerUrl: 'https://www.tescomobile.com', category: 'Mobile' },
+    { id: 'voxi', provider: 'VOXI', headline: 'Endless social media data included', saving: 'Compare deals', awinMid: '10951', providerUrl: 'https://www.voxi.co.uk', category: 'Mobile' },
+    { id: 'talkmobile', provider: 'Talkmobile', headline: 'Low-cost SIM plans on the Vodafone network', saving: 'Compare deals', awinMid: '2351', providerUrl: 'https://www.talkmobile.co.uk', category: 'Mobile' },
+    { id: 'asda-mobile', provider: 'Asda Mobile', headline: 'Budget-friendly SIM bundles', saving: 'Compare deals', awinMid: '6250', providerUrl: 'https://mobile.asda.com/bundles', category: 'Mobile' },
+    { id: 'honest-mobile', provider: 'Honest Mobile', headline: 'Ethical mobile - plants trees with every plan', saving: 'Compare deals', awinMid: '20890', providerUrl: 'https://www.honestmobile.co.uk', category: 'Mobile' },
     { id: 'ee-payg', provider: 'EE Pay As You Go', headline: 'UK largest 5G network - no contract needed', saving: 'Flexible top-ups', awinMid: '118459', providerUrl: 'https://shop.ee.co.uk/pay-as-you-go', category: 'Mobile' },
-    { id: 'o2-mobile', provider: 'O2', headline: 'Priority rewards and flexible plans', saving: 'Save up to £200/yr', awinMid: '3235', providerUrl: 'https://www.o2.co.uk', category: 'Mobile' },
-    { id: 'vodafone', provider: 'Vodafone', headline: 'Award-winning 5G network with extras', saving: 'Save up to £220/yr', awinMid: '1257', providerUrl: 'https://www.vodafone.co.uk', category: 'Mobile' },
-    { id: 'three-mobile', provider: 'Three', headline: '5G at no extra cost on all plans', saving: 'Save up to £200/yr', awinMid: '10210', providerUrl: 'https://www.three.co.uk', category: 'Mobile' },
+    { id: 'o2-mobile', provider: 'O2', headline: 'Priority rewards and flexible plans', saving: 'Compare deals', awinMid: '3235', providerUrl: 'https://www.o2.co.uk', category: 'Mobile' },
+    { id: 'vodafone', provider: 'Vodafone', headline: 'Award-winning 5G network with extras', saving: 'Compare deals', awinMid: '1257', providerUrl: 'https://www.vodafone.co.uk', category: 'Mobile' },
+    { id: 'three-mobile', provider: 'Three', headline: '5G at no extra cost on all plans', saving: 'Compare deals', awinMid: '10210', providerUrl: 'https://www.three.co.uk', category: 'Mobile' },
   ],
   Mortgages: [
-    { id: 'habito', provider: 'Habito', headline: 'Free online mortgage broker - compare 90+ lenders', saving: 'Save up to £3,000/yr', awinMid: '15441', providerUrl: 'https://www.habito.com', category: 'Mortgages' },
+    { id: 'habito', provider: 'Habito', headline: 'Free online mortgage broker - compare 90+ lenders', saving: 'Compare deals', awinMid: '15441', providerUrl: 'https://www.habito.com', category: 'Mortgages' },
     { id: 'moneysupermarket-mortgages', provider: 'MoneySuperMarket', headline: 'Compare mortgage rates from 50+ lenders', saving: 'Compare rates', awinMid: '1986', providerUrl: 'https://www.moneysupermarket.com/mortgages/', category: 'Mortgages' },
     { id: 'l-and-c', provider: 'London & Country', headline: "UK's largest fee-free mortgage broker", saving: 'Fee-free advice', awinMid: '7498', providerUrl: 'https://www.landc.co.uk', category: 'Mortgages' },
     { id: 'trussle', provider: 'Trussle', headline: 'Online mortgage broker - no fees, no jargon', saving: 'Save thousands', awinMid: '19822', providerUrl: 'https://trussle.com', category: 'Mortgages' },
@@ -331,6 +347,10 @@ interface VerifiedDeal {
   is_active: boolean;
   promo_code: string | null;
   promo_code_discount: string | null;
+  /** 'manual' means a human entered or confirmed this price. Anything
+   *  else came from the LLM price-check cron. Drives whether the card
+   *  may say "Verified" — see freshnessIndicator. */
+  price_scan_source: string | null;
 }
 
 /** Parse data allowance string to numeric GB for comparison */
@@ -343,13 +363,36 @@ function parseDataAllowanceGB(da: string | null): number {
   return m[2].toLowerCase() === 'tb' ? val * 1024 : val;
 }
 
-/** Get freshness indicator based on last_verified_at */
-function freshnessIndicator(lastVerified: string | null): { text: string; color: string; bg: string } | null {
+/**
+ * Freshness pill.
+ *
+ * "Verified" now means a human checked it, not that a cron ran.
+ *
+ * The price-check cron asks an LLM what a deal currently costs, writes
+ * the answer to `price_monthly`, and stamps `last_verified_at` — every
+ * run, including when the model self-reports low confidence. This badge
+ * was driven purely by that timestamp, so a low-confidence guess
+ * rendered to the user as a green "Verified this week".
+ *
+ * `price_scan_source` distinguishes them: 'manual' is a human-entered
+ * or human-confirmed price. Anything else is research, and says so.
+ */
+function freshnessIndicator(
+  lastVerified: string | null,
+  priceScanSource?: string | null,
+): { text: string; color: string; bg: string } | null {
   if (!lastVerified) return null;
   const days = Math.floor((Date.now() - new Date(lastVerified).getTime()) / (1000 * 60 * 60 * 24));
-  if (days <= 7) return { text: 'Verified this week', color: 'text-green-400', bg: 'bg-green-500/10' };
-  if (days <= 30) return { text: 'Verified', color: 'text-green-400', bg: 'bg-green-500/10' };
-  return { text: 'Prices may have changed', color: 'text-orange-600', bg: 'bg-orange-500/10' };
+  if (days > 30) {
+    return { text: 'Price may have changed', color: 'text-orange-600', bg: 'bg-orange-500/10' };
+  }
+  if (priceScanSource === 'manual') {
+    return days <= 7
+      ? { text: 'Verified this week', color: 'text-green-400', bg: 'bg-green-500/10' }
+      : { text: 'Verified', color: 'text-green-400', bg: 'bg-green-500/10' };
+  }
+  // Researched, not verified. Say which.
+  return { text: 'Check price on site', color: 'text-slate-600', bg: 'bg-slate-500/10' };
 }
 
 interface AffiliatePlanCardProps {
@@ -396,7 +439,7 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
   };
 
   const hasPromo = deal.price_promotional != null;
-  const freshness = freshnessIndicator(deal.last_verified_at);
+  const freshness = freshnessIndicator(deal.last_verified_at, deal.price_scan_source);
 
   // Build headline from plan specs
   const specs: string[] = [];
@@ -661,23 +704,12 @@ export default function DealsPage() {
   // Total potential savings — sum the largest annual £ figure parsed from
   // each eligible category's "saving" copy ("Save up to £150/yr"), times
   // the user's matching subscription count in that category.
-  const parseSavingGBP = (s: string): number => {
-    const m = (s || '').match(/£\s*([\d,]+)/);
-    return m ? parseInt(m[1].replace(/,/g, ''), 10) || 0 : 0;
-  };
-  const potentialAnnualSaving = (() => {
-    let total = 0;
-    for (const cat of Object.keys(urgentSubsByCategory)) {
-      const deals = DEALS[cat] || [];
-      const subs = urgentSubsByCategory[cat] || [];
-      if (!deals.length || !subs.length) continue;
-      const best = deals.reduce((max, d) => {
-        return parseSavingGBP(d.saving) > parseSavingGBP(max.saving) ? d : max;
-      }, deals[0]);
-      total += parseSavingGBP(best.saving) * subs.length;
-    }
-    return Math.round(total);
-  })();
+  // `potentialAnnualSaving` used to live here. It regex-parsed "£150"
+  // out of the hardcoded `saving` marketing strings, multiplied by the
+  // user's subscription count, and produced a portfolio total. It was
+  // never rendered, which is the only reason it did no harm. Deleted
+  // along with the strings it fed on: a total built from numbers
+  // nobody sourced is not a total.
   const dealsCount = Object.values(DEALS).reduce((n, arr) => n + (arr?.length || 0), 0) + verifiedDeals.length;
 
   return (
@@ -685,7 +717,10 @@ export default function DealsPage() {
       {/* Hero */}
       <div className="mb-8">
         <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Find Better Deals</h1>
-        <p className="text-slate-600">Personalised savings based on your contracts and bills.</p>
+        <p className="text-slate-600">
+          Deals matched to what you actually pay. Where we know both your price
+          and the deal price, we show the difference.
+        </p>
       </div>
 
       {/* Category filter tabs */}
