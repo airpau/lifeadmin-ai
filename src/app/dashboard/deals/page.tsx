@@ -385,7 +385,12 @@ function freshnessIndicator(
   lastVerified: string | null,
   priceScanSource?: string | null,
 ): { text: string; color: string; bg: string } | null {
-  if (!lastVerified) return null;
+  // No verification timestamp used to render no badge at all, which
+  // read as a clean, confident price. It is the opposite: nothing has
+  // ever checked it. Say so.
+  if (!lastVerified) {
+    return { text: 'Price not checked', color: 'text-slate-500', bg: 'bg-slate-500/10' };
+  }
   const days = Math.floor((Date.now() - new Date(lastVerified).getTime()) / (1000 * 60 * 60 * 24));
   if (days > 30) {
     return { text: 'Price may have changed', color: 'text-orange-600', bg: 'bg-orange-500/10' };
@@ -1074,62 +1079,133 @@ export default function DealsPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {/* Plans, grouped into one panel per provider.
+                *
+                * These used to flow into a single flat grid: every
+                * provider's cards ran together, and each provider's
+                * "See all N plans" link landed wherever the grid
+                * happened to wrap, so a TalkTalk link could sit under a
+                * NOW Broadband card. Nothing told you where one
+                * provider ended and the next began.
+                *
+                * Each provider now owns a bordered panel with its name,
+                * its plan count and its cheapest price in the header,
+                * and its own expander pinned to the bottom of that
+                * panel. Cheapest provider first, so the page opens with
+                * the answer. */}
+              <div className="space-y-4">
                 {(() => {
-                  // Group affiliate plans by provider, show max 3 per provider unless expanded
                   const byProvider = new Map<string, VerifiedDeal[]>();
                   for (const plan of activeAffiliatePlans) {
                     if (!byProvider.has(plan.provider)) byProvider.set(plan.provider, []);
                     byProvider.get(plan.provider)!.push(plan);
                   }
-                  const cards: React.ReactNode[] = [];
-                  for (const [provider, plans] of byProvider) {
-                    const isExpanded = expandedProviders.has(`${catLower}-${provider}`);
+
+                  const blocks = Array.from(byProvider.entries()).map(([provider, plans]) => {
+                    const sorted = [...plans].sort(
+                      (a, b) => (a.price_promotional ?? a.price_monthly) - (b.price_promotional ?? b.price_monthly),
+                    );
+                    const blockVia = routedVia(sorted[0].programme_id, provider, programmeNames);
+                    // A comparison-routed provider has no price we can
+                    // defend, so it must not advertise a "from" figure
+                    // or win the ordering. See AffiliatePlanCard.
+                    const cheapest = blockVia
+                      ? null
+                      : sorted[0].price_promotional ?? sorted[0].price_monthly;
+                    return { provider, plans: sorted, blockVia, cheapest };
+                  });
+
+                  blocks.sort((a, b) => {
+                    if (a.cheapest == null && b.cheapest == null) return a.provider.localeCompare(b.provider);
+                    if (a.cheapest == null) return 1;
+                    if (b.cheapest == null) return -1;
+                    return a.cheapest - b.cheapest;
+                  });
+
+                  return blocks.map(({ provider, plans, blockVia, cheapest }) => {
+                    const key = `${catLower}-${provider}`;
+                    const isExpanded = expandedProviders.has(key);
                     const shown = isExpanded ? plans : plans.slice(0, 3);
-                    const hasMore = plans.length > 3 && !isExpanded;
-                    for (const plan of shown) {
-                      const planVia = routedVia(plan.programme_id, plan.provider, programmeNames);
-                      const effectivePrice = plan.price_promotional ?? plan.price_monthly;
-                      let savMo = !planVia && userSpend ? userSpend.amount - effectivePrice : undefined;
-                      // Cap: if savings > 80% of current price, don't show savings (unrealistic)
-                      if (savMo !== undefined && userSpend && savMo > userSpend.amount * 0.8) {
-                        savMo = undefined;
-                      }
-                      const savYr = savMo !== undefined ? savMo * 12 : undefined;
-                      cards.push(
-                        <AffiliatePlanCard
-                          key={plan.id}
-                          deal={plan}
-                          savingsMonthly={savMo}
-                          savingsYearly={savYr}
-                          userProvider={userSpend?.provider}
-                          userSpend={userSpend?.amount}
-                          via={planVia}
-                          onDismiss={() => setDismissedDeals(prev => new Set(prev).add(plan.id))}
-                        />
-                      );
-                    }
-                    if (hasMore) {
-                      cards.push(
-                        <button
-                          key={`expand-${provider}`}
-                          onClick={() => setExpandedProviders(prev => { const n = new Set(prev); n.add(`${catLower}-${provider}`); return n; })}
-                          className="bg-white border border-dashed border-slate-200/50 rounded-2xl p-5 flex items-center justify-center text-sm text-emerald-600 hover:border-emerald-500/30 transition-all"
-                        >
-                          See all {plans.length} {provider} plans →
-                        </button>
-                      );
-                    }
-                  }
-                  return cards;
+                    return (
+                      <div key={key} className="border border-slate-200/60 rounded-2xl bg-white/50 overflow-hidden">
+                        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-slate-50/80 border-b border-slate-200/60">
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-bold text-slate-900 truncate">{provider}</h3>
+                            {blockVia && (
+                              <p className="text-[11px] text-slate-500">Compare via {blockVia}</p>
+                            )}
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-[11px] text-slate-500">
+                              {plans.length} plan{plans.length === 1 ? '' : 's'}
+                            </p>
+                            {cheapest != null && (
+                              <p className="text-sm font-semibold text-slate-900">from £{cheapest.toFixed(2)}/mo</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+                          {shown.map((plan) => {
+                            const planVia = routedVia(plan.programme_id, plan.provider, programmeNames);
+                            const effectivePrice = plan.price_promotional ?? plan.price_monthly;
+                            let savMo = !planVia && userSpend ? userSpend.amount - effectivePrice : undefined;
+                            // Cap: savings above 80% of the current bill
+                            // are almost always a mismatched comparison,
+                            // not a bargain.
+                            if (savMo !== undefined && userSpend && savMo > userSpend.amount * 0.8) {
+                              savMo = undefined;
+                            }
+                            const savYr = savMo !== undefined ? savMo * 12 : undefined;
+                            return (
+                              <AffiliatePlanCard
+                                key={plan.id}
+                                deal={plan}
+                                savingsMonthly={savMo}
+                                savingsYearly={savYr}
+                                userProvider={userSpend?.provider}
+                                userSpend={userSpend?.amount}
+                                via={planVia}
+                                onDismiss={() => setDismissedDeals(prev => new Set(prev).add(plan.id))}
+                              />
+                            );
+                          })}
+                        </div>
+
+                        {plans.length > 3 && (
+                          <button
+                            onClick={() => setExpandedProviders(prev => {
+                              const n = new Set(prev);
+                              if (n.has(key)) n.delete(key); else n.add(key);
+                              return n;
+                            })}
+                            className="w-full px-4 py-2.5 text-sm text-emerald-600 hover:bg-emerald-500/5 border-t border-slate-200/60 transition-colors"
+                          >
+                            {isExpanded ? 'Show fewer' : `Show all ${plans.length} ${provider} plans →`}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  });
                 })()}
-                {genericDeals.map((deal) => (
-                  <DealCard 
-                    key={deal.id} 
-                    deal={deal} 
-                    onDismiss={() => setDismissedDeals(prev => new Set(prev).add(deal.id))}
-                  />
-                ))}
+
+                {genericDeals.length > 0 && (
+                  <div className="border border-slate-200/60 rounded-2xl bg-white/50 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-slate-50/80 border-b border-slate-200/60">
+                      <h3 className="text-sm font-bold text-slate-900">More ways to compare</h3>
+                      <p className="text-[11px] text-slate-500">Links only. We hold no price for these.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+                      {genericDeals.map((deal) => (
+                        <DealCard
+                          key={deal.id}
+                          deal={deal}
+                          onDismiss={() => setDismissedDeals(prev => new Set(prev).add(deal.id))}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
           );
