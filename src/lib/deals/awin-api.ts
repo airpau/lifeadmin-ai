@@ -31,6 +31,16 @@ export const AWIN_PUBLISHER_ID = 2825812;
 export interface AwinProgramme {
   id: number;
   name: string;
+  /**
+   * The canonical tracking link Awin publishes for this programme, of
+   * the form awclick.php?mid=…&id=…
+   *
+   * Worth storing rather than rebuilding. A hand-built link with the
+   * wrong merchant id is invisible: cread.php still 302s, still sets an
+   * awc cookie, and the user still lands on the advertiser. The only
+   * symptom is commission that never arrives, months later.
+   */
+  clickThroughUrl?: string;
   displayUrl?: string;
   logoUrl?: string;
   currencyCode?: string;
