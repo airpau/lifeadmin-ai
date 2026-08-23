@@ -55,6 +55,12 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
       // `awaiting_user_input`, `still_open`, etc. were silently dropped
       // from the count — visible to the founder as "2 Active disputes"
       // when reality was substantially higher.
+      //
+      // The terminal-state set below must match the Overview "Disputes —
+      // Filed" KPI (src/app/dashboard/page.tsx) so both surfaces report the
+      // same active-dispute count. The earlier list was missing the legacy
+      // literal `resolved`, plus `dismissed`, `withdrawn` and `timeout`, so
+      // those terminal disputes leaked in and inflated this count.
       const [letters, resolved, disputes] = await Promise.all([
         supabase
           .from('tasks')
@@ -66,7 +72,7 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
           .from('disputes')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', user.id)
-          .not('status', 'in', '("resolved_won","resolved_partial","resolved_lost","closed")'),
+          .not('status', 'in', '("resolved","resolved_won","resolved_partial","resolved_lost","closed","dismissed","withdrawn","timeout")'),
       ]);
       setLettersWritten(letters.count || 0);
       const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
