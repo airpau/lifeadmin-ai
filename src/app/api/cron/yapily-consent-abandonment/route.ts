@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAccounts, getHostedConsentRequest } from '@/lib/yapily';
 import { snapshotAccounts, upsertYapilyConnection } from '@/lib/yapily/connection-store';
+import { assignSyncOffsetMinutes, computeNextSyncAt } from '@/lib/yapily/sync-scheduler';
 
 export const maxDuration = 60;
 
@@ -206,7 +207,7 @@ export async function GET(request: NextRequest) {
             // is named identically to one created the normal way.
             const bankName = accounts[0]?.institution?.name || row.institution_id;
 
-            await upsertYapilyConnection({
+            const upsertResult = await upsertYapilyConnection({
               userId: row.user_id,
               institutionId: row.institution_id,
               bankName,
@@ -217,12 +218,84 @@ export async function GET(request: NextRequest) {
               accounts: accountSnapshots,
             });
 
+            // ── Finish the job the callback would have finished ──────
+            //
+            // Recovering the connection is necessary but was not
+            // sufficient. Until 2026-08-23 this branch stopped here, so
+            // a user rescued by the poller silently got a connection
+            // with NO transaction history and NO place in the sync
+            // stagger. Both of those are things the callback does, and
+            // "the callback never arrived" is the entire premise of
+            // this route, so anything it does that matters has to be
+            // done here too.
+            //
+            // 1. SCHEDULING. Without sync_offset_minutes the row keeps
+            //    next_sync_at NULL, which the cron reads as "due now".
+            //    One such connection is harmless. Several are not: they
+            //    all land in the same 15-minute tick, which is exactly
+            //    the thundering herd the stagger exists to prevent, and
+            //    they compete for MAX_CONNECTIONS_PER_RUN.
+            const { count: siblingCount } = await admin
+              .from('bank_connections')
+              .select('id', { count: 'exact', head: true })
+              .eq('user_id', row.user_id)
+              .eq('provider', 'yapily')
+              .is('deleted_at', null)
+              .is('archived_at', null)
+              .neq('id', upsertResult.connectionId);
+
+            const offset = assignSyncOffsetMinutes(row.user_id, siblingCount ?? 0);
+
+            const { error: schedErr } = await admin
+              .from('bank_connections')
+              .update({
+                sync_offset_minutes: offset,
+                next_sync_at: computeNextSyncAt(offset).toISOString(),
+                // A fresh authorisation re-opens the once-per-consent
+                // endpoints, so anything previously learned to be
+                // unsupported is stale. Mirrors the callback.
+                upcoming_endpoints_fetched_at: null,
+                unsupported_features: [],
+              })
+              .eq('id', upsertResult.connectionId);
+
+            if (schedErr) {
+              // Non-fatal: a NULL next_sync_at still syncs, just without
+              // the stagger. Worth a log, not worth losing the recovery.
+              console.error(
+                `[yapily.abandonment] scheduling failed for connection=${upsertResult.connectionId}:`,
+                schedErr.message,
+              );
+            }
+
+            // 2. BACKFILL. Fire-and-forget, same as the callback: the
+            //    12-month sync can take up to 300s and this route's
+            //    maxDuration is 60, so awaiting it would guarantee a
+            //    timeout. It is idempotent (dedup is on stable_tx_hash),
+            //    so a duplicate trigger costs nothing but API calls.
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
+            fetch(`${appUrl}/api/yapily/initial-sync`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${process.env.CRON_SECRET}`,
+              },
+              body: JSON.stringify({
+                connectionId: upsertResult.connectionId,
+                userId: row.user_id,
+                consentToken,
+                accountSnapshots,
+              }),
+            }).catch((err) =>
+              console.error('[yapily.abandonment] initial-sync trigger failed:', err),
+            );
+
             updates.status = 'completed';
             updates.resolved_at = nowIso;
             updates.next_poll_at = null;
             recovered++;
             console.log(
-              `[yapily.abandonment] RECOVERED connection for user=${row.user_id} institution=${row.institution_id} consentRequestId=${row.consent_request_id} accounts=${accounts.length} — callback never arrived`,
+              `[yapily.abandonment] RECOVERED connection=${upsertResult.connectionId} for user=${row.user_id} institution=${row.institution_id} consentRequestId=${row.consent_request_id} accounts=${accounts.length} offset=${offset}m — callback never arrived; scheduling set and backfill triggered`,
             );
           } catch (recoveryErr) {
             // Don't mark the row resolved; back off and try again so a
