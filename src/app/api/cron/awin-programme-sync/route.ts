@@ -77,6 +77,11 @@ export async function GET(request: NextRequest) {
     currency_code: p.currencyCode ?? null,
     status: p.status ?? null,
     is_joined: true,
+    // Awin's own canonical link. Stored so we stop hand-building the
+    // one string where a typo is invisible: a wrong merchant id still
+    // redirects and still sets a cookie, so it looks fine and simply
+    // never pays.
+    click_through_url: p.clickThroughUrl ?? null,
     valid_domains: (p.validDomains ?? []).map((d) => d.domain),
     last_synced_at: now,
     updated_at: now,
