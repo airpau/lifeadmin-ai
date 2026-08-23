@@ -523,29 +523,56 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
     results.twitter = { error: err.message };
   }
 
-  // Settle the claim we took at the top. This UPDATES the existing row rather
-  // than inserting a new one, so the dedup_key stays unique for the day and
-  // the row survives even if a platform failed — a partial success must not
-  // licence a second full post.
+  // ── Settle the claim honestly ────────────────────────────────────────
+  // This UPDATES the existing row rather than inserting a new one, so the
+  // dedup_key stays unique for the day and the row survives even if a platform
+  // failed — a partial success must not licence a second full post.
+  //
+  // The status is derived from what the Graph API and X actually returned, not
+  // from having reached the end of the function. The old code wrote
+  // status='posted' unconditionally, which is why content_drafts cannot be
+  // trusted as a record of what published: the 2026-08-22 row reads 'posted'
+  // with Facebook rejecting the token, Instagram skipped and X failed. Nothing
+  // went out that day, and the table said otherwise — which also hid the
+  // outage from the daily CEO report, since that counts status='posted' rows.
+  const publishedIds: Record<string, string> = {};
+  if (results.facebook?.ok && results.facebook.postId) publishedIds.facebook = String(results.facebook.postId);
+  if (results.instagram?.ok && results.instagram.postId) publishedIds.instagram = String(results.instagram.postId);
+  if (results.twitter?.ok && results.twitter.tweetId) publishedIds.twitter = String(results.twitter.tweetId);
+
+  const anyPublished = Object.keys(publishedIds).length > 0;
+
   await supabase
     .from('content_drafts')
     .update({
       caption,
       asset_url: imageUrl,
-      status: 'posted',
-      posted_at: new Date().toISOString(),
-      performance_metrics: results,
+      // A row that published nowhere is settled 'failed', not 'posted'. It
+      // KEEPS the day's claim so a later invocation cannot republish the same
+      // content — a failed day is a founder problem to look at, not something
+      // to retry blind.
+      status: anyPublished ? 'posted' : 'failed',
+      posted_at: anyPublished ? new Date().toISOString() : null,
+      // The row's platform is 'facebook', so this is the id that reconciles it
+      // against the Graph API. Null when Facebook itself did not publish.
+      platform_post_id: publishedIds.facebook ?? null,
+      performance_metrics: { ...results, published_post_ids: publishedIds },
     })
     .eq('id', claimId);
 
   // Notify founder via Telegram
   await alertFounder(
-    `Daily social post published:\n\n` +
+    (anyPublished ? `Daily social post published:\n\n` : `Daily social post FAILED, nothing was published:\n\n`) +
       `FB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\n` +
       `IG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\n` +
       `X: ${results.twitter?.ok ? 'Posted' : results.twitter?.error || 'Failed'}\n\n` +
       `Caption: ${caption.substring(0, 150)}...`,
   );
 
-  return NextResponse.json({ ok: true, caption: caption.substring(0, 100), ...results });
+  return NextResponse.json({
+    ok: anyPublished,
+    published: publishedIds,
+    caption: caption.substring(0, 100),
+    ...results,
+  });
 }
