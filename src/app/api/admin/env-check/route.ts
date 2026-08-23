@@ -60,6 +60,22 @@ const REQUIRED_VARS = [
   // have actually joined — which is how it came to advertise thirty
   // merchants we had no relationship with. Format is a UUID.
   "AWIN_API_TOKEN",
+
+  // Higgsfield became the DEFAULT image generator on 23 Aug 2026. Auth is a
+  // key PAIR. If either half is missing, the social cron logs a warning and
+  // silently falls back to fal.ai — the post still goes out, so the only
+  // symptom is that the switch quietly never took effect. Hence checking it
+  // here rather than waiting to notice.
+  "HIGGSFIELD_API_KEY_ID",
+  "HIGGSFIELD_API_KEY_SECRET",
+  "HIGGSFIELD_API_KEY",
+  "FAL_KEY",
+
+  // The Meta system-user token the social cron posts with. A short-lived user
+  // token here is why 2026-08-22 published nothing.
+  "META_ACCESS_TOKEN",
+  "META_PAGE_ID",
+  "META_INSTAGRAM_ACCOUNT_ID",
 ];
 
 function status(name: string): { present: boolean; length: number; prefix?: string } {
@@ -98,6 +114,14 @@ export async function GET(req: NextRequest) {
       !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_FOUNDER_CHAT_ID,
     finance_snapshot_tool:
       !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    // True when the social cron will actually use Higgsfield. False means it
+    // still works, but falls back to fal.ai.
+    higgsfield_generator:
+      !!(
+        (process.env.HIGGSFIELD_API_KEY_ID && process.env.HIGGSFIELD_API_KEY_SECRET) ||
+        (process.env.HIGGSFIELD_API_KEY || "").includes(":")
+      ),
+    social_posting: !!process.env.META_ACCESS_TOKEN && !!process.env.META_PAGE_ID,
   };
 
   return NextResponse.json({
