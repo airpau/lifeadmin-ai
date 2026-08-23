@@ -126,6 +126,18 @@ export async function PUT(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // Same Essential+ gate as POST. Without it a user who downgrades keeps
+  // full edit control of the budgets they created while paying, which is
+  // the feature itself — only creating a NEW one was ever blocked.
+  const { getEffectiveTier } = await import('@/lib/plan-limits');
+  const tier = await getEffectiveTier(user.id);
+  if (tier === 'free') {
+    return NextResponse.json(
+      { error: 'Editing budgets is available on the Essential plan.', upgradeRequired: true, tier },
+      { status: 403 },
+    );
+  }
+
   const body = await request.json();
   const { data, error } = await supabase.from('money_hub_budgets')
     .update({ monthly_limit: body.monthly_limit, rollover: body.rollover, payday_date: body.payday_date })
@@ -135,6 +147,9 @@ export async function PUT(request: NextRequest) {
   return NextResponse.json(data);
 }
 
+// DELETE is deliberately NOT tier-gated. Removing your own data is not
+// "using the feature" — a downgraded user must always be able to clear
+// budgets they can no longer edit, otherwise the rows are stranded.
 export async function DELETE(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

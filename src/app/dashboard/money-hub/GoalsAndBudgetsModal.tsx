@@ -14,6 +14,25 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
   const [addFundGoal, setAddFundGoal] = useState<{ id: string, current: number } | null>(null);
   const [addFundAmount, setAddFundAmount] = useState('');
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [needsUpgrade, setNeedsUpgrade] = useState(false);
+
+  // Every handler used to swallow failures, so the Essential+ 403 on
+  // budgets/goals looked like nothing happening at all. Surface it instead,
+  // and only treat the write as done when the API actually accepted it.
+  const succeeded = async (res: Response) => {
+    if (res.ok) {
+      setErrorMsg(null);
+      setNeedsUpgrade(false);
+      return true;
+    }
+    let body: { error?: string, upgradeRequired?: boolean } = {};
+    try { body = await res.json(); } catch { /* non-JSON error body */ }
+    setNeedsUpgrade(res.status === 403 && !!body.upgradeRequired);
+    setErrorMsg(body.error || 'Something went wrong. Please try again.');
+    return false;
+  };
+
   const { budgets = [], goals = [] } = data;
 
   // Lock the page behind the modal so mobile scroll doesn't chain through.
@@ -34,23 +53,25 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
     if (!budgetAmount || !budgetCategory) return;
     setLoading(true);
     try {
-      await fetch('/api/money-hub/budgets', {
+      const res = await fetch('/api/money-hub/budgets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: budgetCategory, monthly_limit: parseFloat(budgetAmount) }),
       });
-      setBudgetAmount('');
-      onUpdated();
-    } catch { /* silent */ }
+      if (await succeeded(res)) {
+        setBudgetAmount('');
+        onUpdated();
+      }
+    } catch { setErrorMsg('Something went wrong. Please try again.'); }
     setLoading(false);
   };
 
   const handleDeleteBudget = async (id: string) => {
     setLoading(true);
     try {
-      await fetch(`/api/money-hub/budgets?id=${id}`, { method: 'DELETE' });
-      onUpdated();
-    } catch { /* silent */ }
+      const res = await fetch(`/api/money-hub/budgets?id=${id}`, { method: 'DELETE' });
+      if (await succeeded(res)) onUpdated();
+    } catch { setErrorMsg('Something went wrong. Please try again.'); }
     setLoading(false);
   };
 
@@ -58,23 +79,25 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
     if (!goalForm.name || !goalForm.targetAmount) return;
     setLoading(true);
     try {
-      await fetch('/api/money-hub/goals', {
+      const res = await fetch('/api/money-hub/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ goal_name: goalForm.name, emoji: goalForm.emoji, target_amount: parseFloat(goalForm.targetAmount), current_amount: parseFloat(goalForm.currentAmount || '0') }),
       });
-      setGoalForm({ name: '', emoji: '🎯', targetAmount: '', currentAmount: '0' });
-      onUpdated();
-    } catch { /* silent */ }
+      if (await succeeded(res)) {
+        setGoalForm({ name: '', emoji: '🎯', targetAmount: '', currentAmount: '0' });
+        onUpdated();
+      }
+    } catch { setErrorMsg('Something went wrong. Please try again.'); }
     setLoading(false);
   };
 
   const handleDeleteGoal = async (id: string) => {
     setLoading(true);
     try {
-      await fetch(`/api/money-hub/goals?id=${id}`, { method: 'DELETE' });
-      onUpdated();
-    } catch { /* silent */ }
+      const res = await fetch(`/api/money-hub/goals?id=${id}`, { method: 'DELETE' });
+      if (await succeeded(res)) onUpdated();
+    } catch { setErrorMsg('Something went wrong. Please try again.'); }
     setLoading(false);
   };
 
@@ -87,14 +110,18 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
     if (!addFundGoal || !addFundAmount) return;
     setLoading(true);
     try {
-      await fetch('/api/money-hub/goals', {
+      const res = await fetch('/api/money-hub/goals', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: addFundGoal.id, current_amount: addFundGoal.current + parseFloat(addFundAmount) }),
       });
-      onUpdated();
+      if (await succeeded(res)) onUpdated();
+      // Close either way — the banner sits behind this sub-modal.
       setAddFundGoal(null);
-    } catch { /* silent */ }
+    } catch {
+      setErrorMsg('Something went wrong. Please try again.');
+      setAddFundGoal(null);
+    }
     setLoading(false);
   };
 
@@ -123,6 +150,14 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
         </div>
 
         <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain custom-scrollbar flex-1">
+          {errorMsg && (
+            <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <span>{errorMsg}</span>
+              {needsUpgrade && (
+                <a href="/pricing" className="shrink-0 font-semibold underline hover:no-underline">Upgrade</a>
+              )}
+            </div>
+          )}
           {activeTab === 'budgets' ? (
             <div className="space-y-6">
               <div className="bg-white p-4 rounded-xl border border-slate-200">
