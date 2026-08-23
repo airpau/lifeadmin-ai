@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendWeeklyDigestEmail } from '@/lib/email/weekly-money-digest';
+import { buildWeeklyDigestEmail } from '@/lib/email/weekly-money-digest';
 import { canSendEmail } from '@/lib/email-rate-limit';
+import { sendNotification } from '@/lib/notifications/dispatch';
+import { REPLY_TO } from '@/lib/resend';
 import { isRealSpend, sumRealSpend, groupRealSpend } from '@/lib/spending';
 
 export const runtime = 'nodejs';
@@ -268,9 +270,7 @@ export async function GET(request: NextRequest) {
         (s, d) => s + (d.disputedAmount || 0), 0,
       );
 
-      // Send the email
-      const success = await sendWeeklyDigestEmail(
-        profile.email,
+      const { subject, html } = buildWeeklyDigestEmail(
         userName,
         {
           weekSpend,
@@ -291,17 +291,41 @@ export async function GET(request: NextRequest) {
         tier,
       );
 
-      if (success) {
-        // Log to prevent duplicates
-        await admin.from('tasks').insert({
-          user_id: userId,
-          type: 'weekly_money_digest',
-          title: `Weekly digest: £${Math.round(weekSpend)} spent`,
-          description: `Top categories: ${topCategories.map(c => c.category).join(', ')}. ${upcomingRenewals.length} upcoming renewals.`,
-          status: 'completed',
-        });
-        sent++;
+      // Route via the unified dispatcher so the user's
+      // notification_preferences row for `weekly_digest` is honoured.
+      // Sending straight to Resend meant a user who switched the weekly
+      // digest off in Settings → Notifications kept receiving it — the
+      // toggle wrote a row nothing ever read.
+      //
+      // Email is the only payload on purpose: `weekly_digest` defaults to
+      // WhatsApp-on in the catalogue, so adding a WhatsApp payload here
+      // would start paid Meta template sends that this cron has never
+      // made. WhatsApp weekly digests stay with the crons that already
+      // own them.
+      const dispatch = await sendNotification(admin, {
+        userId,
+        event: 'weekly_digest',
+        email: { subject, html, replyTo: REPLY_TO },
+      });
+      const success = dispatch.delivered.includes('email');
+
+      if (!success) {
+        // Nothing went out — the user has the weekly digest switched off,
+        // or the send failed. Either way, don't log a task row (the rate
+        // limiter counts those as a send).
+        skipped++;
+        continue;
       }
+
+      // Log to prevent duplicates
+      await admin.from('tasks').insert({
+        user_id: userId,
+        type: 'weekly_money_digest',
+        title: `Weekly digest: £${Math.round(weekSpend)} spent`,
+        description: `Top categories: ${topCategories.map(c => c.category).join(', ')}. ${upcomingRenewals.length} upcoming renewals.`,
+        status: 'completed',
+      });
+      sent++;
     } catch (err: any) {
       console.error(`[weekly-digest] Error for user ${userId}:`, err.message);
     }

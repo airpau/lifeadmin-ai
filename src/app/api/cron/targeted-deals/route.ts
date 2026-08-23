@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { updateUserOpportunityScore } from '@/lib/opportunity-scoring';
-import { sendTargetedDealEmail } from '@/lib/email/targeted-deals';
+import { buildTargetedEmail } from '@/lib/email/targeted-deals';
 import { canSendEmail } from '@/lib/email-rate-limit';
+import { sendNotification } from '@/lib/notifications/dispatch';
+import { REPLY_TO } from '@/lib/resend';
 
 export const maxDuration = 60;
 
@@ -110,7 +112,25 @@ export async function GET(request: NextRequest) {
 
       const userName = user.first_name || user.full_name?.split(' ')[0] || 'there';
 
-      const emailSent = await sendTargetedDealEmail(user.email, userName, score, totalMonthly);
+      const emailData = buildTargetedEmail(userName, score, totalMonthly);
+
+      if (!emailData) {
+        skipped++;
+        results.push({ email: user.email, score: score.total, tier: score.tier, sent: false, reason: 'No opportunities to write about' });
+        continue;
+      }
+
+      // Route via the unified dispatcher so the user's
+      // notification_preferences row for `targeted_deal` is honoured.
+      // Sending straight to Resend meant switching "Category offers" off
+      // in Settings → Notifications changed nothing — the toggle wrote a
+      // row nothing ever read.
+      const dispatch = await sendNotification(supabase, {
+        userId: user.id,
+        event: 'targeted_deal',
+        email: { subject: emailData.subject, html: emailData.html, replyTo: REPLY_TO },
+      });
+      const emailSent = dispatch.delivered.includes('email');
 
       if (emailSent) {
         await supabase.from('tasks').insert({
@@ -123,7 +143,10 @@ export async function GET(request: NextRequest) {
         sent++;
         results.push({ email: user.email, score: score.total, tier: score.tier, sent: true });
       } else {
-        results.push({ email: user.email, score: score.total, tier: score.tier, sent: false, reason: 'Email send failed' });
+        skipped++;
+        const reason = dispatch.skipped.find((s) => s.channel === 'email')?.reason
+          ?? 'Category offers turned off in notification preferences';
+        results.push({ email: user.email, score: score.total, tier: score.tier, sent: false, reason });
       }
     } catch (err: any) {
       console.error(`Targeted deal error for ${user.email}:`, err.message);
