@@ -527,10 +527,31 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
 export default function DealsPage() {
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
   const [verifiedDeals, setVerifiedDeals] = useState<VerifiedDeal[]>([]);
+  // Awin advertiser ids we have actually joined. `null` while loading,
+  // so the catalogue below renders nothing rather than flashing deals
+  // we may be about to hide.
+  const [joinedMerchantIds, setJoinedMerchantIds] = useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
   const [dismissedDeals, setDismissedDeals] = useState<Set<string>>(new Set());
+
+  // Which advertisers may legally be shown. Synced daily from the Awin
+  // API into affiliate_programmes; see /api/affiliate-programmes.
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/affiliate-programmes')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        setJoinedMerchantIds(new Set((d.joined ?? []).map((n: number) => String(n))));
+      })
+      .catch(() => {
+        // Fail closed: an unknown list hides the hardcoded catalogue.
+        if (alive) setJoinedMerchantIds(new Set());
+      });
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -710,7 +731,12 @@ export default function DealsPage() {
   // never rendered, which is the only reason it did no harm. Deleted
   // along with the strings it fed on: a total built from numbers
   // nobody sourced is not a total.
-  const dealsCount = Object.values(DEALS).reduce((n, arr) => n + (arr?.length || 0), 0) + verifiedDeals.length;
+  // Counts what a user can actually see, not what is in the file.
+  const dealsCount =
+    Object.values(DEALS).reduce(
+      (n, arr) => n + (arr ?? []).filter((d) => joinedMerchantIds?.has(d.awinMid)).length,
+      0,
+    ) + verifiedDeals.length;
 
   return (
     <div className="max-w-7xl mx-auto w-full">
@@ -859,8 +885,27 @@ export default function DealsPage() {
           // Only show hardcoded generic deal cards for categories WITH verified deals
           // For other categories, show a "coming soon" message instead
           const affiliateProviderNames = new Set(affiliatePlans.map(d => d.provider.toLowerCase()));
-          const genericDeals = hasVerifiedDeals
+
+          // ── Only advertisers we have actually joined ────────────────
+          //
+          // The hardcoded catalogue carried 59 deals across 54 merchant
+          // ids. 49 of those belong to Awin programmes we have never
+          // joined: BT, Sky, EE, O2, Vodafone, Three, OVO, EDF, Compare
+          // the Market, MoneySuperMarket and the rest. Several are not
+          // GB programmes on Awin at all — BT's real id is 3042, not the
+          // 3041 written here; O2's is 3242, not 3235.
+          //
+          // It survived because awin1.com/cread.php 302s for ANY id and
+          // sets an awc cookie, so a link to a programme we never joined
+          // is indistinguishable from a working one. The user lands on
+          // the advertiser, the URL looks tracked. It just cannot pay.
+          //
+          // So the same gate the database path already applies now
+          // applies here. `null` means still loading, and renders
+          // nothing rather than flashing deals about to disappear.
+          const genericDeals = hasVerifiedDeals && joinedMerchantIds
             ? (DEALS[category] || [])
+                .filter(d => joinedMerchantIds.has(d.awinMid))
                 .filter(d => !affiliateProviderNames.has(d.provider.toLowerCase()))
                 .filter(d => !dismissedDeals.has(d.id))
             : [];
@@ -875,11 +920,24 @@ export default function DealsPage() {
                   <Zap className="h-5 w-5 text-slate-500" />
                   <h2 className="text-xl font-bold text-slate-900">{category} Deals</h2>
                 </div>
-                <div className="bg-slate-100/30 border border-dashed border-slate-200/40 rounded-xl px-4 py-4 flex items-center gap-3">
-                  <Info className="h-5 w-5 text-emerald-600 flex-shrink-0" />
-                  <p className="text-sm text-slate-600">
-                    We&apos;re working on finding verified deals for {category.toLowerCase()}. Check back soon!
-                  </p>
+                <div className="bg-slate-100/30 border border-dashed border-slate-200/40 rounded-xl px-4 py-4 flex items-start gap-3">
+                  <Info className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-slate-600">
+                    {/* Says what is true. We have no {category} partner
+                        yet, so we have no price we can stand behind.
+                        The previous copy, "we're working on finding
+                        verified deals, check back soon", implied deals
+                        were imminent and had been sitting there for
+                        months. */}
+                    <p>
+                      We don&apos;t have a {category.toLowerCase()} partner yet, so we&apos;re
+                      not showing you prices we can&apos;t stand behind.
+                    </p>
+                    <p className="mt-1.5 text-slate-500">
+                      Your {category.toLowerCase()} spending is still tracked in Money Hub,
+                      and we&apos;ll flag it if the amount jumps.
+                    </p>
+                  </div>
                 </div>
               </section>
             );
