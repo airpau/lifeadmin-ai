@@ -113,7 +113,42 @@ export function cleanMerchantName(
   // Strip specific location suffixes seen in transactions
   cleaned = cleaned.replace(/\s+Gb$/, '');
   cleaned = cleaned.replace(/\s+[A-Z][a-z]+ Gb$/, '');
-  
+
+  // ── Bank reference noise ─────────────────────────────────────────
+  //
+  // Added 2026-08-23. The rules above handle branded descriptors well
+  // ("4239 19MAR26 D EXPERIAN NOTTINGHAM GB" -> "Experian") but left
+  // payment references untouched, so real rows still read as
+  // "Iwoca Tetra Ltd P6wd6ju9y2sap". The bank puts a mandate or payment
+  // reference on the end of a lot of business lines and it is never
+  // part of the merchant's name.
+  //
+  // ORDER MATTERS. The sort code goes first: stripping the trailing
+  // reference from "20-80-22 BJPGOPER781465" leaves the bare sort code
+  // "20-80-22", which is a worse label than the original.
+
+  // Leading sort code, e.g. "20-80-22 BJPGOPER781465".
+  cleaned = cleaned.replace(/^\d{2}-\d{2}-\d{2}\s*/, '');
+
+  // Trailing mandate/payment reference. Deliberately narrow: the token
+  // must mix letters AND digits and be 6+ chars, so real names survive
+  // ("Screwfix", "B&Q", "O2", "Matrix Fitness 3G"). Only ONE is
+  // stripped; a second pass starts eating legitimate name parts.
+  cleaned = cleaned.replace(
+    /\s+(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{6,}$/,
+    '',
+  );
+
+  // Trailing bare country code left behind by the location strip above.
+  cleaned = cleaned.replace(/\s+(GB|UK)$/i, '');
+
+  cleaned = cleaned.trim();
+
+  // If cleaning consumed everything meaningful, or left only digits and
+  // punctuation (a bare sort code, an account number), return empty and
+  // let the caller fall back rather than presenting rubbish as a name.
+  if (!cleaned || !/[A-Za-z]/.test(cleaned)) return '';
+
   return normaliseMerchantName(cleaned);
 }
 

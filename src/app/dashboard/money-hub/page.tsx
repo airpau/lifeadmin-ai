@@ -25,6 +25,7 @@ import ContractsPanel from './ContractsPanel';
 import UpcomingWidget from './UpcomingWidget';
 import { filterActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import { isAtLeastEssential, isAtLeastPro } from '@/lib/tier-rank';
+import { cleanMerchantName } from '@/lib/merchant-utils';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -1576,7 +1577,11 @@ export default function MoneyHubPage() {
  <div className="flex items-center gap-2 p-3">
  <div className="flex-1 min-w-0">
  <div className="flex items-center gap-2 flex-wrap">
- <span className="text-sm text-slate-900 font-medium truncate">{item.provider_name}</span>
+ {/* provider_name for a bank-detected subscription comes from
+     extractMerchantFromDescription, whose fallback takes the first three
+     "meaningful" words of the raw bank string and routinely leaves
+     reference digits behind. Clean it at the point of display. */}
+ <span className="text-sm text-slate-900 font-medium truncate">{cleanMerchantName(item.provider_name) || item.provider_name}</span>
  {statusBadge}
  </div>
  {item.matchedTxn && (

@@ -572,7 +572,18 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                     return (
                       <div key={txn.id || idx} className="p-4 flex items-center justify-between group relative">
                         <div className="min-w-0">
-                          <p className="text-slate-900 text-sm font-medium truncate">{isGarbageMerchantName(txn.merchant_name) ? (txn.description || txn.merchant_name) : txn.merchant_name}</p>
+                          {/* cleanMerchantName, not the raw description. This row used to
+                              fall straight through to `txn.description` whenever
+                              merchant_name was missing or junk, which is how
+                              "4239 19MAR26 D EXPERIAN NOTTINGHAM GB" ended up as a
+                              user-facing label. The helper was already imported and
+                              used for the recategorise sheet below; it just was not
+                              used for the thing people actually read. */}
+                          <p className="text-slate-900 text-sm font-medium truncate">
+                            {cleanMerchantName(pickRawMerchantSource(txn.merchant_name, txn.description)) ||
+                              txn.description ||
+                              'Unknown'}
+                          </p>
                           <p className="text-slate-500 text-xs mt-0.5">
                             {dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                             {txn.user_subcategory ? <span className="text-slate-400"> · {txn.user_subcategory}</span> : null}

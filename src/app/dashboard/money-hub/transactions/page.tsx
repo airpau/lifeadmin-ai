@@ -33,6 +33,7 @@ import {
   CATEGORY_EMOJI,
   type Category,
 } from '@/lib/categories';
+import { cleanMerchantName, pickRawMerchantSource } from '@/lib/merchant-utils';
 
 interface LedgerTx {
   id: string;
@@ -561,7 +562,15 @@ function Row({
   subcategories: UserSubcategory[];
   onCreateSubcategory: (parent: string, name: string, emoji?: string) => Promise<void>;
 }) {
-  const display = tx.merchant_name?.trim() || tx.description?.trim() || 'Unknown';
+  // Same rule as the category drill-down: never show the raw bank
+  // descriptor as a label. pickRawMerchantSource discards junk
+  // merchant_name values (Yapily returns 2-letter fragments), and
+  // cleanMerchantName strips PayPal prefixes, phone numbers, trailing
+  // locations and reference digits.
+  const display =
+    cleanMerchantName(pickRawMerchantSource(tx.merchant_name, tx.description)) ||
+    tx.description?.trim() ||
+    'Unknown';
   const isIncome = tx.kind === 'income';
   const isTransfer = tx.kind === 'transfer';
 
