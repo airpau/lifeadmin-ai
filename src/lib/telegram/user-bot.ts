@@ -2051,6 +2051,34 @@ Return JSON: { "subject": "...", "body": "..." }`;
         return;
       }
 
+      // Dedup: this button stays tappable after the letter is generated, and
+      // the same provider can raise several alerts, so without a guard every
+      // tap inserted a fresh disputes row and the disputes centre filled with
+      // duplicates. Mirrors the 7-day guard on POST /api/disputes; the live
+      // status set matches the one the weekly-money-digest cron uses. Checked
+      // before the Anthropic call so a repeat tap costs nothing.
+      const OPEN_STATUSES = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentDup } = await supabase
+        .from('disputes')
+        .select('id')
+        .eq('user_id', session.user_id)
+        .eq('provider_name', providerName)
+        .in('status', OPEN_STATUSES)
+        .gte('created_at', sevenDaysAgo)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recentDup?.id) {
+        await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+        await ctx.api.sendMessage(
+          chatId,
+          `You already have an open ${providerName} dispute from the last 7 days, so I haven't created a duplicate.\n\nView it: https://paybacker.co.uk/dashboard/disputes?dispute=${recentDup.id}`,
+        );
+        return;
+      }
+
       await ctx.api.sendMessage(chatId, '📝 Generating your complaint letter... This takes about 15 seconds.');
 
       const { data: profile } = await supabase.from('profiles')
