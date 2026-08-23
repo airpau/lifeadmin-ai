@@ -351,6 +351,10 @@ interface VerifiedDeal {
    *  else came from the LLM price-check cron. Drives whether the card
    *  may say "Verified" — see freshnessIndicator. */
   price_scan_source: string | null;
+  /** The Awin advertiser this deal's link actually pays through. Often
+   *  NOT the provider named on the card: eight broadband deals route via
+   *  Broadband Genie (12213). See routedVia below. */
+  programme_id: number | null;
 }
 
 /** Parse data allowance string to numeric GB for comparison */
@@ -395,6 +399,33 @@ function freshnessIndicator(
   return { text: 'Check price on site', color: 'text-slate-600', bg: 'bg-slate-500/10' };
 }
 
+/**
+ * The comparison site a deal routes through, or null when the link goes
+ * to the provider itself.
+ *
+ * A card headed "BT" whose link lands on a comparison site is not a lie,
+ * but it is a surprise, and a surprised user hits back before the
+ * cookie ever earns anything. Derived by comparing the deal's Awin
+ * programme name against the provider name rather than hardcoding
+ * merchant ids, so any comparison partner we join later is labelled
+ * automatically.
+ */
+function routedVia(
+  programmeId: number | null | undefined,
+  provider: string,
+  programmeNames: Record<string, string>,
+): string | null {
+  if (programmeId == null) return null;
+  const programme = programmeNames[String(programmeId)];
+  if (!programme) return null;
+  const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const p = norm(programme);
+  const d = norm(provider);
+  // "TalkTalk Phone and Broadband" is the same advertiser as "TalkTalk".
+  if (p.includes(d) || d.includes(p)) return null;
+  return programme;
+}
+
 interface AffiliatePlanCardProps {
   deal: VerifiedDeal;
   savingsMonthly?: number;
@@ -402,9 +433,11 @@ interface AffiliatePlanCardProps {
   userProvider?: string;
   userSpend?: number;
   onDismiss?: () => void;
+  /** Comparison site this deal routes through, if any. */
+  via?: string | null;
 }
 
-function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, userSpend, onDismiss }: AffiliatePlanCardProps) {
+function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, userSpend, onDismiss, via }: AffiliatePlanCardProps) {
   const [copied, setCopied] = useState(false);
 
   const handleClick = () => {
@@ -472,7 +505,12 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
       {/* Body — identical to DealCard */}
       <div className="flex-1 min-w-0 mb-3 pr-6">
         <div className="flex items-start justify-between gap-2 mb-1">
-          <h3 className="text-base font-semibold text-slate-900 truncate">{deal.provider} {deal.plan_name}</h3>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-slate-900 truncate">{deal.provider} {deal.plan_name}</h3>
+            {via && (
+              <p className="text-[11px] text-slate-500 mt-0.5 truncate">Compare via {via}</p>
+            )}
+          </div>
           {freshness && (
             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${freshness.color} ${freshness.bg}`}>
               {freshness.text}
@@ -517,7 +555,7 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
           onClick={handleClick}
           className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
         >
-          View Deal →
+          {via ? `Compare on ${via} →` : 'View Deal →'}
         </a>
       </div>
     </div>
@@ -531,6 +569,9 @@ export default function DealsPage() {
   // so the catalogue below renders nothing rather than flashing deals
   // we may be about to hide.
   const [joinedMerchantIds, setJoinedMerchantIds] = useState<Set<string> | null>(null);
+  // advertiser id -> programme name, so a card can say which comparison
+  // site it routes through instead of implying a direct provider link.
+  const [programmeNames, setProgrammeNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
@@ -545,6 +586,7 @@ export default function DealsPage() {
       .then((d) => {
         if (!alive) return;
         setJoinedMerchantIds(new Set((d.joined ?? []).map((n: number) => String(n))));
+        setProgrammeNames(d.names ?? {});
       })
       .catch(() => {
         // Fail closed: an unknown list hides the hardcoded catalogue.
@@ -1046,6 +1088,7 @@ export default function DealsPage() {
                           savingsYearly={savYr}
                           userProvider={userSpend?.provider}
                           userSpend={userSpend?.amount}
+                          via={routedVia(plan.programme_id, plan.provider, programmeNames)}
                           onDismiss={() => setDismissedDeals(prev => new Set(prev).add(plan.id))}
                         />
                       );
