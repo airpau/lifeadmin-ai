@@ -472,7 +472,16 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
   };
 
   const hasPromo = deal.price_promotional != null;
-  const freshness = freshnessIndicator(deal.last_verified_at, deal.price_scan_source);
+  // A comparison-routed card must not assert a per-provider price.
+  //
+  // The only price source we have for these is the comparison page
+  // itself, which lists dozens of providers at once. That is precisely
+  // how one Broadband Genie listing at £30.99 ended up stamped on all
+  // nine providers sharing its programme, Community Fibre included,
+  // whose real entry price is nearer £17. The prices survived the
+  // revert in a different column. Rather than keep chasing columns, a
+  // routed card offers the comparison and states no number.
+  const freshness = via ? null : freshnessIndicator(deal.last_verified_at, deal.price_scan_source);
 
   // Build headline from plan specs
   const specs: string[] = [];
@@ -484,11 +493,14 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
   const headline = specs.join(' · ');
 
   // Build saving text
-  const saving = hasPromo
-    ? `From £${deal.price_promotional}/mo`
-    : `£${deal.price_monthly}/mo`;
+  const saving = via
+    ? 'Compare prices'
+    : hasPromo
+      ? `From £${deal.price_promotional}/mo`
+      : `£${deal.price_monthly}/mo`;
 
-  const hasSavingsData = savingsMonthly !== undefined && userSpend !== undefined && userSpend > 0;
+  const hasSavingsData =
+    !via && savingsMonthly !== undefined && userSpend !== undefined && userSpend > 0;
   const isSaving = hasSavingsData && savingsMonthly! > 0;
 
   return (
@@ -728,6 +740,9 @@ export default function DealsPage() {
 
     let best: { deal: VerifiedDeal; savingsYearly: number; savingsMonthly: number } | null = null;
     for (const d of deals) {
+      // Comparison-routed deals carry no price we can defend, so they
+      // cannot headline a saving. See the note in AffiliatePlanCard.
+      if (routedVia(d.programme_id, d.provider, programmeNames)) continue;
       const effectivePrice = d.price_promotional ?? d.price_monthly;
       const savingsMonthly = userSpend.amount - effectivePrice;
       if (savingsMonthly <= 0) continue;
@@ -1073,8 +1088,9 @@ export default function DealsPage() {
                     const shown = isExpanded ? plans : plans.slice(0, 3);
                     const hasMore = plans.length > 3 && !isExpanded;
                     for (const plan of shown) {
+                      const planVia = routedVia(plan.programme_id, plan.provider, programmeNames);
                       const effectivePrice = plan.price_promotional ?? plan.price_monthly;
-                      let savMo = userSpend ? userSpend.amount - effectivePrice : undefined;
+                      let savMo = !planVia && userSpend ? userSpend.amount - effectivePrice : undefined;
                       // Cap: if savings > 80% of current price, don't show savings (unrealistic)
                       if (savMo !== undefined && userSpend && savMo > userSpend.amount * 0.8) {
                         savMo = undefined;
@@ -1088,7 +1104,7 @@ export default function DealsPage() {
                           savingsYearly={savYr}
                           userProvider={userSpend?.provider}
                           userSpend={userSpend?.amount}
-                          via={routedVia(plan.programme_id, plan.provider, programmeNames)}
+                          via={planVia}
                           onDismiss={() => setDismissedDeals(prev => new Set(prev).add(plan.id))}
                         />
                       );
