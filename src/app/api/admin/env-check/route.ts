@@ -54,6 +54,12 @@ const REQUIRED_VARS = [
   // /account-auth-requests flow. The route reports a 4-char prefix, and
   // the prefix of "true" is the whole value — so this is a full readout.
   "YAPILY_HOSTED_PAGES_ENABLED",
+
+  // Awin publisher API. Without it, awin-programme-sync cannot run, and
+  // the deals catalogue cannot be checked against the programmes we
+  // have actually joined — which is how it came to advertise thirty
+  // merchants we had no relationship with. Format is a UUID.
+  "AWIN_API_TOKEN",
 ];
 
 function status(name: string): { present: boolean; length: number; prefix?: string } {

@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getJoinedProgrammes } from '@/lib/deals/awin-api';
+import { authorizeAdminOrCron } from '@/lib/admin-auth';
 
 export const maxDuration = 60;
 
@@ -27,8 +28,12 @@ function getAdmin() {
 }
 
 export async function GET(request: NextRequest) {
-  if (request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Admin cookie OR the cron bearer. The admin path exists so the
+  // founder can open this URL in a browser to confirm AWIN_API_TOKEN is
+  // set correctly, rather than waiting for 04:00 to find out.
+  const auth = await authorizeAdminOrCron(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason }, { status: auth.status });
   }
 
   const supabase = getAdmin();
@@ -40,6 +45,16 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown';
     console.error('[awin-programme-sync] fetch failed:', msg);
+    if (/AWIN_API_TOKEN is not set/.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          reason: 'AWIN_API_TOKEN missing',
+          fix: 'Add AWIN_API_TOKEN to the Vercel project environment (Production, Preview and Development), then redeploy and open this URL again.',
+        },
+        { status: 500 },
+      );
+    }
     // Deliberately do NOT touch is_joined on failure. Marking everything
     // unjoined because Awin had a bad minute would empty the deals page.
     return NextResponse.json({ ok: false, reason: msg }, { status: 502 });
