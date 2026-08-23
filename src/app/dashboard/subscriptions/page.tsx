@@ -487,15 +487,26 @@ export default function SubscriptionsPage() {
       archivedFilter === 'archived' ? !!s.archived_at : !s.archived_at,
     );
     const filtered = archiveFiltered.filter(s => !isFinancePayment(s.provider_name));
-    const seen = new Map<string, boolean>();
-    return filtered.filter(s => {
+    const dedupKey = (s: Subscription) => {
       const normName = cleanMerchantName(s.provider_name).toLowerCase();
       const band = Math.round(Math.log(Math.max(Math.abs(parseFloat(String(s.amount)) || 0), 0.01)) / Math.log(1.1));
-      const key = `${normName}|${band}`;
-      if (seen.has(key)) return false;
-      seen.set(key, true);
-      return true;
-    });
+      return `${normName}|${band}`;
+    };
+    // When a key collides, the ACTIVE row wins. /api/subscriptions returns
+    // created_at desc, so "first seen wins" handed the slot to whichever
+    // duplicate was created most recently — often a cancelled one. The card
+    // then read "Cancelled" while the still-active duplicate was hidden but
+    // kept counting towards the "N active" figure and the monthly total.
+    const winners = new Map<string, Subscription>();
+    for (const s of filtered) {
+      const key = dedupKey(s);
+      const existing = winners.get(key);
+      if (!existing || (existing.status !== 'active' && s.status === 'active')) {
+        winners.set(key, s);
+      }
+    }
+    const keptIds = new Set(Array.from(winners.values(), s => s.id));
+    return filtered.filter(s => keptIds.has(s.id));
   })();
   const archivedSubsCount = subscriptions.filter((s) => !!s.archived_at).length;
   const hiddenFinanceCount = subscriptions.filter(s => s.status === 'active' && isFinancePayment(s.provider_name)).length;
