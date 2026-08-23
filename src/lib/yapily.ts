@@ -173,88 +173,6 @@ export function yapilySleep(ms: number): Promise<void> {
 const sleep = yapilySleep;
 
 /**
- * ── Per-consent transport floor ──────────────────────────────────────
- *
- * A BACKSTOP, not the main defence. The deliberate spacing lives at the
- * call sites (PER_CONSENT_CALL_DELAY_MS between accounts, in both sync
- * paths). This exists because that spacing was added per-caller, and on
- * 2026-08-23 we learned what it costs when one caller forgets:
- * /api/yapily/initial-sync fired eight back-to-back transaction calls
- * against a seconds-old HSBC Business consent, and the consent was dead
- * within hours. Twice, on two separate connections. Each cost a full
- * user reconnect.
- *
- * The lesson is that "remember to sleep" is not a rule if it is written
- * out once per caller. yapilyRequest is the ONE function every Yapily
- * call passes through, so the floor belongs here, where a new code path
- * inherits it without knowing it exists.
- *
- * Deliberately LOWER than PER_CONSENT_CALL_DELAY_MS. This is a floor
- * that must never be the reason a function times out: getAllTransactions
- * paginates up to MAX_PAGES times on one consent, and at 5s a
- * pathological 50-page account would burn 250s of a 300s budget. At
- * 1.2s the same worst case costs 60s, while a burst of eight rapid
- * calls is still stretched from ~0s to ~8.4s.
- *
- * Scope: only requests carrying a `consent` header, i.e. the data
- * endpoints Migle's guidance is about. Institution listing and consent
- * creation are untouched.
- *
- * Serverless caveat, stated plainly: this map is per-lambda-instance and
- * does not survive a cold start. That is fine, because it is precisely
- * the rapid same-invocation bursts it needs to catch. Calls from
- * separate invocations are already minutes apart.
- */
-export const PER_CONSENT_TRANSPORT_FLOOR_MS = 1_200;
-
-const lastConsentCallAt = new Map<string, number>();
-/** Bound the map so a long-lived instance cannot leak memory. */
-const MAX_TRACKED_CONSENTS = 500;
-
-/** Short, non-reversible key so a live consent token is never held as a
- *  map key in memory any longer than the request needs it. */
-function consentKey(token: string): string {
-  let h = 0;
-  for (let i = 0; i < token.length; i++) {
-    h = (Math.imul(31, h) + token.charCodeAt(i)) | 0;
-  }
-  return String(h);
-}
-
-async function throttlePerConsent(consentToken: string | undefined): Promise<void> {
-  if (!consentToken) return;
-
-  const key = consentKey(consentToken);
-  const last = lastConsentCallAt.get(key);
-  const now = Date.now();
-
-  if (last !== undefined) {
-    const since = now - last;
-    if (since < PER_CONSENT_TRANSPORT_FLOOR_MS) {
-      const wait = PER_CONSENT_TRANSPORT_FLOOR_MS - since;
-      console.warn(
-        `[yapily] transport floor: consent called again after ${since}ms, waiting ${wait}ms. ` +
-          'A caller is not spacing its own calls — see PER_CONSENT_CALL_DELAY_MS.',
-      );
-      await sleep(wait);
-    }
-  }
-
-  if (lastConsentCallAt.size >= MAX_TRACKED_CONSENTS && !lastConsentCallAt.has(key)) {
-    // Evict the oldest entry rather than clearing: clearing would drop
-    // the timestamp of a consent mid-burst and defeat the floor.
-    let oldestKey: string | null = null;
-    let oldestAt = Infinity;
-    for (const [k, t] of lastConsentCallAt) {
-      if (t < oldestAt) { oldestAt = t; oldestKey = k; }
-    }
-    if (oldestKey !== null) lastConsentCallAt.delete(oldestKey);
-  }
-
-  lastConsentCallAt.set(key, Date.now());
-}
-
-/**
  * Parses Yapily's Retry-After header. Per RFC 7231 it is either a
  * delay in seconds or an HTTP-date; handle both, and clamp so a bad
  * value can't stall the function.
@@ -284,11 +202,6 @@ async function yapilyRequest<T>(
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> | undefined),
   };
-
-  // Enforce the per-consent floor before the FIRST call only. The retry
-  // loop below has its own backoff, and double-delaying a retry would
-  // make a transient 429 slower to recover from than it needs to be.
-  await throttlePerConsent(headers['consent']);
 
   let res: Response = await fetch(url, { ...options, headers });
 
@@ -1179,34 +1092,18 @@ export function buildYapilyAccountDisplayName(account: import('@/types/yapily').
   );
 }
 
-// ── 403 extend-first wrapper ──
+// ── 403 extend-first rule ──
 //
 // Migle (6 May 2026): when /accounts (or any consent-protected GET)
 // returns 403, the right behaviour is to call POST
 // /consents/{consentId}/extend FIRST, retry the original call once,
 // and only if THAT also 403s should the caller trigger a full
-// re-consent via POST /hosted/consent-requests. This wrapper
-// encapsulates that pattern — wrap any consent-protected call you
-// want self-healing.
+// re-consent via POST /hosted/consent-requests.
 //
-// Throws ConsentExpiredError when extend → retry still 403s, so the
-// caller can flip the bank_connection to expired and surface the
-// reconfirm-consent UI.
-
-export class ConsentExpiredError extends Error {
-  consentId: string;
-  originalStatus: number;
-  constructor(consentId: string, originalStatus: number) {
-    super(`Consent ${consentId} expired beyond extend (got ${originalStatus} twice)`);
-    this.name = 'ConsentExpiredError';
-    this.consentId = consentId;
-    this.originalStatus = originalStatus;
-  }
-}
-
-function isYapily403(err: unknown): err is Error & { status?: number } {
-  return err instanceof Error && (err as Error & { status?: number }).status === 403;
-}
+// That rule is implemented in triageConsentFailure below, which both
+// sync routes already call. ConsentExpiredError and isYapily403 lived
+// here to serve withConsentRetry and were removed with it on
+// 2026-08-23 — all three had zero call sites.
 
 /**
  * Returns true ONLY when the error is a Yapily 401/403 whose message
@@ -1333,33 +1230,16 @@ export async function resolveConsentState(
   }
 }
 
-export async function withConsentRetry<T>(
-  consentId: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    if (!isYapily403(err)) throw err;
-    // First 403 → try extend.
-    try {
-      await extendConsent(consentId);
-    } catch {
-      // If extend itself fails, surface the original 403 — extend is
-      // best-effort.
-      throw new ConsentExpiredError(consentId, 403);
-    }
-    // Extend succeeded; retry once.
-    try {
-      return await fn();
-    } catch (retryErr) {
-      if (isYapily403(retryErr)) {
-        throw new ConsentExpiredError(consentId, 403);
-      }
-      throw retryErr;
-    }
-  }
-}
+// withConsentRetry lived here until 2026-08-23. It implemented Migle's
+// extend-then-retry-once rule as a wrapper and was never given a call
+// site — a correct-looking helper that protected nothing, while the
+// failure it was written for ran 481 times in production.
+//
+// The behaviour now lives in triageConsentFailure's 'healthy' branch,
+// which is on the live path for both sync routes. That is a better home
+// for it: one extend per run rather than one per account, and no way for
+// a caller to forget to opt in. Removed rather than left in place so
+// nobody reads it as active protection a second time.
 
 // ── Shared sync-failure triage (build review, step 6) ──
 
@@ -1448,8 +1328,44 @@ export async function triageConsentFailure(
   }
 
   if (verdict.action === 'healthy') {
+    // 403 against a consent Yapily still reports as live. This is the
+    // insufficient_rights case, and until 2026-08-23 we did nothing here
+    // but log — which is how one HSBC Business connection failed 481
+    // consecutive cron runs while its row sat at status='active',
+    // consent_failure_count=0, and never once prompted the user.
+    //
+    // Migle Ivanauskaite (Yapily) prescribed extend-then-retry-once for
+    // exactly this shape. That behaviour was written as withConsentRetry
+    // and then never given a call site. Doing it here instead of around
+    // each call means it fires once per run rather than once per account,
+    // and it sits on the one decision point both sync routes already
+    // share, so they cannot drift.
+    //
+    // 'recovered' makes the caller stop and pick the account up next run.
+    // IMPORTANT: that is NOT a claim the connection is healthy. If the
+    // extend succeeds but the data call still 403s next run, we would
+    // report 'recovered' forever and rot silently all over again. The
+    // backstop is in the sync routes: a run where NOTHING synced counts
+    // toward CONSENT_FAILURE_THRESHOLD regardless of the verdict here.
+    // Do not remove that counter on the assumption this branch handles it.
+    if (consentId) {
+      try {
+        await extendConsent(consentId);
+        console.warn(
+          `${logPrefix} ${status} but consent=${consentId} is ${verdict.status} — scope/permission issue, not expiry. Extended the consent; retrying this account next run.`,
+        );
+        return 'recovered';
+      } catch (extendErr) {
+        console.warn(
+          `${logPrefix} ${status} but consent=${consentId} is ${verdict.status} — scope/permission issue, and extend failed:`,
+          extendErr instanceof Error ? extendErr.message : extendErr,
+        );
+        return 'non_fatal';
+      }
+    }
+
     console.warn(
-      `${logPrefix} ${status} but consent=${consentId} is ${verdict.status} — scope/permission issue, not expiry`,
+      `${logPrefix} ${status} but consent is ${verdict.status} — scope/permission issue, not expiry (no consentId to extend)`,
     );
     return 'non_fatal';
   }
