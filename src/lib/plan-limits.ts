@@ -227,34 +227,20 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     features: [...PRO_FEATURES, 'household_seats'],
   },
 
-  /**
-   * Dispute Pro — £19.99/mo, £199.99/yr.
-   *
-   * For someone actively recovering money, where the willingness to pay
-   * anchors to the recovery (£100-£520 a case) rather than to a budgeting
-   * app. Every differentiator below is enforced by real code — see the
-   * per-field comments. Nothing aspirational is listed.
-   */
-  dispute_pro: {
-    complaintsPerMonth: null,
-    scanRunsPerMonth: null,
-    maxBanks: null,
-    maxEmails: null,
-    emailScanDays: 90,
-    maxSpaces: null,
-    disputeThreadLinks: null,
-    // 15-minute Watchdog polling vs 30 on Pro. Enforced directly by
-    // /api/cron/dispute-reply-sync, which reads this field.
-    watchdogSyncIntervalMinutes: 15,
-    whatsappPocketAgent: true,
-    // Unlimited Ombudsman escalation packs at no extra cost. One pack a
-    // month covers the price difference vs Pro.
-    ombudsmanPacksIncluded: true,
-    // Front of the Dispute Agent queue and the bank-sync queue.
-    disputeQueuePriority: 0,
-    householdSeats: null,
-    features: [...PRO_FEATURES, 'ombudsman_escalation_packs', 'dispute_queue_priority', 'watchdog_15min'],
-  },
+  // Dispute Pro was withdrawn in 7e902f39, which removed it from the
+  // PlanTier union but left its entry here. PLAN_LIMITS is
+  // Record<PlanTier, PlanLimits>, so the leftover key was a type error,
+  // and master has failed to build since 21 Aug 2026 as a result.
+  //
+  // Nothing needs a replacement entry. Every other dispute_pro
+  // reference in the codebase is deliberately a HISTORICAL string, for
+  // reading old DB rows whose CHECK constraint still permits the value
+  // (see consumer-leads/capture.ts, cron/dispute-reply-sync,
+  // leads/capture, ConsumerLeadsClient). None of them index this
+  // record. Tier lookups here are all
+  // `PLAN_LIMITS[tier as PlanTier] ?? PLAN_LIMITS.free`, so a legacy
+  // dispute_pro row falls back to Free, which is the intended
+  // behaviour for a withdrawn plan.
 };
 
 function getYearMonth(): string {
