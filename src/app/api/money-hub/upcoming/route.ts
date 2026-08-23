@@ -366,11 +366,34 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Projection ────────────────────────────────────────────────────
-  // Balances live on bank_connections.current_balance and are frequently
-  // null (HSBC Business currently returns none). Never invent a number:
-  // when nothing reports a balance we hand back netMovement only and the
-  // UI shows "what's left" as a movement, not a balance.
-  const balanceConns = activeConns.filter((c) => c.current_balance !== null);
+  // Balances live on bank_connections.current_balance. Never invent a
+  // number: when nothing reports a balance we hand back netMovement only
+  // and the UI shows "what's left" as a movement, not a balance.
+  //
+  // SHOW_ACCOUNT_BALANCES is an intentional off-by-default kill switch,
+  // added 2026-08-23. Balance sync itself stays ON — bank_account_balances
+  // is what separates cash from card debt in the connection-level roll-up,
+  // and turning it off would put us back to netting a credit card against
+  // real money. This flag governs only whether a balance figure reaches a
+  // consumer user's screen.
+  //
+  // Why it defaults off: the Money Hub has long carried a banner claiming
+  // "Balances are not shown for regulatory compliance". Nobody has
+  // confirmed that claim. Account information under the PSRs 2017 covers
+  // accounts, balances and transactions as one activity, so balances are
+  // very unlikely to need a permission that the transactions we already
+  // display do not — but the real question underneath it is whether we
+  // display consolidated account data as an agent of Yapily Connect Ltd
+  // or under our own authorisation, and that is unresolved. Storing is
+  // not displaying, so we store and hold the display until Yapily
+  // compliance answers in writing.
+  //
+  // To turn on: set SHOW_ACCOUNT_BALANCES=true. Delete this flag once the
+  // position is confirmed, and fix the banner copy in the same change.
+  const balancesVisible = process.env.SHOW_ACCOUNT_BALANCES === 'true';
+  const balanceConns = balancesVisible
+    ? activeConns.filter((c) => c.current_balance !== null)
+    : [];
   const balanceAvailable = balanceConns.length > 0;
   const currentBalance = balanceAvailable
     ? round2(

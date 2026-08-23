@@ -260,9 +260,8 @@ export default function UpcomingForwardView({
         <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-slate-500">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            Your bank isn&apos;t sharing an account balance with us, so we can&apos;t
-            show what you&apos;ll be left with. The figure above is the net
-            movement: what these payments add up to, in or out.
+            We&apos;re not showing a projected balance here, so the figure above
+            is the net movement: what these payments add up to, in or out.
           </span>
         </p>
       )}
