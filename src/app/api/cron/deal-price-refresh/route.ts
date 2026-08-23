@@ -27,6 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { authorizeAdminOrCron } from '@/lib/admin-auth';
 
 export const maxDuration = 300;
 
@@ -155,8 +156,12 @@ async function extractPlans(
 }
 
 export async function GET(request: NextRequest) {
-  if (request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Admin cookie OR the cron bearer, same as the programme sync. A
+  // weekly job is a long time to wait to find out a pricing page has
+  // moved, so the founder can trigger it and read the result.
+  const auth = await authorizeAdminOrCron(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason }, { status: auth.status });
   }
 
   const supabase = getAdmin();
