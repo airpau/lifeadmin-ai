@@ -6,6 +6,7 @@ import {
   triageConsentFailure,
   yapilySleep,
   PER_CONSENT_CALL_DELAY_MS,
+  CONSENT_FAILURE_THRESHOLD,
 } from '@/lib/yapily';
 import { resolveTransactionWindow } from '@/lib/yapily/sync-window';
 import { decrypt } from '@/lib/encrypt';
@@ -119,7 +120,7 @@ function getAdmin() {
  *   Free           — synced only on Mondays (fetches last 90 days)
  *
  * Processing order follows PLAN_LIMITS[tier].disputeQueuePriority
- * (lower runs first): Pro and Household, then Essential,
+ * (lower runs first): Dispute Pro, then Pro/Household, then Essential,
  * then Free. This ensures paying users are never deprioritised behind
  * free users when the daily API ceiling starts biting mid-run.
  *
@@ -161,7 +162,7 @@ export async function GET(request: NextRequest) {
   //
   // Built from PAID_PLAN_TIERS rather than a hardcoded ['pro','essential']
   // list. The old literal meant a tier added above Pro (household,
-  // household) matched no row in the `.in()` filter below and therefore
+  // dispute_pro) matched no row in the `.in()` filter below and therefore
   // got ZERO bank syncs — the most expensive plans silently receiving less
   // than Free. Any future tier is picked up automatically.
   const tiersToSync: string[] = isMonday
@@ -178,12 +179,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, synced: 0, reason: 'No eligible users' });
   }
 
-  // Sort: pro/household → essential → free.
+  // Sort: dispute_pro → pro/household → essential → free.
   //
   // `disputeQueuePriority` is the canonical lower-runs-first ordering in
   // PLAN_LIMITS, so it drops straight into a numeric ascending sort. The
   // previous inline map hardcoded pro=0 and gave anything unrecognised a
-  // rank above Pro — i.e. that user would have been sorted BEHIND free
+  // rank of 3 — i.e. a dispute_pro user would have been sorted BEHIND free
   // users when the API ceiling starts biting mid-run. An unknown tier now
   // falls back to the Free priority rather than a magic number, so it can
   // never rank worse than the lowest real tier.
@@ -692,6 +693,41 @@ export async function GET(request: NextRequest) {
 
       if (!transactionSyncSucceeded) {
         const detail = accountErrors.length > 0 ? accountErrors.join('; ') : 'unknown error';
+
+        // BACKSTOP (added 2026-08-23). A run where not one account
+        // returned data is not a hiccup, whatever triage said about the
+        // consent. Until now this path threw straight to the catch below,
+        // which logged bank_sync_log.status='failed' and stopped there —
+        // the connection kept status='active' and consent_failure_count=0
+        // forever. An HSBC Business connection failed this way 481
+        // consecutive times. Nothing in the product ever told the user,
+        // because every surface that asks "is this bank OK?" reads status.
+        //
+        // Deliberately counted here rather than per account: N accounts
+        // failing in one run is ONE failed run, and the threshold means
+        // consecutive runs. A single bad run still doesn't disconnect
+        // anyone — clearConsentFailures resets the counter the moment any
+        // account syncs, so only sustained total failure crosses it.
+        //
+        // This also catches the case where triageConsentFailure keeps
+        // returning 'recovered' because the extend succeeds but the data
+        // call still 403s. That would otherwise be a fresh silent-rot bug
+        // wearing the old one's clothes.
+        const failure = await recordConsentFailure(supabase, connection.id);
+        if (failure.shouldFlipExpired) {
+          console.error(
+            `Bank sync: conn=${connection.id} has now failed every account for ${failure.count} consecutive runs — flipping to expired so the user is actually told`,
+          );
+          await supabase
+            .from('bank_connections')
+            .update({ status: 'expired', updated_at: now })
+            .eq('id', connection.id);
+        } else {
+          console.warn(
+            `Bank sync: conn=${connection.id} total sync failure ${failure.count}/${CONSENT_FAILURE_THRESHOLD} — staying active until threshold`,
+          );
+        }
+
         throw new Error(`All account sync attempts failed: ${detail}`);
       }
 
