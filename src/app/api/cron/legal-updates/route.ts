@@ -145,6 +145,115 @@ interface Change {
   rawContent?: string;
 }
 
+interface FailedCheck {
+  source_name: string;
+  source_url: string;
+  source_kind: 'statute' | 'regulator' | 'feed';
+  error_type: string;
+  error_message: string;
+  last_success_at: string | null;
+  consecutive_failure_count: number;
+}
+
+// Categorise a thrown error into a stable short tag so the founder digest
+// can group / sort by failure mode (timeouts vs 404s vs parse failures look
+// very different at a glance).
+function classifyError(err: unknown): { type: string; message: string } {
+  if (!(err instanceof Error)) {
+    return { type: 'unknown', message: String(err).slice(0, 500) };
+  }
+  const name = err.name || '';
+  const msg = err.message || '';
+  if (name === 'AbortError' || name === 'TimeoutError' || /timeout|aborted/i.test(msg)) {
+    return { type: 'timeout', message: msg.slice(0, 500) || 'fetch timed out' };
+  }
+  if (/certificate|ssl|tls/i.test(msg)) return { type: 'ssl', message: msg.slice(0, 500) };
+  if (/ENOTFOUND|EAI_AGAIN|dns/i.test(msg)) return { type: 'dns', message: msg.slice(0, 500) };
+  if (/econnreset|econnrefused|network/i.test(msg)) return { type: 'network', message: msg.slice(0, 500) };
+  if (/json|parse|unexpected token/i.test(msg)) return { type: 'parse', message: msg.slice(0, 500) };
+  return { type: 'fetch_failed', message: msg.slice(0, 500) };
+}
+
+function classifyHttpStatus(status: number): { type: string; message: string } {
+  return {
+    type: status === 404 ? 'http_404' : status >= 500 ? 'http_5xx' : `http_${status}`,
+    message: `HTTP ${status}`,
+  };
+}
+
+async function recordCheckSuccess(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  source: { url: string; name: string; kind: 'statute' | 'regulator' | 'feed' },
+) {
+  const now = new Date().toISOString();
+  await supabase
+    .from('legal_check_health')
+    .upsert(
+      {
+        source_url: source.url,
+        source_kind: source.kind,
+        source_name: source.name,
+        last_checked_at: now,
+        last_success_at: now,
+        last_error_type: null,
+        last_error_message: null,
+        consecutive_failure_count: 0,
+        updated_at: now,
+      },
+      { onConflict: 'source_url' },
+    );
+}
+
+async function recordCheckFailure(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  source: { url: string; name: string; kind: 'statute' | 'regulator' | 'feed' },
+  error: { type: string; message: string },
+  failedChecks: FailedCheck[],
+) {
+  const now = new Date().toISOString();
+  // Read existing row first so we can increment the counter and preserve
+  // last_success_at. Falling back to a counter of 1 if the row doesn't
+  // exist yet (first failure for a newly-added source).
+  const { data: existing } = await supabase
+    .from('legal_check_health')
+    .select('consecutive_failure_count, last_success_at')
+    .eq('source_url', source.url)
+    .maybeSingle();
+
+  const nextCount = (existing?.consecutive_failure_count ?? 0) + 1;
+  const lastSuccessAt: string | null = existing?.last_success_at ?? null;
+
+  await supabase
+    .from('legal_check_health')
+    .upsert(
+      {
+        source_url: source.url,
+        source_kind: source.kind,
+        source_name: source.name,
+        last_checked_at: now,
+        last_success_at: lastSuccessAt,
+        last_failure_at: now,
+        last_error_type: error.type,
+        last_error_message: error.message.slice(0, 500),
+        consecutive_failure_count: nextCount,
+        updated_at: now,
+      },
+      { onConflict: 'source_url' },
+    );
+
+  failedChecks.push({
+    source_name: source.name,
+    source_url: source.url,
+    source_kind: source.kind,
+    error_type: error.type,
+    error_message: error.message,
+    last_success_at: lastSuccessAt,
+    consecutive_failure_count: nextCount,
+  });
+}
+
 /**
  * Weekly legal intelligence scan.
  * Schedule: Mondays at 6am — configured in vercel.json
@@ -182,11 +291,13 @@ export async function GET(request: NextRequest) {
   };
 
   const detectedChanges: Array<{ law: string; change: string; confidence: string; action: string }> = [];
+  const failedChecks: FailedCheck[] = [];
 
   // ── 1. Scan key statutes on legislation.gov.uk ──────────────────────────────
   for (const statute of KEY_STATUTES) {
+    const xmlUrl = `https://www.legislation.gov.uk/${statute.path}/data.xml`;
+    const source = { url: xmlUrl, name: statute.name, kind: 'statute' as const };
     try {
-      const xmlUrl = `https://www.legislation.gov.uk/${statute.path}/data.xml`;
       const res = await fetch(xmlUrl, {
         headers: {
           'User-Agent': 'Paybacker-LegalMonitor/1.0 (hello@paybacker.co.uk)',
@@ -196,12 +307,14 @@ export async function GET(request: NextRequest) {
       });
 
       if (!res.ok) {
+        await recordCheckFailure(supabase, source, classifyHttpStatus(res.status), failedChecks);
         summary.errors++;
         continue;
       }
 
       const xml = await res.text();
       summary.statutesChecked++;
+      await recordCheckSuccess(supabase, source);
 
       // Look for recently dated amendment effects in the XML
       const effectMatches = xml.match(/<ukm:Effect[^>]*>/g) || [];
@@ -245,6 +358,7 @@ export async function GET(request: NextRequest) {
       }
     } catch (err) {
       console.error(`[legal-updates] Error checking ${statute.name}:`, err);
+      await recordCheckFailure(supabase, source, classifyError(err), failedChecks);
       summary.errors++;
     }
 
@@ -253,13 +367,16 @@ export async function GET(request: NextRequest) {
 
   // ── 2. Scan regulator guidance pages ────────────────────────────────────────
   for (const source of REGULATOR_SOURCES) {
+    const checkSource = { url: source.newsUrl, name: source.name, kind: 'regulator' as const };
     try {
-      const pageContent = await fetchPageText(source.newsUrl);
-      if (!pageContent) {
+      const fetchResult = await fetchPageText(source.newsUrl);
+      if (!fetchResult.ok) {
+        await recordCheckFailure(supabase, checkSource, fetchResult.error, failedChecks);
         summary.errors++;
         continue;
       }
       summary.regulatorsChecked++;
+      await recordCheckSuccess(supabase, checkSource);
 
       const affectedRefs = refs.filter(r => r.category === source.category || r.category === 'general');
 
@@ -267,13 +384,14 @@ export async function GET(request: NextRequest) {
         supabase,
         source.name,
         source.newsUrl,
-        pageContent,
+        fetchResult.content,
         affectedRefs,
         summary,
         detectedChanges
       );
     } catch (err) {
       console.error(`[legal-updates] Error scanning ${source.name}:`, err);
+      await recordCheckFailure(supabase, checkSource, classifyError(err), failedChecks);
       summary.errors++;
     }
 
@@ -281,13 +399,18 @@ export async function GET(request: NextRequest) {
   }
 
   // ── 3. Scan new-enacted feed for relevant legislation ───────────────────────
+  const feedSource = { url: NEW_LEGISLATION_FEED, name: 'legislation.gov.uk new-enacted feed', kind: 'feed' as const };
   try {
     const feedRes = await fetch(NEW_LEGISLATION_FEED, {
       headers: { 'User-Agent': 'Paybacker-LegalMonitor/1.0 (hello@paybacker.co.uk)' },
       signal: AbortSignal.timeout(10000),
     });
 
-    if (feedRes.ok) {
+    if (!feedRes.ok) {
+      await recordCheckFailure(supabase, feedSource, classifyHttpStatus(feedRes.status), failedChecks);
+      summary.errors++;
+    } else {
+      await recordCheckSuccess(supabase, feedSource);
       const feedXml = await feedRes.text();
       // Extract entry titles and links from ATOM feed
       const entries: Array<{ title: string; link: string; summary: string }> = [];
@@ -315,6 +438,7 @@ export async function GET(request: NextRequest) {
     }
   } catch (err) {
     console.error('[legal-updates] Error fetching new-enacted feed:', err);
+    await recordCheckFailure(supabase, feedSource, classifyError(err), failedChecks);
     summary.errors++;
   }
 
@@ -335,11 +459,11 @@ export async function GET(request: NextRequest) {
   if (summary.changesDetected > 0 || summary.errors > 0) {
     const telegramMsg = buildTelegramMessage(summary, detectedChanges);
     await sendTelegram(telegramMsg);
-    await sendFounderEmailDigest(summary, detectedChanges);
+    await sendFounderEmailDigest(summary, detectedChanges, failedChecks);
   }
 
   console.log('[legal-updates] Scan complete:', summary);
-  return NextResponse.json({ ok: true, ...summary, changes: detectedChanges });
+  return NextResponse.json({ ok: true, ...summary, changes: detectedChanges, failedChecks });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -742,23 +866,29 @@ Return an empty array if nothing is relevant.`,
   }
 }
 
-async function fetchPageText(url: string): Promise<string | null> {
+type FetchPageResult =
+  | { ok: true; content: string }
+  | { ok: false; error: { type: string; message: string } };
+
+async function fetchPageText(url: string): Promise<FetchPageResult> {
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Paybacker-LegalMonitor/1.0 (hello@paybacker.co.uk)' },
       signal: AbortSignal.timeout(12000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { ok: false, error: classifyHttpStatus(res.status) };
     const html = await res.text();
-    return html
+    const content = html
       .replace(/<script[\s\S]*?<\/script>/gi, '')
       .replace(/<style[\s\S]*?<\/style>/gi, '')
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 6000);
-  } catch {
-    return null;
+    if (!content) return { ok: false, error: { type: 'empty_body', message: 'page returned no text content' } };
+    return { ok: true, content };
+  } catch (err) {
+    return { ok: false, error: classifyError(err) };
   }
 }
 
@@ -823,6 +953,7 @@ function delay(ms: number) {
 async function sendFounderEmailDigest(
   summary: { statutesChecked: number; regulatorsChecked: number; changesDetected: number; autoApplied: number; queued: number; errors: number },
   changes: Array<{ law: string; change: string; confidence: string; action: string }>,
+  failedChecks: FailedCheck[],
 ) {
   try {
     if (!process.env.RESEND_API_KEY) return;
@@ -834,12 +965,10 @@ async function sendFounderEmailDigest(
         c => `<li style="margin-bottom:6px;"><strong>${escapeHtmlSafe(c.law)}</strong> — ${escapeHtmlSafe(c.change)} <em style="color:#64748b;">(${escapeHtmlSafe(c.confidence)} · ${escapeHtmlSafe(c.action)})</em></li>`,
       )
       .join('');
-    const errorBadge = summary.errors > 0
-      ? `<p style="background:#fef2f2;border-left:3px solid #b91c1c;padding:10px 14px;color:#991b1b;border-radius:6px;">${summary.errors} check(s) failed — investigate in /dashboard/admin/legal-refs.</p>`
-      : '';
     const queuedBadge = summary.queued > 0
       ? `<p style="background:#fefce8;border-left:3px solid #ca8a04;padding:10px 14px;color:#854d0e;border-radius:6px;"><strong>${summary.queued}</strong> change(s) queued for your review at <a href="https://paybacker.co.uk/dashboard/admin/legal-updates">/dashboard/admin/legal-updates</a>.</p>`
       : '';
+    const failedChecksHtml = buildFailedChecksHtml(failedChecks);
     const html = `
       <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:640px;margin:auto;color:#0f172a;">
         <h2 style="margin:0 0 6px;">Legal updates digest · ${date}</h2>
@@ -853,7 +982,7 @@ async function sendFounderEmailDigest(
           <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Errors</td><td><strong>${summary.errors}</strong></td></tr>
         </table>
         ${queuedBadge}
-        ${errorBadge}
+        ${failedChecksHtml}
         ${items ? `<h3 style="margin:18px 0 8px;">What changed</h3><ul style="margin:0 0 18px;padding-left:20px;">${items}</ul>` : ''}
         <p style="font-size:13px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:12px;">paybacker.co.uk · automated digest from /api/cron/legal-updates</p>
       </div>`;
@@ -866,6 +995,62 @@ async function sendFounderEmailDigest(
   } catch (e: any) {
     console.error('[legal-updates] founder email failed:', e?.message);
   }
+}
+
+function buildFailedChecksHtml(failedChecks: FailedCheck[]): string {
+  if (failedChecks.length === 0) return '';
+
+  // Worst first — by consecutive failure count, ties broken by source name
+  // so the order is stable across runs.
+  const sorted = [...failedChecks].sort(
+    (a, b) =>
+      b.consecutive_failure_count - a.consecutive_failure_count ||
+      a.source_name.localeCompare(b.source_name),
+  );
+  const visible = sorted.slice(0, 10);
+  const overflow = sorted.length - visible.length;
+
+  const rows = visible
+    .map((f) => {
+      const truncatedMsg = f.error_message.length > 120 ? `${f.error_message.slice(0, 120)}…` : f.error_message;
+      const lastSuccess = f.last_success_at
+        ? new Date(f.last_success_at).toISOString().slice(0, 10)
+        : 'never';
+      // Highlight the failure count if it's been broken for 3+ runs in a row.
+      const countColor = f.consecutive_failure_count >= 3 ? '#b91c1c' : '#0a1628';
+      return `
+        <tr style="border-bottom:1px solid #e2e8f0;">
+          <td style="padding:10px 12px;vertical-align:top;">
+            <div style="font-weight:600;color:#0a1628;">${escapeHtmlSafe(f.source_name)}</div>
+            <div style="font-size:12px;color:#64748b;word-break:break-all;">${escapeHtmlSafe(f.source_url)}</div>
+          </td>
+          <td style="padding:10px 12px;vertical-align:top;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#0a1628;">${escapeHtmlSafe(f.error_type)}</td>
+          <td style="padding:10px 12px;vertical-align:top;font-size:13px;color:#475569;">${escapeHtmlSafe(truncatedMsg)}</td>
+          <td style="padding:10px 12px;vertical-align:top;font-size:13px;color:#475569;white-space:nowrap;">${escapeHtmlSafe(lastSuccess)}</td>
+          <td style="padding:10px 12px;vertical-align:top;font-size:13px;color:${countColor};font-weight:600;text-align:right;">${f.consecutive_failure_count}</td>
+        </tr>`;
+    })
+    .join('');
+
+  const overflowLine = overflow > 0
+    ? `<p style="margin:10px 0 0;font-size:13px;color:#64748b;">…and ${overflow} more. See full list at <a href="https://paybacker.co.uk/dashboard/admin/legal-refs" style="color:#34d399;">paybacker.co.uk/dashboard/admin/legal-refs</a>.</p>`
+    : '';
+
+  return `
+    <h3 style="margin:24px 0 8px;color:#0a1628;border-left:3px solid #34d399;padding-left:10px;">Failed checks (${failedChecks.length})</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+      <thead>
+        <tr style="background:#0a1628;color:#ffffff;">
+          <th style="padding:10px 12px;text-align:left;font-weight:600;">Check</th>
+          <th style="padding:10px 12px;text-align:left;font-weight:600;">Error type</th>
+          <th style="padding:10px 12px;text-align:left;font-weight:600;">Message</th>
+          <th style="padding:10px 12px;text-align:left;font-weight:600;">Last success</th>
+          <th style="padding:10px 12px;text-align:right;font-weight:600;">Streak</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${overflowLine}`;
 }
 
 function escapeHtmlSafe(s: string): string {
