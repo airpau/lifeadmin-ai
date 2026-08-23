@@ -1,13 +1,12 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, User, Phone, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, User, Phone, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
 import { capture } from '@/lib/posthog';
 import { MarkNav } from '@/app/blog/_shared';
@@ -39,6 +38,13 @@ export default function SignupPage() {
   const [marketingOptIn, setMarketingOptIn] = useState(true);
   const [notificationsOptIn, setNotificationsOptIn] = useState(true);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  // Password reveal. A masked field with no way to check what you typed is
+  // the single biggest cause of failed sign-ups on a form with a strength
+  // rule: the user cannot tell a typo from a rule they have not met yet.
+  const [showPassword, setShowPassword] = useState(false);
+  // Set when a sign-up route is attempted without the required consent, so
+  // the message appears next to the checkbox rather than nowhere.
+  const [consentError, setConsentError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [hideGoogleAuth, setHideGoogleAuth] = useState(false);
@@ -91,6 +97,9 @@ export default function SignupPage() {
     // end up with Google accounts that skipped the checkbox entirely.
     if (!termsAccepted) {
       setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      setConsentError(true);
+      document.getElementById('terms-accepted')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      document.getElementById('terms-accepted')?.focus();
       return;
     }
     try {
@@ -127,6 +136,9 @@ export default function SignupPage() {
     // once the OAuth callback establishes a session.
     if (!termsAccepted) {
       setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      setConsentError(true);
+      document.getElementById('terms-accepted')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      document.getElementById('terms-accepted')?.focus();
       return;
     }
     try {
@@ -181,6 +193,8 @@ export default function SignupPage() {
 
     if (!termsAccepted) {
       setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      setConsentError(true);
+      document.getElementById('terms-accepted')?.focus();
       setLoading(false);
       return;
     }
@@ -376,12 +390,18 @@ export default function SignupPage() {
                     OAuth and email/password both respect the same T&Cs
                     checkbox. Without this, Google skipped consent entirely
                     and `terms_accepted_at` only landed on email users. */}
-                <div className="consent">
-                  <label className="consent__row">
+                <div className={`consent${consentError ? ' consent--error' : ''}`}>
+                  <label className="consent__row" htmlFor="terms-accepted">
                     <input
+                      id="terms-accepted"
                       type="checkbox"
                       checked={termsAccepted}
-                      onChange={(e) => setTermsAccepted(e.target.checked)}
+                      aria-invalid={consentError || undefined}
+                      aria-describedby={consentError ? 'terms-error' : undefined}
+                      onChange={(e) => {
+                        setTermsAccepted(e.target.checked);
+                        if (e.target.checked) setConsentError(false);
+                      }}
                     />
                     <span>
                       I agree to the{' '}
@@ -390,6 +410,11 @@ export default function SignupPage() {
                       <Link href="/privacy-policy">Privacy Policy</Link>.
                     </span>
                   </label>
+                  {consentError && (
+                    <p id="terms-error" className="consent__error" role="alert">
+                      Tick this to create your account.
+                    </p>
+                  )}
                   <label className="consent__row consent__row--optional">
                     <input
                       type="checkbox"
@@ -418,8 +443,6 @@ export default function SignupPage() {
                     type="button"
                     onClick={handleGoogleSignup}
                     className="oauth-btn"
-                    disabled={!termsAccepted}
-                    aria-disabled={!termsAccepted}
                   >
                     <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -435,8 +458,6 @@ export default function SignupPage() {
                   type="button"
                   onClick={handleAppleSignup}
                   className="oauth-btn"
-                  disabled={!termsAccepted}
-                  aria-disabled={!termsAccepted}
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
                     <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
@@ -460,7 +481,7 @@ export default function SignupPage() {
                           required
                           value={firstName}
                           onChange={(e) => setFirstName(e.target.value)}
-                          placeholder="Paul"
+                          placeholder="Jane"
                           autoComplete="given-name"
                         />
                       </div>
@@ -474,7 +495,7 @@ export default function SignupPage() {
                           required
                           value={lastName}
                           onChange={(e) => setLastName(e.target.value)}
-                          placeholder="Smith"
+                          placeholder="Doe"
                           autoComplete="family-name"
                           className="no-icon"
                         />
@@ -522,15 +543,31 @@ export default function SignupPage() {
                       <Lock className="lead h-4 w-4" aria-hidden="true" />
                       <input
                         id="signup-password"
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         required
                         minLength={8}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
+                        placeholder="At least 8 characters"
                         autoComplete="new-password"
                         aria-describedby="password-requirements"
+                        className="has-reveal"
                       />
+                      <button
+                        type="button"
+                        className="pw-reveal"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-pressed={showPassword}
+                        aria-controls="signup-password"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        title={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </button>
                     </div>
                     <ul
                       id="password-requirements"
@@ -555,7 +592,7 @@ export default function SignupPage() {
 
                   <button
                     type="submit"
-                    disabled={loading || !termsAccepted}
+                    disabled={loading}
                     className="auth-submit"
                   >
                     {loading ? 'Creating account…' : 'Create account'}
