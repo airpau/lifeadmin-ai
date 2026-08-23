@@ -28,11 +28,14 @@ export type HiggsfieldImageOptions = {
   /** e.g. '720p', '1080p' */
   resolution?: string;
   /**
-   * Total wall-clock budget for submit + poll, in ms. The daily social cron
-   * runs under a 120s Vercel maxDuration and has already spent time on
-   * Perplexity and Sonnet before it gets here, so the default is deliberately
-   * short: a missed image degrades to a text-only post, a blown timeout kills
-   * the whole job.
+   * Total wall-clock budget for submit + poll, in ms.
+   *
+   * A real measured cycle on 23 Aug 2026 took ~2 minutes: roughly 90s sitting
+   * in `queued` before generation even started, then ~35s `in_progress`. Any
+   * budget under about 150s will therefore fail almost every time, so callers
+   * must size their function's maxDuration around this, not the other way
+   * round. A missed image degrades to a text-only post; a blown function
+   * deadline kills the whole job.
    */
   timeoutMs?: number;
 };
@@ -91,7 +94,7 @@ export async function generateImageHiggsfield(
     model = HF_DEFAULT_MODEL,
     aspectRatio = '1:1',
     resolution = '1080p',
-    timeoutMs = 70_000,
+    timeoutMs = 180_000,
   } = opts;
 
   const deadline = Date.now() + timeoutMs;

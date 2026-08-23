@@ -6,7 +6,12 @@ import { findUnverifiableClaims, describeClaims } from '@/lib/social/claims-guar
 import { generateImageHiggsfield, higgsfieldConfigured } from '@/lib/higgsfield/generate-image';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+// Raised from 120s on 23 Aug 2026. Higgsfield is asynchronous and a real
+// measured submit-to-completed cycle took ~2 minutes (~90s queued, ~35s
+// generating). At 120s this function could never wait out an image, so the
+// Higgsfield path would have timed out and silently fallen back to fal.ai on
+// every single run. 300s is the Vercel Pro ceiling for a serverless function.
+export const maxDuration = 300;
 
 const API = 'https://graph.facebook.com/v25.0';
 const PAGE_ID = '1056645287525328';
@@ -55,12 +60,13 @@ async function generateImage(prompt: string): Promise<string | null> {
   let generator = 'higgsfield';
 
   if (higgsfieldConfigured()) {
-    // Budget is deliberately tight: this runs inside a 120s maxDuration that
-    // has already spent time on Perplexity and Sonnet.
+    // Measured: ~2 minutes submit-to-completed on 23 Aug 2026. 190s leaves
+    // headroom inside the 300s maxDuration for Perplexity, Sonnet, the
+    // Supabase upload and three platform posts.
     sourceUrl = await generateImageHiggsfield(styled, {
       aspectRatio: '1:1',
       resolution: '1080p',
-      timeoutMs: 70_000,
+      timeoutMs: 190_000,
     });
   } else {
     console.warn('[social-post] Higgsfield not configured, falling back to fal.ai');
@@ -144,7 +150,7 @@ export async function GET(request: NextRequest) {
   // ── Daily claim lock ─────────────────────────────────────────────────
   // The old check counted rows already marked 'posted'. That row was written
   // AFTER all three platforms had been published to, so any run that posted to
-  // Facebook and then timed out (maxDuration is 120s and the chain is
+  // Facebook and then timed out (the chain is
   // Perplexity + Sonnet + fal.ai + three Graph calls) left no evidence behind,
   // and the next invocation posted the day's content a second time. That is
   // what produced the duplicate pairs on 21 Aug, 22 Jun and 24 Apr 2026.
