@@ -40,6 +40,9 @@ function getAdmin() {
 
 interface ExtractedPlan {
   name: string;
+  /** Which company sells this plan. Only meaningful on a comparison
+   *  page; on an advertiser page it is the advertiser. */
+  planProvider?: string | null;
   monthlyPrice: number;
   dataAllowance?: string | null;
   speedMbps?: number | null;
@@ -100,9 +103,10 @@ async function extractPlans(
           `- Only report a plan if its price appears IN THE TEXT BELOW. Do not use anything you know about ${provider} from elsewhere. If the text does not state a price, omit the plan.\n` +
           `- monthlyPrice is the ongoing monthly price in GBP as a number.\n` +
           `- If a plan advertises a lower introductory price that later reverts, put the intro price in promoPrice and its length in promoMonths, and put the ONGOING price in monthlyPrice.\n` +
+          `- planProvider is the company that sells the plan, exactly as the page names it.\n` +
           `- sourceExcerpt must be a short verbatim quote from the text below showing that price. This is checked.\n` +
           `- Return ONLY a JSON array. No prose, no code fences.\n\n` +
-          `Shape: [{"name":"","monthlyPrice":0,"dataAllowance":null,"speedMbps":null,"contractMonths":null,"promoPrice":null,"promoMonths":null,"sourceExcerpt":""}]\n\n` +
+          `Shape: [{"name":"","planProvider":"","monthlyPrice":0,"dataAllowance":null,"speedMbps":null,"contractMonths":null,"promoPrice":null,"promoMonths":null,"sourceExcerpt":""}]\n\n` +
           `PAGE TEXT:\n${pageText}`,
       },
     ],
@@ -143,6 +147,7 @@ async function extractPlans(
     }
     plans.push({
       name: String(p.name ?? '').slice(0, 120),
+      planProvider: p.planProvider ? String(p.planProvider).slice(0, 80) : null,
       monthlyPrice: Math.round(price * 100) / 100,
       dataAllowance: p.dataAllowance ?? null,
       speedMbps: p.speedMbps == null ? null : Number(p.speedMbps) || null,
@@ -153,6 +158,63 @@ async function extractPlans(
     });
   }
   return plans;
+}
+
+/** Loose token comparison: "Community Fibre" vs "community fibre 150Mb". */
+function providerMatches(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const A = norm(a);
+  const B = norm(b);
+  if (!A || !B) return false;
+  if (A === B) return true;
+  // First significant word must appear in the other, both ways, so
+  // "Virgin Media" matches "Virgin Media Broadband" but "EE" does not
+  // match "Three".
+  const headA = A.split(' ')[0];
+  const headB = B.split(' ')[0];
+  if (headA.length < 2 || headB.length < 2) return false;
+  return B.includes(headA) || A.includes(headB);
+}
+
+/**
+ * Which extracted plan, if any, is genuinely this deal's plan.
+ *
+ * Returns null rather than guessing. See the call site for why the
+ * previous cheapest-plan fallback had to go.
+ */
+function matchPlanToDeal(
+  plans: ExtractedPlan[],
+  deal: { plan_name?: string | null; provider?: string | null },
+  src: { source_kind?: string | null; provider: string },
+): ExtractedPlan | null {
+  const isComparison = src.source_kind === 'comparison';
+
+  // On a comparison page, the plan's own provider must match the deal's.
+  // Without this, every provider on the page inherits one price.
+  const candidates = isComparison
+    ? plans.filter((p) => providerMatches(p.planProvider, deal.provider))
+    : plans;
+
+  if (candidates.length === 0) return null;
+
+  // On an advertiser page, still require the deal to name a plan we can
+  // recognise. "Their cheapest" is not the same product as the one this
+  // catalogue row describes.
+  const planName = (deal.plan_name ?? '').toLowerCase().trim();
+  if (planName.length >= 4) {
+    const named = candidates.find((p) => {
+      const n = p.name.toLowerCase();
+      return n.includes(planName.slice(0, 12)) || planName.includes(n.slice(0, 12));
+    });
+    if (named) return named;
+  }
+
+  // A comparison page that named this provider exactly once is
+  // unambiguous even without a plan-name match.
+  if (isComparison && candidates.length === 1) return candidates[0];
+
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -170,6 +232,10 @@ export async function GET(request: NextRequest) {
     sourcesFailed: 0,
     plansExtracted: 0,
     dealsUpdated: 0,
+    /** Deals left untouched because no extracted plan confidently
+     *  belonged to them. Expected to be non-zero; that is the guard
+     *  working, not a failure. */
+    dealsUnmatched: 0,
     skippedNotJoined: 0,
   };
 
@@ -240,18 +306,32 @@ export async function GET(request: NextRequest) {
       // becomes the headline price for that provider+category.
       const { data: deals } = await supabase
         .from('affiliate_deals')
-        .select('id, plan_name, price_monthly')
+        .select('id, plan_name, price_monthly, provider')
         .eq('awin_advertiser_id', src.awin_advertiser_id)
         .eq('is_active', true);
 
       for (const deal of deals ?? []) {
-        const match =
-          plans.find(
-            (p) =>
-              deal.plan_name &&
-              p.name.toLowerCase().includes(String(deal.plan_name).toLowerCase().slice(0, 12)),
-          ) ?? plans.slice().sort((a, b) => a.monthlyPrice - b.monthlyPrice)[0];
-        if (!match) continue;
+        const match = matchPlanToDeal(plans, deal, src);
+
+        // No confident match means no write. There is deliberately NO
+        // cheapest-plan fallback here any more.
+        //
+        // The first version of this fell back to "the cheapest extracted
+        // plan becomes the headline price". On an advertiser page that is
+        // merely sloppy. On Broadband Genie, which lists dozens of
+        // providers, it wrote one listing price onto every deal sharing
+        // that programme id: BT, Sky, EE, Plusnet, Hyperoptic, Community
+        // Fibre, NOW and Vodafone all showed £30.99, each citing the same
+        // Broadband Genie excerpt, all stamped 'fetched'. Paul spotted it
+        // within minutes of the first run.
+        //
+        // A price attached to the wrong company is worse than no price:
+        // it is wrong AND it carries our provenance metadata saying we
+        // checked. Leaving the old value alone is the safe failure.
+        if (!match) {
+          summary.dealsUnmatched++;
+          continue;
+        }
 
         await supabase
           .from('affiliate_deals')
