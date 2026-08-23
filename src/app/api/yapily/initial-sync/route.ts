@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAllTransactions } from '@/lib/yapily';
+import { getAllTransactions, yapilySleep, PER_CONSENT_CALL_DELAY_MS } from '@/lib/yapily';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
@@ -91,10 +91,37 @@ export async function POST(request: NextRequest) {
 
   const perAccountErrors: Array<{ accountId: string; pass: 1 | 2; error: string; status?: number }> = [];
 
-  // PASS 1 — last 90 days for every account. Sequential per
-  // Migle's "wait for response before next request" rule.
+  // ── Spacing on the consent ───────────────────────────────────────
+  //
+  // Sequential is only HALF of Migle's rule. The full guidance, quoted
+  // in cron/bank-sync: "Data endpoints are not polled multiple times
+  // for the same consent without a delay between calls … can cause
+  // race conditions, unexpected errors, or premature consent expiry."
+  // The cron honours both halves via PER_CONSENT_CALL_DELAY_MS; this
+  // path honoured only the first, and fired every account in pass 1
+  // and again in pass 2 back to back on a BRAND NEW consent.
+  //
+  // That is the worst possible moment to hammer one: 2026-08-21 and
+  // 2026-08-23 both saw an HSBC Business consent complete its initial
+  // sync (9 rapid calls) and then 403 with "not authorised … we didn't
+  // manage to fix this by refreshing the authorization credential" on
+  // every subsequent cron run, permanently. NatWest, on the same code,
+  // is unaffected — this is an institution-tolerance problem, and HSBC
+  // is not tolerant.
+  //
+  // Budget: at most 2 passes x accounts calls. Four accounts costs
+  // 7 x 5s = 35s of sleeping inside a 300s maxDuration with a 270s
+  // historical budget, so the spacing is comfortably affordable.
+  let consentCallsMade = 0;
+  const spaceConsentCall = async () => {
+    if (consentCallsMade > 0) await yapilySleep(PER_CONSENT_CALL_DELAY_MS);
+    consentCallsMade++;
+  };
+
+  // PASS 1 — last 90 days for every account. Sequential AND spaced.
   for (const account of accountSnapshots) {
     try {
+      await spaceConsentCall();
       const transactions = await getAllTransactions(
         account.yapilyAccountId,
         consentToken,
@@ -125,7 +152,7 @@ export async function POST(request: NextRequest) {
   // boundary is exclusive on the older side (bank's day -90 is
   // already in pass 1) and inclusive on the older side at -365.
   for (const account of accountSnapshots) {
-    if (Date.now() - startedAt > HISTORICAL_BUDGET_MS) {
+    if (Date.now() - startedAt + PER_CONSENT_CALL_DELAY_MS > HISTORICAL_BUDGET_MS) {
       historicalSkipped++;
       console.warn(
         `[yapily.initial-sync] pass2 budget exhausted — skipping older history for account=${account.yapilyAccountId}`,
@@ -133,6 +160,7 @@ export async function POST(request: NextRequest) {
       continue;
     }
     try {
+      await spaceConsentCall();
       const transactions = await getAllTransactions(
         account.yapilyAccountId,
         consentToken,
