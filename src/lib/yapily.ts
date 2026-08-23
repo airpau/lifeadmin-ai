@@ -173,6 +173,88 @@ export function yapilySleep(ms: number): Promise<void> {
 const sleep = yapilySleep;
 
 /**
+ * ── Per-consent transport floor ──────────────────────────────────────
+ *
+ * A BACKSTOP, not the main defence. The deliberate spacing lives at the
+ * call sites (PER_CONSENT_CALL_DELAY_MS between accounts, in both sync
+ * paths). This exists because that spacing was added per-caller, and on
+ * 2026-08-23 we learned what it costs when one caller forgets:
+ * /api/yapily/initial-sync fired eight back-to-back transaction calls
+ * against a seconds-old HSBC Business consent, and the consent was dead
+ * within hours. Twice, on two separate connections. Each cost a full
+ * user reconnect.
+ *
+ * The lesson is that "remember to sleep" is not a rule if it is written
+ * out once per caller. yapilyRequest is the ONE function every Yapily
+ * call passes through, so the floor belongs here, where a new code path
+ * inherits it without knowing it exists.
+ *
+ * Deliberately LOWER than PER_CONSENT_CALL_DELAY_MS. This is a floor
+ * that must never be the reason a function times out: getAllTransactions
+ * paginates up to MAX_PAGES times on one consent, and at 5s a
+ * pathological 50-page account would burn 250s of a 300s budget. At
+ * 1.2s the same worst case costs 60s, while a burst of eight rapid
+ * calls is still stretched from ~0s to ~8.4s.
+ *
+ * Scope: only requests carrying a `consent` header, i.e. the data
+ * endpoints Migle's guidance is about. Institution listing and consent
+ * creation are untouched.
+ *
+ * Serverless caveat, stated plainly: this map is per-lambda-instance and
+ * does not survive a cold start. That is fine, because it is precisely
+ * the rapid same-invocation bursts it needs to catch. Calls from
+ * separate invocations are already minutes apart.
+ */
+export const PER_CONSENT_TRANSPORT_FLOOR_MS = 1_200;
+
+const lastConsentCallAt = new Map<string, number>();
+/** Bound the map so a long-lived instance cannot leak memory. */
+const MAX_TRACKED_CONSENTS = 500;
+
+/** Short, non-reversible key so a live consent token is never held as a
+ *  map key in memory any longer than the request needs it. */
+function consentKey(token: string): string {
+  let h = 0;
+  for (let i = 0; i < token.length; i++) {
+    h = (Math.imul(31, h) + token.charCodeAt(i)) | 0;
+  }
+  return String(h);
+}
+
+async function throttlePerConsent(consentToken: string | undefined): Promise<void> {
+  if (!consentToken) return;
+
+  const key = consentKey(consentToken);
+  const last = lastConsentCallAt.get(key);
+  const now = Date.now();
+
+  if (last !== undefined) {
+    const since = now - last;
+    if (since < PER_CONSENT_TRANSPORT_FLOOR_MS) {
+      const wait = PER_CONSENT_TRANSPORT_FLOOR_MS - since;
+      console.warn(
+        `[yapily] transport floor: consent called again after ${since}ms, waiting ${wait}ms. ` +
+          'A caller is not spacing its own calls — see PER_CONSENT_CALL_DELAY_MS.',
+      );
+      await sleep(wait);
+    }
+  }
+
+  if (lastConsentCallAt.size >= MAX_TRACKED_CONSENTS && !lastConsentCallAt.has(key)) {
+    // Evict the oldest entry rather than clearing: clearing would drop
+    // the timestamp of a consent mid-burst and defeat the floor.
+    let oldestKey: string | null = null;
+    let oldestAt = Infinity;
+    for (const [k, t] of lastConsentCallAt) {
+      if (t < oldestAt) { oldestAt = t; oldestKey = k; }
+    }
+    if (oldestKey !== null) lastConsentCallAt.delete(oldestKey);
+  }
+
+  lastConsentCallAt.set(key, Date.now());
+}
+
+/**
  * Parses Yapily's Retry-After header. Per RFC 7231 it is either a
  * delay in seconds or an HTTP-date; handle both, and clamp so a bad
  * value can't stall the function.
@@ -202,6 +284,11 @@ async function yapilyRequest<T>(
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> | undefined),
   };
+
+  // Enforce the per-consent floor before the FIRST call only. The retry
+  // loop below has its own backoff, and double-delaying a retry would
+  // make a transient 429 slower to recover from than it needs to be.
+  await throttlePerConsent(headers['consent']);
 
   let res: Response = await fetch(url, { ...options, headers });
 
