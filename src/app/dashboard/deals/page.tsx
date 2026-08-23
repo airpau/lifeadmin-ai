@@ -760,6 +760,9 @@ export default function DealsPage() {
       // Comparison-routed deals carry no price we can defend, so they
       // cannot headline a saving. See the note in AffiliatePlanCard.
       if (routedVia(d.programme_id, d.provider, programmeNames)) continue;
+      // Same rule as the cards: the headline recommendation must rest
+      // on a verified price.
+      if (d.price_provenance !== 'fetched') continue;
       const effectivePrice = d.price_promotional ?? d.price_monthly;
       const savingsMonthly = userSpend.amount - effectivePrice;
       if (savingsMonthly <= 0) continue;
@@ -1195,7 +1198,16 @@ export default function DealsPage() {
                           {shown.map((plan) => {
                             const planVia = routedVia(plan.programme_id, plan.provider, programmeNames);
                             const effectivePrice = plan.price_promotional ?? plan.price_monthly;
-                            let savMo = !planVia && userSpend ? userSpend.amount - effectivePrice : undefined;
+                            // A saving is a claim about money, so it may
+                            // only be built on a price we fetched from
+                            // the advertiser and verified. A card that
+                            // says "Price not checked" and "Save £17/mo"
+                            // in the same breath is asserting the thing
+                            // it just disclaimed.
+                            let savMo =
+                              !planVia && plan.price_provenance === 'fetched' && userSpend
+                                ? userSpend.amount - effectivePrice
+                                : undefined;
                             // Cap: savings above 80% of the current bill
                             // are almost always a mismatched comparison,
                             // not a bargain.
