@@ -8,6 +8,7 @@ import {
   isCouncilTaxMerchant,
   LOOKBACK_DAYS,
 } from '@/lib/subscriptions/recurring-qualification';
+import { isBankDirectionCode } from '@/lib/money-hub-classification';
 
 export const maxDuration = 120;
 
@@ -384,7 +385,14 @@ export async function GET(request: NextRequest) {
           user_id: userId,
           provider_name: merchant,
           amount: Math.round(avgAmount * 100) / 100,
-          category: rule?.category || merchantTxs[0].category || 'other',
+          // merchantTxs[0].category is bank_transactions.category, which is
+          // the DIRECTION code on a Yapily row. Writing it here put the
+          // literal string 'DEBIT' into subscriptions.category, where it
+          // then showed up as a category name in the UI.
+          category:
+            rule?.category ||
+            (isBankDirectionCode(merchantTxs[0].category) ? null : merchantTxs[0].category) ||
+            'other',
           billing_cycle: billingCycle,
           status: 'active',
           source: 'bank_auto',

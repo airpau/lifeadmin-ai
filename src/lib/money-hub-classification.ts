@@ -67,6 +67,25 @@ export interface ResolvedMoneyHubTransaction {
   incomeType: string | null;
 }
 
+/**
+ * Bank DIRECTION codes that live in bank_transactions.category.
+ *
+ * That column does double duty: connection-store.ts writes the bank-side
+ * direction there ('CREDIT' / 'DEBIT') because the income RPCs key off
+ * it, while several spending-category readers also fall back to it. A
+ * direction is not a spending category, and treating it as one is how
+ * "DEBIT" ended up being reported as a category name and how every
+ * uncategorised debit got silently labelled shopping or discretionary.
+ *
+ * Exported so the same list is used everywhere rather than re-guessed.
+ */
+export const BANK_DIRECTION_CODES = new Set(['credit', 'debit', 'interest']);
+
+/** True when a value is a bank direction code rather than a real category. */
+export function isBankDirectionCode(value: any): boolean {
+  return BANK_DIRECTION_CODES.has(String(value ?? '').toLowerCase().trim());
+}
+
 export function normalizeSpendingCategoryKey(value: any): string {
   if (typeof value !== 'string') value = String(value || '');
   const key = value.toLowerCase().trim();
@@ -285,7 +304,11 @@ export function resolveMoneyHubTransaction(
     return { amount, kind: 'spending', spendingCategory: storedCategory, incomeType: null };
   }
 
-  const fallbackCategory = normalizeSpendingCategoryKey(txn.category) || detectFallbackSpendingCategory(description);
+  // txn.category may be a DIRECTION code, not a category. Falling back to
+  // it produced a literal spending category of 'debit'.
+  const fallbackCategory =
+    (isBankDirectionCode(txn.category) ? '' : normalizeSpendingCategoryKey(txn.category)) ||
+    detectFallbackSpendingCategory(description);
   return { amount, kind: 'spending', spendingCategory: fallbackCategory || 'other', incomeType: null };
 }
 

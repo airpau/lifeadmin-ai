@@ -329,7 +329,11 @@ export const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: strin
 
 export const BANK_CATEGORY_MAP: Record<string, string> = {
   PURCHASE: 'shopping',
-  DEBIT: 'shopping',
+  // 'DEBIT' is a DIRECTION, not a shop. Mapping it to 'shopping' meant any
+  // description matching no keyword was silently reported as shopping —
+  // and on a Yapily connection every row carries category='DEBIT', so that
+  // was most of them. 'other' is the honest answer. Changed 2026-08-23.
+  DEBIT: 'other',
   DIRECT_DEBIT: 'bills',
   STANDING_ORDER: 'bills',
   TRANSFER: 'transfers',

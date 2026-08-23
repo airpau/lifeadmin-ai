@@ -310,9 +310,16 @@ export async function GET(request: Request) {
       let f = 0, v = 0, d = 0, t = 0;
       for (const tx of currentSummary.spendingTransactions) {
         const amt = Math.abs(parseFloat(String(tx.amount)) || 0);
-        const cat = (tx as { user_category?: string | null; category?: string | null }).user_category
-                  || (tx as { category?: string | null }).category
-                  || '';
+        // Use the category the summariser ALREADY resolved, rather than
+        // re-deriving it from the raw columns. The old line fell back to
+        // tx.category, which on a Yapily row is the direction code 'DEBIT'
+        // — bucketFor() has no case for that, so it returned its
+        // 'discretionary' default and every uncategorised debit landed in
+        // Discretionary while Fixed stayed near zero. This path runs on any
+        // non-default Space, so that was the whole picture there.
+        const resolvedCat = (tx as { effectiveCategory?: string | null }).effectiveCategory;
+        const rawCat = (tx as { user_category?: string | null; category?: string | null }).user_category || '';
+        const cat = resolvedCat || rawCat;
         const bucket = bucketFor(cat);
         if (bucket === 'fixed_cost') f += amt;
         else if (bucket === 'variable_cost') v += amt;
