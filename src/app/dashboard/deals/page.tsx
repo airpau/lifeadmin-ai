@@ -351,6 +351,10 @@ interface VerifiedDeal {
    *  else came from the LLM price-check cron. Drives whether the card
    *  may say "Verified" — see freshnessIndicator. */
   price_scan_source: string | null;
+  /** 'fetched' means the price was read off the advertiser's own page
+   *  and a verbatim excerpt was checked against it. That, not
+   *  price_scan_source, is what makes a price defensible. */
+  price_provenance: string | null;
   /** The Awin advertiser this deal's link actually pays through. Often
    *  NOT the provider named on the card: eight broadband deals route via
    *  Broadband Genie (12213). See routedVia below. */
@@ -383,7 +387,7 @@ function parseDataAllowanceGB(da: string | null): number {
  */
 function freshnessIndicator(
   lastVerified: string | null,
-  priceScanSource?: string | null,
+  provenance?: string | null,
 ): { text: string; color: string; bg: string } | null {
   // No verification timestamp used to render no badge at all, which
   // read as a clean, confident price. It is the opposite: nothing has
@@ -395,7 +399,13 @@ function freshnessIndicator(
   if (days > 30) {
     return { text: 'Price may have changed', color: 'text-orange-600', bg: 'bg-orange-500/10' };
   }
-  if (priceScanSource === 'manual') {
+  // 'fetched' is the only provenance that earns a green badge: the
+  // price was read off the advertiser's own page and a verbatim excerpt
+  // verified against it. Keying this off price_scan_source instead meant
+  // genuinely fetched Virgin Media and TalkTalk prices still displayed
+  // "Check price on site", because a later LLM pass had overwritten the
+  // scan-source label without touching the provenance.
+  if (provenance === 'fetched') {
     return days <= 7
       ? { text: 'Verified this week', color: 'text-green-400', bg: 'bg-green-500/10' }
       : { text: 'Verified', color: 'text-green-400', bg: 'bg-green-500/10' };
@@ -486,7 +496,7 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
   // whose real entry price is nearer £17. The prices survived the
   // revert in a different column. Rather than keep chasing columns, a
   // routed card offers the comparison and states no number.
-  const freshness = via ? null : freshnessIndicator(deal.last_verified_at, deal.price_scan_source);
+  const freshness = via ? null : freshnessIndicator(deal.last_verified_at, deal.price_provenance);
 
   // Build headline from plan specs
   const specs: string[] = [];
@@ -523,10 +533,12 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
       <div className="flex-1 min-w-0 mb-3 pr-6">
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="min-w-0">
-            <h3 className="text-base font-semibold text-slate-900 truncate">{deal.provider} {deal.plan_name}</h3>
-            {via && (
-              <p className="text-[11px] text-slate-500 mt-0.5 truncate">Compare via {via}</p>
-            )}
+            {/* Provider omitted: the panel header above already names
+              * it, and repeating it produced "Sky Sky Broadband
+              * Essential" and "Virgin Media Virgin Media M125". */}
+            <h3 className="text-base font-semibold text-slate-900 truncate">
+              {via ? `${deal.provider} ${deal.plan_name}` : deal.plan_name}
+            </h3>
           </div>
           {freshness && (
             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${freshness.color} ${freshness.bg}`}>
@@ -1101,19 +1113,51 @@ export default function DealsPage() {
                     byProvider.get(plan.provider)!.push(plan);
                   }
 
-                  const blocks = Array.from(byProvider.entries()).map(([provider, plans]) => {
+                  const blocks: Array<{
+                    provider: string;
+                    plans: VerifiedDeal[];
+                    blockVia: string | null;
+                    cheapest: number | null;
+                  }> = [];
+                  // Every provider that routes through the same
+                  // comparison site shares ONE panel.
+                  //
+                  // One panel per provider gave eight consecutive,
+                  // near-identical "Compare via Broadband Genie" boxes,
+                  // each holding a single card and each repeating the
+                  // same label. They are one destination, so they read
+                  // better as one list.
+                  const routedGroups = new Map<string, VerifiedDeal[]>();
+
+                  for (const [provider, plans] of byProvider) {
                     const sorted = [...plans].sort(
                       (a, b) => (a.price_promotional ?? a.price_monthly) - (b.price_promotional ?? b.price_monthly),
                     );
                     const blockVia = routedVia(sorted[0].programme_id, provider, programmeNames);
-                    // A comparison-routed provider has no price we can
-                    // defend, so it must not advertise a "from" figure
-                    // or win the ordering. See AffiliatePlanCard.
-                    const cheapest = blockVia
-                      ? null
-                      : sorted[0].price_promotional ?? sorted[0].price_monthly;
-                    return { provider, plans: sorted, blockVia, cheapest };
-                  });
+                    if (blockVia) {
+                      if (!routedGroups.has(blockVia)) routedGroups.set(blockVia, []);
+                      routedGroups.get(blockVia)!.push(...sorted);
+                      continue;
+                    }
+                    blocks.push({
+                      provider,
+                      plans: sorted,
+                      blockVia: null,
+                      cheapest: sorted[0].price_promotional ?? sorted[0].price_monthly,
+                    });
+                  }
+
+                  for (const [site, plans] of routedGroups) {
+                    blocks.push({
+                      provider: `Compare via ${site}`,
+                      plans: plans.sort((a, b) => a.provider.localeCompare(b.provider)),
+                      blockVia: site,
+                      // No price: the only source for these is the
+                      // comparison page, which lists every provider on
+                      // it at once. See AffiliatePlanCard.
+                      cheapest: null,
+                    });
+                  }
 
                   blocks.sort((a, b) => {
                     if (a.cheapest == null && b.cheapest == null) return a.provider.localeCompare(b.provider);
@@ -1132,12 +1176,14 @@ export default function DealsPage() {
                           <div className="min-w-0">
                             <h3 className="text-sm font-bold text-slate-900 truncate">{provider}</h3>
                             {blockVia && (
-                              <p className="text-[11px] text-slate-500">Compare via {blockVia}</p>
+                              <p className="text-[11px] text-slate-500">
+                                Prices shown on {blockVia}, not here
+                              </p>
                             )}
                           </div>
                           <div className="text-right flex-shrink-0">
                             <p className="text-[11px] text-slate-500">
-                              {plans.length} plan{plans.length === 1 ? '' : 's'}
+                              {plans.length} {blockVia ? 'provider' : 'plan'}{plans.length === 1 ? '' : 's'}
                             </p>
                             {cheapest != null && (
                               <p className="text-sm font-semibold text-slate-900">from £{cheapest.toFixed(2)}/mo</p>
@@ -1181,7 +1227,11 @@ export default function DealsPage() {
                             })}
                             className="w-full px-4 py-2.5 text-sm text-emerald-600 hover:bg-emerald-500/5 border-t border-slate-200/60 transition-colors"
                           >
-                            {isExpanded ? 'Show fewer' : `Show all ${plans.length} ${provider} plans →`}
+                            {isExpanded
+                              ? 'Show fewer'
+                              : blockVia
+                                ? `Show all ${plans.length} providers →`
+                                : `Show all ${plans.length} ${provider} plans →`}
                           </button>
                         )}
                       </div>
