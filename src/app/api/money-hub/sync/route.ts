@@ -443,15 +443,29 @@ Return ONLY the JSON array.`,
                 categorised++;
                 if (r.income_type) incomeDetected++;
 
-                // Auto-learn: save merchant pattern for future use
-                const merchantName = txn.description.replace(/FP \d.*/, '').replace(/\d{6,}.*/, '').trim().substring(0, 30).toLowerCase();
-                if (merchantName.length > 3 && r.category.toLowerCase() !== 'other') {
-                  await admin.from('money_hub_category_overrides').upsert({
-                    user_id: user.id,
-                    merchant_pattern: merchantName,
-                    user_category: r.category.toLowerCase(),
-                  }, { onConflict: 'user_id,merchant_pattern' }).select();
-                }
+                // NO auto-learned merchant override here. Removed 2026-08-23.
+                //
+                // This used to upsert the AI's guess into
+                // money_hub_category_overrides keyed on a 30-char slice of
+                // the description. That table is the USER's corrections,
+                // and it sits ABOVE keyword matching in
+                // resolveMoneyHubTransaction. So one Haiku misfire became
+                // a permanent, invisible, user-attributed rule that
+                // outranked every keyword rule for that merchant, for
+                // every future transaction, with nothing in the UI to show
+                // it existed or let anyone undo it.
+                //
+                // Observed live: "broxbourne councilcheshunt" pinned to
+                // 'other' (the unknown bucket) on a business rates
+                // payment, while the same user's genuine override for
+                // "broxbourne" correctly said 'business_rates'.
+                //
+                // The AI keeps its real effect: it writes user_category on
+                // the rows it actually looked at, just above, and that is
+                // still honoured at step 3 of the classifier. What it no
+                // longer does is pre-judge merchants it has never seen.
+                // Forward-learning from GENUINE user corrections continues
+                // via learn_from_category_override / learning-engine.
               }
             }
           }
