@@ -9,6 +9,16 @@ function getAdmin() {
 
 const AWIN_AFF_ID = '2825812';
 
+/**
+ * How old an energy tariff row may be before we stop quoting it.
+ *
+ * energy_tariffs is filled by an LLM-research cron, not a licensed
+ * feed, so the freshness bar has to be tighter than it would be for
+ * real market data. 30 days is roughly the cadence at which UK fixed
+ * tariffs move.
+ */
+const ENERGY_TARIFF_MAX_AGE_DAYS = 30;
+
 function buildAwinUrl(awinMid: string, providerUrl: string): string {
   return `https://www.awin1.com/cread.php?awinmid=${awinMid}&awinaffid=${AWIN_AFF_ID}&ued=${encodeURIComponent(providerUrl)}`;
 }
@@ -284,43 +294,61 @@ export async function findCheaperAlternatives(
   let comparisons: ComparisonResult[] = [];
 
   if (isComparisonOnly) {
-    // Conservative estimated savings with hard caps to keep figures realistic
-    const savingsEstimates: Record<string, { pct: number; maxAnnual: number }> = {
-      'insurance': { pct: 0.15, maxAnnual: 120 },      // 15% capped at £120/yr
-      'mortgages': { pct: 0.02, maxAnnual: 200 },       // 2% capped at £200/yr (realistic broker savings)
-      'loans': { pct: 0.05, maxAnnual: 150 },           // 5% capped at £150/yr
-      'credit-cards': { pct: 0.10, maxAnnual: 100 },    // 10% capped at £100/yr
-      'car-finance': { pct: 0.05, maxAnnual: 100 },     // 5% capped at £100/yr
-      'travel': { pct: 0, maxAnnual: 0 },
-      'water': { pct: 0.05, maxAnnual: 50 },            // 5% capped at £50/yr
-    };
-    const est = savingsEstimates[dealCategory] || { pct: 0, maxAnnual: 0 };
-    const annualCurrent = currentMonthly * 12;
-    let estimatedAnnualSaving = Math.min(Math.round(annualCurrent * est.pct), est.maxAnnual);
-    // Cap: if savings > 80% of current annual spend, cap at 80%
-    if (estimatedAnnualSaving > annualCurrent * 0.8) {
-      estimatedAnnualSaving = Math.round(annualCurrent * 0.8);
-    }
-
+    // ── No saving figure. There is no price to compare against. ──────
+    //
+    // This block used to invent one. It applied a flat percentage to
+    // whatever the user currently paid — insurance 15%, mortgages 2%,
+    // loans 5%, water 5% — and reported the result as an annual saving,
+    // with `dealPrice` literally computed as
+    // `currentMonthly * (1 - pct)`. No provider price was consulted at
+    // any point. The caps and the 80% guard made the output look
+    // considered, but a capped invented number is still invented.
+    //
+    // For these categories a price cannot be known without data we do
+    // not hold and mostly cannot hold: insurance needs risk, address,
+    // age, claims history and cover level; a mortgage needs LTV, term
+    // and credit profile. Quoting a saving on a monthly direct debit
+    // alone is not a conservative estimate, it is a guess presented as
+    // arithmetic.
+    //
+    // It also matters more here than elsewhere. Insurance, mortgages
+    // and loans are regulated products, and "you could save £300/yr" is
+    // a financial promotion we would have to be able to substantiate.
+    //
+    // So: still surface the comparison links, because "here is where to
+    // compare" is genuinely useful and honestly stated. Just no number.
+    // annualSaving 0 and dealPrice 0 mean callers render the deal
+    // without a savings badge — see isDealValid in savings-utils.
     comparisons = deals
       .filter(d => d.provider.toLowerCase() !== sub.provider_name.toLowerCase())
       .slice(0, 3)
-      .map((d, i) => ({
+      .map((d) => ({
         dealProvider: d.provider,
         dealName: d.headline,
         dealUrl: dealTrackingUrl(d),
         currentPrice: currentMonthly,
-        dealPrice: est.pct > 0 ? currentMonthly * (1 - est.pct) : 0,
-        annualSaving: i === 0 ? estimatedAnnualSaving : 0,
+        dealPrice: 0,
+        annualSaving: 0,
         awinMid: d.awinMid,
       }));
   } else {
     // For energy, also check energy_tariffs table
     if (dealCategory === 'energy') {
+      // Recency filter added 2026-08-21. energy_tariffs is populated by
+      // a Perplexity cron that returns [] on any failure and writes
+      // nothing, so a broken key or a bad week left the last successful
+      // run in place indefinitely. Reading it with no date bound meant
+      // savings claims could be powered by months-old guesses about a
+      // market that moves every quarter. Anything older than the window
+      // is treated as absent rather than as truth.
+      const tariffCutoff = new Date(
+        Date.now() - ENERGY_TARIFF_MAX_AGE_DAYS * 86_400_000,
+      ).toISOString();
       const { data: tariffs } = await admin
         .from('energy_tariffs')
-        .select('provider, tariff_name, monthly_cost_estimate')
+        .select('provider, tariff_name, monthly_cost_estimate, valid_from')
         .not('monthly_cost_estimate', 'is', null)
+        .gte('valid_from', tariffCutoff)
         .order('monthly_cost_estimate', { ascending: true })
         .limit(5);
 

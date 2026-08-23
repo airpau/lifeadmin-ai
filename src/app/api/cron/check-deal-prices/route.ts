@@ -105,6 +105,9 @@ export async function GET(request: NextRequest) {
     updated: 0,
     unchanged: 0,
     skipped: 0,
+    /** Answers the model itself flagged as unreliable. Recorded for
+     *  review, never written to a live price. */
+    lowConfidenceSkipped: 0,
     failed: 0,
     changes: [] as any[],
   };
@@ -162,6 +165,32 @@ export async function GET(request: NextRequest) {
       && (storedPromo == null || newPromo == null || Math.abs((newPromo ?? 0) - (storedPromo ?? 0)) >= 0.5);
 
     const now = new Date().toISOString();
+
+    // ── Low-confidence answers do not overwrite a live price ────────
+    //
+    // The model is asked to self-report confidence, and until
+    // 2026-08-21 that value was logged and then ignored: a "low" answer
+    // overwrote price_monthly and stamped last_verified_at exactly like
+    // a confident one. Since last_verified_at drove the green
+    // "Verified" badge, the least reliable guesses were the ones most
+    // likely to appear verified to the user.
+    //
+    // Now a low-confidence answer is recorded for review and changes
+    // nothing the user sees. A stale price we know is stale beats a
+    // fresh one we have no reason to trust.
+    if (lookup.confidence === 'low') {
+      summary.lowConfidenceSkipped++;
+      console.warn(
+        `[check-deal-prices] low confidence for ${deal.provider} ${deal.plan_name} — not updating (model said £${newPrice})`,
+      );
+      await supabase.from('deal_price_checks').insert({
+        provider: deal.provider,
+        check_status: 'low_confidence_skipped',
+        plans_found: [{ deal_id: deal.id, price: newPrice, notes: lookup.notes }],
+        checked_at: now,
+      });
+      continue;
+    }
 
     if (priceChanged || promoChanged) {
       summary.updated++;
