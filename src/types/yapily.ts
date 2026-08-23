@@ -35,6 +35,24 @@ export interface YapilyAccountIdentification {
   identification: string;
 }
 
+/**
+ * One entry of Yapily's `accountBalances` array. Richer than the flat
+ * `balance` scalar: it distinguishes booked from available money, which
+ * is the difference that matters when you are asking "can this account
+ * cover Friday's outgoings". Optional everywhere — not every institution
+ * returns it, hence the `balance` fallback in resolveAccountBalances().
+ */
+export interface YapilyAccountBalance {
+  /** CLOSING_BOOKED | INTERIM_AVAILABLE | INTERIM_BOOKED | EXPECTED | … */
+  type?: string;
+  dateTime?: string;
+  balanceAmount?: {
+    amount?: number;
+    currency?: string;
+  };
+  creditLineIncluded?: boolean;
+}
+
 export interface YapilyAccount {
   id: string;
   type: string;
@@ -45,6 +63,7 @@ export interface YapilyAccount {
   usageType?: string;
   nickname?: string;
   balance?: number;
+  accountBalances?: YapilyAccountBalance[];
   institution?: {
     id: string;
     name?: string;
