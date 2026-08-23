@@ -118,6 +118,14 @@ export function buildMoneyHubOverrideMaps(rows: MoneyHubCategoryOverrideRow[] | 
     const category = normalizeSpendingCategoryKey(row.user_category);
     if (!category) continue;
 
+    // An override to 'other' is the unknown bucket, and overrides sit
+    // above keyword matching. Honouring one can only ever DELETE
+    // information: it takes a merchant the keyword rules could have
+    // classified and pins it to "no idea", permanently. Historic rows
+    // like this exist from the AI auto-learn that used to write here
+    // (removed 2026-08-23), so they are ignored rather than obeyed.
+    if (category === 'other') continue;
+
     if (row.transaction_id) {
       transactionOverrides.set(row.transaction_id, category);
       continue;
