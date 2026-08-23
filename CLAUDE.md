@@ -356,7 +356,10 @@ domain to the list — don't bypass the gate.
 
 ## CRITICAL ARCHITECTURE RULES — NEVER VIOLATE THESE
 
-1. **ALL image and video generation goes through fal.ai by default.** One fal.ai key accesses everything. Higgsfield is approved as a second source for hand-curated social bundles produced outside the application. Do not add OpenAI image, Stability AI or Midjourney integrations to application code.
+1. **ALL image and video generation goes through Higgsfield by default** (changed from fal.ai on 23 Aug 2026). Helper: `src/lib/higgsfield/generate-image.ts`. Auth is a key **pair** — `HIGGSFIELD_API_KEY_ID` + `HIGGSFIELD_API_KEY_SECRET`, sent as `Authorization: Key <id>:<secret>`; a single combined `id:secret` in `HIGGSFIELD_API_KEY` also works. The API is **asynchronous**: POST to `https://platform.higgsfield.ai/<model>` returns a `request_id` and `status_url`, then you poll that URL until `completed` / `failed` / `nsfw` / `canceled`. Default model `higgsfield-ai/soul/standard`.
+   - **Higgsfield output URLs expire after about seven days.** Never persist one. Always copy the bytes into Supabase storage (bucket `social-images`) and store that URL instead.
+   - **fal.ai is retained as an automatic fallback only**, so a missing or broken Higgsfield credential degrades the image rather than killing the job. `FAL_KEY` and `src/lib/fal/generate-image.ts` stay in place; do not delete them and do not make fal.ai the default again without changing this rule first.
+   - Do not add OpenAI image, Stability AI or Midjourney integrations to application code.
 2. **Paybacker social posting goes direct to the Meta Graph API.** Facebook page 1056645287525328 and Instagram 17841440175351137, using META_ACCESS_TOKEN exchanged for a page token. This is what src/lib/meta-social.ts and src/app/api/cron/social-post/route.ts do. The daily-social-media-post task in the Claude Desktop scheduler used the same path until its content bundle was exhausted on 2 Jul 2026, and is now disabled. Late API (getlate.dev) is not the posting path for Facebook or Instagram. A LinkedIn path via postViaLate() remains in src/lib/content-apis.ts, called from admin/post-linkedin and admin/content/approve, gated on LATE_API_KEY. That key is unset in .env.local, but check the Vercel environment before treating it as inert or removing it. Do not add TikTok, LinkedIn or X posting integrations without recording the decision here first.
 3. **ALL real-time web research by agents uses Perplexity API.** Not web scraping, not Google Search API, not Bing — Perplexity only.
 4. **ALL product analytics and funnel tracking uses PostHog.** Never add Google Analytics or Mixpanel.
@@ -428,7 +431,9 @@ YAPILY_APPLICATION_UUID=
 YAPILY_APPLICATION_SECRET=
 
 # Content Generation (Casey)
-FAL_KEY=                        # fal.ai/dashboard
+HIGGSFIELD_API_KEY_ID=          # cloud.higgsfield.ai — DEFAULT generator
+HIGGSFIELD_API_KEY_SECRET=      # cloud.higgsfield.ai (pairs with the id above)
+FAL_KEY=                        # fal.ai/dashboard — fallback only since 23 Aug 2026
 RUNWAY_API_KEY=                 # app.runwayml.com/account/api-keys
 
 # Social Media Posting — Meta Graph API direct (FB Page + Instagram Business)

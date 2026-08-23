@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { findBrandSpellingErrors } from '@/lib/social/brand-spelling';
 import { findUnverifiableClaims, describeClaims } from '@/lib/social/claims-guard';
+import { generateImageHiggsfield, higgsfieldConfigured } from '@/lib/higgsfield/generate-image';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -33,32 +34,50 @@ async function alertFounder(text: string): Promise<void> {
   }).catch(() => {});
 }
 
+/**
+ * Ask the generator for a branded square image and return a PERMANENT URL.
+ *
+ * Higgsfield is the default generator (CLAUDE.md, "CRITICAL ARCHITECTURE
+ * RULES"). fal.ai remains only as an automatic fallback for when Higgsfield
+ * credentials are absent or the request fails, so a credential problem
+ * degrades the image rather than killing the day's post.
+ *
+ * Whichever generator produced it, the bytes are copied into Supabase storage
+ * before use: Higgsfield output URLs are retained for as little as seven days,
+ * and content_drafts.asset_url is a long-lived record.
+ *
+ * NO hex colour codes in the prompt — models render them as visible text.
+ */
 async function generateImage(prompt: string): Promise<string | null> {
-  // Use fal.ai for image generation (per CLAUDE.md — ALL images through fal.ai)
-  // NO hex colour codes in prompt — AI models render them as visible text
-  const falKey = (process.env.FAL_KEY || '').replace(/\\n/g, '').trim();
-  if (!falKey) return null;
+  const styled = `Dark navy blue background, mint green glowing accents, ${prompt}, absolutely no text no words no letters no numbers no characters, abstract shapes, premium fintech aesthetic, clean modern design, professional social media square post`;
+
+  let sourceUrl: string | null = null;
+  let generator = 'higgsfield';
+
+  if (higgsfieldConfigured()) {
+    // Budget is deliberately tight: this runs inside a 120s maxDuration that
+    // has already spent time on Perplexity and Sonnet.
+    sourceUrl = await generateImageHiggsfield(styled, {
+      aspectRatio: '1:1',
+      resolution: '1080p',
+      timeoutMs: 70_000,
+    });
+  } else {
+    console.warn('[social-post] Higgsfield not configured, falling back to fal.ai');
+  }
+
+  if (!sourceUrl) {
+    generator = 'fal.ai';
+    sourceUrl = await generateImageFalFallback(styled);
+  }
+
+  if (!sourceUrl) {
+    console.error('[social-post] no image from any generator');
+    return null;
+  }
 
   try {
-    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${falKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt: `Dark navy blue background, mint green glowing accents, ${prompt}, absolutely no text no words no letters no numbers no characters, abstract shapes, premium fintech aesthetic, clean modern design, professional social media square post`,
-        image_size: 'square',
-        num_images: 1,
-      }),
-    });
-
-    const falData = await falRes.json();
-    const imageUrl = falData.images?.[0]?.url;
-    if (!imageUrl) { console.error('[social-post] No image URL from fal.ai:', JSON.stringify(falData).substring(0, 200)); return null; }
-
-    // Download from fal.ai and upload to Supabase storage
-    const imgRes = await fetch(imageUrl);
+    const imgRes = await fetch(sourceUrl);
     const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
 
     const supabase = getAdmin();
@@ -70,9 +89,35 @@ async function generateImage(prompt: string): Promise<string | null> {
 
     if (uploadErr) { console.error('[social-post] Upload error:', uploadErr.message); return null; }
 
+    console.log(`[social-post] image generated via ${generator}`);
     return `${(process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()}/storage/v1/object/public/social-images/${fileName}`;
   } catch (err: any) {
-    console.error('[social-post] Image generation error:', err.message);
+    console.error('[social-post] Image storage error:', err.message);
+    return null;
+  }
+}
+
+/** Legacy fal.ai path. Fallback only — Higgsfield is the default generator. */
+async function generateImageFalFallback(styledPrompt: string): Promise<string | null> {
+  const falKey = (process.env.FAL_KEY || '').replace(/\\n/g, '').trim();
+  if (!falKey) return null;
+
+  try {
+    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${falKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ prompt: styledPrompt, image_size: 'square', num_images: 1 }),
+    });
+
+    const falData = await falRes.json();
+    const imageUrl = falData.images?.[0]?.url;
+    if (!imageUrl) { console.error('[social-post] No image URL from fal.ai:', JSON.stringify(falData).substring(0, 200)); return null; }
+    return imageUrl;
+  } catch (err: any) {
+    console.error('[social-post] fal.ai fallback error:', err.message);
     return null;
   }
 }
