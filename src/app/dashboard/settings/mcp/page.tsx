@@ -258,12 +258,6 @@ export default function McpSettingsPage() {
             <KeyRound className="h-4 w-4 text-slate-500" />
             How to connect
           </h3>
-          <Link
-            href="/docs/paybacker-assistant"
-            className="text-xs text-emerald-600 hover:text-emerald-700"
-          >
-            Full walkthrough →
-          </Link>
         </div>
         <p className="text-sm text-slate-500 mb-5">
           Paybacker runs a hosted server, so there is nothing to install. It works with

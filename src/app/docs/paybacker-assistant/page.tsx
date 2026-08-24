@@ -121,8 +121,7 @@ export default function PaybackerAssistantDocsPage() {
                   .
                 </li>
                 <li>
-                  <strong>An MCP-compatible desktop AI app</strong> installed on macOS or
-                  Windows. Any desktop AI client that supports the open{' '}
+                  <strong>An AI app that supports the open{' '}
                   <a
                     href="https://modelcontextprotocol.io"
                     target="_blank"
@@ -134,14 +133,14 @@ export default function PaybackerAssistantDocsPage() {
                     }}
                   >
                     Model Context Protocol
-                  </a>{' '}
-                  will work.
+                  </a>.</strong>{' '}
+                  Claude and ChatGPT both do. ChatGPT needs a paid plan and works on the web
+                  app only.
                 </li>
                 <li>
-                  <strong>Node.js 18 or later, and Git.</strong> You build the Paybacker MCP
-                  server from source once (step 2 below) and your AI app then runs it with{' '}
-                  <code className="doc-code-inline">node</code>. Check with{' '}
-                  <code className="doc-code-inline">node --version</code>.
+                  <strong>Nothing to install.</strong> Paybacker hosts the server, so there is
+                  no software to download, no terminal, and no Node or Git required. You paste
+                  an address and a token.
                 </li>
               </ul>
             </div>
@@ -180,93 +179,79 @@ export default function PaybackerAssistantDocsPage() {
             <div className="doc-step">
               <div className="doc-step-head">
                 <div className="doc-step-num">2</div>
-                <h2>Build the server and point your app at it</h2>
-              </div>
-              <div className="doc-note" style={{ marginBottom: 14 }}>
-                <strong>Please read this first.</strong> The Paybacker MCP server is not
-                yet published to npm, so{' '}
-                <code className="doc-code-inline">npx @paybacker/mcp</code> will fail with
-                a &quot;404 Not Found&quot; error. Until we publish it, the working method
-                is to build the server from source and point your AI app at the built file
-                by its full path. That is what the steps below do.
+                <h2>Point your AI app at the server</h2>
               </div>
               <p>
-                Open Terminal (macOS) or PowerShell (Windows) and build the server once:
+                There is nothing to install. Paybacker runs the server, so you only need
+                to give your AI app the address and your token.
               </p>
               <pre className="doc-code">
-                <code>{`git clone https://github.com/airpau/paybacker-mcp.git
-cd paybacker-mcp
-npm install
-npm run build`}</code>
+                <code>{`https://paybacker.co.uk/api/mcp/v1`}</code>
               </pre>
-              <p>
-                That produces <code className="doc-code-inline">dist/server.js</code>. Print
-                its full path and copy it &mdash; you need the absolute path, not a relative
-                one, because your AI app won&apos;t be running from this folder:
-              </p>
-              <pre className="doc-code">
-                <code>{`# macOS / Linux
-echo "$(pwd)/dist/server.js"
 
-# Windows PowerShell
-Write-Output "$PWD\\dist\\server.js"`}</code>
-              </pre>
+              <h3 style={{ marginTop: 22 }}>Claude (web, desktop and mobile)</h3>
               <p>
-                Now open your AI desktop app&apos;s MCP config file (on macOS, Claude Desktop
-                uses{' '}
-                <code className="doc-code-inline">
-                  ~/Library/Application Support/Claude/claude_desktop_config.json
-                </code>{' '}
-                &mdash; check your app&apos;s docs if you use something else) and add a{' '}
-                <code className="doc-code-inline">paybacker</code> entry under{' '}
-                <code className="doc-code-inline">mcpServers</code>. Leave any other servers
-                in the file exactly as they are:
+                Go to <strong>Settings &rarr; Connectors &rarr; Add custom connector</strong>,
+                name it Paybacker and paste the address above. Set{' '}
+                <strong>Authentication</strong> to <strong>None</strong> &mdash; Paybacker
+                uses a token rather than OAuth, so the automatic OAuth checks will fail.
+                That is expected and not a fault. Then add one request header:
               </p>
               <pre className="doc-code doc-code-small">
-                <code>{`{
-  "mcpServers": {
-    "paybacker": {
-      "command": "node",
-      "args": ["/absolute/path/to/paybacker-mcp/dist/server.js"],
-      "env": {
-        "PAYBACKER_TOKEN": "pbk_YOUR_TOKEN_HERE"
-      }
-    }
-  }
-}`}</code>
+                <code>{`Authorization:  Bearer pbk_YOUR_TOKEN_HERE`}</code>
               </pre>
               <p>
-                Replace{' '}
-                <code className="doc-code-inline">
-                  /absolute/path/to/paybacker-mcp/dist/server.js
-                </code>{' '}
-                with the path you printed above, and{' '}
-                <code className="doc-code-inline">pbk_YOUR_TOKEN_HERE</code> with the token
-                from step 1. Save the file.
+                The word <code className="doc-code-inline">Bearer</code>, then a space, then
+                your token. Adding it once covers Claude on web, desktop and mobile, because
+                connectors are shared across them.
               </p>
+
+              <h3 style={{ marginTop: 22 }}>ChatGPT</h3>
+              <p>
+                ChatGPT&apos;s developer mode allows OAuth or no authentication and does not
+                allow custom headers, so the token goes in the address instead. Turn on
+                developer mode under <strong>Settings &rarr; Apps &rarr; Advanced Settings</strong>,
+                then go to <strong>Settings &rarr; Apps &rarr; Create</strong> and use:
+              </p>
+              <pre className="doc-code doc-code-small">
+                <code>{`https://paybacker.co.uk/api/mcp/v1?token=pbk_YOUR_TOKEN_HERE`}</code>
+              </pre>
+              <p>
+                Set authentication to <strong>None</strong>, click{' '}
+                <strong>Scan Tools</strong>, then <strong>Create</strong>. Requires a paid
+                ChatGPT plan and works on the web app only, not mobile.
+              </p>
+
+              <h3 style={{ marginTop: 22 }}>Claude Code</h3>
+              <pre className="doc-code doc-code-small">
+                <code>{`claude mcp add --transport http paybacker \\
+  https://paybacker.co.uk/api/mcp/v1 \\
+  --header "Authorization: Bearer pbk_YOUR_TOKEN_HERE"`}</code>
+              </pre>
+
               <div className="doc-note">
-                The config file must be valid JSON. If you already have other MCP servers
-                listed, add <code className="doc-code-inline">&quot;paybacker&quot;</code> as
-                another key inside{' '}
-                <code className="doc-code-inline">mcpServers</code> and remember the comma
-                between entries. A missing comma stops your app loading <em>any</em> MCP
-                server, not just this one.
+                If you connect more than one app, mint a <strong>separate token for each</strong>.
+                Then revoking one does not break the others. A token in a URL, as ChatGPT
+                requires, is a little more exposed than one in a header, since addresses turn
+                up in logs and screenshots &mdash; it is read only, and you can revoke it at
+                any time.
               </div>
             </div>
 
             <div className="doc-step">
               <div className="doc-step-head">
                 <div className="doc-step-num">3</div>
-                <h2>Restart your AI desktop app</h2>
+                <h2>Turn it on in a chat</h2>
               </div>
               <p>
-                Fully quit the app (not just close the window) and reopen it. When it starts,
-                it will spawn the Paybacker MCP server in the background.
+                Being in the connector list is not the same as being switched on. In Claude,
+                open the <code className="doc-code-inline">+</code> menu in the message box,
+                choose <strong>Connectors</strong> and enable Paybacker. In ChatGPT, pick the
+                app from the tools menu or mention it in your prompt.
               </p>
               <p>
-                You can confirm it&apos;s connected by opening a new chat and looking for{' '}
-                <strong>&quot;paybacker&quot;</strong> in the tools menu. If you don&apos;t
-                see it, see <a href="#troubleshooting">troubleshooting</a> below.
+                If it does not appear, restarting the desktop app refreshes a stale list. See{' '}
+                <a href="#troubleshooting">troubleshooting</a> below.
               </p>
             </div>
 
@@ -379,27 +364,21 @@ Write-Output "$PWD\\dist\\server.js"`}</code>
               <details className="troubleshoot">
                 <summary>My AI app doesn&apos;t show the Paybacker tools</summary>
                 <ul>
-                  <li>Fully quit the app (not just close the window) and reopen.</li>
                   <li>
-                    Open your app&apos;s MCP config file and confirm the{' '}
-                    <code className="doc-code-inline">paybacker</code> entry is there under{' '}
-                    <code className="doc-code-inline">mcpServers</code>.
+                    Being in the connector list is not the same as being enabled for a chat.
+                    Switch it on from the <code className="doc-code-inline">+</code> menu in
+                    the message box.
+                  </li>
+                  <li>Fully quit the app (not just close the window) and reopen it. That refreshes a stale list.</li>
+                  <li>
+                    Check the address has no typo. It should be exactly{' '}
+                    <code className="doc-code-inline">https://paybacker.co.uk/api/mcp/v1</code>.
+                    Opening that in a browser should return a short status message, not an
+                    error page.
                   </li>
                   <li>
-                    Check the file is valid JSON (a missing comma will stop the app loading
-                    any MCP server).
-                  </li>
-                  <li>
-                    Check the path in{' '}
-                    <code className="doc-code-inline">args</code> is absolute and the file
-                    really exists &mdash; run{' '}
-                    <code className="doc-code-inline">
-                      node /your/path/to/paybacker-mcp/dist/server.js
-                    </code>{' '}
-                    in a terminal. If it starts and waits, the path is right (press Ctrl+C to
-                    stop it). If it says &quot;Cannot find module&quot;, re-run{' '}
-                    <code className="doc-code-inline">npm run build</code> in the
-                    paybacker-mcp folder.
+                    In Claude Code, run <code className="doc-code-inline">/mcp</code> to list
+                    connected servers.
                   </li>
                 </ul>
               </details>
@@ -413,10 +392,8 @@ Write-Output "$PWD\\dist\\server.js"`}</code>
                   <Link href="/dashboard/settings/mcp">
                     Settings → Paybacker Assistant
                   </Link>{' '}
-                  and replace the{' '}
-                  <code className="doc-code-inline">PAYBACKER_TOKEN</code> value in your MCP
-                  config with the new one, then restart your AI app. Tokens expire after 180
-                  days by default.
+                  and update the token in your connector settings with the new one. Tokens
+                  expire after 180 days by default.
                 </p>
               </details>
               <details className="troubleshoot">
@@ -431,32 +408,42 @@ Write-Output "$PWD\\dist\\server.js"`}</code>
               </details>
               <details className="troubleshoot">
                 <summary>
-                  <code className="doc-code-inline">npx @paybacker/mcp</code> gives me a 404
+                  The OAuth check fails when I add the connector
                 </summary>
                 <p>
-                  That&apos;s expected. We haven&apos;t published the package to npm yet, so
-                  there is nothing at that name to download. Older guides (and some AI
-                  assistants) still suggest that command &mdash; ignore it and use the
-                  build-from-source method in step 2 above, which points your AI app at{' '}
-                  <code className="doc-code-inline">dist/server.js</code> directly.
+                  Expected, not a fault. Paybacker authenticates with your token rather than
+                  OAuth, so there is no sign-in server for it to discover. Carry on and set
+                  Authentication to <strong>None</strong>.
                 </p>
               </details>
               <details className="troubleshoot">
                 <summary>
-                  <code className="doc-code-inline">npm run build</code> fails
+                  It says a connector with this address already exists
                 </summary>
                 <p>
-                  Check your Node version with{' '}
-                  <code className="doc-code-inline">node --version</code>. You need 18 or
-                  later. On macOS you can install Node with{' '}
-                  <a
-                    href="https://brew.sh"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Homebrew
-                  </a>{' '}
-                  (<code className="doc-code-inline">brew install node</code>).
+                  Connectors are shared across Claude on web, desktop and mobile, so adding it
+                  once covers all of them. Use the existing one rather than adding it again.
+                </p>
+              </details>
+              <details className="troubleshoot">
+                <summary>
+                  It connects, but every tool returns an error
+                </summary>
+                <p>
+                  That is almost always the token rather than the setup. Check it has not been
+                  revoked or expired on your{' '}
+                  <Link href="/dashboard/settings/mcp">Assistant settings page</Link>, and that
+                  your plan is still Pro. Revoke and mint a new one if in doubt.
+                </p>
+              </details>
+              <details className="troubleshoot">
+                <summary>
+                  Older guides tell me to run <code className="doc-code-inline">npx @paybacker/mcp</code>
+                </summary>
+                <p>
+                  Ignore them. That package was never published, so the command returns a 404.
+                  There is nothing to install any more &mdash; Paybacker hosts the server, and
+                  the address in step 2 is all you need.
                 </p>
               </details>
             </div>
