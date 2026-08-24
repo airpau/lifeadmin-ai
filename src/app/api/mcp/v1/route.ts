@@ -204,7 +204,23 @@ async function handle(req: NextRequest): Promise<Response> {
   const auth = await authenticateMcp(req);
   if (!isAuthSuccess(auth)) return auth;
 
-  const bearer = req.headers.get('authorization') || '';
+  // Normalise the credential BEFORE proxying.
+  //
+  // authenticateMcp accepts the token either as an Authorization header
+  // OR as a ?token= query parameter. The transport check above therefore
+  // passes for both. But this route proxies each tool to its REST route
+  // by forwarding the Authorization HEADER, so a caller who authenticated
+  // by query param used to connect fine, list tools fine, and then fail
+  // on every single tool call with "invalid token".
+  //
+  // That matters because it is not a hypothetical: ChatGPT's developer
+  // mode supports OAuth or no auth and does NOT allow custom headers, so
+  // the query parameter is the only way to connect it. Half-working is
+  // the worst outcome here, because the tool scan succeeds and the
+  // failure only shows up later, in normal use.
+  const queryToken = new URL(req.url).searchParams.get('token');
+  const bearer =
+    req.headers.get('authorization') || (queryToken ? `Bearer ${queryToken}` : '');
 
   const server = createAssistantServer(bearer);
   const transport = new WebStandardStreamableHTTPServerTransport({
