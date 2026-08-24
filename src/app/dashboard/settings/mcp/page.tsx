@@ -61,7 +61,7 @@ export default function McpSettingsPage() {
   const [justMinted, setJustMinted] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   /** Which set of connection instructions is showing. */
-  const [setupTab, setSetupTab] = useState<'Claude' | 'Claude Code'>('Claude');
+  const [setupTab, setSetupTab] = useState<'Claude' | 'ChatGPT' | 'Claude Code'>('Claude');
 
   // revoke flow
   const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -266,8 +266,8 @@ export default function McpSettingsPage() {
           </Link>
         </div>
         <p className="text-sm text-slate-500 mb-5">
-          Paybacker runs a hosted server, so there is nothing to install. Add it once
-          and it works across Claude on web, mobile, desktop and Claude Code.
+          Paybacker runs a hosted server, so there is nothing to install. It works with
+          Claude, ChatGPT and Claude Code.
         </p>
 
         {/* Server address */}
@@ -295,7 +295,7 @@ export default function McpSettingsPage() {
           aria-label="Where to connect"
           className="flex items-center gap-1 rounded-lg bg-slate-100 p-0.5 mb-4"
         >
-          {(['Claude', 'Claude Code'] as const).map((t) => (
+          {(['Claude', 'ChatGPT', 'Claude Code'] as const).map((t) => (
             <button
               key={t}
               role="tab"
@@ -353,6 +353,47 @@ export default function McpSettingsPage() {
               <span className="italic">&ldquo;what are my Paybacker account balances?&rdquo;</span>
             </li>
           </ol>
+        ) : setupTab === 'ChatGPT' ? (
+          <>
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <p className="font-semibold mb-1">ChatGPT works differently</p>
+              <p>
+                Its developer mode supports OAuth or no authentication, and does not
+                allow custom request headers. So the token goes in the URL rather than
+                a header. Needs a paid plan and is web only, not mobile.
+              </p>
+            </div>
+            <ol className="space-y-3 text-sm text-slate-700 list-decimal list-inside">
+              <li>Generate a token below and copy it.</li>
+              <li>
+                In ChatGPT, go to{' '}
+                <span className="font-medium">Settings → Apps → Advanced Settings</span>{' '}
+                and switch on <span className="font-medium">Developer mode</span>.
+              </li>
+              <li>
+                Go to <span className="font-medium">Settings → Apps → Create</span> and
+                use this as the server URL, with your token on the end:
+                <pre className="mt-2 bg-slate-900 text-emerald-300 rounded-lg p-3 text-xs overflow-x-auto font-mono">
+{`${MCP_SERVER_URL}?token=pbk_your_token_here`}
+                </pre>
+              </li>
+              <li>
+                Set authentication to <span className="font-medium">None</span>. Your
+                token is already in the URL.
+              </li>
+              <li>
+                Click <span className="font-medium">Scan Tools</span>, wait for it to
+                finish, then <span className="font-medium">Create</span>. You should see
+                seven Paybacker tools.
+              </li>
+            </ol>
+            <p className="mt-4 text-xs text-slate-500">
+              A token in a URL is more likely to end up in a log or a screenshot than one
+              in a header, so treat it as slightly more exposed. It is read-only and you
+              can revoke it below at any moment. If you use both, keep a separate token
+              for ChatGPT so revoking one does not break the other.
+            </p>
+          </>
         ) : (
           <ol className="space-y-3 text-sm text-slate-700 list-decimal list-inside">
             <li>Generate a token below and copy it.</li>
