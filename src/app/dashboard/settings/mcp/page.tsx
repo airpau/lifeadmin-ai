@@ -1,9 +1,14 @@
 'use client';
 // src/app/dashboard/settings/mcp/page.tsx
 // Paybacker MCP — personal access token management for Pro users.
-// Users mint a token here, paste it into their desktop AI app via the
-// @paybacker/mcp npm package, and the assistant can then read (never write)
-// their financial data.
+//
+// Users mint a token here and paste it into their AI app, which connects to
+// the HOSTED MCP server at /api/mcp/v1. The assistant can then read (never
+// write) their financial data.
+//
+// NOTE: this page used to instruct users to run `npx @paybacker/mcp setup`.
+// That package was never published to npm, so the command 404s for every
+// user who follows it. The connection instructions below are the real ones.
 //
 // The plaintext token is shown ONCE at mint-time. After that the UI only
 // ever sees the 8-char prefix, the label, and usage stats.
@@ -26,6 +31,9 @@ import {
   AlertCircle,
   KeyRound,
 } from 'lucide-react';
+
+/** The hosted MCP server users point their AI app at. */
+const MCP_SERVER_URL = 'https://paybacker.co.uk/api/mcp/v1';
 
 interface TokenRow {
   id: string;
@@ -52,6 +60,8 @@ export default function McpSettingsPage() {
   const [creating, setCreating] = useState(false);
   const [justMinted, setJustMinted] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  /** Which set of connection instructions is showing. */
+  const [setupTab, setSetupTab] = useState<'Claude' | 'Claude Code'>('Claude');
 
   // revoke flow
   const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -241,9 +251,9 @@ export default function McpSettingsPage() {
         </div>
       </div>
 
-      {/* Quick install snippet */}
+      {/* How to connect */}
       <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-1">
           <h3 className="text-slate-900 font-semibold flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-slate-500" />
             How to connect
@@ -255,17 +265,152 @@ export default function McpSettingsPage() {
             Full walkthrough →
           </Link>
         </div>
-        <ol className="space-y-3 text-sm text-slate-700 list-decimal list-inside">
-          <li>Generate a token below and copy it (you only see it once).</li>
-          <li>
-            In a terminal, run:
-            <pre className="mt-2 bg-slate-900 text-emerald-300 rounded-lg p-3 text-xs overflow-x-auto font-mono">
-              npx @paybacker/mcp setup
-            </pre>
-          </li>
-          <li>Paste your token when asked. Restart your AI desktop app.</li>
-          <li>Ask it something like &ldquo;summarise my spending last month&rdquo;.</li>
-        </ol>
+        <p className="text-sm text-slate-500 mb-5">
+          Paybacker runs a hosted server, so there is nothing to install. Add it once
+          and it works across Claude on web, mobile, desktop and Claude Code.
+        </p>
+
+        {/* Server address */}
+        <div className="mb-5">
+          <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">
+            Server address
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 font-mono text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 break-all">
+              {MCP_SERVER_URL}
+            </code>
+            <button
+              onClick={() => handleCopy(MCP_SERVER_URL)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors"
+            >
+              <Copy className="h-4 w-4" />
+              Copy
+            </button>
+          </div>
+        </div>
+
+        {/* Surface picker */}
+        <div
+          role="tablist"
+          aria-label="Where to connect"
+          className="flex items-center gap-1 rounded-lg bg-slate-100 p-0.5 mb-4"
+        >
+          {(['Claude', 'Claude Code'] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={setupTab === t}
+              onClick={() => setSetupTab(t)}
+              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                setupTab === t
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {setupTab === 'Claude' ? (
+          <ol className="space-y-3 text-sm text-slate-700 list-decimal list-inside">
+            <li>Generate a token below and copy it. You only see it once.</li>
+            <li>
+              Go to <span className="font-medium">Settings → Connectors → Add custom
+              connector</span>, name it Paybacker, and paste the server address above.
+            </li>
+            <li>
+              Set <span className="font-medium">Authentication</span> to{' '}
+              <span className="font-medium">None</span>. Paybacker uses an API key
+              rather than OAuth, so the automatic OAuth checks will fail. That is
+              expected, not a fault.
+            </li>
+            <li>
+              Under <span className="font-medium">Additional request headers</span>, add:
+              <div className="mt-2 overflow-x-auto">
+                <table className="text-xs w-full">
+                  <tbody>
+                    <tr>
+                      <td className="pr-3 py-1 text-slate-500 align-top whitespace-nowrap">Name</td>
+                      <td className="py-1 font-mono text-slate-900">Authorization</td>
+                    </tr>
+                    <tr>
+                      <td className="pr-3 py-1 text-slate-500 align-top whitespace-nowrap">Value</td>
+                      <td className="py-1 font-mono text-slate-900 break-all">
+                        Bearer pbk_your_token_here
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <span className="text-xs text-slate-500 block mt-1">
+                The word <span className="font-mono">Bearer</span>, then a space, then
+                your token.
+              </span>
+            </li>
+            <li>
+              Click Add, then ask Claude{' '}
+              <span className="italic">&ldquo;what are my Paybacker account balances?&rdquo;</span>
+            </li>
+          </ol>
+        ) : (
+          <ol className="space-y-3 text-sm text-slate-700 list-decimal list-inside">
+            <li>Generate a token below and copy it.</li>
+            <li>
+              Run this, pasting your token in place of{' '}
+              <span className="font-mono">pbk_your_token_here</span>:
+              <pre className="mt-2 bg-slate-900 text-emerald-300 rounded-lg p-3 text-xs overflow-x-auto font-mono">
+{`claude mcp add --transport http paybacker \\
+  ${MCP_SERVER_URL} \\
+  --header "Authorization: Bearer pbk_your_token_here"`}
+              </pre>
+            </li>
+            <li>
+              Check it with <span className="font-mono">/mcp</span> inside Claude Code.
+              You should see seven Paybacker tools.
+            </li>
+          </ol>
+        )}
+
+        {/* Troubleshooting */}
+        <details className="mt-5 group">
+          <summary className="cursor-pointer text-sm font-medium text-slate-700 hover:text-slate-900 list-none flex items-center gap-1.5">
+            <span className="text-slate-400 group-open:rotate-90 transition-transform">›</span>
+            It is not working
+          </summary>
+          <div className="mt-3 space-y-3 text-sm text-slate-600 pl-4 border-l-2 border-slate-100">
+            <p>
+              <span className="font-medium text-slate-800">
+                The OAuth checks fail when adding the connector.
+              </span>{' '}
+              Expected. Paybacker authenticates with your token, not OAuth, so there is
+              no sign-in server to find. Continue and set Authentication to None.
+            </p>
+            <p>
+              <span className="font-medium text-slate-800">
+                It says a connector with this URL already exists.
+              </span>{' '}
+              Connectors are shared across Claude on web, desktop and mobile, so adding
+              it once covers all of them. Use the existing one rather than adding it
+              again.
+            </p>
+            <p>
+              <span className="font-medium text-slate-800">
+                It is added but Claude does not use it.
+              </span>{' '}
+              Being in the connector list is not the same as being switched on for a
+              chat. Enable it from the <span className="font-mono">+</span> menu in the
+              message box, then Connectors. Restarting the desktop app also refreshes a
+              stale list.
+            </p>
+            <p>
+              <span className="font-medium text-slate-800">Every tool returns an error.</span>{' '}
+              That is the token, not the setup. Check it has not been revoked or expired
+              below, and that your plan is still Pro. Revoke and generate a new one if
+              in doubt.
+            </p>
+          </div>
+        </details>
       </div>
 
       {error && (
