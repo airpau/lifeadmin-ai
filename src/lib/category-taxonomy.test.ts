@@ -64,13 +64,27 @@ describe('category-taxonomy: bucketFor', () => {
     assert.equal(bucketFor('internal_transfer'), 'internal_transfer');
   });
 
+  it('treats a bare "credit" as a bank direction code, not a credit card', () => {
+    // Yapily writes the direction ('CREDIT' / 'DEBIT') into
+    // bank_transactions.category. A bare 'credit' is money IN, so it must
+    // never reach a spending bucket. It used to alias to 'credit_card' →
+    // fixed_cost, which counted incoming payments as spending.
+    assert.equal(bucketFor('credit'), 'income');
+    assert.equal(bucketFor('CREDIT'), 'income');
+    assert.equal(bucketFor('  Credit '), 'income');
+    assert.equal(isSpendingBucket(bucketFor('credit')), false);
+    // The real credit-card categories are untouched.
+    assert.equal(bucketFor('credit_card'), 'fixed_cost');
+    assert.equal(bucketFor('credit cards'), 'fixed_cost');
+    assert.equal(bucketFor('credit-cards'), 'fixed_cost');
+  });
+
   it('handles plural / hyphen / synonym aliases', () => {
     // plurals
     assert.equal(bucketFor('mortgages'), 'fixed_cost');
     assert.equal(bucketFor('loans'), 'fixed_cost');
     assert.equal(bucketFor('credit cards'), 'fixed_cost');
     assert.equal(bucketFor('credit-cards'), 'fixed_cost');
-    assert.equal(bucketFor('credit'), 'fixed_cost');
     assert.equal(bucketFor('fees'), 'fixed_cost');
     assert.equal(bucketFor('utilities'), 'fixed_cost');
     assert.equal(bucketFor('car finance'), 'fixed_cost');
