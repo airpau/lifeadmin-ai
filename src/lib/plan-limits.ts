@@ -107,7 +107,7 @@ export interface PlanLimits {
  * Seats                      1      1          1      4          1
  * Bank connections           2      3          ∞      ∞          ∞
  * Email connections          1      3          ∞      ∞          ∞
- * Inbox scan history         90d    2 years    2y     2y         2y
+ * Inbox scan history         90d    90d        90d    90d        90d
  * AI letters / month         3      ∞          ∞      ∞          ∞
  * Watchdog poll interval     manual 60m        30m    30m        15m
  * Dispute thread links       1      5          ∞      ∞          ∞
