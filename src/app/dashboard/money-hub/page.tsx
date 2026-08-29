@@ -79,7 +79,7 @@ const SCAN_CAPTIONS: { icon: string; text: string }[] = [
  { icon: '🕵️', text: 'Hunting for that Netflix trial you swore you cancelled...' },
  { icon: '📈', text: 'Flagging silent price rises your provider hoped you\'d miss...' },
  { icon: '📅', text: 'Spotting contract renewals before they ambush you...' },
- { icon: '💳', text: 'Reading subscription confirmations from the last two years...' },
+ { icon: '💳', text: 'Reading subscription confirmations from the last 90 days...' },
  { icon: '⚖️', text: 'Checking whether anyone owes you a refund right now...' },
  { icon: '🧾', text: 'Matching receipts to transactions so the maths adds up...' },
  { icon: '🔍', text: 'Reading 1,200 emails so you don\'t have to...' },
