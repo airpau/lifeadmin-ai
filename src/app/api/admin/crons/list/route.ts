@@ -57,9 +57,11 @@ export async function GET() {
 
   // Pull the last 500 cron_run rows and collapse in memory. Faster than
   // 43 × DISTINCT ON queries and keeps the SQL boring.
+  // Note: business_log has no severity column — we infer "failed" from
+  // the content text (the proxy writes "FAILED" for non-OK responses).
   const { data: recentRuns } = await admin
     .from('business_log')
-    .select('title, content, severity, created_at')
+    .select('title, content, created_at')
     .eq('category', 'cron_run')
     .order('created_at', { ascending: false })
     .limit(500);
@@ -71,10 +73,12 @@ export async function GET() {
     const match = title.match(/^cron_run\s+(.+)$/);
     const cronPath = match ? match[1] : title;
     if (!lastByPath.has(cronPath)) {
+      const content = row.content ?? '';
+      const inferredSeverity = /FAILED|HTTP 5\d\d|HTTP 4\d\d/.test(content) ? 'error' : 'info';
       lastByPath.set(cronPath, {
         at: row.created_at,
-        severity: row.severity ?? 'info',
-        summary: (row.content ?? '').slice(0, 240),
+        severity: inferredSeverity,
+        summary: content.slice(0, 240),
       });
     }
   }

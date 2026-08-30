@@ -496,11 +496,12 @@
   padding: 18px;
 }
 
-/* 5. AdminTabStrip horizontal-scroll behaviour.
-   The strip is now a single flat row of every admin destination
-   (no More dropdown — the dropdown was clipped inside the iOS
-   Capacitor webview). Always scrolls-x, on every viewport. The
-   right-edge fade hints there's more to swipe to. */
+/* 5. AdminTabStrip behaviour.
+   On mobile/iOS Capacitor: swipeable horizontal strip with hidden
+   scrollbar + right-edge fade hint. On desktop (>=980px) the strip
+   wraps to multiple lines so every admin destination is reachable
+   without horizontal trackpad scroll — founder reported "tabs aren't
+   viewable so I can't reach it" on desktop. */
 .shell-v2 .admin-tab-strip {
   flex-wrap: nowrap;
   -webkit-overflow-scrolling: touch;
@@ -519,6 +520,14 @@
   height: calc(100% - 6px);
   pointer-events: none;
   background: linear-gradient(to left, var(--paper, #FAFAF7), transparent);
+}
+@media (min-width: 980px) {
+  .shell-v2 .admin-tab-strip {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+  .shell-v2 .admin-tab-strip-wrap::after { display: none; }
 }
 
 /* 6. Mobile-safe break-words on admin headings + breadcrumb.

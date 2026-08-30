@@ -117,6 +117,15 @@ export default function AdminCronsPage() {
       const data = await res.json();
       if (!res.ok) {
         setRunResult({ path: cronPath, ok: false, message: data.error ?? `HTTP ${res.status}` });
+      } else if (data.backgrounded) {
+        setRunResult({
+          path: cronPath,
+          ok: true,
+          message: data.response?.message ?? 'Started in background — refresh in 1-3 min for the result.',
+        });
+        // Auto-refresh after 30s so the Last-run column picks up the
+        // cron's own log row when it finishes.
+        setTimeout(loadCrons, 30_000);
       } else {
         const responseSummary = typeof data.response === 'object'
           ? JSON.stringify(data.response).slice(0, 200)
