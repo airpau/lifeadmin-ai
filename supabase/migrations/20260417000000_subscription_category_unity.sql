@@ -40,6 +40,26 @@
 --   (a) a single merchant-wide override per user per pattern
 --   (b) many transaction-specific overrides for the same pattern
 -- by scoping uniqueness to transaction_id IS NULL rows only.
+
+-- Deduplicate existing merchant-pattern overrides before creating the unique
+-- index. Prior code paths could insert duplicate (user_id, merchant_pattern)
+-- rows with transaction_id IS NULL without any uniqueness guard, so we must
+-- remove them first or the CREATE UNIQUE INDEX will abort. We keep the most
+-- recently created row per pair and delete all others.
+DELETE FROM money_hub_category_overrides
+WHERE id IN (
+  SELECT id FROM (
+    SELECT id,
+           ROW_NUMBER() OVER (
+             PARTITION BY user_id, merchant_pattern
+             ORDER BY created_at DESC NULLS LAST, id DESC
+           ) AS rn
+    FROM money_hub_category_overrides
+    WHERE transaction_id IS NULL
+  ) ranked
+  WHERE rn > 1
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mhco_user_merchant_pattern_uniq
   ON money_hub_category_overrides (user_id, merchant_pattern)
   WHERE transaction_id IS NULL;
@@ -85,6 +105,15 @@ DECLARE
 BEGIN
   IF p_user_id IS NULL OR p_subscription_id IS NULL OR p_new_category IS NULL THEN
     RAISE EXCEPTION 'apply_subscription_category_correction: user_id, subscription_id, new_category required';
+  END IF;
+
+  -- Ownership guard: SECURITY DEFINER functions run as the function owner, so
+  -- we must explicitly verify the caller owns the data they are modifying.
+  -- service_role bypasses RLS and can legitimately pass any user_id (cron /
+  -- backfill), so we only enforce this check for normal authenticated sessions.
+  IF auth.uid() IS DISTINCT FROM p_user_id
+     AND current_setting('role', true) IS DISTINCT FROM 'service_role' THEN
+    RAISE EXCEPTION 'insufficient_privilege';
   END IF;
 
   -- 2a. Keep subscriptions.category authoritative (idempotent; caller usually
