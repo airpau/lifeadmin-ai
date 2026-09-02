@@ -5,6 +5,7 @@ import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import { isPayrollLike } from '@/lib/subscriptions/payroll-filter';
 import { buildRenewalDigest, formatRenewalAmount } from '@/lib/subscriptions/renewal-digest';
+import { resolveWhatsAppSession } from '@/lib/pocket-agent/resolve-session';
 
 export const maxDuration = 60;
 
@@ -224,12 +225,7 @@ export async function GET(request: NextRequest) {
     // Log the digest as an outbound WhatsApp turn so the Pocket Agent can
     // resolve "CANCEL 1" / "CANCEL <provider>" against it in history.
     if (dispatchResult.delivered.includes('whatsapp')) {
-      const { data: waSession } = await supabase
-        .from('whatsapp_sessions')
-        .select('whatsapp_phone')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .maybeSingle();
+      const waSession = await resolveWhatsAppSession(supabase, userId, 'renewal-reminders');
       if (waSession?.whatsapp_phone) {
         await supabase.from('whatsapp_message_log').insert({
           user_id: userId,

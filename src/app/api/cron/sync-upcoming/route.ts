@@ -30,6 +30,7 @@ import {
 } from '@/lib/upcoming/detect-income';
 import { endOfTodayLondonIso } from '@/lib/alerts/future-dated';
 import { isAtLeastPro } from '@/lib/tier-rank';
+import { resolveWhatsAppSession } from '@/lib/pocket-agent/resolve-session';
 
 export const maxDuration = 300;
 
@@ -830,13 +831,7 @@ export async function GET(request: NextRequest) {
     // user can no longer act anyway).
     if (direction === 'outgoing' && (row.source === 'direct_debit' || row.source === 'standing_order')) {
       try {
-        const { data: waSession } = await supabase
-          .from('whatsapp_sessions')
-          .select('whatsapp_phone')
-          .eq('user_id', row.user_id)
-          .eq('is_active', true)
-          .is('opted_out_at', null)
-          .maybeSingle();
+        const waSession = await resolveWhatsAppSession(supabase, row.user_id, 'sync-upcoming');
         if (waSession?.whatsapp_phone) {
           const { data: profile2 } = await supabase
             .from('profiles')
