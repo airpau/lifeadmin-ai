@@ -34,6 +34,10 @@ import {
   type ActiveSession,
 } from '@/lib/pocket-agent/dispatch';
 import { isTestAccount } from '@/lib/test-accounts';
+import {
+  resolveTelegramSession,
+  resolveWhatsAppSession,
+} from '@/lib/pocket-agent/resolve-session';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -515,22 +519,12 @@ async function dispatchToUser(
   text: string,
 ): Promise<boolean> {
   if (channel === 'telegram') {
-    const { data: session } = await supabase
-      .from('telegram_sessions')
-      .select('telegram_chat_id')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .maybeSingle();
+    const session = await resolveTelegramSession(supabase, userId, 'dispute-letter-followup');
     if (!session?.telegram_chat_id) return false;
     return sendTelegram(session.telegram_chat_id, text);
   }
   if (channel === 'whatsapp') {
-    const { data: session } = await supabase
-      .from('whatsapp_sessions')
-      .select('whatsapp_phone, last_message_at')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .maybeSingle();
+    const session = await resolveWhatsAppSession(supabase, userId, 'dispute-letter-followup');
     if (!session?.whatsapp_phone) return false;
     // 24h session window check — WhatsApp free-form only works
     // within 24h of the user's last inbound. Outside that window
