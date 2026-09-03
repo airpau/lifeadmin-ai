@@ -17,6 +17,18 @@ const API = 'https://graph.facebook.com/v25.0';
 const PAGE_ID = '1056645287525328';
 const IG_ID = '17841440175351137';
 
+/**
+ * Last-resort caption, used only when the model produced nothing usable.
+ *
+ * Hoisted to a constant so the settle path can recognise it. Publishing this
+ * is a degraded outcome, not a normal one: it is the same evergreen copy every
+ * time, so a run of them means the same post going out to all three networks
+ * day after day. The founder alert says so explicitly rather than reporting a
+ * clean publish.
+ */
+const EVERGREEN_FALLBACK_CAPTION =
+  'UK consumers are owed billions in unclaimed refunds. Energy overcharges, broadband price rises, flight delay compensation. Paybacker writes the formal complaint letter for you, citing exact UK law, in 30 seconds.\n\nTry it free at paybacker.co.uk\n\n#consumerrights #fintech #moneysaving #ukfinance #paybacker';
+
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
@@ -339,20 +351,46 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
   let imagePrompt = 'abstract mint green and navy blue financial symbols, clean modern fintech aesthetic, dark background';
 
   if (postBlock?.type === 'text') {
-    try {
-      let jsonText = postBlock.text;
-      const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (fenceMatch) jsonText = fenceMatch[1];
-      const parsed = JSON.parse(jsonText.match(/\{[\s\S]*\}/)?.[0] || '{}');
-      caption = parsed.caption || '';
-      imagePrompt = parsed.imagePrompt || imagePrompt;
-    } catch {
-      caption = postBlock.text;
+    let jsonText = postBlock.text;
+    const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) jsonText = fenceMatch[1];
+
+    // Only parse when the reply actually contains an object.
+    //
+    // This used to read `JSON.parse(match?.[0] || '{}')`. When Sonnet answered
+    // in prose there was no match, so it parsed the literal '{}' — which
+    // SUCCEEDS. caption became '' without an exception ever being thrown, so
+    // the catch that existed to salvage exactly that reply was unreachable and
+    // the evergreen fallback below went out instead. Seven posts carrying the
+    // identical fallback caption published to Facebook, Instagram and X
+    // between 22 Aug and 1 Sep 2026.
+    const objectText = jsonText.match(/\{[\s\S]*\}/)?.[0];
+
+    if (objectText) {
+      try {
+        const parsed = JSON.parse(objectText);
+        if (typeof parsed.caption === 'string') caption = parsed.caption.trim();
+        if (typeof parsed.imagePrompt === 'string' && parsed.imagePrompt.trim()) {
+          imagePrompt = parsed.imagePrompt.trim();
+        }
+      } catch {
+        // Malformed object. Handled by the fallback below rather than by
+        // publishing the raw braces.
+      }
+    } else if (!/[{}]|"caption"\s*:/.test(jsonText)) {
+      // A prose reply is still Sonnet's work on today's research, and beats a
+      // hardcoded evergreen post.
+      //
+      // Guarded on the reply containing no JSON punctuation at all, so a
+      // truncated object (no closing brace, therefore no match above) falls to
+      // the evergreen fallback rather than publishing raw `{"caption":"half a`
+      // to Facebook.
+      caption = jsonText.trim();
     }
   }
 
   if (!caption) {
-    caption = 'UK consumers are owed billions in unclaimed refunds. Energy overcharges, broadband price rises, flight delay compensation. Paybacker writes the formal complaint letter for you, citing exact UK law, in 30 seconds.\n\nTry it free at paybacker.co.uk\n\n#consumerrights #fintech #moneysaving #ukfinance #paybacker';
+    caption = EVERGREEN_FALLBACK_CAPTION;
   }
 
   return { caption, imagePrompt };
@@ -542,6 +580,12 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
 
   const anyPublished = Object.keys(publishedIds).length > 0;
 
+  // Publishing the evergreen fallback is a degraded run: it is identical every
+  // time, so consecutive fallback days put the same post out to all three
+  // networks repeatedly. It was invisible before, because the row settled
+  // 'posted' and the alert read like any other successful day.
+  const usedFallbackCaption = caption === EVERGREEN_FALLBACK_CAPTION;
+
   await supabase
     .from('content_drafts')
     .update({
@@ -556,13 +600,20 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
       // The row's platform is 'facebook', so this is the id that reconciles it
       // against the Graph API. Null when Facebook itself did not publish.
       platform_post_id: publishedIds.facebook ?? null,
-      performance_metrics: { ...results, published_post_ids: publishedIds },
+      performance_metrics: {
+        ...results,
+        published_post_ids: publishedIds,
+        used_fallback_caption: usedFallbackCaption,
+      },
     })
     .eq('id', claimId);
 
   // Notify founder via Telegram
   await alertFounder(
     (anyPublished ? `Daily social post published:\n\n` : `Daily social post FAILED, nothing was published:\n\n`) +
+      (usedFallbackCaption
+        ? `WARNING: the model returned no usable caption, so the evergreen fallback went out. This is the same copy every time it happens — check recent days before it repeats.\n\n`
+        : '') +
       `FB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\n` +
       `IG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\n` +
       `X: ${results.twitter?.ok ? 'Posted' : results.twitter?.error || 'Failed'}\n\n` +
