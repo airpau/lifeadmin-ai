@@ -44,6 +44,9 @@ _Added 2026-08-17 by dev-sprint-runner. The April Critical list is now fully clo
 
 ## Outstanding
 
+- [~PR#NNN] Phantom `ad-strategist` cron removed from vercel.json (PR created 2026-09-04). `{ "path": "/api/cron/ad-strategist", "schedule": "0 8 * * *" }` was added on 2026-07-29 in 1aaf456a alongside `ad-metrics`, but the route was never built — `ad-strategist` appeared nowhere else in the repo. Vercel had been firing a 404 at 08:00 daily ever since. Worse than the wasted invocation: the cron inventory claimed an ad-strategy job was running, which is exactly the "configured ≠ firing" trap CLAUDE.md warns about. All 73 remaining crons now resolve to a real route file.
+- [ ] **Decide what to do with `/api/cron/ad-optimise`** (found 2026-09-04 while fixing the above). The route exists and its own docblock says "Weekly cron (Monday 6am)", but it is scheduled nowhere, so it has never run. It is NOT a drop-in replacement for the phantom `ad-strategist` entry and was deliberately left unscheduled by that PR, because it *mutates live ad spend* — it raises budgets +20%, cuts them -30%, and pauses campaigns off `daily_ad_metrics`. Two reasons not to wire it up blind: (1) Google Ads Basic API access was REJECTED twice and is not being pursued, so the Google leg cannot authenticate; (2) the Meta campaigns are PAUSED. Either schedule it deliberately once those hold, or delete the route so the inventory stops implying an optimiser exists. Paul's call — this one spends money.
+
 ### Paul to do:
 - [ ] Manual feature testing of all 80+ features
 - [ ] Set up Trustpilot business page
