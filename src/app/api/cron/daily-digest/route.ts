@@ -46,7 +46,25 @@ export async function GET(request: NextRequest) {
     .select('id, email, full_name, first_name, subscription_tier, digest_frequency')
     .not('email', 'is', null);
 
-  if (userError || !userRows || userRows.length === 0) {
+  // A failed query is NOT an empty audience. The old code collapsed the two
+  // into `{ ok: true, sent: 0, reason: 'No eligible users' }`, so a query that
+  // errored reported the run as HEALTHY with nothing sent — which is exactly
+  // how a total digest outage stayed invisible: profiles.digest_frequency does
+  // not exist in production (its migration, 20260505090000_digest_frequency.sql,
+  // was never applied), every run 42703'd on the select, and the cron logged a
+  // clean 200 every morning while no user received a digest.
+  //
+  // Fail loudly instead. A 500 surfaces in the Vercel cron log so a dead daily
+  // email is visible the first morning it breaks, not months later.
+  if (userError) {
+    console.error('[daily-digest] eligible-user query failed:', userError.message);
+    return NextResponse.json(
+      { ok: false, sent: 0, error: `Eligible-user query failed: ${userError.message}` },
+      { status: 500 },
+    );
+  }
+
+  if (!userRows || userRows.length === 0) {
     return NextResponse.json({ ok: true, sent: 0, reason: 'No eligible users' });
   }
 
