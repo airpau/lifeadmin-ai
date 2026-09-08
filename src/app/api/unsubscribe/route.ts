@@ -1,6 +1,6 @@
 /**
- * GET /api/unsubscribe?token=...&kind=consumer_lead|newsletter — public,
- * token-gated unsubscribe. POST same — RFC 8058 one-click unsubscribe
+ * GET /api/unsubscribe?token=...&kind=consumer_lead|newsletter|b2b_lead —
+ * public, token-gated unsubscribe. POST same — RFC 8058 one-click unsubscribe
  * target (Gmail/Outlook native button POSTs `List-Unsubscribe=One-Click`).
  *
  * Honours the request immediately:
@@ -8,6 +8,10 @@
  *     and flips funnel_stage = 'unsubscribed'.
  *   - newsletter kind: sets profiles.newsletter_unsubscribed_at = now()
  *     for the user whose newsletter_unsub_token matches.
+ *   - b2b_lead kind: sets b2b_waitlist.unsubscribed_at = now(), which is
+ *     what /api/cron/b2b-nurture filters on. `status` is deliberately left
+ *     alone — it is a founder-triage field with a CHECK constraint, and an
+ *     opt-out is not a triage outcome.
  *   - GET → redirect to /unsubscribe (success page)
  *   - POST → 200 JSON
  *
@@ -21,7 +25,7 @@ import { captureServer } from '@/lib/posthog-server';
 
 export const runtime = 'nodejs';
 
-type UnsubKind = 'consumer_lead' | 'newsletter';
+type UnsubKind = 'consumer_lead' | 'newsletter' | 'b2b_lead';
 
 function getAdmin() {
   return createClient(
@@ -31,7 +35,9 @@ function getAdmin() {
 }
 
 function pickKind(raw: string | null): UnsubKind {
-  return raw === 'newsletter' ? 'newsletter' : 'consumer_lead';
+  if (raw === 'newsletter') return 'newsletter';
+  if (raw === 'b2b_lead') return 'b2b_lead';
+  return 'consumer_lead';
 }
 
 interface UnsubResult {
@@ -72,6 +78,24 @@ async function processUnsubscribe(token: string, kind: UnsubKind): Promise<Unsub
     }
     captureServer('newsletter_unsubscribed', `user:${profile.id}`, {});
     return { ok: true, alreadyUnsubscribed: false, userId: profile.id };
+  }
+
+  if (kind === 'b2b_lead') {
+    const { data: b2bLead } = await supabase
+      .from('b2b_waitlist')
+      .select('id, unsubscribed_at')
+      .eq('unsubscribe_token', token)
+      .maybeSingle();
+    if (!b2bLead) return { ok: false, alreadyUnsubscribed: false };
+    if (b2bLead.unsubscribed_at) {
+      return { ok: true, alreadyUnsubscribed: true, leadId: b2bLead.id };
+    }
+    await supabase
+      .from('b2b_waitlist')
+      .update({ unsubscribed_at: new Date().toISOString() })
+      .eq('id', b2bLead.id);
+    captureServer('b2b_lead_unsubscribed', `b2b_lead:${b2bLead.id}`, {});
+    return { ok: true, alreadyUnsubscribed: false, leadId: b2bLead.id };
   }
 
   // consumer_lead (legacy path — kept for existing nurture footers)

@@ -1,21 +1,31 @@
 /**
  * /api/cron/b2b-nurture — drip emails for B2B leads who haven't converted.
  *
- * Schedule: hourly. Picks up rows in b2b_waitlist that haven't moved to
- * 'converted' yet and sends a single email at the right interval (day 1,
- * day 3, day 7, day 14). Tracks last-sent in `notes` so a row never
- * receives the same nudge twice. Stops nurturing after day-14 nudge or
- * once status is 'converted' / 'rejected'.
+ * Schedule: daily 10:00 UTC (registered in vercel.json). Picks up rows in
+ * b2b_waitlist that haven't moved to 'converted' yet and sends a single
+ * email at the right interval (day 1, day 3, day 7, day 14). Tracks
+ * last-sent in `notes` so a row never receives the same nudge twice. Stops
+ * nurturing after the day-14 nudge, once status is 'converted' /
+ * 'rejected', or as soon as the lead opts out.
  *
  * The nurture targets:
  *   - status = 'checkout_started' or 'checkout_abandoned' (high-intent)
  *   - status = 'new' (form-only signups, lower intent — gentler tone)
+ *
+ * These are marketing sends, so they go through `sendPaybackerEmail` with
+ * `variant: 'marketing'` rather than calling Resend directly. That is what
+ * gets them a tokenised one-click unsubscribe (footer link + RFC 8058
+ * List-Unsubscribe headers) and the receiving-enabled B2B Reply-To. Both
+ * were missing while this route talked to Resend itself: every nurture
+ * email invites a reply, and replies to the apex `business@paybacker.co.uk`
+ * are silently dropped because that domain is send-only in Resend.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
-import { resend } from '@/lib/resend';
+import { sendPaybackerEmail } from '@/lib/email/send';
+import { paragraph, unorderedList, type EmailCta } from '@/lib/email/PaybackerEmailLayout';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -27,6 +37,12 @@ function getAdmin() {
   );
 }
 
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+
+function unsubUrl(token: string): string {
+  return `${SITE}/api/unsubscribe?kind=b2b_lead&token=${encodeURIComponent(token)}`;
+}
+
 interface Lead {
   id: string;
   name: string;
@@ -36,6 +52,7 @@ interface Lead {
   intended_tier: string | null;
   notes: string | null;
   created_at: string;
+  unsubscribe_token: string;
 }
 
 const NURTURE_WINDOWS = [
@@ -74,44 +91,66 @@ function buildEmail(lead: Lead, windowKey: string) {
     return 'Last note — closing the loop';
   })();
 
-  const body = (() => {
+  const { body, cta, preheader } = ((): { body: string; cta?: EmailCta; preheader: string } => {
     if (windowKey === 'd1') {
-      return `<p>I saw you started a ${escape(tier)} checkout and didn't finish — totally understand if the timing wasn't right.</p>
-        <p>If <strong>price</strong> was the blocker, the <strong>Starter pilot is free</strong>: 1,000 calls/month, no card, key by email in seconds.</p>
-        <p>If you want to go straight to ${escape(tier)}, the link is still warm: <a href="https://paybacker.co.uk/for-business#buy">paybacker.co.uk/for-business#buy</a></p>
-        <p>Reply with anything — questions, edge cases, "not now" — and I'll get back to you within a working day.</p>`;
+      return {
+        preheader: 'The Starter pilot is free — 1,000 calls a month, no card.',
+        body: [
+          paragraph(`I saw you started a ${escape(tier)} checkout and didn't finish — totally understand if the timing wasn't right.`),
+          paragraph('If <strong>price</strong> was the blocker, the <strong>Starter pilot is free</strong>: 1,000 calls/month, no card, key by email in seconds.'),
+          paragraph(`If you want to go straight to ${escape(tier)}, the link is still warm.`),
+          paragraph('Reply with anything — questions, edge cases, "not now" — and I\'ll get back to you within a working day.'),
+        ].join(''),
+        cta: { label: 'Finish your checkout', href: 'https://paybacker.co.uk/for-business#buy' },
+      };
     }
     if (windowKey === 'd3') {
-      return `<p>Quick follow-up: a few CX teams have asked us for a <strong>14-day extended pilot</strong> instead of paying upfront. If that's a better fit, reply and I'll set you up.</p>
-        <p>What's holding it up?</p>
-        <ul>
-          <li><strong>Price</strong> — start on Starter (free, 1,000 calls/mo) and upgrade once it pays back</li>
-          <li><strong>Approval</strong> — happy to send a one-pager you can forward internally</li>
-          <li><strong>Coverage</strong> — see <a href="https://paybacker.co.uk/for-business/coverage">/for-business/coverage</a> for every UK statute we cite</li>
-        </ul>`;
+      return {
+        preheader: 'A 14-day extended pilot, if paying upfront is the blocker.',
+        body: [
+          paragraph('Quick follow-up: a few CX teams have asked us for a <strong>14-day extended pilot</strong> instead of paying upfront. If that\'s a better fit, reply and I\'ll set you up.'),
+          paragraph("What's holding it up?"),
+          unorderedList([
+            '<strong>Price</strong> — start on Starter (free, 1,000 calls/mo) and upgrade once it pays back',
+            '<strong>Approval</strong> — happy to send a one-pager you can forward internally',
+            '<strong>Coverage</strong> — every UK statute we cite is listed on the coverage page',
+          ]),
+        ].join(''),
+        cta: { label: 'See statute coverage', href: 'https://paybacker.co.uk/for-business/coverage' },
+      };
     }
     if (windowKey === 'd7') {
-      return `<p>One week in — a few quick numbers from teams that did pull the trigger:</p>
-        <ul>
-          <li>Median latency on /v1/disputes: <strong>2.4 seconds</strong></li>
-          <li>Statute citation accuracy on the test set: <strong>98%</strong> (zero hallucinated acts)</li>
-          <li>Most-called sectors so far: energy back-billing, Section 75, broadband mid-contract rises</li>
-        </ul>
-        <p>If your team handles UK consumer disputes at any volume, the free Starter pilot is the lowest-friction way to see if it slots into your CX flow: <a href="https://paybacker.co.uk/for-business">paybacker.co.uk/for-business</a></p>`;
+      return {
+        preheader: 'Median 2.4s on /v1/disputes, 98% citation accuracy.',
+        body: [
+          paragraph('One week in — a few quick numbers from teams that did pull the trigger:'),
+          unorderedList([
+            'Median latency on /v1/disputes: <strong>2.4 seconds</strong>',
+            'Statute citation accuracy on the test set: <strong>98%</strong> (zero hallucinated acts)',
+            'Most-called sectors so far: energy back-billing, Section 75, broadband mid-contract rises',
+          ]),
+          paragraph('If your team handles UK consumer disputes at any volume, the free Starter pilot is the lowest-friction way to see if it slots into your CX flow.'),
+        ].join(''),
+        cta: { label: 'Start the free pilot', href: 'https://paybacker.co.uk/for-business' },
+      };
     }
-    return `<p>I won't keep emailing — I know inbox space is precious.</p>
-      <p>If something changes and you'd like a key, the door is open: <a href="https://paybacker.co.uk/for-business">paybacker.co.uk/for-business</a>.</p>
-      <p>If we're not the right fit, no hard feelings. Best of luck with what you're building.</p>`;
+    return {
+      preheader: "Last note — I won't keep emailing.",
+      body: [
+        paragraph("I won't keep emailing — I know inbox space is precious."),
+        paragraph("If something changes and you'd like a key, the door is open."),
+        paragraph("If we're not the right fit, no hard feelings. Best of luck with what you're building."),
+      ].join(''),
+      cta: { label: 'Paybacker for Business', href: 'https://paybacker.co.uk/for-business' },
+    };
   })();
 
   return {
     subject,
-    html: `
-      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:auto;color:#0f172a;">
-        <p>Hi ${escape(lead.name?.split(' ')[0] || 'there')},</p>
-        ${body}
-        <p>— Paul, founder · Paybacker</p>
-      </div>`,
+    preheader,
+    heading: `Hi ${escape(lead.name?.split(' ')[0] || 'there')},`,
+    body,
+    cta,
   };
 }
 
@@ -140,12 +179,12 @@ export async function GET(request: NextRequest) {
   const supabase = getAdmin();
   const { data, error } = await supabase
     .from('b2b_waitlist')
-    .select('id, name, work_email, company, status, intended_tier, notes, created_at')
+    .select('id, name, work_email, company, status, intended_tier, notes, created_at, unsubscribe_token')
     .in('status', ['new', 'checkout_started', 'checkout_abandoned'])
+    .is('unsubscribed_at', null)
     .gte('created_at', new Date(Date.now() - 21 * 86_400_000).toISOString());
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const fromEmail = process.env.B2B_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'Paybacker for Business <noreply@paybacker.co.uk>';
   let sent = 0;
   const skipped: Array<{ id: string; reason: string }> = [];
 
@@ -155,24 +194,41 @@ export async function GET(request: NextRequest) {
     const win = pickWindow(age, sentSet);
     if (!win) { skipped.push({ id: lead.id, reason: 'no due window' }); continue; }
 
-    const email = buildEmail(lead, win.key);
-    try {
-      await resend.emails.send({
-        from: fromEmail,
-        to: lead.work_email,
-        replyTo: 'business@paybacker.co.uk',
-        subject: email.subject,
-        html: email.html,
-      });
-      const tag = `[nurture:${win.key}]`;
-      const newNotes = lead.notes ? `${lead.notes} ${tag}` : tag;
-      await supabase.from('b2b_waitlist')
-        .update({ notes: newNotes })
-        .eq('id', lead.id);
-      sent++;
-    } catch (e: any) {
-      skipped.push({ id: lead.id, reason: e?.message || 'send failed' });
+    // A lead with no token predates the unsubscribe migration. Skip rather
+    // than send: sendPaybackerEmail would throw MissingUnsubscribeUrlError
+    // and a marketing email with no opt-out is exactly what we must not send.
+    if (!lead.unsubscribe_token) {
+      skipped.push({ id: lead.id, reason: 'no unsubscribe token' });
+      continue;
     }
+
+    const email = buildEmail(lead, win.key);
+    const result = await sendPaybackerEmail({
+      to: lead.work_email,
+      audience: 'b2b',
+      variant: 'marketing',
+      unsubscribeUrl: unsubUrl(lead.unsubscribe_token),
+      subject: email.subject,
+      preheader: email.preheader,
+      heading: email.heading,
+      body: email.body,
+      cta: email.cta,
+      tags: [{ name: 'campaign', value: `b2b_nurture_${win.key}` }],
+    });
+
+    if (!result.ok) {
+      skipped.push({ id: lead.id, reason: result.error || 'send failed' });
+      continue;
+    }
+
+    // Only tag the row once the send actually succeeded — tagging on a
+    // failed send would burn the window and the lead would never get it.
+    const tag = `[nurture:${win.key}]`;
+    const newNotes = lead.notes ? `${lead.notes} ${tag}` : tag;
+    await supabase.from('b2b_waitlist')
+      .update({ notes: newNotes })
+      .eq('id', lead.id);
+    sent++;
   }
 
   return NextResponse.json({ ok: true, sent, skipped, considered: data?.length ?? 0 });
