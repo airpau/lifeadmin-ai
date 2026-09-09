@@ -109,20 +109,12 @@ export default function LegalUpdatesAdminPage() {
 
   const fetchItems = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('legal_update_queue')
-      .select(`
-        *,
-        legal_references (
-          law_name,
-          section,
-          summary,
-          category
-        )
-      `)
-      .order('created_at', { ascending: false });
+    // legal_update_queue is service-role only, like the other compliance
+    // tables, so this goes through the founder-gated admin route.
+    const res = await fetch('/api/admin/legal-updates', { credentials: 'include' });
+    const data: QueueItem[] | null = res.ok ? (await res.json()).items : null;
 
-    if (!error && data) {
+    if (data) {
       setItems(data as QueueItem[]);
       setStats({
         pending: data.filter(i => i.status === 'pending').length,
