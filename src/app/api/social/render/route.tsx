@@ -210,7 +210,7 @@ export async function GET(req: NextRequest) {
               fontSize: hookSize,
               fontWeight: 800,
               lineHeight: 1.08,
-              letterSpacing: -1.2,
+              letterSpacing: -0.4,
               textShadow: '0 2px 18px rgba(0,0,0,0.35)',
             }}
           >
