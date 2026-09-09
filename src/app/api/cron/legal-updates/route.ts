@@ -346,6 +346,32 @@ export async function GET(request: NextRequest) {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Insert a queue row and report whether it actually landed.
+ *
+ * Supabase returns write failures in `{ error }` rather than throwing. These
+ * inserts were unchecked, so while legal_update_queue did not exist every
+ * detected change was dropped on the floor and the scan still counted it as
+ * queued and told the founder to go and review it. Callers now only increment
+ * `queued` on a real write, and a failure surfaces as an error in the summary.
+ */
+async function insertQueueEntry(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  entry: Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  summary: any
+): Promise<boolean> {
+  const { error } = await supabase.from('legal_update_queue').insert(entry);
+  if (error) {
+    console.error('[legal-updates] legal_update_queue insert failed:', error.message);
+    summary.errors++;
+    return false;
+  }
+  return true;
+}
+
 async function processStatuteChange(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
@@ -450,7 +476,7 @@ Return ONLY valid JSON:
           console.warn('[legal-updates] statute.updated webhook publish failed', whErr instanceof Error ? whErr.message : whErr);
         }
 
-        await supabase.from('legal_update_queue').insert({
+        await insertQueueEntry(supabase, {
           legal_reference_id: ref.id,
           change_type: 'content_update',
           source_url: change.sourceUrl,
@@ -459,7 +485,7 @@ Return ONLY valid JSON:
           confidence: 'high',
           status: 'auto_applied',
           reviewed_at: new Date().toISOString(),
-        });
+        }, summary);
 
         await supabase.from('legal_audit_log').insert({
           legal_reference_id: ref.id,
@@ -477,7 +503,7 @@ Return ONLY valid JSON:
         });
       } else {
         // Queue for review
-        await supabase.from('legal_update_queue').insert({
+        const queued = await insertQueueEntry(supabase, {
           legal_reference_id: ref.id,
           change_type: 'content_update',
           source_url: change.sourceUrl,
@@ -485,7 +511,8 @@ Return ONLY valid JSON:
           proposed_update: affected.proposed_summary,
           confidence: affected.confidence,
           status: 'pending',
-        });
+        }, summary);
+        if (!queued) continue;
 
         await supabase.from('legal_audit_log').insert({
           legal_reference_id: ref.id,
@@ -506,7 +533,7 @@ Return ONLY valid JSON:
 
     // If new consumer rights discovered not yet in DB, queue as new_legislation
     if (result.new_legislation_notes && result.new_legislation_notes.length > 20) {
-      await supabase.from('legal_update_queue').insert({
+      const queued = await insertQueueEntry(supabase, {
         legal_reference_id: null,
         change_type: 'new_legislation',
         source_url: change.sourceUrl,
@@ -514,8 +541,8 @@ Return ONLY valid JSON:
         proposed_update: result.new_legislation_notes,
         confidence: 'medium',
         status: 'pending',
-      });
-      summary.queued++;
+      }, summary);
+      if (queued) summary.queued++;
     }
   } catch (err) {
     console.error('[legal-updates] Claude error (statute):', err);
@@ -601,7 +628,7 @@ If you cannot identify specific material changes to any stored reference, set fo
         status: affected.confidence === 'high' ? 'auto_applied' : 'pending',
       };
 
-      await supabase.from('legal_update_queue').insert(queueEntry);
+      if (!(await insertQueueEntry(supabase, queueEntry, summary))) continue;
 
       if (affected.confidence === 'high') {
         await supabase
@@ -715,7 +742,7 @@ Return an empty array if nothing is relevant.`,
     const newLaws = result.relevant_new_laws || [];
 
     for (const law of newLaws) {
-      await supabase.from('legal_update_queue').insert({
+      const queued = await insertQueueEntry(supabase, {
         legal_reference_id: null,
         change_type: 'new_legislation',
         source_url: law.link,
@@ -723,7 +750,8 @@ Return an empty array if nothing is relevant.`,
         proposed_update: `Consider adding to ${law.suggested_category} category: ${law.title} — ${law.relevance}`,
         confidence: 'medium',
         status: 'pending',
-      });
+      }, summary);
+      if (!queued) continue;
 
       summary.queued++;
       detectedChanges.push({
