@@ -55,6 +55,38 @@ export const INCREMENTAL_OVERLAP_DAYS = 7;
  */
 export const STALE_WATERMARK_DAYS = FULL_HISTORY_DAYS;
 
+/**
+ * How far AHEAD of now to ask the bank for transactions.
+ *
+ * This is the forward-visibility dial, and it was set to 1.
+ *
+ * UK banks return scheduled payments as ordinary transaction rows dated
+ * on the day they are DUE, not the day they were booked. That is the
+ * documented behaviour this codebase already relies on: see
+ * src/lib/alerts/future-dated.ts, which exists because five rows dated
+ * Monday 2026-08-17 were synced on Friday 2026-08-15 and triggered a
+ * "money has left your account" alert two days early.
+ *
+ * So a future-dated row IS the bank telling us about a scheduled
+ * payment, in or out. With an upper bound of `now + 1 day` we were
+ * asking to see one day of that and no more. On a Wednesday, a payment
+ * due Friday is simply not requested, which is why the Money Hub could
+ * show "tomorrow" but never "the day after". Paul reported exactly this
+ * on 2026-09-10: he used to be able to see what was landing on the
+ * next working day and could not any more.
+ *
+ * Fourteen days clears any weekend or bank-holiday run and matches the
+ * 7/14/30 windows the forward view already offers, so the UI can never
+ * promise a horizon the sync does not fetch.
+ *
+ * Cost: none. This widens a filter on requests we already make; it does
+ * not add a call, and future-dated rows are a handful per account.
+ * `upsertYapilyTransactions` dedups on the stable hash, so re-seeing a
+ * row as its date approaches is a no-op, and isFutureDated() keeps them
+ * out of past-tense alerts until the day they land.
+ */
+export const FUTURE_HORIZON_DAYS = 14;
+
 export interface TransactionWindow {
   /** ISO timestamp, inclusive lower bound. */
   from: string;
@@ -78,16 +110,17 @@ export function computeTransactionWindow(
   now: Date = new Date(),
 ): TransactionWindow {
   const dayMs = 86_400_000;
-  // Exclusive upper bound of tomorrow, so transactions booked later
-  // today — and future-dated ones some banks emit — are not cut off.
-  const before = new Date(now.getTime() + dayMs);
+  // Exclusive upper bound, deliberately well into the future so the
+  // bank's own scheduled payments come back with the ordinary
+  // transaction feed. See FUTURE_HORIZON_DAYS.
+  const before = new Date(now.getTime() + FUTURE_HORIZON_DAYS * dayMs);
   const fullFrom = new Date(now.getTime() - FULL_HISTORY_DAYS * dayMs);
 
   const full = (): TransactionWindow => ({
     from: fullFrom.toISOString(),
     before: before.toISOString(),
     mode: 'full_history',
-    spanDays: FULL_HISTORY_DAYS + 1,
+    spanDays: FULL_HISTORY_DAYS + FUTURE_HORIZON_DAYS,
   });
 
   if (!latestTransactionAt) return full();

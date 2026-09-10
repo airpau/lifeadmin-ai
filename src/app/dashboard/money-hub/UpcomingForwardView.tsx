@@ -34,10 +34,13 @@ import {
   X,
 } from 'lucide-react';
 import type {
+  NextIncoming,
+  UpcomingAccountLabel,
   UpcomingApiResponse,
   UpcomingCertainty,
   UpcomingPaymentRow,
 } from '@/app/api/money-hub/upcoming/route';
+import { cleanMerchantName } from '@/lib/merchant-utils';
 
 type Window = 7 | 14 | 30;
 
@@ -81,16 +84,34 @@ function prettyDay(iso: string): string {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   const diff = Math.round((d.getTime() - today.getTime()) / 86_400_000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Tomorrow';
-  if (diff < 7)
-    return d.toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
-  return d.toLocaleDateString('en-GB', {
+  const dated = d.toLocaleDateString('en-GB', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
     timeZone: 'UTC',
   });
+  // Always carry the actual date, even on Today and Tomorrow. Money
+  // decisions get made against a calendar and a bare "Tomorrow" makes
+  // the reader do the conversion themselves.
+  if (diff === 0) return `Today, ${dated}`;
+  if (diff === 1) return `Tomorrow, ${dated}`;
+  return dated;
+}
+
+/** Weekends have no bank settlement, so say so rather than letting a
+ *  reader plan around money that cannot move until Monday. */
+function isWeekend(iso: string): boolean {
+  const day = new Date(`${iso}T00:00:00Z`).getUTCDay();
+  return day === 0 || day === 6;
+}
+
+/** Bank descriptors are not names. "Stripe Payments UKGLOFOX PAYMENT"
+ *  and "TESCO PFS 3749" are what the bank sends; cleanMerchantName is
+ *  the shared tidier already used by the ledger and the drill-down. */
+function displayName(item: UpcomingPaymentRow): string {
+  const raw = (item.counterparty || '').trim();
+  if (!raw) return 'Unknown counterparty';
+  return cleanMerchantName(raw) || raw;
 }
 
 function longDay(iso: string): string {
@@ -172,6 +193,12 @@ export default function UpcomingForwardView({
   }, []);
 
   const groups = useMemo(() => data?.groups ?? [], [data]);
+  // Only label rows by account when there is more than one to confuse.
+  // A single-account user does not need a chip on every line.
+  const multiAccount = useMemo(
+    () => Object.keys(data?.accounts ?? {}).length > 1,
+    [data],
+  );
   const visibleGroups = useMemo(
     () => (expanded ? groups : groups.slice(0, 4)),
     [groups, expanded],
@@ -222,8 +249,16 @@ export default function UpcomingForwardView({
     <section className="card p-4 sm:p-5">
       <Header win={win} setWin={changeWindow} isPage={isPage} />
 
-      {/* ── The three answers, in order ─────────────────────────── */}
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+      {/* ── Next money in ────────────────────────────────────────
+          The reason people open this panel. It used to lead with three
+          30-day aggregates, one of which was a net movement figure
+          captioned "balance unavailable" — a large negative number with
+          nothing to anchor it. The next credit was somewhere down the
+          list. Lead with it instead. */}
+      <NextInBanner next={data.nextIncoming} accounts={data.accounts} />
+
+      {/* ── The window totals, secondary ─────────────────────────── */}
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-3">
         <Answer
           tone="in"
           label="Landing"
@@ -236,35 +271,36 @@ export default function UpcomingForwardView({
           value={`−${fmtGBP0(p.expectedOutgoing)}`}
           sub={`over ${win} days`}
         />
-        <div className="col-span-2 sm:col-span-1">
-          {p.balanceAvailable && p.projectedBalance !== null ? (
-            <Answer
-              tone={p.projectedBalance >= 0 ? 'neutral' : 'out'}
-              label="Left after these"
-              value={`${p.projectedBalance < 0 ? '−' : ''}${fmtGBP0(p.projectedBalance)}`}
-              sub={`from ${fmtGBP0(p.currentBalance ?? 0)} today`}
-            />
-          ) : (
-            <Answer
-              tone={p.netMovement >= 0 ? 'in' : 'out'}
-              label="Net movement"
-              value={`${p.netMovement >= 0 ? '+' : '−'}${fmtGBP0(p.netMovement)}`}
-              sub="balance unavailable"
-            />
-          )}
-        </div>
       </div>
 
-      {/* Honest note when we can't project a balance. Never invent one. */}
-      {!p.balanceAvailable && (
-        <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-slate-500">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
-            We&apos;re not showing a projected balance here, so the figure above
-            is the net movement: what these payments add up to, in or out.
-          </span>
-        </p>
-      )}
+      {/* Net, and the balance caveat, as one line rather than a tile
+          competing with the two figures that are actually solid. */}
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">
+        {p.balanceAvailable && p.projectedBalance !== null ? (
+          <>
+            That leaves{' '}
+            <strong className="font-semibold text-slate-900 tabular-nums">
+              {p.projectedBalance < 0 ? '−' : ''}
+              {fmtGBP0(p.projectedBalance)}
+            </strong>{' '}
+            from {fmtGBP0(p.currentBalance ?? 0)} today.
+          </>
+        ) : (
+          <>
+            Net{' '}
+            <strong
+              className={`font-semibold tabular-nums ${
+                p.netMovement >= 0 ? 'text-emerald-700' : 'text-rose-700'
+              }`}
+            >
+              {p.netMovement >= 0 ? '+' : '−'}
+              {fmtGBP0(p.netMovement)}
+            </strong>{' '}
+            over {win} days. This is movement, not a balance: your bank has not
+            shared one, so it does not say what you will be left with.
+          </>
+        )}
+      </p>
 
       {/* Lowest-point warning — the number that actually matters when
           money lands after it leaves. */}
@@ -315,6 +351,11 @@ export default function UpcomingForwardView({
                 <div className="flex items-baseline justify-between gap-2 px-0.5">
                   <h4 className="text-[13px] font-semibold text-slate-900">
                     {prettyDay(g.date)}
+                    {isWeekend(g.date) && (
+                      <span className="ml-1.5 font-normal text-slate-400">
+                        weekend, banks settle Monday
+                      </span>
+                    )}
                   </h4>
                   <div className="text-[11px] tabular-nums text-slate-500">
                     {g.incoming > 0 && (
@@ -331,7 +372,13 @@ export default function UpcomingForwardView({
                 </div>
                 <ul className="mt-1 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
                   {g.items.map((item) => (
-                    <ItemRow key={item.id} item={item} onOpen={() => setDetail(item)} />
+                    <ItemRow
+                      key={item.id}
+                      item={item}
+                      account={data.accounts[item.account_id]}
+                      showAccount={multiAccount}
+                      onOpen={() => setDetail(item)}
+                    />
                   ))}
                 </ul>
               </li>
@@ -453,18 +500,112 @@ function Answer({
   );
 }
 
+/** Account names come back as the bank's own string, often the company
+ *  name repeated on every account of a connection. Keep it short enough
+ *  to sit on a row without pushing the amount off screen. */
+function shortAccount(a: UpcomingAccountLabel): string {
+  const label = (a.label || '').trim();
+  const tidy = label
+    .replace(/\b(LIMITED|LTD|PLC)\b\.?/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return tidy.length > 22 ? `${tidy.slice(0, 21)}…` : tidy || a.bank;
+}
+
+// ─── next money in ─────────────────────────────────────────────────
+//
+// One banner, one question: when does money next arrive and how much.
+// Deliberately shows the contributing lines rather than a single total,
+// because a total alone cannot be checked against anything, and the
+// whole reason this panel lost trust was that its headline figures
+// could not be traced back to real payments.
+function NextInBanner({
+  next,
+  accounts,
+}: {
+  next: NextIncoming | null;
+  accounts: Record<string, UpcomingAccountLabel>;
+}) {
+  if (!next) {
+    return (
+      <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+        Nothing is due to arrive in this window.
+      </p>
+    );
+  }
+
+  const multi = Object.keys(accounts).length > 1;
+
+  return (
+    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 sm:p-3.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+          <ArrowDownLeft className="h-3 w-3" aria-hidden />
+          Next money in
+        </span>
+        <span className="text-[11px] font-medium text-emerald-800">
+          {prettyDay(next.date)}
+        </span>
+      </div>
+
+      <div className="mt-1 text-2xl font-bold tabular-nums text-emerald-800 sm:text-3xl">
+        +{fmtGBP(next.total)}
+      </div>
+
+      <ul className="mt-2 space-y-1">
+        {next.items.slice(0, 4).map((i) => (
+          <li
+            key={i.id}
+            className="flex items-baseline justify-between gap-3 text-[12px] text-emerald-900/80"
+          >
+            <span className="min-w-0 truncate">
+              {displayName(i)}
+              {multi && accounts[i.account_id] && (
+                <span className="text-emerald-900/50">
+                  {' '}
+                  · {shortAccount(accounts[i.account_id])}
+                </span>
+              )}
+            </span>
+            <span className="shrink-0 tabular-nums">
+              {i.amount_varies && <span className="text-emerald-900/50">≈ </span>}
+              {fmtGBP(i.amount)}
+            </span>
+          </li>
+        ))}
+        {next.items.length > 4 && (
+          <li className="text-[12px] text-emerald-900/60">
+            and {next.items.length - 4} more
+          </li>
+        )}
+      </ul>
+
+      {next.allPredicted && (
+        <p className="mt-2 text-[11px] leading-relaxed text-emerald-900/70">
+          Predicted from your history, not confirmed by your bank, so treat the
+          amount as an estimate.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── one upcoming item ─────────────────────────────────────────────
 function ItemRow({
   item,
+  account,
+  showAccount,
   onOpen,
 }: {
   item: UpcomingPaymentRow;
+  account?: UpcomingAccountLabel;
+  showAccount: boolean;
   onOpen: () => void;
 }) {
   const incoming = item.direction === 'incoming';
   const cert = CERTAINTY[item.certainty];
   const sign = incoming ? '+' : '−';
-  const name = item.counterparty || 'Unknown counterparty';
+  const name = displayName(item);
 
   return (
     <li>
@@ -504,6 +645,12 @@ function ItemRow({
             {item.cadence && (
               <span className="text-[11px] text-slate-500">
                 {cadenceWords(item.cadence)}
+              </span>
+            )}
+            {showAccount && account && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                <Building2 className="h-3 w-3 shrink-0" aria-hidden />
+                <span className="truncate">{shortAccount(account)}</span>
               </span>
             )}
           </span>

@@ -52,6 +52,16 @@ export interface Cadence {
  * missing row is a smaller lie than an invented one.
  */
 export function parseFrequency(raw: unknown): Cadence | null {
+  // Some banks send an object rather than the OBIE string, e.g. NatWest
+  // returns `{ frequencyType: 'MONTHLY' }` on periodic payments. Unwrap
+  // it before the string handling below; without this every such
+  // mandate fell through to the caller's monthly default, which is
+  // right for MONTHLY by luck and wrong for WEEKLY.
+  if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    const inner = obj.frequencyType ?? obj.type ?? obj.frequency;
+    return typeof inner === 'string' ? parseFrequency(inner) : null;
+  }
   if (typeof raw !== 'string' || !raw.trim()) return null;
   const f = raw.trim();
   const upper = f.toUpperCase();

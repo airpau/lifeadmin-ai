@@ -130,6 +130,32 @@ const UPCOMING_FEATURE_LABELS: Record<string, string> = {
   ACCOUNT_DIRECT_DEBITS: 'direct debits',
 };
 
+/** Where a row's money moves, so a multi-account user can tell whose
+ *  it is at a glance. Keyed by account_id. */
+export interface UpcomingAccountLabel {
+  /** Short human label, e.g. "JPG OPERATIONS LIMITED". */
+  label: string;
+  /** Institution, e.g. "Hsbcbusiness". */
+  bank: string;
+}
+
+/** The next day on which money actually ARRIVES, precomputed here.
+ *
+ *  This is the question the page exists to answer, and it was the one
+ *  thing the old layout made hardest: it led with three 30-day
+ *  aggregates and buried the next credit somewhere down a scrolling
+ *  list. Computed server-side so the widget and the full page cannot
+ *  disagree about it. */
+export interface NextIncoming {
+  date: string;
+  total: number;
+  /** Highest first. */
+  items: UpcomingPaymentRow[];
+  /** True when every contributing row is a prediction rather than
+   *  something the bank has confirmed. */
+  allPredicted: boolean;
+}
+
 export interface UpcomingApiResponse {
   days: number;
   from: string;
@@ -154,6 +180,10 @@ export interface UpcomingApiResponse {
    *  instead of implying the data is merely late. Empty in the normal
    *  case. */
   unsupportedByBank: UnsupportedBankFeature[];
+  /** account_id → label. Empty when the user has one account. */
+  accounts: Record<string, UpcomingAccountLabel>;
+  /** Null when nothing is due to arrive inside the window. */
+  nextIncoming: NextIncoming | null;
 }
 
 const CERTAINTY_BY_SOURCE: Record<UpcomingSource, UpcomingCertainty> = {
@@ -215,7 +245,7 @@ export async function GET(request: NextRequest) {
   let connQuery = supabase
     .from('bank_connections')
     .select(
-      'id, provider, status, current_balance, balance_updated_at, bank_name, unsupported_features',
+      'id, provider, status, current_balance, balance_updated_at, bank_name, unsupported_features, account_ids, account_display_names',
     )
     .eq('user_id', user.id)
     .neq('status', 'revoked');
@@ -478,6 +508,41 @@ export async function GET(request: NextRequest) {
             ? 'bank_unsupported'
             : 'no_forward_data';
 
+  // ── Account labels ───────────────────────────────────────────────
+  // bank_connections stores account_ids and account_display_names as
+  // parallel arrays. Zip them so each row can carry a chip saying which
+  // account it belongs to. Without this a user running two companies
+  // and a personal account sees Tesco next to Capital on Tap with no
+  // way to tell them apart.
+  const accounts: Record<string, UpcomingAccountLabel> = {};
+  for (const c of activeConns) {
+    const ids = Array.isArray(c.account_ids) ? (c.account_ids as string[]) : [];
+    const names = Array.isArray(c.account_display_names)
+      ? (c.account_display_names as string[])
+      : [];
+    const bank = (c.bank_name as string | null) || 'Your bank';
+    ids.forEach((id, i) => {
+      const label = (names[i] || '').trim();
+      if (id) accounts[id] = { label: label || bank, bank };
+    });
+  }
+
+  // ── Next money in ────────────────────────────────────────────────
+  // The first day in the window that has any incoming row at all.
+  const nextIncomingGroup = groups.find((g) => g.incoming > 0) ?? null;
+  const nextIncoming: NextIncoming | null = nextIncomingGroup
+    ? {
+        date: nextIncomingGroup.date,
+        total: round2(nextIncomingGroup.incoming),
+        items: nextIncomingGroup.items
+          .filter((i) => i.direction === 'incoming')
+          .sort((a, b) => b.amount - a.amount),
+        allPredicted: nextIncomingGroup.items
+          .filter((i) => i.direction === 'incoming')
+          .every((i) => i.certainty === 'predicted'),
+      }
+    : null;
+
   const body: UpcomingApiResponse = {
     days,
     from,
@@ -495,6 +560,8 @@ export async function GET(request: NextRequest) {
     hasUpcomingCapableBank,
     emptyReason,
     unsupportedByBank,
+    accounts,
+    nextIncoming,
   };
 
   return NextResponse.json(body);

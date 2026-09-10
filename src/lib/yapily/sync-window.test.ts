@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {
   computeTransactionWindow,
   FULL_HISTORY_DAYS,
+  FUTURE_HORIZON_DAYS,
   INCREMENTAL_OVERLAP_DAYS,
 } from './sync-window.ts';
 
@@ -24,12 +25,35 @@ describe('computeTransactionWindow', () => {
     );
   });
 
-  it('ends tomorrow, not today', () => {
-    // Banks emit future-dated rows (HSBC returns scheduled payments as
-    // ordinary transactions dated on the due date). An upper bound of
-    // "now" would silently drop them.
+  it('reaches a fortnight ahead, not one day', () => {
+    // Banks return scheduled payments as ordinary rows dated on the day
+    // they are DUE, so the upper bound IS the forward-visibility dial.
+    // At `now + 1 day` a payment due Friday was never requested on a
+    // Wednesday, which is what made the Money Hub lose "what lands on
+    // the next working day".
     const w = computeTransactionWindow(daysBefore(1), NOW);
-    assert.equal(w.before, new Date(NOW.getTime() + DAY).toISOString());
+    assert.equal(
+      w.before,
+      new Date(NOW.getTime() + FUTURE_HORIZON_DAYS * DAY).toISOString(),
+    );
+  });
+
+  it('uses the same forward bound on a full history pull', () => {
+    const w = computeTransactionWindow(null, NOW);
+    assert.equal(
+      w.before,
+      new Date(NOW.getTime() + FUTURE_HORIZON_DAYS * DAY).toISOString(),
+    );
+  });
+
+  it('still clamps a future watermark to now so the window cannot invert', () => {
+    // A stored row dated next Tuesday means we have everything to date;
+    // resuming from today is correct. With a 14-day forward bound this
+    // matters more, because future watermarks are now the common case.
+    const w = computeTransactionWindow(new Date(NOW.getTime() + 5 * DAY), NOW);
+    assert.equal(w.mode, 'incremental');
+    assert.ok(Date.parse(w.from) < NOW.getTime());
+    assert.ok(Date.parse(w.before) > Date.parse(w.from));
   });
 
   it('starts one overlap period before the newest stored transaction', () => {
@@ -44,10 +68,16 @@ describe('computeTransactionWindow', () => {
 
   it('makes the common case a small window, not 90 days', () => {
     // The whole point: a connection synced four hours ago should ask
-    // for about a week, not re-pull a quarter of a year.
+    // for a short window, not re-pull a quarter of a year. The span is
+    // the LOOKBACK plus the forward horizon, so budget for both — what
+    // matters is that it stays nowhere near FULL_HISTORY_DAYS.
     const w = computeTransactionWindow(daysBefore(0.2), NOW);
     assert.equal(w.mode, 'incremental');
-    assert.ok(w.spanDays <= INCREMENTAL_OVERLAP_DAYS + 2, `span was ${w.spanDays} days`);
+    assert.ok(
+      w.spanDays <= INCREMENTAL_OVERLAP_DAYS + FUTURE_HORIZON_DAYS + 2,
+      `span was ${w.spanDays} days`,
+    );
+    assert.ok(w.spanDays < FULL_HISTORY_DAYS, `span was ${w.spanDays} days`);
   });
 
   it('overlaps far enough to catch a late-settling card payment', () => {
