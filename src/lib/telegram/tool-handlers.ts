@@ -5389,6 +5389,13 @@ async function getExpectedBills(
     return { text: `Unable to load expected bills: ${billsRes.error.message}` };
   }
 
+  // A failed manual-payments read is indistinguishable from "no manual
+  // payments", which would silently re-list a bill the user already told
+  // the bot was paid. Log it rather than letting it pass as an empty set.
+  if (manualRes.error) {
+    console.error('expected bills: failed to read manual_bill_payments:', manualRes.error.message);
+  }
+
   const bills = (billsRes.data ?? []).filter(
     (b: any) => b.occurrence_count >= 2 && b.occurrence_count <= 30,
   );
