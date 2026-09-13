@@ -14,8 +14,8 @@
  * findings on motor-finance commissions). Worth its own dedicated
  * Perplexity prompt + storage row + B2B webhook fan-out.
  *
- * Schedule: Tuesdays 06:00 UTC (offset from consumer-law-news daily
- * runs so we don't double-burn Perplexity quota).
+ * Schedule: Tuesdays 06:00 UTC (offset a day from the consumer-law-news
+ * Monday run so we don't double-burn Perplexity quota).
  *
  * Output:
  *   - Stores material rulings in consumer_law_updates with source='court'
