@@ -174,10 +174,13 @@ export async function GET(request: NextRequest) {
     citations,
   }));
 
+  // The table is the audit trail; the founder digest is the deliverable.
+  // A persistence failure must not cost us the digest we have already
+  // paid Perplexity for — case-law-monitor, which writes to this same
+  // table, already warns and carries on. Match it.
   const { error: insertErr } = await supabase.from('consumer_law_updates').insert(rows);
   if (insertErr) {
     console.error('[consumer-law-news] insert failed', insertErr.message);
-    return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
   // Push high+medium importance to founder Telegram. Low-importance
@@ -190,7 +193,9 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    inserted: rows.length,
+    inserted: insertErr ? 0 : rows.length,
+    persisted: !insertErr,
+    persist_error: insertErr?.message ?? null,
     surfaced_to_telegram: surfaceable.length,
   });
 }
