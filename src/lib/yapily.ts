@@ -1316,8 +1316,6 @@ export async function triageConsentFailure(
   if (verdict.action === 'extendable') {
     try {
       await extendConsent(consentId!);
-      console.log(`${logPrefix} consent=${consentId} was ${verdict.status} — extended successfully`);
-      return 'recovered';
     } catch (extendErr) {
       console.error(
         `${logPrefix} consent=${consentId} status=${verdict.status} — extend failed:`,
@@ -1325,6 +1323,44 @@ export async function triageConsentFailure(
       );
       return 'fatal';
     }
+
+    // ── Did the extend actually FIX anything? ────────────────────────
+    //
+    // A 200 from /extend is not the same as a working consent, and
+    // conflating the two cost three weeks of silence on a live account.
+    //
+    // POST /consents/{id}/extend moves the consent's EXPIRY date. That
+    // is the 90-day FCA PS21/19 reconfirmation, and for that case it is
+    // exactly right. It cannot restore an authorisation the BANK has
+    // torn up, which is the other thing AWAITING_RE_AUTHORIZATION means
+    // — and the only fix for that one is the customer re-authenticating
+    // at their bank.
+    //
+    // Both arrive here as the same status, so the extend alone cannot
+    // tell them apart. Re-reading the consent can: a genuine
+    // reconfirmation leaves it live, while a bank-side teardown leaves
+    // it still asking for re-authorisation.
+    //
+    // Without this check the caller was told 'recovered', which
+    // deliberately does NOT count a consent failure, so the next run
+    // hit the identical 403 and extended again. On one HSBC Business
+    // connection that ran 23 times out of 23 failures between 24 Aug
+    // and 13 Sep 2026: every failure "recovered", not one recovery
+    // real, and the user was never once asked to reconnect.
+    const after = await resolveConsentState(consentId);
+    if (after.action === 'extendable') {
+      console.error(
+        `${logPrefix} consent=${consentId} is STILL ${after.status} after a successful extend — ` +
+          `the bank wants the customer to re-authorise and extending cannot deliver that. ` +
+          `Treating as fatal so the connection is flagged for reconnection instead of looping.`,
+      );
+      return 'fatal';
+    }
+
+    console.log(
+      `${logPrefix} consent=${consentId} was ${verdict.status} — extended, and now reads ${after.status ?? 'unknown'}`,
+    );
+    return 'recovered';
   }
 
   if (verdict.action === 'healthy') {
