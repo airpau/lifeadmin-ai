@@ -92,6 +92,10 @@ interface BankConnection {
   /** Opt-in flag for refreshing current_balance / available_balance.
    *  Off by default — see src/lib/yapily/balance-sync.ts for the cost
    *  reasoning. Added 20260823120000_bank_balance_sync_opt_in.sql. */
+  /** Yapily's 90-day PS21/19 reconfirmation deadline. Read by
+   *  triageConsentFailure to tell a genuine reconfirmation from a
+   *  bank-side teardown — they share a consent status. */
+  consent_reconfirm_by: string | null;
   balance_sync_enabled?: boolean | null;
 }
 
@@ -616,6 +620,7 @@ export async function GET(request: NextRequest) {
               err,
               connection.yapily_consent_id,
               `[bank-sync] conn=${connection.id}`,
+              { reconfirmBy: connection.consent_reconfirm_by },
             );
             if (verdict === 'fatal') {
               // True consent/token expiry — flag so we flip status='expired'
