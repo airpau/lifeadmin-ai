@@ -49,6 +49,10 @@ interface BankConnection {
   bank_name: string | null;
   status: string;
   last_synced_at: string | null;
+  /** Yapily's 90-day PS21/19 reconfirmation deadline. Read by
+   *  triageConsentFailure to tell a genuine reconfirmation from a
+   *  bank-side teardown — they share a consent status. */
+  consent_reconfirm_by: string | null;
   last_manual_sync_at: string | null;
 }
 
@@ -464,6 +468,7 @@ export async function POST(request: NextRequest) {
             err,
             conn.yapily_consent_id,
             `[sync-now] conn=${conn.id}`,
+            { reconfirmBy: conn.consent_reconfirm_by },
           );
           if (verdict === 'fatal') {
             consentExpiryDetected = true;

@@ -1270,10 +1270,21 @@ export type ConsentFailureVerdict =
  *   4. Only if we have no consentId (legacy rows) or the lookup failed
  *      do we fall back to the old message-substring heuristic.
  */
+/** How close to the reconfirmation deadline counts as "reconfirmation is
+ *  actually due". Comfortably wider than any sync cadence, so a genuine
+ *  90-day reconfirmation is never mistaken for a bank teardown. */
+export const RECONFIRM_DUE_WINDOW_DAYS = 14;
+
 export async function triageConsentFailure(
   err: unknown,
   consentId: string | null | undefined,
   logPrefix = '[yapily.triage]',
+  ctx: {
+    /** bank_connections.consent_reconfirm_by. Lets us tell a genuine
+     *  90-day reconfirmation from a bank-side teardown, which arrive as
+     *  the same consent status but need opposite responses. */
+    reconfirmBy?: string | null;
+  } = {},
 ): Promise<ConsentFailureVerdict> {
   const status = (err as { status?: number } | null)?.status;
 
@@ -1314,6 +1325,40 @@ export async function triageConsentFailure(
   }
 
   if (verdict.action === 'extendable') {
+    // ── Is this actually a reconfirmation? ──────────────────────────
+    //
+    // AWAITING_RE_AUTHORIZATION carries two completely different
+    // meanings and Yapily does not distinguish them:
+    //
+    //   a) the 90-day FCA PS21/19 reconfirmation is due. POST /extend
+    //      is exactly right and fixes it.
+    //   b) the BANK invalidated the authorisation. Only the customer
+    //      re-authenticating fixes it, and /extend cannot.
+    //
+    // We first tried to tell them apart by re-reading the consent after
+    // extending, on the assumption that a teardown would still read as
+    // awaiting re-authorisation. It does not: measured on production
+    // 2026-09-14, the extend flips the status to healthy while the bank
+    // side stays dead, so Yapily then reports a perfectly good consent
+    // that 403s on every data call.
+    //
+    // The reconfirmation DEADLINE is the one thing that genuinely
+    // differs. If it is months away this was never case (a), so do not
+    // dress a dead authorisation up as a recovery.
+    const reconfirmAt = ctx.reconfirmBy ? Date.parse(ctx.reconfirmBy) : NaN;
+    const reconfirmDue =
+      Number.isNaN(reconfirmAt) ||
+      reconfirmAt - Date.now() < RECONFIRM_DUE_WINDOW_DAYS * 86_400_000;
+
+    if (!reconfirmDue) {
+      console.error(
+        `${logPrefix} consent=${consentId} reads ${verdict.status} but reconfirmation is not due until ` +
+          `${ctx.reconfirmBy} — this is a bank-side teardown, not a reconfirmation. ` +
+          `Extending would report a false recovery, so treating as fatal: the customer must re-authorise.`,
+      );
+      return 'fatal';
+    }
+
     try {
       await extendConsent(consentId!);
     } catch (extendErr) {
