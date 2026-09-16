@@ -85,6 +85,9 @@ async function fetchCaseLaw(): Promise<CaseLawItem[]> {
     prompt: PROMPT,
     parse: 'json_array',
     maxTokens: 2000,
+    // maxDuration on this route is 90s, so the client must give up well
+    // inside that or Vercel kills us with no response body at all.
+    timeoutMs: 70_000,
     // A ruling persisted to consumer_law_updates and fanned out to B2B
     // subscribers as statute.updated must come from the web, not from
     // the model's memory. An ungrounded answer throws and is handled by

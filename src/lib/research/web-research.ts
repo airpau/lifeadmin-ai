@@ -104,24 +104,73 @@ export const DEFAULT_RESEARCH_MODEL = 'claude-sonnet-4-6';
  * routes are green; by then it is a one-line edit in this file, which is
  * the entire point of having this file.
  */
-const WEB_SEARCH_TOOL_TYPE = 'web_search_20250305';
+const WEB_SEARCH_BASIC = 'web_search_20250305';
+const WEB_SEARCH_FILTERED = 'web_search_20260209';
 
 /**
- * Default ceiling on searches per call. Perplexity Sonar did its own
- * retrieval with no knob; this is the equivalent spend control. Five is
- * generous for the single-question prompts in this codebase.
+ * Which web-search tool version to use.
+ *
+ * `filtered` (default) uses `web_search_20260209`, where Claude writes and
+ * runs code that filters search results BEFORE they enter the context
+ * window. That matters because the measurement above showed ~77% of the cost
+ * of a research call is input tokens from raw search results, not the search
+ * fee. Filtering attacks the expensive half.
+ *
+ * On that version `allowed_callers` defaults to code execution, so the API
+ * provisions it automatically — we deliberately do not pass the field, so a
+ * future change to the default identifier cannot 400 us.
+ *
+ * `WEB_RESEARCH_TOOL=basic` flips back to the original direct-call tool with
+ * no redeploy. This exists because dynamic filtering changes the execution
+ * model, not just retrieval, and it has not been exercised against every
+ * prompt in this codebase. If something starts behaving oddly, flip the env
+ * var first and diagnose second.
  */
-const DEFAULT_MAX_SEARCHES = 5;
+function searchToolType(): string {
+  return (process.env.WEB_RESEARCH_TOOL || '').toLowerCase() === 'basic'
+    ? WEB_SEARCH_BASIC
+    : WEB_SEARCH_FILTERED;
+}
 
 /**
- * Default timeout, per HTTP request (not per `researchWeb` call — a
- * paused turn may span several requests). Previously this ranged from 5s
- * to 60s to absent depending on which file you landed in. 30s is the
- * compromise: long enough for a multi-search grounded answer, short
- * enough that a stalled upstream does not eat a whole cron's
- * maxDuration.
+ * A 400 that names the tool, its callers, or code execution means this model
+ * or account cannot do dynamic filtering. Worth one silent retry on the basic
+ * tool rather than failing a compliance cron over a capability difference.
  */
-const DEFAULT_TIMEOUT_MS = 30_000;
+function looksLikeToolCapability400(status: number | null, body: string | null): boolean {
+  if (status !== 400 || !body) return false;
+  return /allowed_callers|code_execution|web_search_2026|programmatic tool/i.test(body);
+}
+
+/**
+ * Default ceiling on searches per call — the main spend dial.
+ *
+ * Perplexity Sonar did its own retrieval with no knob and charged a flat
+ * $0.005. This is not that. Measured 2026-09-16 across 20 real calls:
+ * ~£0.074 per call, of which only ~23% was the $10/1,000 search fee. The
+ * other ~77% was INPUT TOKENS — 21,312 per call on average — because search
+ * results land in the context window.
+ *
+ * So the lever is how much gets retrieved, not just how many searches run.
+ * Three is enough for the single-question prompts here; dynamic filtering
+ * (below) attacks the token half.
+ */
+const DEFAULT_MAX_SEARCHES = 3;
+
+/**
+ * Default timeout, per HTTP request (not per `researchWeb` call — a paused
+ * turn may span several requests).
+ *
+ * Was 30s, carried over from Perplexity, which answered in 2-5s. That
+ * assumption does not hold here: a grounded multi-search call runs the
+ * searches server-side and feeds the results back through the model before
+ * replying. Measured in production 2026-09-16: 25-40s is normal, and
+ * consumer-law-news aborted at 31s on a call that was working fine.
+ *
+ * 90s with the search cap below. Callers on a tight `maxDuration` should pass
+ * their own `timeoutMs` — the client cannot see the route's budget.
+ */
+const DEFAULT_TIMEOUT_MS = 90_000;
 
 /**
  * How many times we will resume a turn the API paused with
@@ -426,8 +475,6 @@ interface ShapedTurn {
  * that were looked at and rejected.
  */
 function shapeTurn(data: any): ShapedTurn {
-  const blocks: any[] = Array.isArray(data?.content) ? data.content : [];
-
   let content = '';
   const citations: ResearchCitation[] = [];
   const sources: ResearchCitation[] = [];
@@ -435,15 +482,32 @@ function shapeTurn(data: any): ShapedTurn {
   const sourceSeen = new Set<string>();
   const searchErrors: string[] = [];
 
-  for (const block of blocks) {
-    if (block?.type === 'text') {
+  // Walks blocks RECURSIVELY.
+  //
+  // With dynamic filtering (web_search_20260209+) the searches run from
+  // inside code execution, and the server_tool_use / web_search_tool_result
+  // pairs come back NESTED inside the code-execution result blocks rather
+  // than at the top level of `content`. A flat loop finds the text but not
+  // the search results, so `sources` comes back empty — which, for the
+  // JSON-only prompts that also produce no citations, would make `grounded`
+  // false on a perfectly good answer. Exactly the bug this file just fixed,
+  // reintroduced by the execution-model change.
+  //
+  // Depth-capped because this walks untrusted provider JSON.
+  const visit = (block: any, depth: number): void => {
+    if (!block || typeof block !== 'object' || depth > 6) return;
+
+    if (block.type === 'text') {
       content += block.text ?? '';
       for (const c of block.citations ?? []) {
         if (!c?.url || citedSeen.has(c.url)) continue;
         citedSeen.add(c.url);
         citations.push(c.title ? { url: c.url, title: c.title } : { url: c.url });
       }
-    } else if (block?.type === 'web_search_tool_result') {
+      return;
+    }
+
+    if (block.type === 'web_search_tool_result') {
       // On a tool error `content` is a single error OBJECT, not a list.
       const inner = block.content;
       if (Array.isArray(inner)) {
@@ -455,8 +519,18 @@ function shapeTurn(data: any): ShapedTurn {
       } else if (inner?.type === 'web_search_tool_result_error') {
         searchErrors.push(String(inner.error_code ?? 'unknown'));
       }
+      return;
     }
-  }
+
+    // Any other block that carries nested content (code execution results,
+    // future wrappers) — descend.
+    if (Array.isArray(block.content)) {
+      for (const child of block.content) visit(child, depth + 1);
+    }
+  };
+
+  const blocks: any[] = Array.isArray(data?.content) ? data.content : [];
+  for (const block of blocks) visit(block, 0);
 
   return {
     content,
@@ -590,9 +664,11 @@ export async function researchWeb<T = unknown>(
    * ceiling this option is supposed to be. So it is decremented by what
    * has already been spent.
    */
+  let toolType = searchToolType();
+
   const post = async (remainingSearches: number): Promise<any> => {
     const tool: Record<string, unknown> = {
-      type: WEB_SEARCH_TOOL_TYPE,
+      type: toolType,
       name: 'web_search',
       max_uses: Math.max(1, remainingSearches),
     };
@@ -657,7 +733,26 @@ export async function researchWeb<T = unknown>(
   const turns: any[] = [];
   let spentSearches = 0;
 
-  let data = await post(maxSearches);
+  let data;
+  try {
+    data = await post(maxSearches);
+  } catch (err) {
+    // Downgrade once, then let any second failure propagate normally.
+    if (
+      err instanceof WebResearchError &&
+      toolType === WEB_SEARCH_FILTERED &&
+      looksLikeToolCapability400(err.status, err.body)
+    ) {
+      console.warn(
+        '[web-research] dynamic filtering unavailable, retrying on the basic search tool:',
+        err.message,
+      );
+      toolType = WEB_SEARCH_BASIC;
+      data = await post(maxSearches);
+    } else {
+      throw err;
+    }
+  }
   turns.push(data);
   spentSearches += Number(data?.usage?.server_tool_use?.web_search_requests ?? 0);
 
@@ -720,8 +815,27 @@ export async function researchWeb<T = unknown>(
     parsed = extractJsonArray<unknown>(shaped.content) as unknown as T | null;
   }
 
+  // Grounded means "this answer came from retrieval", NOT "the model wrote
+  // prose with citation markers in it".
+  //
+  // The first version required `citations.length > 0` and it was wrong.
+  // Citations attach to TEXT SPANS in the model's prose. Almost every caller
+  // here ends its prompt with a variant of "Return ONLY a JSON array, no
+  // preamble" — so there is no prose, so there are no citation objects,
+  // however well retrieval went.
+  //
+  // Measured in production 2026-09-16: case-law-monitor ran 4 searches with
+  // zero search errors and produced a full correct answer, and
+  // `requireGrounding` rejected it on citations=0. The route 500'd on a good
+  // result.
+  //
+  // `sources` (every result retrieval actually returned) is the honest signal
+  // in JSON mode. Either is sufficient. searches>0 with no errors is still
+  // required, so a model answering purely from memory is still caught.
   const grounded =
-    shaped.searches > 0 && shaped.searchErrors.length === 0 && shaped.citations.length > 0;
+    shaped.searches > 0 &&
+    shaped.searchErrors.length === 0 &&
+    (shaped.citations.length > 0 || shaped.sources.length > 0);
 
   if (requireGrounding) {
     if (truncated) {

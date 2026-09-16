@@ -66,6 +66,9 @@ async function fetchUpdates(): Promise<{ items: LawUpdate[]; citations: Research
     prompt: PROMPT,
     parse: 'json_array',
     maxTokens: 2000,
+    // maxDuration on this route is 90s, so the client must give up well
+    // inside that or Vercel kills us with no response body at all.
+    timeoutMs: 70_000,
     // These rows are persisted as fact and surfaced to the founder, so
     // an ungrounded (parametric-memory) answer must fail the run rather
     // than be written to consumer_law_updates. The throw lands in the
