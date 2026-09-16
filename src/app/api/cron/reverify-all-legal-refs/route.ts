@@ -97,6 +97,24 @@ const MAX_REFS_PER_RUN =
 const BUDGET_MS = 240_000;
 
 const RESEARCH_MODEL = 'claude-sonnet-4-6';
+/**
+ * Nominal per-call cost, inherited from Perplexity's flat $0.005/query.
+ *
+ * It is NOT what a call costs any more and must not be read as such. The
+ * 2026-09-16 run reported cost_gbp 0.025 for five refs while the real spend
+ * recorded in api_cost_ledger for those same five calls was £0.83 — a factor
+ * of 33 out, in a field whose entire job is to report cost.
+ *
+ * It is kept only because existing legal_ref_verifications rows carry it and
+ * changing the historical unit mid-table would make the column meaningless.
+ * The response now reports it as `nominal_cost_gbp` so nobody mistakes it for
+ * real spend, and points at the ledger, which measures actual tokens and
+ * search fees per call:
+ *
+ *   select sum(cost_gbp) from api_cost_ledger
+ *   where metadata->>'mode' = 'web-research'
+ *     and endpoint = '/api/cron/reverify-all-legal-refs';
+ */
 const COST_PER_CALL_GBP = 0.005;
 
 /**
@@ -390,7 +408,7 @@ export async function GET(request: NextRequest) {
     // Echoed so the cap actually in force (and the £/run tradeoff it implies)
     // is visible in the cron logs next to cost_gbp.
     max_refs_per_run: MAX_REFS_PER_RUN,
-    cost_gbp: Number(totalCost.toFixed(4)),
+    nominal_cost_gbp: Number(totalCost.toFixed(4)),
     errors,
   });
 }
