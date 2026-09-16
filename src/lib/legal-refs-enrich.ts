@@ -14,11 +14,12 @@
  *   need your eye" empty state on the admin dashboard.
  *
  * Cost guard: each call performs at most one HTTP fetch (+ optional one
- * Perplexity sonar request). Fire-and-forget callers must `.catch(() => {})`
+ * web-research request). Fire-and-forget callers must `.catch(() => {})`
  * so a failed enrichment never breaks the parent insert flow.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { tryResearchWeb } from '@/lib/research/web-research';
 
 const FETCH_TIMEOUT_MS = 5000;
 const MAX_BODY_BYTES = 1_000_000; // 1MB
@@ -194,35 +195,23 @@ function scoreRisk(opts: {
   return { score: level, reasons };
 }
 
+/**
+ * One-sentence AI sanity check on a proposed reference change.
+ *
+ * Fail-soft: a missing API key, a transport failure or an empty answer
+ * all come back as `null`, and `enrichRow` simply persists a null
+ * `ai_summary`. `tryResearchWeb` never throws.
+ */
 async function perplexitySummary(prompt: string): Promise<string | null> {
-  const key = process.env.PERPLEXITY_API_KEY;
-  if (!key) return null;
-  try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are an evidence-led UK legal-reference reviewer. Answer in 1-2 sentences. NEVER invent law. If unsure, say so.',
-          },
-          { role: 'user', content: prompt },
-        ],
-      }),
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    return data.choices?.[0]?.message?.content?.trim() ?? null;
-  } catch {
-    return null;
-  }
+  const res = await tryResearchWeb({
+    prompt,
+    system:
+      'You are an evidence-led UK legal-reference reviewer. Answer in 1-2 sentences. NEVER invent law. If unsure, say so.',
+    maxTokens: 300,
+    timeoutMs: 20_000,
+    endpoint: 'lib/legal-refs-enrich',
+  });
+  return res?.content || null;
 }
 
 /**

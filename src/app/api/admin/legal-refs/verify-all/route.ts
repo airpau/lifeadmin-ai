@@ -5,6 +5,8 @@
  * runs each through the same logic the per-id `/verify` endpoint uses,
  * in batches of 25 with 200 ms gaps between calls.
  *
+ * Research goes through src/lib/research/web-research.ts.
+ *
  * Returns a JSON summary (counts + per-id results) at the end. We chose
  * a single final response over streaming because Vercel's serverless
  * boundary makes streaming JSON-lines fiddly to consume from the admin
@@ -16,13 +18,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
-import { logPerplexityCall } from '@/lib/cost-ledger';
 import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
+import { tryResearchWeb } from '@/lib/research/web-research';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 800;
 
-const PERPLEXITY_MODEL = 'sonar-pro';
 const BATCH = 25;
 const INTER_CALL_GAP_MS = 200;
 
@@ -59,6 +60,28 @@ interface PerplexityVerdict {
   notes: string;
 }
 
+/**
+ * CITATION SOURCE RULE — unchanged from the previous provider. The whole
+ * value of this call is that the model returns null rather than fabricate
+ * a primary citation.
+ */
+const SYSTEM_PROMPT = [
+  'You are a UK legal-citation verification assistant. Return STRICT JSON only — no markdown, no commentary. If unsure, set confidence to "low" and explain in notes.',
+  '',
+  'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
+  'authorities. Acceptable sources: legislation.gov.uk, gov.uk and its',
+  'subdomains (.fca.org.uk, .ofcom.org.uk, .ofgem.gov.uk, etc.),',
+  'financial-ombudsman.org.uk, parliament.uk, bailii.org, judiciary.uk,',
+  'supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
+  '',
+  'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites,',
+  'news sites, law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or',
+  'consumer-rights aggregators. They are commentary, not authority.',
+  '',
+  'If the only available source is a trade association or commentary site,',
+  'return null for current_url rather than fabricating a primary citation.',
+].join('\n');
+
 function buildPrompt(ref: LegalRefRow): string {
   const yearMatch = ref.created_at?.match(/^(\d{4})/);
   const year = yearMatch ? yearMatch[1] : 'unknown';
@@ -77,56 +100,36 @@ function buildPrompt(ref: LegalRefRow): string {
   ].join(' ');
 }
 
-async function askPerplexity(prompt: string): Promise<PerplexityVerdict | null> {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: PERPLEXITY_MODEL,
-        messages: [
-          { role: 'system', content: [
-              'You are a UK legal-citation verification assistant. Return STRICT JSON only — no markdown, no commentary. If unsure, set confidence to "low" and explain in notes.',
-              '',
-              'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
-              'authorities. Acceptable sources: legislation.gov.uk, gov.uk and its',
-              'subdomains (.fca.org.uk, .ofcom.org.uk, .ofgem.gov.uk, etc.),',
-              'financial-ombudsman.org.uk, parliament.uk, bailii.org, judiciary.uk,',
-              'supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
-              '',
-              'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites,',
-              'news sites, law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or',
-              'consumer-rights aggregators. They are commentary, not authority.',
-              '',
-              'If the only available source is a trade association or commentary site,',
-              'return null for current_url rather than fabricating a primary citation.',
-            ].join('\n') },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 500,
-        temperature: 0.1,
-      }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const content: string = data?.choices?.[0]?.message?.content || '';
-    const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]);
-    const conf = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low' ? parsed.confidence : 'low';
-    return {
-      valid: !!parsed.valid,
-      current_url: typeof parsed.current_url === 'string' ? parsed.current_url : null,
-      superseded_by: typeof parsed.superseded_by === 'string' ? parsed.superseded_by : null,
-      confidence: conf,
-      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
-    };
-  } catch {
-    return null;
-  }
+async function askPerplexity(
+  prompt: string,
+  userId: string | null,
+): Promise<PerplexityVerdict | null> {
+  const res = await tryResearchWeb<any>({
+    prompt,
+    system: SYSTEM_PROMPT,
+    parse: 'json_object',
+    maxTokens: 500,
+    temperature: 0.1,
+    // These verdicts are written to legal_references and to the audit
+    // trail. An answer from the model's memory rather than from the live
+    // web is exactly what the CITATION SOURCE RULE exists to prevent, so
+    // an ungrounded response throws inside the client — tryResearchWeb
+    // turns that into null, which lands in the existing error branch.
+    requireGrounding: true,
+    endpoint: '/api/admin/legal-refs/verify-all',
+    userId,
+    onError: (e) => console.error('[legal-refs/verify-all] research error:', e.message),
+  });
+  if (!res || !res.parsed) return null;
+  const parsed = res.parsed;
+  const conf = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low' ? parsed.confidence : 'low';
+  return {
+    valid: !!parsed.valid,
+    current_url: typeof parsed.current_url === 'string' ? parsed.current_url : null,
+    superseded_by: typeof parsed.superseded_by === 'string' ? parsed.superseded_by : null,
+    confidence: conf,
+    notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+  };
 }
 
 function parseSuperseded(s: string): { law_name: string; url: string | null } {
@@ -177,18 +180,12 @@ export async function POST(_request: NextRequest) {
   for (let i = 0; i < refs.length; i += BATCH) {
     const chunk = refs.slice(i, i + BATCH);
     for (const ref of chunk) {
-      const verdict = await askPerplexity(buildPrompt(ref as LegalRefRow));
+      const verdict = await askPerplexity(buildPrompt(ref as LegalRefRow), userId);
       if (!verdict) {
         counts.error += 1;
         perId.push({ id: ref.id, status: 'error', auto_corrected: false });
         continue;
       }
-      logPerplexityCall({
-        model: PERPLEXITY_MODEL,
-        endpoint: '/api/admin/legal-refs/verify-all',
-        userId,
-        metadata: { legal_reference_id: ref.id },
-      });
 
       let status = deriveStatus(verdict);
       const notes = verdict.superseded_by
@@ -242,10 +239,12 @@ export async function POST(_request: NextRequest) {
 
       await admin.from('legal_references').update(update).eq('id', ref.id);
 
-      // PR γ — audit-trail row.
+      // PR γ — audit-trail row. The `perplexity_response` COLUMN name is
+      // unchanged (existing rows and downstream queries key off it); only
+      // the provenance label value moves to the new provider.
       void admin.from('legal_ref_verifications').insert({
         ref_id: ref.id,
-        verifier: 'perplexity-sonar-pro',
+        verifier: 'claude-web-search',
         triggered_by: userId ? 'manual-admin' : 'unknown',
         before_status: (ref as any).verification_status ?? null,
         after_status: status,

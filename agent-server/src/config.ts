@@ -39,6 +39,7 @@ function requireEnv(key: string, envKey?: string): string {
 
 function loadConfig(): Config {
   return {
+    // Also the key the web-research tool uses (agent-server/src/lib/web-research.ts).
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_AGENTS_API_KEY || requireEnv('ANTHROPIC_API_KEY'),
     ANTHROPIC_AGENTS_API_KEY: process.env.ANTHROPIC_AGENTS_API_KEY || undefined,
     SUPABASE_URL: requireEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'),
@@ -50,6 +51,8 @@ function loadConfig(): Config {
     STRIPE_SECRET_KEY: requireEnv('STRIPE_SECRET_KEY'),
     CRON_SECRET: requireEnv('CRON_SECRET'),
     FAL_KEY: process.env.FAL_KEY || undefined,
+    // Retained until the last Perplexity call site is gone; nothing in
+    // agent-server reads it any more.
     PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || undefined,
     IPAPI_KEY: process.env.IPAPI_KEY || undefined,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN || undefined,

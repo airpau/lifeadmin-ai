@@ -19,6 +19,9 @@
  *   claude-3-5-sonnet (legacy)   : input $3.00,  output $15.00
  *   claude-haiku-4-5             : input $1.00,  output $5.00
  *
+ * Anthropic web search (server tool):
+ *   $10.00 per 1,000 searches, billed ON TOP of normal token cost.
+ *
  * Perplexity prices:
  *   sonar-pro             : flat $0.005 / query (covers small reasoning calls)
  *   sonar-deep-research   : flat $0.01 / query
@@ -111,6 +114,70 @@ export function logAnthropicCall(args: {
   });
 }
 
+/**
+ * Cost of one Anthropic `web_search` server-tool invocation, in USD.
+ * Published April 2026 at $10.00 per 1,000 searches.
+ */
+const WEB_SEARCH_USD_PER_CALL = 0.01;
+
+/**
+ * Log a grounded web-research call made through
+ * `src/lib/research/web-research.ts`.
+ *
+ * Cost is token cost plus the per-search server-tool fee. A call that
+ * performed no searches (the model answered from its own knowledge, or
+ * the tool errored) is billed on tokens alone, which is why `searches`
+ * is recorded from the response rather than assumed.
+ *
+ * Provider is recorded as 'anthropic' so the billing page rolls these up
+ * with the rest of the Anthropic spend. The `mode: 'web-research'`
+ * metadata key is what distinguishes them:
+ *
+ *   select * from api_cost_ledger where metadata->>'mode' = 'web-research';
+ */
+export function logWebResearchCall(args: {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  searches: number;
+  endpoint?: string;
+  userId?: string | null;
+  metadata?: Record<string, unknown>;
+}): void {
+  const { input, output } = priceForAnthropic(args.model);
+  const tokenUsd =
+    (args.inputTokens / 1_000_000) * input + (args.outputTokens / 1_000_000) * output;
+  const searchUsd = Math.max(0, args.searches) * WEB_SEARCH_USD_PER_CALL;
+  const gbp = (tokenUsd + searchUsd) * USD_TO_GBP;
+
+  // `.catch` as well as the `void`: insertRow swallows internally today,
+  // but this is a floating promise resolved AFTER researchWeb has
+  // returned, so a future edit that lets it reject would surface as an
+  // unhandled rejection that no caller's try/catch can reach.
+  void insertRow({
+    provider: 'anthropic',
+    model: args.model,
+    endpoint: args.endpoint ?? null,
+    user_id: args.userId ?? null,
+    input_tokens: args.inputTokens,
+    output_tokens: args.outputTokens,
+    cost_gbp: gbp,
+    metadata: {
+      mode: 'web-research',
+      searches: args.searches,
+      search_cost_gbp: Number((searchUsd * USD_TO_GBP).toFixed(6)),
+      ...(args.metadata || {}),
+    },
+  }).catch(() => {});
+}
+
+/**
+ * @deprecated No call sites remain as of 2026-09-16 — all web research
+ * moved to `logWebResearchCall`. Kept so historical rows keep their
+ * provider label and so the migration can be reverted call site by call
+ * site without a second edit here. Delete once you drop the
+ * `PERPLEXITY_API_KEY` env var.
+ */
 export function logPerplexityCall(args: {
   model: string;
   endpoint?: string;

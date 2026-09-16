@@ -10,10 +10,10 @@
  *     and which are still fresh. Used to decide whether we need to
  *     refresh-or-substitute before calling the LLM.
  *
- *  2. `refreshSingleRef(supabase, refId)` — synchronous Perplexity call
- *     hard-capped to 5 seconds. If it returns in time, we update the
- *     row and use the refreshed copy. If it doesn't, we fall back to
- *     whatever is in the DB rather than hanging the user-facing
+ *  2. `refreshSingleRef(supabase, refId)` — synchronous web-research
+ *     call hard-capped to 5 seconds. If it returns in time, we update
+ *     the row and use the refreshed copy. If it doesn't, we fall back
+ *     to whatever is in the DB rather than hanging the user-facing
  *     request.
  *
  *  3. `findFreshSubstitute(supabase, category, excludeIds)` — when a
@@ -35,6 +35,21 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+// NOTE: the web-research client is imported LAZILY at its call site
+// below, not statically here.
+//
+// The pure-function test suite runs under
+// `node --experimental-strip-types --test`, which has no path-alias
+// resolution. A relative static import would fix the specifier for THIS
+// file but not the problem: `./research/web-research` itself statically
+// imports `@/lib/cost-ledger`, so merely loading this module under the
+// test runner would still drag an aliased specifier in transitively and
+// fail. Deferring the import keeps the module graph clean until the
+// function actually runs, which the tests never do.
+//
+// Exactly the same reasoning as the `./legal-refs-authority` import
+// further down. If either ever becomes static, the guardrail tests break.
+
 export type RefFreshness = 'fresh' | 'stale' | 'broken' | 'unknown';
 
 export interface LegalRef {
@@ -51,7 +66,7 @@ export interface LegalRef {
 }
 
 const FRESH_STATUSES = new Set(['current', 'updated', 'verified']);
-const PERPLEXITY_TIMEOUT_MS = 5000;
+const RESEARCH_TIMEOUT_MS = 5000;
 
 /**
  * Tiered freshness cascade (PR — 503-softening).
@@ -153,10 +168,11 @@ export async function checkRefFreshness(
 }
 
 /**
- * Synchronous refresh — calls Perplexity with a hard 5 s timeout. If
- * it returns in time we apply the same auto-overwrite logic the admin
- * `/api/admin/legal-refs/verify` endpoint uses. If it doesn't, we
- * return the row as-is so the user-facing flow keeps moving.
+ * Synchronous refresh — runs a web-research call with a hard 5 s
+ * timeout. If it returns in time we apply the same auto-overwrite
+ * logic the admin `/api/admin/legal-refs/verify` endpoint uses. If it
+ * doesn't, we return the row as-is so the user-facing flow keeps
+ * moving.
  *
  * Never throws — every failure path returns the latest DB copy.
  */
@@ -170,9 +186,6 @@ export async function refreshSingleRef(
     .eq('id', refId)
     .maybeSingle();
   if (!ref) return null;
-
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) return ref as LegalRef;
 
   const yearMatch = (ref.created_at as string | undefined)?.match(/^(\d{4})/);
   const year = yearMatch ? yearMatch[1] : 'unknown';
@@ -189,32 +202,30 @@ export async function refreshSingleRef(
     `{"valid": bool, "current_url": string|null, "superseded_by": string|null, "confidence": "high"|"medium"|"low", "notes": string}`,
   ].join(' ');
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PERPLEXITY_TIMEOUT_MS);
-
   try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'sonar-pro',
-        messages: [
-          { role: 'system', content: 'You are a UK legal-citation verification assistant. Return STRICT JSON only — no markdown, no commentary. If unsure, set confidence to "low" and explain in notes.' },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 500,
-        temperature: 0.1,
-      }),
+    // The client owns the timeout (AbortSignal.timeout internally), so
+    // there is no AbortController/clearTimeout to manage here. A missing
+    // API key, a transport failure, a timeout and a non-2xx all come
+    // back as `null` — every one of which means "keep the DB row".
+    const { tryResearchWeb } = await import('./research/web-research');
+    const res = await tryResearchWeb<{
+      valid: boolean;
+      current_url: string | null;
+      superseded_by: string | null;
+      confidence: string;
+      notes: string;
+    }>({
+      prompt,
+      system:
+        'You are a UK legal-citation verification assistant. Return STRICT JSON only — no markdown, no commentary. If unsure, set confidence to "low" and explain in notes.',
+      parse: 'json_object',
+      maxTokens: 500,
+      temperature: 0.1,
+      timeoutMs: RESEARCH_TIMEOUT_MS,
+      endpoint: 'lib/legal-refs-guardrail',
     });
-    clearTimeout(timer);
-    if (!res.ok) return ref as LegalRef;
-    const data = await res.json();
-    const content: string = data?.choices?.[0]?.message?.content || '';
-    const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return ref as LegalRef;
-    const parsed = JSON.parse(match[0]);
+    if (!res || !res.parsed) return ref as LegalRef;
+    const parsed = res.parsed;
     const conf = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low' ? parsed.confidence : 'low';
 
     const update: Record<string, unknown> = {
@@ -301,7 +312,6 @@ export async function refreshSingleRef(
       .maybeSingle();
     return (updated as LegalRef) ?? (ref as LegalRef);
   } catch {
-    clearTimeout(timer);
     return ref as LegalRef;
   }
 }
@@ -346,7 +356,7 @@ export async function findFreshSubstitute(
  *
  * The pre-flight guardrail above is binary: a ref either passes the 14-day
  * window or it doesn't. In practice the founder's verification cron runs
- * daily but third-party rate limits + Perplexity flakes occasionally
+ * daily but third-party rate limits + research-provider flakes occasionally
  * leave a category with NO ref freshly verified in the last fortnight,
  * which forces a 503 even though we have a perfectly serviceable copy
  * verified 21 days ago.

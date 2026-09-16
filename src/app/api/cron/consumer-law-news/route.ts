@@ -1,14 +1,15 @@
 /**
  * GET /api/cron/consumer-law-news
  *
- * Weekly Perplexity-driven scan of UK consumer-law / regulatory news.
- * Asks Perplexity (sonar) for the most material developments in the
- * last 7 days that affect typical UK consumer bills — CMA fines,
- * Ofcom / Ofgem rule changes, FCA enforcement, Consumer Rights Act
- * amendments, court rulings, parliamentary bills.
+ * Weekly research-driven scan of UK consumer-law / regulatory news.
+ * Asks the shared web-research client for the most material
+ * developments in the last 7 days that affect typical UK consumer
+ * bills — CMA fines, Ofcom / Ofgem rule changes, FCA enforcement,
+ * Consumer Rights Act amendments, court rulings, parliamentary bills.
  *
- * Per CLAUDE.md rule #3 — all real-time web research goes through
- * Perplexity (not Google / scraping / Bing).
+ * All real-time web research goes through src/lib/research/web-research.ts
+ * (Anthropic `web_search`). Never call a search provider directly from a
+ * route, and never use Google / scraping / Bing.
  *
  * Output:
  *   - Stores top items in consumer_law_updates (audit + future
@@ -23,6 +24,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { researchWeb, type ResearchCitation } from '@/lib/research/web-research';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -59,46 +61,33 @@ function getAdmin() {
   );
 }
 
-async function fetchUpdates(): Promise<{ items: LawUpdate[]; citations: any }> {
-  const key = process.env.PERPLEXITY_API_KEY;
-  if (!key) throw new Error('PERPLEXITY_API_KEY not set');
-
-  const res = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'sonar',
-      messages: [{ role: 'user', content: PROMPT }],
-      // Sonar returns citations alongside the message — keep them
-      // for the audit trail.
-      return_citations: true,
-    }),
+async function fetchUpdates(): Promise<{ items: LawUpdate[]; citations: ResearchCitation[] | null }> {
+  const res = await researchWeb<LawUpdate[]>({
+    prompt: PROMPT,
+    parse: 'json_array',
+    maxTokens: 2000,
+    // These rows are persisted as fact and surfaced to the founder, so
+    // an ungrounded (parametric-memory) answer must fail the run rather
+    // than be written to consumer_law_updates. The throw lands in the
+    // existing catch below, which already returns 500.
+    requireGrounding: true,
+    endpoint: '/api/cron/consumer-law-news',
   });
 
-  if (!res.ok) {
-    throw new Error(`Perplexity HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.parsed) {
+    throw new Error('Research response had no JSON array');
   }
-  const data = await res.json();
-  const content: string = data.choices?.[0]?.message?.content ?? '';
-  const citations = data.citations ?? null;
-
-  // Extract the JSON array — model occasionally wraps in markdown
-  // backticks. Tolerate both.
-  const match = content.match(/\[[\s\S]*\]/);
-  if (!match) {
-    throw new Error('Perplexity response had no JSON array');
-  }
-  const parsed = JSON.parse(match[0]) as LawUpdate[];
 
   // Validate shape so we don't insert garbage. Drop anything that
   // doesn't have at minimum headline + summary + source.
-  const items = parsed.filter(
+  const items = res.parsed.filter(
     (u) => typeof u?.headline === 'string' && typeof u?.summary === 'string' && typeof u?.source === 'string',
   );
-  return { items, citations };
+
+  // Citations the model actually cited, normalised to { url, title? }.
+  // `citations` (not `sources`) because the column is an audit/display
+  // surface — `sources` includes every page retrieved and discarded.
+  return { items, citations: res.citations.length ? res.citations : null };
 }
 
 async function sendFounderTelegram(text: string): Promise<void> {
@@ -147,16 +136,16 @@ export async function GET(request: NextRequest) {
   }
 
   let items: LawUpdate[];
-  let citations: any;
+  let citations: ResearchCitation[] | null;
   try {
     ({ items, citations } = await fetchUpdates());
   } catch (e: any) {
-    console.error('[consumer-law-news] perplexity fetch failed', e?.message);
+    console.error('[consumer-law-news] research fetch failed', e?.message);
     return NextResponse.json({ error: e?.message ?? 'fetch failed' }, { status: 500 });
   }
 
   if (items.length === 0) {
-    return NextResponse.json({ ok: true, items: 0, message: 'No updates returned by Perplexity' });
+    return NextResponse.json({ ok: true, items: 0, message: 'No updates returned by research' });
   }
 
   const supabase = getAdmin();

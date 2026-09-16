@@ -321,10 +321,10 @@ separate marketing opt-in before send).
 - **Analytics:** PostHog
 - **Image/Video Generation:** fal.ai (primary), Runway ML (backup)
 - **Social Posting:** Meta Graph API direct (Facebook Page + Instagram Business)
-- **Web Research:** Perplexity API (used by Leo and Nico agents)
+- **Web Research:** Anthropic `web_search` server tool, via the shared client at `src/lib/research/web-research.ts` (compliance crons, blog cron, agent-server research tool)
 - **IP Intelligence:** ipapi.co (used by Finn agent)
 
-**API cost tracking:** every paid third-party API call (Anthropic, Perplexity, Resend, Stripe, TrueLayer) should fire-and-forget a row into `api_cost_ledger` via the helpers in `src/lib/cost-ledger.ts` (`logAnthropicCall`, `logPerplexityCall`, `logResendCall`). The founder-only billing dashboard at `/dashboard/admin/billing` reads from that table — its accuracy depends on every call site being instrumented.
+**API cost tracking:** every paid third-party API call (Anthropic, Perplexity, Resend, Stripe, TrueLayer) should fire-and-forget a row into `api_cost_ledger` via the helpers in `src/lib/cost-ledger.ts` (`logAnthropicCall`, `logWebResearchCall`, `logResendCall`). The founder-only billing dashboard at `/dashboard/admin/billing` reads from that table — its accuracy depends on every call site being instrumented.
 
 ## Compliance citation principle (non-negotiable)
 
@@ -332,7 +332,7 @@ No code path may directly mutate a citation's `law_name`, `source_url`,
 `source_type` or `verification_status` to a non-pending value without
 passing through `legal_ref_corrections` and a founder approval click.
 
-Automated verifiers (Perplexity, Haiku) propose corrections to that
+Automated verifiers (Claude web_search, Haiku) propose corrections to that
 table — they never overwrite canonical fields. The pre-send guardrail
 in `src/lib/legal-refs-guardrail.ts` enforces this at the engine level
 for both B2C complaints and B2B disputes.
@@ -361,7 +361,7 @@ domain to the list — don't bypass the gate.
    - **fal.ai is retained as an automatic fallback only**, so a missing or broken Higgsfield credential degrades the image rather than killing the job. `FAL_KEY` and `src/lib/fal/generate-image.ts` stay in place; do not delete them and do not make fal.ai the default again without changing this rule first.
    - Do not add OpenAI image, Stability AI or Midjourney integrations to application code.
 2. **Paybacker social posting goes direct to the Meta Graph API.** Facebook page 1056645287525328 and Instagram 17841440175351137, using META_ACCESS_TOKEN exchanged for a page token. This is what src/lib/meta-social.ts and src/app/api/cron/social-post/route.ts do. The daily-social-media-post task in the Claude Desktop scheduler used the same path until its content bundle was exhausted on 2 Jul 2026, and is now disabled. Late API (getlate.dev) is not the posting path for Facebook or Instagram. A LinkedIn path via postViaLate() remains in src/lib/content-apis.ts, called from admin/post-linkedin and admin/content/approve, gated on LATE_API_KEY. That key is unset in .env.local, but check the Vercel environment before treating it as inert or removing it. Do not add TikTok, LinkedIn or X posting integrations without recording the decision here first.
-3. **ALL real-time web research by agents uses Perplexity API.** Not web scraping, not Google Search API, not Bing — Perplexity only.
+3. **ALL real-time web research goes through `src/lib/research/web-research.ts`** (Anthropic `web_search`). Never call a search provider directly from a route, never web scraping, never Google Search API, never Bing. Migrated off Perplexity on 2026-09-16: the account hit `insufficient_quota` in June and three crons returned 401 on every run for three months without anyone noticing, because each of the 17 call sites had its own inline fetch. One client now owns the provider, so the next swap is a one-file change.
 4. **ALL product analytics and funnel tracking uses PostHog.** Never add Google Analytics or Mixpanel.
 5. **ALL transactional and lifecycle emails use Resend.** Already integrated — never add SendGrid, Mailchimp, or any other email provider.
 6. **ALL agent output is stored in Supabase** (`executive_reports`, `agent_runs`, or `business_log`) so status is auditable from SQL. Note: Charlie's daily digest email is currently dormant (see AI AGENT TEAM section) — do not assume digests are reaching the founder unless verified.
@@ -551,7 +551,7 @@ glance-then-act, not browse-and-explore:
 4. "All references" — wrapped in `<details>` so the 124-row dump
    collapses past unless the founder explicitly expands it.
 5. Auto-corrected rows in the full table get an amber row tint and
-   a "⚠ Auto-corrected — verify" badge so Perplexity-overwritten
+   a "⚠ Auto-corrected — verify" badge so auto-corrected
    citations stand out for founder review.
 
 If you add a new compliance op, surface it as a counter in the action

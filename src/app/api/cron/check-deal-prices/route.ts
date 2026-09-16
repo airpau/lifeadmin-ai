@@ -1,10 +1,10 @@
 // OBSERVE ONLY. This cron must never write a price a user will see.
 //
-// It asks Perplexity what a plan costs. On 23 Aug 2026 that produced,
-// live on the deals page, Lebara 100GB at "from £4.49/mo" (really £20),
-// 50GB at £9 (really £15) and 30GB 12-month at "from £2.49". The
-// headline figures were plausible enough to pass review; the
-// promotional ones were invented outright. Every row also carried
+// It asks a web-research model what a plan costs. On 23 Aug 2026 that
+// produced, live on the deals page, Lebara 100GB at "from £4.49/mo"
+// (really £20), 50GB at £9 (really £15) and 30GB 12-month at "from
+// £2.49". The headline figures were plausible enough to pass review;
+// the promotional ones were invented outright. Every row also carried
 // last_verified_at, so the product asserted it had checked them.
 //
 // Prices a user sees now come only from `deal-price-refresh`, which
@@ -13,11 +13,16 @@
 // noticing a price has moved is a fine reason to go and fetch the page.
 // It is not a reason to publish the number it guessed.
 //
+// Swapping the research provider does not change any of that. A
+// grounded answer is still an answer about a page we have not fetched
+// ourselves, so it still only ever proposes a change.
+//
 // If you are tempted to restore the writes because the fetch pipeline
 // does not cover a provider yet, don't. No price beats a wrong one.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { tryResearchWeb } from '@/lib/research/web-research';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes to cover ~40 deals at ~5s each
@@ -37,8 +42,9 @@ interface PriceLookupResult {
 }
 
 /**
- * Ask Perplexity for the current headline monthly price for a single plan.
- * Returns null if the API call fails or the response can't be parsed.
+ * Ask the shared web-research client for the current headline monthly
+ * price for a single plan. Returns null if the call fails or the
+ * response can't be parsed.
  */
 async function lookupCurrentPrice(deal: {
   provider: string;
@@ -46,35 +52,24 @@ async function lookupCurrentPrice(deal: {
   destination_url: string | null;
   category: string;
 }): Promise<PriceLookupResult | null> {
-  const perplexityKey = process.env.PERPLEXITY_API_KEY;
-  if (!perplexityKey) return null;
-
   const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   const planLabel = deal.plan_name ? `their plan "${deal.plan_name}"` : 'their current headline plan';
   const urlContext = deal.destination_url ? ` Check the live page at ${deal.destination_url}.` : '';
   const prompt = `As of today (${today}), what is the current advertised monthly price in GBP (£) for UK provider ${deal.provider} for ${planLabel} in the ${deal.category} category?${urlContext} If there's a promotional/introductory price, also note the promo price. Return ONLY a JSON object with these exact keys: price_monthly (number, the headline or standard monthly price in £), promo_price (number or null, any introductory discounted price in £), confidence ("high" if you found the exact price on the provider's official site, "medium" if from a reputable comparison site, "low" if inferred), notes (short string about any caveats, e.g. "24-month contract", "first 3 months only"). No other text.`;
 
   try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${perplexityKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [{ role: 'user', content: prompt }],
-      }),
-      signal: AbortSignal.timeout(20000),
+    // No requireGrounding: this route is fail-soft and observe-only, so
+    // an ungrounded answer is merely unhelpful. The self-reported
+    // confidence whitelist below is what protects the stored data.
+    const res = await tryResearchWeb<any>({
+      prompt,
+      parse: 'json_object',
+      timeoutMs: 20_000,
+      endpoint: '/api/cron/check-deal-prices',
     });
+    if (!res || !res.parsed) return null;
 
-    if (!res.ok) return null;
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = res.parsed;
     const price = parsed.price_monthly != null ? parseFloat(String(parsed.price_monthly)) : null;
     const promo = parsed.promo_price != null && parsed.promo_price !== '' ? parseFloat(String(parsed.promo_price)) : null;
     if (price == null || isNaN(price)) return null;
@@ -93,9 +88,10 @@ async function lookupCurrentPrice(deal: {
 /**
  * Daily deal price checker.
  * Loops over every active, comparison-enabled deal in affiliate_deals,
- * asks Perplexity for the current headline price, and updates the row
- * if the price has moved. Logs every check to deal_price_checks and
- * significant changes (>£1/month diff) to business_log.
+ * asks the research client for the current headline price, and records
+ * a proposed change if the price has moved. Logs every check to
+ * deal_price_checks and significant changes (>£1/month diff) to
+ * business_log. It never writes a price to affiliate_deals.
  *
  * Schedule: daily at 6am (see vercel.json).
  */
@@ -167,7 +163,7 @@ export async function GET(request: NextRequest) {
         check_status: 'error',
         plans_found: null,
         changes_detected: null,
-        error_message: 'Perplexity lookup failed or returned no price',
+        error_message: 'Research lookup failed or returned no price',
       });
       continue;
     }

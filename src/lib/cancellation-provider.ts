@@ -8,14 +8,15 @@
  *    list in cancellation-methods.ts. AI-generated rows get persisted
  *    back with data_source='ai' and confidence='low'.
  *
- * 2. `researchCancellationForProvider` — fire-and-forget Perplexity
- *    research kicked off from the subscription create endpoint. UK
- *    chains often have per-branch contacts (gyms in particular), so
- *    when a city name is found in the provider string we ask
- *    explicitly for the branch contact.
+ * 2. `researchCancellationForProvider` — fire-and-forget web research
+ *    kicked off from the subscription create endpoint. UK chains often
+ *    have per-branch contacts (gyms in particular), so when a city name
+ *    is found in the provider string we ask explicitly for the branch
+ *    contact.
  */
 
 import { createClient as createAdminClient, SupabaseClient } from '@supabase/supabase-js';
+import { tryResearchWeb } from '@/lib/research/web-research';
 
 // ~30 common UK cities — used to detect branch-specific provider names like
 // "PureGym Manchester Deansgate" or "David Lloyd Oxford".
@@ -68,55 +69,33 @@ interface CancellationLookup {
   notice_period_days: number | null;
 }
 
+/**
+ * Fail-soft: a missing key, a transport failure, a non-2xx response or
+ * an unparseable answer all log and return `null`, and the caller skips
+ * the upsert. `tryResearchWeb` never throws.
+ */
 async function askPerplexity(prompt: string): Promise<CancellationLookup | null> {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) {
-    console.warn('[cancellation-provider] PERPLEXITY_API_KEY not set');
-    return null;
-  }
-
-  try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a UK consumer-rights research assistant. Return STRICT JSON only — no markdown, no explanation. If unsure, use null. Verify details from official sources.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 400,
-        temperature: 0.1,
-      }),
-    });
-    if (!res.ok) {
-      console.error(`[cancellation-provider] Perplexity returned ${res.status}`);
-      return null;
-    }
-    const data = await res.json();
-    const content: string = data?.choices?.[0]?.message?.content || '';
-    const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]);
-    return {
-      method: parsed.method ?? null,
-      email: parsed.email ?? null,
-      phone: parsed.phone ?? null,
-      url: parsed.url ?? null,
-      tips: parsed.tips ?? null,
-      notice_period_days: typeof parsed.notice_period_days === 'number' ? parsed.notice_period_days : null,
-    };
-  } catch (err: any) {
-    console.error('[cancellation-provider] Perplexity error:', err?.message || err);
-    return null;
-  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await tryResearchWeb<any>({
+    prompt,
+    system:
+      'You are a UK consumer-rights research assistant. Return STRICT JSON only — no markdown, no explanation. If unsure, use null. Verify details from official sources.',
+    parse: 'json_object',
+    maxTokens: 400,
+    temperature: 0.1,
+    endpoint: 'lib/cancellation-provider',
+    onError: (e) => console.error('[cancellation-provider] research error:', e.message),
+  });
+  if (!res || !res.parsed) return null;
+  const parsed = res.parsed;
+  return {
+    method: parsed.method ?? null,
+    email: parsed.email ?? null,
+    phone: parsed.phone ?? null,
+    url: parsed.url ?? null,
+    tips: parsed.tips ?? null,
+    notice_period_days: typeof parsed.notice_period_days === 'number' ? parsed.notice_period_days : null,
+  };
 }
 
 function getAdminClient(): SupabaseClient {
@@ -128,8 +107,8 @@ function getAdminClient(): SupabaseClient {
 
 /**
  * Idempotent: if a row exists for this provider, returns immediately. Otherwise
- * researches via Perplexity and upserts. Designed to be fired-and-forgotten
- * from the subscription create endpoint.
+ * researches via the shared web-research client and upserts. Designed to be
+ * fired-and-forgotten from the subscription create endpoint.
  */
 export async function researchCancellationForProvider(
   providerName: string,

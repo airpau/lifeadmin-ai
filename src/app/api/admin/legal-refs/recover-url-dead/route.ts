@@ -7,6 +7,8 @@
  * and a real-browser UA (some publishers — ofcom.org.uk, orr.gov.uk —
  * 403 default fetchers but 200 a normal browser).
  *
+ * Research goes through src/lib/research/web-research.ts.
+ *
  * Body: { queue?: boolean }
  *   - queue=false (default): probe-only, returns counts.
  *   - queue=true: also INSERT pending rows in legal_ref_corrections so
@@ -22,12 +24,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
-import { logPerplexityCall } from '@/lib/cost-ledger';
+import { tryResearchWeb } from '@/lib/research/web-research';
 import { enrichSingleCorrection } from '@/lib/legal-refs-enrich';
 
-const PERPLEXITY_MODEL = 'sonar-pro';
-// sonar-pro flat rate ≈ $0.005 per request. USD→GBP ≈ 0.79.
-const PERPLEXITY_COST_PER_CALL_GBP = 0.005 * 0.79;
+/**
+ * Nominal per-call figure used only to populate the response summary.
+ * The authoritative spend is logged into the cost ledger by the research
+ * client itself.
+ */
+const NOMINAL_COST_PER_CALL_GBP = 0.005 * 0.79;
 
 interface PerplexityRecovery {
   current_url: string | null;
@@ -47,7 +52,7 @@ function publisherDomain(url: string): string | null {
 }
 
 /**
- * Phase 3 of compliance UX overhaul: when Perplexity can't recover a
+ * Phase 3 of compliance UX overhaul: when research can't recover a
  * url_dead citation, write a SHORT one-line founder instruction so the
  * Compliance Centre surfaces "do exactly this" instead of just burying
  * "manual research needed" in business_log.
@@ -72,12 +77,9 @@ async function askPerplexityForRecovery(args: {
   lawName: string;
   summary: string;
   publisherDomain: string;
+  refId: string;
+  userId: string | null;
 }): Promise<PerplexityRecovery | null> {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) {
-    console.warn('[recover-url-dead] PERPLEXITY_API_KEY not set');
-    return null;
-  }
   const summaryShort = (args.summary || '').slice(0, 200);
   const userPrompt = [
     `The UK regulator page at ${args.oldUrl} returned 403/404.`,
@@ -87,50 +89,38 @@ async function askPerplexityForRecovery(args: {
     `Only return URLs on ${args.publisherDomain} (e.g. ofcom.org.uk for an Ofcom ref).`,
     `If no current URL exists or the page has been removed entirely, return current_url: null.`,
   ].join(' ');
-  try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: PERPLEXITY_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a UK legal-citation URL-recovery assistant. Return STRICT JSON only — no markdown, no commentary. ' +
-              'Only return URLs hosted on the SAME publisher domain provided in the prompt. If no current canonical URL exists on that domain, return current_url: null.',
-          },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 400,
-        temperature: 0.1,
-      }),
-    });
-    if (!res.ok) {
-      console.error(`[recover-url-dead] Perplexity ${res.status}`);
-      return null;
-    }
-    const data = await res.json();
-    const content: string = data?.choices?.[0]?.message?.content || '';
-    const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]);
-    const conf = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
-      ? parsed.confidence
-      : 'low';
-    return {
-      current_url: typeof parsed.current_url === 'string' && parsed.current_url ? parsed.current_url : null,
-      confidence: conf,
-      reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
-    };
-  } catch (err) {
-    console.error('[recover-url-dead] Perplexity error:', err instanceof Error ? err.message : err);
-    return null;
-  }
+
+  const res = await tryResearchWeb<any>({
+    prompt: userPrompt,
+    system:
+      'You are a UK legal-citation URL-recovery assistant. Return STRICT JSON only — no markdown, no commentary. ' +
+      'Only return URLs hosted on the SAME publisher domain provided in the prompt. If no current canonical URL exists on that domain, return current_url: null.',
+    parse: 'json_object',
+    maxTokens: 400,
+    temperature: 0.1,
+    // The prompt already demands a same-publisher-domain URL; pinning the
+    // retrieval layer to that domain turns the request into a guarantee.
+    allowedDomains: [args.publisherDomain],
+    // A recovered URL can be auto-applied to legal_references below, so it
+    // must come from the live web rather than the model's memory. An
+    // ungrounded answer throws inside the client; tryResearchWeb turns
+    // that into null, which falls through to the "gave up" branch.
+    requireGrounding: true,
+    endpoint: '/api/admin/legal-refs/recover-url-dead',
+    userId: args.userId,
+    costMetadata: { legal_reference_id: args.refId, mode: 'url-recovery' },
+    onError: (e) => console.error('[recover-url-dead] research error:', e.message),
+  });
+  if (!res || !res.parsed) return null;
+  const parsed = res.parsed;
+  const conf = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
+    ? parsed.confidence
+    : 'low';
+  return {
+    current_url: typeof parsed.current_url === 'string' && parsed.current_url ? parsed.current_url : null,
+    confidence: conf,
+    reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
+  };
 }
 
 export const dynamic = 'force-dynamic';
@@ -203,6 +193,8 @@ export async function POST(request: NextRequest) {
   }
   const rows = (data ?? []) as Row[];
 
+  // NOTE: the `perplexity_*` summary keys are unchanged — the admin page
+  // and the cron summary email read them by name.
   const summary = {
     probed: 0,
     still_dead: 0,
@@ -287,7 +279,7 @@ export async function POST(request: NextRequest) {
         }
       }
     } else if (queue && category === 'still_dead') {
-      // Perplexity fallback for Cloudflare-blocked publishers (Ofcom,
+      // Research fallback for Cloudflare-blocked publishers (Ofcom,
       // Ofgem, ORR) where both UAs 403 — server probe cannot find a
       // redirect even though the page may have moved on the same domain.
       const pubDomain = publisherDomain(row.source_url);
@@ -298,17 +290,12 @@ export async function POST(request: NextRequest) {
           lawName: row.law_name,
           summary: row.summary || '',
           publisherDomain: pubDomain,
+          refId: row.id,
+          userId: auth.userId ?? null,
         });
         summary.perplexity_calls++;
-        // Attribute spend to cost ledger (fire-and-forget).
-        logPerplexityCall({
-          model: PERPLEXITY_MODEL,
-          endpoint: '/api/admin/legal-refs/recover-url-dead',
-          userId: auth.userId ?? null,
-          metadata: { legal_reference_id: row.id, mode: 'url-recovery' },
-        });
         summary.perplexity_cost_gbp = +(
-          summary.perplexity_calls * PERPLEXITY_COST_PER_CALL_GBP
+          summary.perplexity_calls * NOMINAL_COST_PER_CALL_GBP
         ).toFixed(4);
 
         const proposedUrl = recovery?.current_url ?? null;
@@ -337,7 +324,7 @@ export async function POST(request: NextRequest) {
         if (recovery && proposedUrl && sameAuthority && samePublisher && confOk) {
           const reasoning =
             `Original URL 403/404 (default UA=${def.status}, browser UA=${ua.status}). ` +
-            `Perplexity sonar-pro proposed canonical URL on same publisher domain ` +
+            `Web research proposed canonical URL on same publisher domain ` +
             `(${pubDomain}) with confidence=${recovery.confidence}. Reasoning: ${recovery.reasoning}`;
 
           // ---- Auto-apply fast-path: HIGH confidence + same publisher + authority ----
@@ -347,12 +334,12 @@ export async function POST(request: NextRequest) {
           // legislation.gov.uk/x/y/contents) auto-applies because no semantic
           // change is possible when host + authority + law name are unchanged.
           //
-          // We extend that fast-path to "same publisher domain + Perplexity
+          // We extend that fast-path to "same publisher domain + research
           // confidence='high' + final URL passes checkUkLegalAuthority". The
           // risk profile is functionally equivalent: the law name is unchanged
           // (proposed_law_name=null), the publisher is unchanged (e.g. ofcom →
           // ofcom), the destination is in the authority allowlist, and HIGH
-          // confidence means Perplexity has identified a known canonical
+          // confidence means the research call has identified a known canonical
           // replacement (not a guess). MEDIUM confidence stays on the queue —
           // founder reviews those.
           if (recovery.confidence === 'high') {
@@ -377,6 +364,8 @@ export async function POST(request: NextRequest) {
               //    so we rely on (status='approved' + proposer prefix +
               //    reviewed_by='system-auto-apply') to identify auto-applied
               //    rows in the admin "Auto-applied (last 7 days)" panel.
+              //    The dated proposer tag is therefore left UNCHANGED — the
+              //    panel and existing rows key off that exact string.
               // eslint-disable-next-line no-await-in-loop
               const nowIso = new Date().toISOString();
               // eslint-disable-next-line no-await-in-loop
@@ -396,11 +385,12 @@ export async function POST(request: NextRequest) {
                 reviewed_by: 'system-auto-apply',
                 applied_at: nowIso,
                 notes:
-                  'Auto-applied: same-publisher + Perplexity high-confidence + ' +
+                  'Auto-applied: same-publisher + research high-confidence + ' +
                   'authority allowlist (extension of same-host fast-path).',
               });
 
-              // 3. Audit row in legal_ref_verifications (γ).
+              // 3. Audit row in legal_ref_verifications (γ). The
+              //    `perplexity_response` COLUMN name is unchanged.
               // eslint-disable-next-line no-await-in-loop
               await admin.from('legal_ref_verifications').insert({
                 ref_id: row.id,
@@ -462,7 +452,7 @@ export async function POST(request: NextRequest) {
             }
           }
         } else {
-          // Null / low confidence / off-domain — Perplexity gave up.
+          // Null / low confidence / off-domain — research gave up.
           //
           // Phase 3: instead of just logging "manual research needed" to
           // business_log (where it gets buried), also write a low-confidence
@@ -472,7 +462,7 @@ export async function POST(request: NextRequest) {
           // trail the cron summary email scrapes.
           const giveUpReasoning =
             `Ref ${row.id} (${row.law_name}) source ${row.source_url} ` +
-            `still 4xx after browser-UA probe. Perplexity recovery returned ` +
+            `still 4xx after browser-UA probe. Research recovery returned ` +
             `${proposedUrl ? `URL ${proposedUrl}` : 'no URL'} ` +
             `with confidence=${recovery?.confidence ?? 'n/a'}` +
             (recovery?.reasoning ? `. Reasoning: ${recovery.reasoning}` : '.');

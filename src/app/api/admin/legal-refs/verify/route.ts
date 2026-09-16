@@ -2,10 +2,10 @@
  * POST /api/admin/legal-refs/verify
  *
  * Founder-gated AI verification of a single legal_references row (or up
- * to 25 rows in a batch). Calls Perplexity sonar-pro with a strict-JSON
- * prompt asking whether the citation is still accurate, whether the URL
- * still resolves to the right document, and whether it has been
- * superseded.
+ * to 25 rows in a batch). Falls back to the shared web-research client
+ * (src/lib/research/web-research.ts) with a strict-JSON prompt asking
+ * whether the citation is still accurate, whether the URL still resolves
+ * to the right document, and whether it has been superseded.
  *
  * COMPLIANCE PRINCIPLE (non-negotiable):
  *   No code path may directly mutate a citation's law_name, source_url,
@@ -13,12 +13,12 @@
  *   passing through `legal_ref_corrections` and a founder approval click.
  *
  * Implementation:
- *   - If Perplexity proposes a change to canonical fields (law_name /
+ *   - If the verdict proposes a change to canonical fields (law_name /
  *     source_url) OR a new authoritative current_url, INSERT a
  *     `legal_ref_corrections` row with status='pending'. The auto-apply
  *     sweep (post-enrichment) decides if it can be applied without
  *     founder click.
- *   - If Perplexity says the citation is current with no proposed
+ *   - If the verdict says the citation is current with no proposed
  *     change, return `{status: 'no_change'}` and only touch
  *     `last_verified` / `verification_notes` (observational fields).
  *   - We never overwrite verification_status to a non-pending value
@@ -36,15 +36,15 @@
  *   - 'auto_applied' — proposed correction passed all three auto-apply gates
  *                      (rare from this route — enrichment is usually run
  *                      separately by the ζ cron before the η sweep)
- *   - 'error'        — Perplexity / DB call failed
+ *   - 'error'        — research / DB call failed
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
-import { logPerplexityCall } from '@/lib/cost-ledger';
 import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
+import { tryResearchWeb } from '@/lib/research/web-research';
 import {
   fetchStatuteByUri,
   isLegislationDocAuthoritative,
@@ -67,7 +67,10 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 const MAX_BATCH = 25;
-const PERPLEXITY_MODEL = 'sonar-pro';
+/**
+ * Nominal per-call figure recorded on the audit rows. The authoritative
+ * spend is now logged into the cost ledger by the research client itself.
+ */
 const COST_PER_CALL_GBP = 0.005;
 
 function getAdminEmails(): string[] {
@@ -131,72 +134,60 @@ function buildPrompt(ref: LegalRefRow): string {
   ].join(' ');
 }
 
-async function askPerplexity(prompt: string): Promise<PerplexityVerdict | null> {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) {
-    console.warn('[legal-refs/verify] PERPLEXITY_API_KEY not set');
-    return null;
-  }
-  try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: PERPLEXITY_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content:
-              [
-                'You are a UK legal-citation verification assistant. Return STRICT JSON only — no markdown, no commentary. If unsure, set confidence to "low" and explain in notes.',
-                '',
-                'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
-                'authorities. Acceptable sources: legislation.gov.uk, gov.uk and its',
-                'subdomains (.fca.org.uk, .ofcom.org.uk, .ofgem.gov.uk, etc.),',
-                'financial-ombudsman.org.uk, parliament.uk, bailii.org, judiciary.uk,',
-                'supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
-                '',
-                'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites,',
-                'news sites, law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or',
-                'consumer-rights aggregators. They are commentary, not authority.',
-                '',
-                'If the only available source is a trade association or commentary site,',
-                'return null for current_url rather than fabricating a primary citation.',
-              ].join('\n'),
-          },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 500,
-        temperature: 0.1,
-      }),
-    });
-    if (!res.ok) {
-      console.error(`[legal-refs/verify] Perplexity ${res.status}`);
-      return null;
-    }
-    const data = await res.json();
-    const content: string = data?.choices?.[0]?.message?.content || '';
-    const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]);
-    const conf = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
-      ? parsed.confidence
-      : 'low';
-    return {
-      valid: !!parsed.valid,
-      current_url: typeof parsed.current_url === 'string' ? parsed.current_url : null,
-      superseded_by: typeof parsed.superseded_by === 'string' ? parsed.superseded_by : null,
-      confidence: conf,
-      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
-    };
-  } catch (err: any) {
-    console.error('[legal-refs/verify] Perplexity error:', err?.message || err);
-    return null;
-  }
+/**
+ * CITATION SOURCE RULE — unchanged from the previous provider. This is
+ * the whole value of the call: the model must return null rather than
+ * fabricate a primary citation.
+ */
+const SYSTEM_PROMPT = [
+  'You are a UK legal-citation verification assistant. Return STRICT JSON only — no markdown, no commentary. If unsure, set confidence to "low" and explain in notes.',
+  '',
+  'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
+  'authorities. Acceptable sources: legislation.gov.uk, gov.uk and its',
+  'subdomains (.fca.org.uk, .ofcom.org.uk, .ofgem.gov.uk, etc.),',
+  'financial-ombudsman.org.uk, parliament.uk, bailii.org, judiciary.uk,',
+  'supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
+  '',
+  'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites,',
+  'news sites, law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or',
+  'consumer-rights aggregators. They are commentary, not authority.',
+  '',
+  'If the only available source is a trade association or commentary site,',
+  'return null for current_url rather than fabricating a primary citation.',
+].join('\n');
+
+async function askPerplexity(
+  prompt: string,
+  userId: string | null,
+): Promise<PerplexityVerdict | null> {
+  const res = await tryResearchWeb<any>({
+    prompt,
+    system: SYSTEM_PROMPT,
+    parse: 'json_object',
+    maxTokens: 500,
+    temperature: 0.1,
+    // This verdict can become a pending correction against a legal
+    // citation, so it must be grounded in the live web rather than in the
+    // model's memory. An ungrounded answer throws inside the client;
+    // tryResearchWeb turns that into null, which lands in the existing
+    // "verification call failed" branch.
+    requireGrounding: true,
+    endpoint: '/api/admin/legal-refs/verify',
+    userId,
+    onError: (e) => console.error('[legal-refs/verify] research error:', e.message),
+  });
+  if (!res || !res.parsed) return null;
+  const parsed = res.parsed;
+  const conf = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
+    ? parsed.confidence
+    : 'low';
+  return {
+    valid: !!parsed.valid,
+    current_url: typeof parsed.current_url === 'string' ? parsed.current_url : null,
+    superseded_by: typeof parsed.superseded_by === 'string' ? parsed.superseded_by : null,
+    confidence: conf,
+    notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+  };
 }
 
 function normaliseUrl(u: string | null | undefined): string {
@@ -429,17 +420,17 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
   // Per docs/legal-data-api-research-2026-05-01.md, every UK statute we
   // cite is hosted on legislation.gov.uk and can be fetched canonically
   // as Akoma-Ntoso XML. If the stored source_url is on that host, we
-  // try the canonical fetcher FIRST and only fall back to Perplexity
+  // try the canonical fetcher FIRST and only fall back to web research
   // when the fetch fails or returns no body.
   let verdict: PerplexityVerdict | null = null;
   let verifierLabel:
     | 'legislation-gov-uk'
     | 'gov-uk-content'
     | 'find-case-law'
-    | 'perplexity-sonar-pro' = 'perplexity-sonar-pro';
+    | 'claude-web-search' = 'claude-web-search';
 
   // Phase 5: pick the canonical source via the router, then dispatch to
-  // the matching first-party fetcher. Fall through to Perplexity on
+  // the matching first-party fetcher. Fall through to web research on
   // any non-authoritative result so the existing P1-#415 safety net
   // still applies for every source.
   const canonicalKind: CanonicalSourceKind = pickCanonicalSource(
@@ -454,7 +445,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       verifierLabel = 'legislation-gov-uk';
     } else {
       console.warn(
-        '[legal-refs/verify] legislation.gov.uk fetch not authoritative; falling back to Perplexity',
+        '[legal-refs/verify] legislation.gov.uk fetch not authoritative; falling back to research',
         { ref_id: id, source_url: (ref as LegalRefRow).source_url, reason: auth.reason },
       );
     }
@@ -466,7 +457,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       verifierLabel = 'gov-uk-content';
     } else {
       console.warn(
-        '[legal-refs/verify] gov.uk content fetch not authoritative; falling back to Perplexity',
+        '[legal-refs/verify] gov.uk content fetch not authoritative; falling back to research',
         { ref_id: id, source_url: (ref as LegalRefRow).source_url, reason: auth.reason },
       );
     }
@@ -487,7 +478,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
         verifierLabel = 'find-case-law';
       } else {
         console.warn(
-          '[legal-refs/verify] find-case-law fetch returned no matching hit; falling back to Perplexity',
+          '[legal-refs/verify] find-case-law fetch returned no matching hit; falling back to research',
           { ref_id: id, source_url: (ref as LegalRefRow).source_url },
         );
       }
@@ -495,7 +486,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
   }
 
   if (!verdict) {
-    verdict = await askPerplexity(buildPrompt(ref as LegalRefRow));
+    verdict = await askPerplexity(buildPrompt(ref as LegalRefRow), userId);
   }
   if (!verdict) {
     void admin.from('legal_ref_verifications').insert({
@@ -509,7 +500,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       changes: null,
       cost_gbp: null,
       perplexity_response: null,
-      notes: 'Verification call failed (legislation.gov.uk + Perplexity)',
+      notes: 'Verification call failed (legislation.gov.uk + research)',
     });
     return {
       id,
@@ -518,16 +509,6 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       notes: '',
       error: 'Verification call failed',
     };
-  }
-
-  // Log spend (fire-and-forget) — only when we actually paid Perplexity.
-  if (verifierLabel === 'perplexity-sonar-pro') {
-    logPerplexityCall({
-      model: PERPLEXITY_MODEL,
-      endpoint: '/api/admin/legal-refs/verify',
-      userId,
-      metadata: { legal_reference_id: id },
-    });
   }
 
   const refRow = ref as LegalRefRow;
@@ -558,7 +539,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       before_url: refRow.source_url,
       after_url: refRow.source_url,
       changes: { no_change: true },
-      cost_gbp: verifierLabel === 'perplexity-sonar-pro' ? COST_PER_CALL_GBP * 0.79 : 0,
+      cost_gbp: verifierLabel === 'claude-web-search' ? COST_PER_CALL_GBP * 0.79 : 0,
       perplexity_response: verdict as any,
       notes: notes || null,
     });
@@ -597,8 +578,11 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       reasoning: notes || null,
       raw_response: verdict as any,
       confidence: verdict.confidence,
-      cost_gbp: verifierLabel === 'perplexity-sonar-pro' ? COST_PER_CALL_GBP : 0,
+      cost_gbp: verifierLabel === 'claude-web-search' ? COST_PER_CALL_GBP : 0,
       status: 'pending',
+      // NOTE: the CanonicalSourceKind key stays 'perplexity' — it is the
+      // router's classification of "no first-party client for this host",
+      // not a provider name, and SOURCE_LABEL lives in source-router.ts.
       source_host: SOURCE_LABEL[
         verifierLabel === 'legislation-gov-uk'
           ? 'legislation'
@@ -640,7 +624,7 @@ async function verifyOne(id: string, userId: string | null): Promise<VerifyResul
       proposed_source_url: proposal.proposed_source_url,
       proposed_status: proposal.proposed_status,
     },
-    cost_gbp: verifierLabel === 'perplexity-sonar-pro' ? COST_PER_CALL_GBP * 0.79 : 0,
+    cost_gbp: verifierLabel === 'claude-web-search' ? COST_PER_CALL_GBP * 0.79 : 0,
     perplexity_response: verdict as any,
     notes: notes || null,
   });
@@ -683,7 +667,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const results: VerifyResult[] = [];
-    // Sequential to avoid Perplexity rate limits.
+    // Sequential to avoid research-provider rate limits.
     for (const id of body.ids) {
       if (typeof id !== 'string') continue;
       // eslint-disable-next-line no-await-in-loop
