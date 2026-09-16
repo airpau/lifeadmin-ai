@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createHash } from 'crypto';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
 import { fetchLegalSource } from '@/lib/legal-data/source-fetch';
+import { detectRepealEffects } from '@/lib/legal-data/repeal-effects';
 
 export const maxDuration = 300; // 5 minutes — checking many sources
 
@@ -292,6 +293,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ ok: true, ...results, issues });
 }
 
+
 // ============================================
 // Verify a statute via legislation.gov.uk API
 // ============================================
@@ -393,8 +395,30 @@ async function verifyStatute(
     const hasUnappliedEffects = xml.includes('UnappliedEffects') && xml.includes('<ukm:Effect');
     const hasRecentAmendment = xml.includes('amended') || xml.includes('substituted') || xml.includes('repealed');
 
-    // Check if the section has been repealed
-    const isRepealed = xml.includes('repealed') && xml.includes(ref.section || '');
+    // Is this reference actually repealed?
+    //
+    // This used to be:
+    //     xml.includes('repealed') && xml.includes(ref.section || '')
+    //
+    // Two bugs, both firing constantly. `xml.includes('')` is ALWAYS TRUE, so
+    // for any reference with no section the condition collapsed to "does the
+    // word 'repealed' appear anywhere in this Act" — which it does in every
+    // aged statute, in the annotations describing amendments to OTHER
+    // provisions. And where a section WAS set it was a bare string like
+    // "Part 2", which matches somewhere in essentially any Act's XML too.
+    // Regulation (EC) 261/2004 has the word in its own title.
+    //
+    // Measured on the 2026-09-16 05:44 run: 10 of 124 references were flagged
+    // as possibly repealed and queued as change_type 'repealed'. All 10 were
+    // live law — Communications Act 2003, Data Protection Act 2018,
+    // Electricity Act 1989, Gas Act 1986, Consumer Rights Act 2015 Part 2.
+    // needs_review went from 15 to 24 on noise, and the founder review queue
+    // was seeded almost entirely with false claims about current statutes.
+    //
+    // A repeal is an EFFECT with a repeal/revocation Type, not a word in the
+    // document body. Same fix as the one applied to /api/cron/legal-updates.
+    const repealEvidence = detectRepealEffects(xml, ref.section);
+    const isRepealed = repealEvidence.length > 0;
 
     if (isRepealed) {
       await supabase
@@ -411,7 +435,7 @@ async function verifyStatute(
         legal_reference_id: ref.id,
         change_type: 'repealed',
         source_url: ref.source_url,
-        detected_change_summary: `Possible repeal or revocation detected in legislation XML for ${ref.law_name}${ref.section ? ` ${ref.section}` : ''}`,
+        detected_change_summary: `Repeal/revocation effect recorded against ${ref.law_name}${ref.section ? ` ${ref.section}` : ''}: ${repealEvidence.slice(0, 3).join('; ')}`,
         confidence: 'medium',
         status: 'pending',
       });
