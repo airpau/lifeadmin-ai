@@ -146,10 +146,150 @@ interface Change {
 }
 
 /**
+ * A single <ukm:Effect> parsed out of a legislation.gov.uk *changes feed*
+ * (https://www.legislation.gov.uk/changes/affected/{path}/data.feed).
+ *
+ * The feed — not the Act's data.xml — is the right source for "what changed":
+ *   • it is the purpose-built changes endpoint, sorted by `sort=modified`
+ *     (newest first) by default, and bounded by `results-count`;
+ *   • each <entry> carries a structured <ukm:Effect> with the real metadata
+ *     (Modified timestamp, Type, AffectedProvisions, AffectingTitle and a
+ *     nested <ukm:InForceDates><ukm:InForce Date="..."/>);
+ *   • it is a few KB rather than the multi-megabyte full text of the Act.
+ */
+interface StatuteEffect {
+  /** The raw <ukm:Effect …>…</ukm:Effect> element, fed to Claude as evidence. */
+  raw: string;
+  /** e.g. "2026-08-28T11:57:14Z" — when the effect record was last modified. */
+  modified: string | null;
+  /** e.g. "2026-04-29" from <ukm:InForce Date="…"> when the feed supplies one. */
+  inForceDate: string | null;
+  /** NOTE: this is a BOOLEAN ("true"/"false") in the real data, never a date. */
+  applied: string | null;
+  requiresApplied: string | null;
+  /** e.g. "inserted", "repealed", "words substituted", or "". */
+  type: string;
+  affectedProvisions: string | null;
+  affectingTitle: string | null;
+}
+
+/** Read a single XML attribute out of an element's attribute string. */
+function readAttr(attrs: string, name: string): string | null {
+  const m = attrs.match(new RegExp(`\\b${name}="([^"]*)"`));
+  return m ? m[1] : null;
+}
+
+/**
+ * Regex-parse the <ukm:Effect> elements out of a changes feed.
+ * Regex (rather than a real XML parser) is deliberate: the rest of this route
+ * already parses legislation.gov.uk XML/ATOM this way and we do not want to
+ * add an XML-parser dependency to a cron route.
+ */
+function parseEffectsFromChangesFeed(feedXml: string): StatuteEffect[] {
+  const effects: StatuteEffect[] = [];
+  // Matches both the self-closing form (<ukm:Effect …/>) and the form with a
+  // nested <ukm:InForceDates> child (<ukm:Effect …>…</ukm:Effect>).
+  const effectRegex = /<ukm:Effect\b([^>]*?)(?:\/>|>([\s\S]*?)<\/ukm:Effect>)/g;
+  let match: RegExpExecArray | null;
+  while ((match = effectRegex.exec(feedXml)) !== null) {
+    const attrs = match[1] || '';
+    const inner = match[2] || '';
+    const inForceMatch = inner.match(/<ukm:InForce\b[^>]*\bDate="(\d{4}-\d{2}-\d{2})"/);
+    effects.push({
+      raw: match[0],
+      modified: readAttr(attrs, 'Modified'),
+      inForceDate: inForceMatch ? inForceMatch[1] : null,
+      applied: readAttr(attrs, 'Applied'),
+      requiresApplied: readAttr(attrs, 'RequiresApplied'),
+      type: readAttr(attrs, 'Type') ?? '',
+      affectedProvisions: readAttr(attrs, 'AffectedProvisions'),
+      affectingTitle: readAttr(attrs, 'AffectingTitle'),
+    });
+  }
+  return effects;
+}
+
+/**
+ * BUG FIX (the 90-day detector had never once fired).
+ *
+ * The old code did `e.match(/Applied="(\d{4}-\d{2}-\d{2})"/)` — but `Applied`
+ * is a BOOLEAN in the real legislation.gov.uk data (`Applied="true"`), never a
+ * date. The match was therefore always null, `recentEffects` was always empty,
+ * and the "amendments in the last 90 days" signal could never trigger.
+ *
+ * The real dates are `Modified="2026-08-28T11:57:14Z"` on the Effect and
+ * `Date="2026-04-29"` on the nested <ukm:InForce>. We treat an effect as recent
+ * when either of those is after the cutoff. As before, a date in the future
+ * (an effect not yet in force) also counts — a pending commencement is exactly
+ * the kind of change we want to look at.
+ */
+function isRecentEffect(effect: StatuteEffect, cutoff: Date): boolean {
+  const candidates = [effect.inForceDate, effect.modified];
+  return candidates.some(value => {
+    if (!value) return false;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+    return date > cutoff;
+  });
+}
+
+/**
+ * BUG FIX (repeal detection used to fire on essentially every statute).
+ *
+ * The old check was `xml.includes('repealed') || xml.includes('revoked')` over
+ * the FULL text of the Act. Every Act of any age contains those words somewhere
+ * in amendment annotations about individual provisions, so it was true almost
+ * always and was never evidence that the Act itself had been repealed.
+ *
+ * Instead we require a structured signal: an Effect whose `Type` attribute
+ * describes a repeal or revocation (e.g. Type="repealed", Type="revoked",
+ * Type="words repealed").
+ */
+function isRepealOrRevocationEffect(effect: StatuteEffect): boolean {
+  const type = effect.type.toLowerCase();
+  return type.includes('repeal') || type.includes('revoke');
+}
+
+/**
+ * "Unapplied" = the amendment is on the statute book but has not yet been
+ * carried through into the revised text, so our stored summary may be stale.
+ *
+ * Derived from the Effect's own attributes rather than from the presence of a
+ * <ukm:UnappliedEffects> container in the Act XML (which the changes feed does
+ * not have): either the editors explicitly marked it not-applied
+ * (`Applied="false"`), or the effect requires application (`RequiresApplied="true"`)
+ * and has not been flagged as applied yet.
+ */
+function isUnappliedEffect(effect: StatuteEffect): boolean {
+  const applied = (effect.applied ?? '').toLowerCase();
+  const requiresApplied = (effect.requiresApplied ?? '').toLowerCase();
+  if (applied === 'false') return true;
+  return requiresApplied === 'true' && applied !== 'true';
+}
+
+/**
+ * Build the raw evidence we hand to Claude from the matched Effect elements
+ * themselves (capped, as before, at ~8000 chars). Strictly better input than
+ * the old `xml.slice(0, 8000)`, which was just the front matter of the Act and
+ * contained none of the actual changes.
+ */
+function buildEffectsRawContent(effects: StatuteEffect[], maxChars = 8000): string {
+  const parts: string[] = [];
+  let length = 0;
+  for (const effect of effects) {
+    const block = effect.raw.trim();
+    if (length + block.length + 1 > maxChars) break;
+    parts.push(block);
+    length += block.length + 1;
+  }
+  return parts.join('\n');
+}
+
+/**
  * Weekly legal intelligence scan.
  * Schedule: Mondays at 6am — configured in vercel.json
  *
- * 1. Fetches legislation.gov.uk XML for key consumer protection statutes
+ * 1. Fetches the legislation.gov.uk changes feed for key consumer protection statutes
  * 2. Fetches regulator guidance pages and checks for updates
  * 3. Scans new-enacted feed for relevant new legislation
  * 4. Claude analyses each change, determines affected refs, drafts updates
@@ -186,38 +326,55 @@ export async function GET(request: NextRequest) {
   // ── 1. Scan key statutes on legislation.gov.uk ──────────────────────────────
   for (const statute of KEY_STATUTES) {
     try {
-      const xmlUrl = `https://www.legislation.gov.uk/${statute.path}/data.xml`;
-      const res = await fetch(xmlUrl, {
+      // We used to fetch `/${statute.path}/data.xml` — the FULL revised text of
+      // the Act. For Financial Services and Markets Act 2000 (ukpga/2000/8)
+      // that is many megabytes, which is why Vercel logged
+      // "[legal-updates] Error checking Financial Services and Markets Act 2000:
+      // TimeoutError" every run. Downloading the whole Act was the wrong
+      // approach regardless of the timeout: the changes feed is the endpoint
+      // built for this question. It is sorted newest-first (`sort=modified` by
+      // default), bounded by `results-count`, and each entry carries the
+      // structured <ukm:Effect> we need. The payload is small, so the 12s
+      // timeout below is now generous rather than insufficient.
+      const feedUrl = `https://www.legislation.gov.uk/changes/affected/${statute.path}/data.feed?results-count=50`;
+      const res = await fetch(feedUrl, {
         headers: {
           'User-Agent': 'Paybacker-LegalMonitor/1.0 (hello@paybacker.co.uk)',
-          Accept: 'application/xml',
+          Accept: 'application/atom+xml, application/xml',
         },
         signal: AbortSignal.timeout(12000),
       });
 
       if (!res.ok) {
+        // Previously a bare `continue` — a source that fails systematically
+        // (404 after a path change, rate limit, outage) only ever showed up as
+        // an anonymous bump of summary.errors. Log which one and why.
+        console.warn(
+          `[legal-updates] Changes feed for ${statute.name} returned ${res.status} ${res.statusText} (${feedUrl})`
+        );
         summary.errors++;
         continue;
       }
 
-      const xml = await res.text();
+      const feedXml = await res.text();
       summary.statutesChecked++;
 
-      // Look for recently dated amendment effects in the XML
-      const effectMatches = xml.match(/<ukm:Effect[^>]*>/g) || [];
-      const recentEffects = effectMatches.filter(e => {
-        // Check if effect was applied in the last 90 days
-        const dateMatch = e.match(/Applied="(\d{4}-\d{2}-\d{2})"/);
-        if (!dateMatch) return false;
-        const effectDate = new Date(dateMatch[1]);
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - 90);
-        return effectDate > cutoff;
-      });
+      const effects = parseEffectsFromChangesFeed(feedXml);
 
-      const hasUnapplied = xml.includes('<ukm:UnappliedEffects>') && xml.includes('<ukm:Effect');
-      const possiblyRepealed =
-        xml.includes('repealed') || xml.includes('revoked');
+      // 90-day window, unchanged — but see isRecentEffect(): this now reads the
+      // real dates (Modified / InForce Date) instead of the boolean `Applied`
+      // attribute, so the signal can actually fire.
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 90);
+
+      const recentEffects = effects.filter(e => isRecentEffect(e, cutoff));
+      // Structured repeal/revocation evidence, replacing the old substring
+      // match over the whole Act (see isRepealOrRevocationEffect()).
+      const repealEffects = effects.filter(isRepealOrRevocationEffect);
+      const unappliedEffects = effects.filter(isUnappliedEffect);
+
+      const hasUnapplied = unappliedEffects.length > 0;
+      const possiblyRepealed = repealEffects.length > 0;
 
       if (recentEffects.length > 0 || hasUnapplied || possiblyRepealed) {
         // Find our stored refs for this statute
@@ -227,18 +384,28 @@ export async function GET(request: NextRequest) {
 
         const changeContext = [
           recentEffects.length > 0 && `${recentEffects.length} amendment(s) applied in the last 90 days`,
-          hasUnapplied && 'pending unapplied amendments',
-          possiblyRepealed && 'possible repeal or revocation detected',
+          hasUnapplied && `${unappliedEffects.length} pending unapplied amendment(s)`,
+          possiblyRepealed && `${repealEffects.length} repeal/revocation effect(s) recorded`,
         ]
           .filter(Boolean)
           .join('; ');
 
+        // Evidence for Claude = the Effect elements that actually triggered the
+        // signal (feed order, i.e. most recently modified first), not the head
+        // of the Act's XML.
+        const notableEffects = effects.filter(
+          e =>
+            recentEffects.includes(e) || unappliedEffects.includes(e) || repealEffects.includes(e)
+        );
+
         const change: Change = {
           statuteName: statute.name,
           statutePath: statute.path,
+          // Human-readable landing page, as before — the feed URL is an
+          // implementation detail and not useful in a Telegram digest.
           sourceUrl: `https://www.legislation.gov.uk/${statute.path}`,
           summary: changeContext,
-          rawContent: xml.slice(0, 8000),
+          rawContent: buildEffectsRawContent(notableEffects),
         };
 
         await processStatuteChange(supabase, change, affectedRefs, summary, detectedChanges);
