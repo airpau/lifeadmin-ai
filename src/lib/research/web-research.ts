@@ -110,26 +110,38 @@ const WEB_SEARCH_FILTERED = 'web_search_20260209';
 /**
  * Which web-search tool version to use.
  *
- * `filtered` (default) uses `web_search_20260209`, where Claude writes and
- * runs code that filters search results BEFORE they enter the context
- * window. That matters because the measurement above showed ~77% of the cost
- * of a research call is input tokens from raw search results, not the search
- * fee. Filtering attacks the expensive half.
+ * `basic` (`web_search_20250305`) is the default, and that is a reversal.
  *
- * On that version `allowed_callers` defaults to code execution, so the API
- * provisions it automatically — we deliberately do not pass the field, so a
- * future change to the default identifier cannot 400 us.
+ * #610 switched the default to `filtered` (`web_search_20260209`), where
+ * Claude writes and runs code that filters search results before they enter
+ * the context window. The reasoning was that ~77% of the cost of a research
+ * call was input tokens from raw search results, so filtering should attack
+ * the expensive half. That reasoning was wrong for this workload, and the
+ * production measurement on 2026-09-16 says so plainly:
  *
- * `WEB_RESEARCH_TOOL=basic` flips back to the original direct-call tool with
- * no redeploy. This exists because dynamic filtering changes the execution
- * model, not just retrieval, and it has not been exercised against every
- * prompt in this codebase. If something starts behaving oddly, flip the env
- * var first and diagnose second.
+ *                     basic      filtered
+ *   input tokens      22,281     55,077
+ *   output tokens        582      1,545
+ *   cost per call     £0.077     £0.166
+ *   latency            ~15s       ~49s
+ *
+ * Filtering is 2.2x more expensive and ~3x slower here. The filtering code
+ * the model writes, and the code-execution round trips it needs, cost more
+ * than the raw results they save. Dynamic filtering earns its keep on
+ * search-heavy requests returning large result sets; these are
+ * single-question prompts capped at three searches, where the overhead
+ * dominates.
+ *
+ * It also broke two routes outright: case-law-monitor and consumer-law-news
+ * both exceeded their 70s client timeout, having previously completed.
+ *
+ * `WEB_RESEARCH_TOOL=filtered` re-enables it without a redeploy, for when
+ * a caller genuinely does need wide retrieval.
  */
 function searchToolType(): string {
-  return (process.env.WEB_RESEARCH_TOOL || '').toLowerCase() === 'basic'
-    ? WEB_SEARCH_BASIC
-    : WEB_SEARCH_FILTERED;
+  return (process.env.WEB_RESEARCH_TOOL || '').toLowerCase() === 'filtered'
+    ? WEB_SEARCH_FILTERED
+    : WEB_SEARCH_BASIC;
 }
 
 /**
