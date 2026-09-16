@@ -98,9 +98,9 @@ All agents run on Railway (agent-server/), not Vercel cron. All use Haiku for co
 
 **Pippa (CRO):** Activity scores, churn detection, loyalty tier management, monthly user summaries.
 
-**Leo (CLO):** Perplexity regulatory research, letter quality audits, GDPR checks, urgent compliance alerts.
+**Leo (CLO):** web-search regulatory research, letter quality audits, GDPR checks, urgent compliance alerts.
 
-**Nico (CIO):** Perplexity competitor research, competitive_intelligence table, weekly report.
+**Nico (CIO):** web-search competitor research, competitive_intelligence table, weekly report.
 
 **Bella (CXO):** Support ticket UX analysis, feature requests, weekly UX report to CTO, 90-day NPS surveys.
 
@@ -281,7 +281,7 @@ Agents suggest improvements in their reports. Proposals auto-emailed to hello@pa
 | NEXT_PUBLIC_AWIN_AFF_ID | Awin publisher affiliate links |
 | NEXT_PUBLIC_META_PIXEL_ID | Meta Pixel (722806287584909) |
 | IPAPI_KEY | IP fraud detection for Finn agent |
-| PERPLEXITY_API_KEY | Web research for Leo + Nico agents |
+| ANTHROPIC_API_KEY | Web research for Leo + Nico agents (via `web_search`; replaced PERPLEXITY_API_KEY 2026-09-16) |
 | FAL_KEY | Image/video generation for Casey |
 | LATE_API_KEY | Social media posting via Late API |
 | POSTHOG_API_KEY | Product analytics for Drew |

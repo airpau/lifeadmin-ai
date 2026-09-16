@@ -4,7 +4,7 @@ This is the **canonical, living ledger** of every third-party service Paybacker 
 
 It pairs with two database tables:
 
-- **`api_cost_ledger`** — append-only log of *live* per-call spend for services we have wired into [`cost-ledger.ts`](../src/lib/cost-ledger.ts) (currently Anthropic and Perplexity, landed in PR #370).
+- **`api_cost_ledger`** — append-only log of *live* per-call spend for services we have wired into [`cost-ledger.ts`](../src/lib/cost-ledger.ts) (currently Anthropic, including web-research calls tagged `metadata->>'mode' = 'web-research'`; Perplexity rows are historical only).
 - **`manual_cost_estimates`** — founder-entered monthly fixed costs for services that don't expose a billing API (e.g. Google Ads, Yapily flat fee, accountant retainer). Schema lives in [`supabase/migrations/20260430040000_manual_cost_estimates.sql`](../supabase/migrations/20260430040000_manual_cost_estimates.sql).
 
 The admin **Business Costs** tab (gated by `NEXT_PUBLIC_ADMIN_EMAILS`) renders a unified monthly burn view by reading from this doc (for service inventory), `api_cost_ledger` (live spend), and `manual_cost_estimates` (founder estimates).
@@ -24,7 +24,7 @@ Status legend:
 |---|---|---|---|---|---|---|---|
 | Anthropic (main) — `ANTHROPIC_API_KEY` | AI/LLM | Claude API for email scan, deals analysis, support agent | Per-token usage | https://console.anthropic.com | Admin API + per-call ledger | TBD | ✅ wired |
 | Anthropic (agents) — `ANTHROPIC_AGENTS_API_KEY` | AI/LLM | Separate key for managed agent runs | Per-token usage | https://console.anthropic.com | Admin API + per-call ledger | TBD | ✅ wired |
-| Perplexity — `PERPLEXITY_API_KEY` | AI/LLM | Live web research for deals + support context | Per-request | https://www.perplexity.ai/settings/api | Per-call ledger | TBD | ✅ wired |
+| ~~Perplexity — `PERPLEXITY_API_KEY`~~ | AI/LLM | Retired 2026-09-16 — replaced by Anthropic `web_search`. Env var can be removed. | — | — | Historical rows only | — | ⛔ retired |
 | fal.ai — `FAL_KEY` | AI/LLM | Image/video generation for marketing assets | Per-inference | https://fal.ai/dashboard | Dashboard only | TBD | 🟡 manual |
 | Runway ML — `RUNWAY_API_KEY` | AI/LLM | Video generation for marketing | Subscription + credits | https://app.runwayml.com | Dashboard only | TBD | 🟡 manual |
 | Google Gemini / Imagen 4 — `GEMINI_API_KEY` | AI/LLM | Backup LLM + image generation | Per-token / per-image | https://aistudio.google.com | GCP billing API | TBD | 🟡 manual |
@@ -124,7 +124,7 @@ Status legend:
 
 - **Stripe** — Reporting API + Balance Transactions; pull MRR + Stripe fees nightly.
 - **Anthropic (main + agents)** — already wired per-call; Admin API can backstop with an authoritative monthly figure.
-- **Perplexity** — already wired per-call.
+- **Perplexity** — retired 2026-09-16. Web research now bills through Anthropic (`logWebResearchCall`): token cost plus $10/1,000 searches.
 - **PostHog** — Billing API exposes current period spend; nightly cron.
 - **Resend** — Usage endpoint; nightly cron for emails-sent + tier cost.
 - **Twilio** — Usage Records API; nightly cron for SMS + Verify spend.

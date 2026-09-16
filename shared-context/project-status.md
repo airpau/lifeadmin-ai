@@ -57,7 +57,7 @@ Plan: Run as parallel Antigravity agents (3-4 agents per phase) starting 30 Marc
 - Deals page with affiliate links (Awin, Lebara)
 - Solutions pages (energy, broadband, mobile, insurance)
 - SEO landing pages (dispute energy bill, flight delay, etc.)
-- Blog with Perplexity-researched content
+- Blog with web-search-researched content
 - Pricing page (Free / Essential 4.99 / Pro 9.99)
 - Stripe checkout and billing portal
 - Referral programme with unique links
@@ -95,7 +95,7 @@ Plan: Run as parallel Antigravity agents (3-4 agents per phase) starting 30 Marc
 - **Awin:** Publisher 2825812, Advertiser 125502, S2S tracking
 - **Google Ads:** Explorer access only (awaiting Basic upgrade). Dev token: jCSfgPvX1M1zrWb92a3Zyw. Customer ID: 390-589-8717. 2,880 ops/day limit.
 - **Telegram:** Bot @PaybackerAssistantBot, Founder chat ID 1003645878
-- **Perplexity:** Agent research + blog content
+- **Anthropic `web_search`:** Agent research + blog content (replaced Perplexity 2026-09-16)
 - **PostHog:** Product analytics
 - **fal.ai:** Image generation for social posts
 
