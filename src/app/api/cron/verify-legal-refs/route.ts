@@ -39,10 +39,31 @@ export async function GET(request: NextRequest) {
 
   const supabase = getAdmin();
 
+  // WALL-CLOCK BUDGET. maxDuration is 300s and Vercel kills the function dead
+  // at that point — no chance to flush audit rows, no chance to report what we
+  // did. So we stop the sweep ourselves at 240s, well inside the limit, and
+  // report the shortfall honestly via results.skipped_no_budget.
+  const startedAt = Date.now();
+  const BUDGET_MS = 240_000;
+
+  // How many refs are verified at once. See the worker pool below for why this
+  // replaced the blanket per-ref sleep.
+  const CONCURRENCY = 4;
+
+  // ORDERING: least-recently-attempted first, never-attempted refs ahead of
+  // everything.
+  //
+  // This was previously .order('category'). That is a STABLE ordering, which
+  // meant that whenever the run ran out of time it dropped the exact same tail
+  // of the list every single day — those refs were never verified at all, and
+  // the run still looked healthy from the outside. Ordering by
+  // last_check_attempt_at makes the sweep self-balancing: anything missed on
+  // one run sorts to the front of the next one. A short run then costs
+  // freshness, never coverage.
   const { data: refs, error } = await supabase
     .from('legal_references')
     .select('*')
-    .order('category');
+    .order('last_check_attempt_at', { ascending: true, nullsFirst: true });
 
   if (error || !refs || refs.length === 0) {
     return NextResponse.json({ error: 'No references to verify' });
@@ -56,18 +77,35 @@ export async function GET(request: NextRequest) {
     updated: 0,
     queued: 0,
     errors: 0,
+    // Refs the time budget stopped us reaching. Anything non-zero means this
+    // was a PARTIAL run — reported rather than hidden, so a truncated sweep
+    // can't be mistaken for a clean one.
+    skipped_no_budget: 0,
   };
 
   const issues: Array<{ id: string; law: string; issue: string }> = [];
 
-  for (const ref of refs) {
+  // Audit rows are accumulated here and inserted in chunks once the sweep is
+  // done. Two inserts per ref was ~250 sequential round trips for 124 refs, a
+  // large slice of the runtime for rows nobody reads until later. They are
+  // flushed unconditionally below — including when the budget cuts the sweep
+  // short, because a partial run still has to be auditable.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const auditLogRows: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const verificationRows: any[] = [];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function processRef(ref: any) {
     let attemptOk = true;
     let attemptErr: string | null = null;
+    // The status the helper actually wrote for this ref (see finalStatus below).
+    let reportedStatus: string | null | undefined;
     try {
       if (ref.source_type === 'statute') {
-        await verifyStatute(supabase, ref, results, issues);
+        reportedStatus = await verifyStatute(supabase, ref, results, issues);
       } else {
-        await verifyRegulatorRule(supabase, ref, results, issues);
+        reportedStatus = await verifyRegulatorRule(supabase, ref, results, issues);
       }
       results.checked++;
     } catch (err) {
@@ -84,6 +122,11 @@ export async function GET(request: NextRequest) {
       // verification succeeded, failed with a non-OK source, or
       // threw. Without this the freshness alert lights up for every
       // ref whose source URL is flaky, even though we attempted.
+      //
+      // It now drives the sweep ordering too (see the SELECT above), so a ref
+      // that is stamped here is de-prioritised on the next run and one that
+      // never got reached stays at the front. Both behaviours depend on this
+      // write happening unconditionally.
       try {
         await supabase
           .from('legal_references')
@@ -100,70 +143,122 @@ export async function GET(request: NextRequest) {
       // even though the real outcome was correctly written to
       // legal_references.verification_status by the helpers above.
       //
-      // We now read that authoritative status back and record the TRUE
-      // terminal outcome. A clean re-verification ('current') is surfaced
-      // as 'confirmed' so the audit trail finally shows a confirmed state;
-      // every other status ('updated', 'needs_review', 'url_dead', ...) is
-      // recorded verbatim — matching how the sibling crons
-      // (reverify-all-legal-refs, legal-refs-daily-reverify) already write
-      // after_status: ref.verification_status.
+      // We now record the TRUE terminal outcome. A clean re-verification
+      // ('current') is surfaced as 'confirmed' so the audit trail finally
+      // shows a confirmed state; every other status ('updated',
+      // 'needs_review', 'url_dead', ...) is recorded verbatim — matching how
+      // the sibling crons (reverify-all-legal-refs,
+      // legal-refs-daily-reverify) already write after_status:
+      // ref.verification_status.
+      //
+      // PERF/CORRECTNESS FOLLOW-UP: we used to obtain that authoritative
+      // status by re-SELECTing verification_status here. The helpers now
+      // RETURN the status they wrote, which is the same value by
+      // construction. That removes one full round trip per ref, and with it a
+      // real read-after-write race — the read-back could observe the row
+      // before the helper's UPDATE was visible and record a stale status into
+      // the audit trail. The mapping below is unchanged.
       let finalStatus = 'check_failed';
       if (attemptOk) {
-        try {
-          const { data: fresh } = await supabase
-            .from('legal_references')
-            .select('verification_status')
-            .eq('id', ref.id)
-            .single();
-          const vs = fresh?.verification_status ?? null;
-          finalStatus = vs === 'current' ? 'confirmed' : (vs ?? 'confirmed');
-        } catch {
-          // If the read-back fails, fall back to 'confirmed' for a run that
-          // didn't throw — we still verified, we just couldn't re-read.
-          finalStatus = 'confirmed';
-        }
+        const vs = reportedStatus ?? null;
+        // Fallback to 'confirmed' if the helper reported nothing: a run that
+        // didn't throw did verify, we just have no status to name.
+        finalStatus = vs === 'current' ? 'confirmed' : (vs ?? 'confirmed');
       }
 
       // Always log the attempt to legal_audit_log so the canary's
       // "sources silent 48h+" check sees activity even when the
       // source URL is failing. Without this, every silent source is
       // doubly stale.
-      try {
-        await supabase.from('legal_audit_log').insert({
-          legal_reference_id: ref.id,
-          source_url: ref.source_url,
-          check_type: ref.source_type === 'statute' ? 'legislation_api' : 'ai_comparison',
-          result: finalStatus,
-          details: attemptErr ?? `Verified — status ${finalStatus}`,
-        });
-      } catch (logErr) {
-        console.warn('[verify-legal] legal_audit_log insert failed:', logErr);
-      }
+      auditLogRows.push({
+        legal_reference_id: ref.id,
+        source_url: ref.source_url,
+        check_type: ref.source_type === 'statute' ? 'legislation_api' : 'ai_comparison',
+        result: finalStatus,
+        details: attemptErr ?? `Verified — status ${finalStatus}`,
+      });
       // PR γ — mirror to the new structured audit table so the admin
       // "Audit trail" drawer surfaces both Perplexity AND Haiku-cron
       // verification attempts.
+      verificationRows.push({
+        ref_id: ref.id,
+        verifier: ref.source_type === 'statute' ? 'haiku-cron-statute' : 'haiku-cron-regulator',
+        triggered_by: 'cron',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        before_status: (ref as any).verification_status ?? null,
+        after_status: finalStatus,
+        before_url: ref.source_url ?? null,
+        after_url: ref.source_url ?? null,
+        changes: null,
+        cost_gbp: null,
+        perplexity_response: null,
+        notes: attemptErr ?? null,
+      });
+    }
+  }
+
+  // Alias the narrowed list first: worker() below is a hoisted declaration, so
+  // TS won't carry the `!refs` guard from above into its body.
+  const queue = refs;
+
+  // Bounded worker pool — no dependency, just N loops sharing a cursor.
+  //
+  // This replaces a strictly sequential loop with `await sleep(200)` after
+  // every ref (124 refs = ~25s of pure sleeping). A concurrency cap respects
+  // the upstream better than a blanket sleep did: the sleep fired for EVERY
+  // ref, including the ones that never made a network call at all (the
+  // hash-unchanged fast path and the early returns), so most of that pacing
+  // was spent throttling requests that were never sent. Capping in-flight work
+  // at 4 bounds what the upstream actually sees.
+  let nextIndex = 0;
+  let budgetWarned = false;
+  async function worker() {
+    for (;;) {
+      if (Date.now() - startedAt > BUDGET_MS) {
+        if (!budgetWarned) {
+          budgetWarned = true;
+          console.warn(
+            `[verify-legal] TIME BUDGET EXHAUSTED after ${Date.now() - startedAt}ms (budget ${BUDGET_MS}ms) — stopping the sweep early to stay inside maxDuration ${maxDuration}s. Unreached refs have no fresh last_check_attempt_at, so they sort to the front of the next run.`
+          );
+        }
+        return;
+      }
+      const index = nextIndex++;
+      if (index >= queue.length) return;
+      await processRef(queue[index]);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, refs.length) }, () => worker())
+  );
+
+  // nextIndex can overshoot by up to CONCURRENCY (each worker claims an index
+  // before discovering the list is exhausted), hence the clamp.
+  const attempted = Math.min(nextIndex, refs.length);
+  results.skipped_no_budget = refs.length - attempted;
+  if (results.skipped_no_budget > 0) {
+    console.warn(
+      `[verify-legal] PARTIAL RUN — ${results.skipped_no_budget} of ${refs.length} refs were not reached within the time budget.`
+    );
+  }
+
+  // Flush the accumulated audit rows in chunks. This runs whether the sweep
+  // completed or was cut short by the budget, and is entirely best-effort: a
+  // failed audit insert must never fail the verification run.
+  const AUDIT_CHUNK = 50;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function flushAudit(table: string, rows: any[]) {
+    for (let i = 0; i < rows.length; i += AUDIT_CHUNK) {
       try {
-        await supabase.from('legal_ref_verifications').insert({
-          ref_id: ref.id,
-          verifier: ref.source_type === 'statute' ? 'haiku-cron-statute' : 'haiku-cron-regulator',
-          triggered_by: 'cron',
-          before_status: (ref as any).verification_status ?? null,
-          after_status: finalStatus,
-          before_url: ref.source_url ?? null,
-          after_url: ref.source_url ?? null,
-          changes: null,
-          cost_gbp: null,
-          perplexity_response: null,
-          notes: attemptErr ?? null,
-        });
-      } catch (auditErr) {
-        console.warn('[verify-legal] legal_ref_verifications insert failed:', auditErr);
+        const { error: insertErr } = await supabase.from(table).insert(rows.slice(i, i + AUDIT_CHUNK));
+        if (insertErr) console.warn(`[verify-legal] ${table} batch insert failed:`, insertErr);
+      } catch (batchErr) {
+        console.warn(`[verify-legal] ${table} batch insert threw:`, batchErr);
       }
     }
-
-    // Small delay to respect rate limits
-    await new Promise(r => setTimeout(r, 200));
   }
+  await flushAudit('legal_audit_log', auditLogRows);
+  await flushAudit('legal_ref_verifications', verificationRows);
 
   // Confidence decay for stale refs (30+ days since last_verified)
   const thirtyDaysAgo = new Date();
@@ -206,7 +301,7 @@ async function verifyStatute(
   ref: any,
   results: any,
   issues: any[]
-) {
+): Promise<string | undefined> {
   // legislation.gov.uk provides data feeds — check for amendment info
   // The /data.xml endpoint returns metadata including amendment dates
   const dataUrl = ref.source_url.replace(/\/$/, '') + '/data.xml';
@@ -222,6 +317,10 @@ async function verifyStatute(
       // If data.xml not available, try the main page
       const pageFetch = await fetchLegalSource(ref.source_url, { timeoutMs: 10000 });
 
+      // Each branch records the status it writes so the caller no longer has
+      // to re-SELECT verification_status to find out what happened.
+      let urlStatus: string;
+
       if (pageFetch.outcome === 'ok') {
         // Page exists and loads — mark as current. Reset url-failure
         // counter so a transient blip doesn't accumulate.
@@ -235,6 +334,7 @@ async function verifyStatute(
           })
           .eq('id', ref.id);
         results.current++;
+        urlStatus = 'current';
       } else if (!pageFetch.countsAsUrlFailure) {
         // Blocked by a WAF, timed out, or 5xx — we learned nothing about
         // whether the page still exists. Flag for review but do NOT count a
@@ -250,6 +350,7 @@ async function verifyStatute(
 
         results.needs_review++;
         issues.push({ id: ref.id, law: ref.law_name, issue: pageFetch.reason });
+        urlStatus = 'needs_review';
       } else {
         // Genuine 404/410. Three-strike rule before promoting to
         // 'url_dead' (a status excluded from retrieval) — avoids one
@@ -277,8 +378,9 @@ async function verifyStatute(
 
         results.needs_review++;
         issues.push({ id: ref.id, law: ref.law_name, issue: `Source URL returned ${pageFetch.status} (${nextFailures}/3)` });
+        urlStatus = promoteToDead ? 'url_dead' : 'needs_review';
       }
-      return;
+      return urlStatus;
     }
 
     const xml = await res.text();
@@ -323,6 +425,7 @@ async function verifyStatute(
 
       results.needs_review++;
       issues.push({ id: ref.id, law: `${ref.law_name} ${ref.section || ''}`, issue: 'Possible repeal detected' });
+      return 'needs_review';
     } else if (hashChanged || hasUnappliedEffects) {
       // Content has changed OR pending amendments — flag for review
       const changeNote = [
@@ -364,6 +467,8 @@ async function verifyStatute(
       } else {
         results.current++;
       }
+      // Both sub-branches wrote verification_status: 'current'.
+      return 'current';
     } else {
       // All good — update hash if we didn't have one
       await supabase
@@ -385,11 +490,15 @@ async function verifyStatute(
       });
 
       results.current++;
+      return 'current';
     }
   } catch (fetchErr: any) {
     // Network error — don't change status, just log
     console.error(`[verify-legal] Failed to fetch ${dataUrl}:`, fetchErr.message);
     results.errors++;
+    // verification_status untouched on this path, so report the stored value —
+    // exactly what the caller's old read-back would have seen.
+    return (ref.verification_status as string | undefined) ?? undefined;
   }
 }
 
@@ -402,7 +511,7 @@ async function verifyRegulatorRule(
   ref: any,
   results: any,
   issues: any[]
-) {
+): Promise<string | undefined> {
   // Fetch the current source page
   let pageContent = '';
   let rawHtml = '';
@@ -426,7 +535,7 @@ async function verifyRegulatorRule(
 
         results.needs_review++;
         issues.push({ id: ref.id, law: ref.law_name, issue: pageFetch.reason });
-        return;
+        return 'needs_review';
       }
 
       // Genuine 404/410. Three-strike rule before promoting to 'url_dead'.
@@ -453,7 +562,7 @@ async function verifyRegulatorRule(
 
       results.needs_review++;
       issues.push({ id: ref.id, law: ref.law_name, issue: `Source returned ${pageFetch.status} (${nextFailures}/3)` });
-      return;
+      return promoteToDead ? 'url_dead' : 'needs_review';
     }
 
     rawHtml = await res.text();
@@ -468,7 +577,8 @@ async function verifyRegulatorRule(
   } catch (fetchErr: any) {
     console.error(`[verify-legal] Failed to fetch ${ref.source_url}:`, fetchErr.message);
     results.errors++;
-    return;
+    // Status untouched — report the stored one.
+    return (ref.verification_status as string | undefined) ?? undefined;
   }
 
   if (!pageContent || pageContent.length < 50) {
@@ -478,7 +588,8 @@ async function verifyRegulatorRule(
       .from('legal_references')
       .update({ last_verified: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', ref.id);
-    return;
+    // verification_status deliberately not touched here — report the stored one.
+    return (ref.verification_status as string | undefined) ?? undefined;
   }
 
   // Compute content hash and compare
@@ -505,7 +616,7 @@ async function verifyRegulatorRule(
     });
 
     results.current++;
-    return;
+    return 'current';
   }
 
   // Hash changed (or no hash stored yet) — send to Claude Haiku for comparison
@@ -542,7 +653,7 @@ If you cannot determine whether something changed (e.g. page content is unclear)
     const content = message.content[0];
     if (content.type !== 'text') {
       results.errors++;
-      return;
+      return (ref.verification_status as string | undefined) ?? undefined;
     }
 
     let raw = content.text.trim();
@@ -550,7 +661,7 @@ If you cannot determine whether something changed (e.g. page content is unclear)
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       results.errors++;
-      return;
+      return (ref.verification_status as string | undefined) ?? undefined;
     }
 
     const result = JSON.parse(jsonMatch[0]);
@@ -615,6 +726,7 @@ If you cannot determine whether something changed (e.g. page content is unclear)
           law: `${ref.law_name} ${ref.section || ''}`,
           issue: `Auto-updated (high confidence): ${result.changes.join('; ')}`,
         });
+        return 'updated';
       } else {
         // Medium/low confidence — queue for review
         await supabase
@@ -652,6 +764,7 @@ If you cannot determine whether something changed (e.g. page content is unclear)
           law: `${ref.law_name} ${ref.section || ''}`,
           issue: `Queued for review (${confidence}): ${result.changes.join('; ')}`,
         });
+        return 'needs_review';
       }
     } else {
       // No material changes detected — update hash and timestamp
@@ -674,6 +787,7 @@ If you cannot determine whether something changed (e.g. page content is unclear)
       });
 
       results.current++;
+      return 'current';
     }
   } catch (aiErr: any) {
     console.error(`[verify-legal] Claude Haiku error for ${ref.law_name}:`, aiErr.message);
@@ -685,5 +799,7 @@ If you cannot determine whether something changed (e.g. page content is unclear)
       .eq('id', ref.id);
 
     results.errors++;
+    // verification_status untouched — report the stored one.
+    return (ref.verification_status as string | undefined) ?? undefined;
   }
 }
