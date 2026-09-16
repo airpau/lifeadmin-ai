@@ -1,7 +1,7 @@
 /**
  * GET /api/cron/case-law-monitor
  *
- * Weekly Perplexity scan dedicated to UK consumer-rights CASE LAW —
+ * Weekly web-research scan dedicated to UK consumer-rights CASE LAW —
  * Court of Appeal / Supreme Court rulings, FOS final decisions on
  * systemic issues, and tribunal decisions that change how an existing
  * statute should be interpreted in customer-facing replies.
@@ -12,10 +12,12 @@
  * flip how the engine should ground a sector for years (Wakefield v
  * Loganair on UK261 extraordinary circumstances; recent FOS systemic
  * findings on motor-finance commissions). Worth its own dedicated
- * Perplexity prompt + storage row + B2B webhook fan-out.
+ * research prompt + storage row + B2B webhook fan-out.
+ *
+ * Research goes through src/lib/research/web-research.ts.
  *
  * Schedule: Tuesdays 06:00 UTC (offset from consumer-law-news daily
- * runs so we don't double-burn Perplexity quota).
+ * runs so we don't double-burn research quota).
  *
  * Output:
  *   - Stores material rulings in consumer_law_updates with source='court'
@@ -30,6 +32,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
+import { researchWeb } from '@/lib/research/web-research';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -78,25 +81,24 @@ function admin() {
 }
 
 async function fetchCaseLaw(): Promise<CaseLawItem[]> {
-  const key = process.env.PERPLEXITY_API_KEY;
-  if (!key) throw new Error('PERPLEXITY_API_KEY not set');
-
-  const res = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'sonar',
-      messages: [{ role: 'user', content: PROMPT }],
-      return_citations: true,
-    }),
+  const res = await researchWeb<CaseLawItem[]>({
+    prompt: PROMPT,
+    parse: 'json_array',
+    maxTokens: 2000,
+    // A ruling persisted to consumer_law_updates and fanned out to B2B
+    // subscribers as statute.updated must come from the web, not from
+    // the model's memory. An ungrounded answer throws and is handled by
+    // the existing catch in GET (business_log row + 500).
+    requireGrounding: true,
+    endpoint: '/api/cron/case-law-monitor',
   });
-  if (!res.ok) throw new Error(`Perplexity HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  const data = await res.json();
-  const content: string = data.choices?.[0]?.message?.content ?? '';
-  const match = content.match(/\[[\s\S]*\]/);
-  if (!match) return [];
-  const parsed = JSON.parse(match[0]) as CaseLawItem[];
-  return parsed.filter((c) =>
+
+  // A parse failure is not a transport failure — an empty week reads the
+  // same as an unparseable answer here, which matches the old behaviour
+  // of returning [] when no JSON array was present.
+  if (!res.parsed) return [];
+
+  return res.parsed.filter((c) =>
     typeof c?.case_name === 'string' &&
     typeof c?.affected_statute === 'string' &&
     Array.isArray(c?.affected_categories),
@@ -116,7 +118,7 @@ export async function GET(request: NextRequest) {
     console.error('[case-law-monitor]', msg);
     await sb.from('business_log').insert({
       category: 'case_law_monitor',
-      title: 'Perplexity case-law fetch failed',
+      title: 'Research case-law fetch failed',
       content: msg,
       created_by: 'case-law-monitor-cron',
     });

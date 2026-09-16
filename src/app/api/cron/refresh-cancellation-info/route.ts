@@ -5,28 +5,31 @@
  *
  *  1. Refresh — re-verifies the oldest rows in
  *     `provider_cancellation_info` (last_verified_at null or < 30d)
- *     via Perplexity. Promotes data_source to 'perplexity' and sets
- *     confidence based on how much the answer could confirm. Changes
- *     per row are captured in business_log for admin review.
+ *     via the shared web-research client. Promotes data_source to
+ *     'perplexity' and sets confidence based on how much the answer
+ *     could confirm. Changes per row are captured in business_log for
+ *     admin review.
  *
  *  2. Discover — scans every active subscription across all users for
  *     merchant names that aren't yet covered (neither canonical match
- *     nor alias match) and INSERTs new rows via Perplexity. Keeps the
- *     DB growing in lockstep with what users actually pay for, not
+ *     nor alias match) and INSERTs new rows from the same client. Keeps
+ *     the DB growing in lockstep with what users actually pay for, not
  *     just what we hand-seeded.
  *
- * Both legs cap at a small N per run to keep Perplexity spend bounded.
+ * Both legs cap at a small N per run to keep research spend bounded.
  *
  * Schedule: vercel.json — "0 3 * * 1" (Mondays 03:00 UTC).
  *
  * Rule compliance: per CLAUDE.md #3, ALL real-time web research goes
- * through Perplexity. No direct scraping, no alternative APIs.
+ * through src/lib/research/web-research.ts. No direct scraping, no
+ * alternative APIs, and no search provider called straight from a route.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
 import { isFinanceProvider } from '@/lib/subscriptions/active-count';
+import { tryResearchWeb } from '@/lib/research/web-research';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -79,13 +82,12 @@ interface PerplexityAnswer {
   sources?: string[];
 }
 
+/**
+ * Takes a provider name (not a prompt) and builds both messages
+ * internally, as it always has. Fail-soft: null on any failure,
+ * including a missing key, an HTTP error, or an unparseable answer.
+ */
 async function askPerplexity(providerName: string): Promise<PerplexityAnswer | null> {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) {
-    console.warn('[refresh-cancel] PERPLEXITY_API_KEY not set');
-    return null;
-  }
-
   const system = `You are a UK consumer-rights assistant. When asked about how to cancel a UK subscription, return ONLY a single JSON object. No prose outside the JSON.
 
 Schema:
@@ -101,38 +103,16 @@ Schema:
 
 Only include fields you can verify from current sources (prefer the provider's own website). Use null for anything you can't confirm.`;
 
-  try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: `How do I cancel my ${providerName} subscription in the UK?` },
-        ],
-        max_tokens: 700,
-      }),
-    });
-    if (!res.ok) {
-      console.error('[refresh-cancel] Perplexity error:', res.status, await res.text().catch(() => ''));
-      return null;
-    }
-    const data = await res.json();
-    const content: string | undefined = data?.choices?.[0]?.message?.content;
-    if (!content) return null;
+  const res = await tryResearchWeb<PerplexityAnswer>({
+    prompt: `How do I cancel my ${providerName} subscription in the UK?`,
+    system,
+    parse: 'json_object',
+    maxTokens: 700,
+    endpoint: '/api/cron/refresh-cancellation-info',
+    onError: (e) => console.error('[refresh-cancel] research failed:', e.message),
+  });
 
-    const cleaned = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    return JSON.parse(match[0]) as PerplexityAnswer;
-  } catch (err) {
-    console.error('[refresh-cancel] Perplexity threw:', err);
-    return null;
-  }
+  return res?.parsed ?? null;
 }
 
 function scoreConfidence(answer: PerplexityAnswer): 'high' | 'medium' | 'low' {
@@ -188,9 +168,9 @@ export async function GET(request: NextRequest) {
       continue;
     }
 
-    // Diff the fields Perplexity confidently answered — keep the existing
-    // value when Perplexity says null, so we don't regress on missing
-    // fields the seed already knew.
+    // Diff the fields the research answer confidently filled in — keep
+    // the existing value when it says null, so we don't regress on
+    // missing fields the seed already knew.
     const next = {
       method: answer.method ?? row.method,
       email: answer.email ?? row.email,
@@ -234,9 +214,9 @@ export async function GET(request: NextRequest) {
   // ─── Discovery leg ───────────────────────────────────────────────
   // Scan every active subscription across all users for provider names
   // that aren't yet covered (neither canonical nor alias match) and
-  // run up to MAX_DISCOVERY_PER_RUN through Perplexity. Keeps the DB
-  // in step with what users actually pay for rather than only what we
-  // hand-seeded.
+  // run up to MAX_DISCOVERY_PER_RUN through the research client. Keeps
+  // the DB in step with what users actually pay for rather than only
+  // what we hand-seeded.
   const discovered: Array<{
     provider: string;
     status: 'added' | 'failed';
@@ -267,7 +247,7 @@ export async function GET(request: NextRequest) {
 
     // Skip loan/mortgage/credit-card names — they're debts the user
     // can't "cancel" in the consumer-rights sense, so spending a
-    // Perplexity call on them is wasted quota and the result would
+    // research call on them is wasted quota and the result would
     // be a generic "contact your lender" message the UI already
     // handles with the fallback.
     const uncovered = distinctNames

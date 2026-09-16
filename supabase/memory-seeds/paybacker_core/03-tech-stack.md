@@ -11,7 +11,7 @@
 - Analytics: PostHog
 - Image / Video: fal.ai (primary), Runway ML (backup)
 - Social posting: Late API (getlate.dev) — all platforms via one integration
-- Web research: Perplexity API
+- Web research: Anthropic `web_search` via `src/lib/research/web-research.ts`
 - IP intelligence: ipapi.co
 
 ## NEVER-VIOLATE Architecture Rules
@@ -21,8 +21,10 @@ These are absolute. Flag any violation immediately, even in your own draft sugge
    Stability AI, Midjourney, or any other provider directly.
 2. **All social media posting goes through Late API (getlate.dev) only.** No direct Meta Graph
    API, TikTok Content Posting API, LinkedIn Marketing API, X/Twitter API.
-3. **All real-time web research uses Perplexity API.** Not scraping, not Google Search API,
-   not Bing.
+3. **All real-time web research goes through `src/lib/research/web-research.ts`**
+   (Anthropic `web_search`). Never call a search provider directly from a route, never
+   scraping, never Google Search API, never Bing. Migrated off Perplexity 2026-09-16 after
+   the account hit `insufficient_quota` and three crons failed silently for three months.
 4. **All product analytics and funnel tracking uses PostHog.** No GA, no Mixpanel.
 5. **All transactional and lifecycle emails use Resend.** No SendGrid, Mailchimp, etc.
 6. **All agent output is stored in Supabase** (`executive_reports`, `agent_runs`, or

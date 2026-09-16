@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { resend, FROM_EMAIL } from '@/lib/resend';
 import { generateSocialImage, buildBrandedPrompt } from '@/lib/generate-image';
 import { uploadImageToStorage } from '@/lib/storage';
+import { tryResearchWeb } from '@/lib/research/web-research';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -97,66 +98,57 @@ export async function GET(request: NextRequest) {
     console.log(`[blog] All topics written. Refreshing: ${topic.slug}`);
   }
 
-  // Step 1: Research with Perplexity. Two prompts in parallel:
+  // Step 1: Research via the shared web-research client. Two prompts in
+  // parallel:
   //  (a) deep-dive — current law, figures, deadlines for accuracy
   //  (b) topical-news — anything from the last 14 days that could anchor
   //      the post to a real news beat (Ofcom ruling, court judgement,
   //      regulator fine, viral incident). The cron runs Mon/Wed/Fri so
   //      14 days catches the previous fortnight's news cycle.
-  const perplexityKey = process.env.PERPLEXITY_API_KEY;
-  let researchContext = '';
+  //
+  // Both use tryResearchWeb: a research failure (including a missing
+  // key) yields null and the post still ships, just without the extra
+  // context. No key gate is needed — the client handles that itself.
+  const researchPrompt = `What is the latest UK consumer advice for "${topic.keyword}" as of 2026? Include recent law changes, current figures, deadlines, compensation amounts, relevant regulators (Ofcom, Ofgem, FCA, etc.), and ombudsman processes. Focus on practical, accurate information for UK consumers.`;
+
+  const topicalPrompt = `Is there any UK news in the last 14 days directly relevant to "${topic.keyword}"? Examples: Ofcom/Ofgem/FCA rulings, Ombudsman decisions, court judgements, supplier collapses, regulator fines, price cap changes, viral consumer incidents. Reply in this exact format if you find something: "HOOK: [one-sentence summary, citing the publication date and source name]". If nothing genuinely topical, reply only with the literal word "NONE".`;
+
+  const [research, topical] = await Promise.all([
+    tryResearchWeb({
+      prompt: researchPrompt,
+      maxTokens: 1500,
+      endpoint: '/api/cron/publish-blog',
+      onError: (e) => console.warn('[blog] research call failed:', e.message),
+    }),
+    tryResearchWeb({
+      prompt: topicalPrompt,
+      maxTokens: 800,
+      endpoint: '/api/cron/publish-blog',
+      onError: (e) => console.warn('[blog] topical research call failed:', e.message),
+    }),
+  ]);
+
+  const researchContext = research?.content || '';
   let topicalHook = '';
   let topicalSources: Array<{ url: string; title?: string }> = [];
 
-  if (perplexityKey) {
-    const researchPromise = fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${perplexityKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [{
-          role: 'user',
-          content: `What is the latest UK consumer advice for "${topic.keyword}" as of 2026? Include recent law changes, current figures, deadlines, compensation amounts, relevant regulators (Ofcom, Ofgem, FCA, etc.), and ombudsman processes. Focus on practical, accurate information for UK consumers.`,
-        }],
-      }),
-    }).then((r) => r.ok ? r.json() : null).catch(() => null);
+  if (researchContext) {
+    console.log(`[blog] research: ${researchContext.length} chars`);
+  } else {
+    console.warn('[blog] research empty or failed');
+  }
 
-    const topicalPromise = fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${perplexityKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [{
-          role: 'user',
-          content: `Is there any UK news in the last 14 days directly relevant to "${topic.keyword}"? Examples: Ofcom/Ofgem/FCA rulings, Ombudsman decisions, court judgements, supplier collapses, regulator fines, price cap changes, viral consumer incidents. Reply in this exact format if you find something: "HOOK: [one-sentence summary, citing the publication date and source name]". If nothing genuinely topical, reply only with the literal word "NONE".`,
-        }],
-        return_citations: true,
-      }),
-    }).then((r) => r.ok ? r.json() : null).catch(() => null);
-
-    const [researchData, topicalData] = await Promise.all([researchPromise, topicalPromise]);
-
-    researchContext = researchData?.choices?.[0]?.message?.content || '';
-    if (researchContext) {
-      console.log(`[blog] Perplexity research: ${researchContext.length} chars`);
-    } else {
-      console.warn('[blog] Perplexity research empty or failed');
-    }
-
-    const topicalRaw = topicalData?.choices?.[0]?.message?.content?.trim() || '';
-    if (topicalRaw && !/^none$/i.test(topicalRaw)) {
-      const m = topicalRaw.match(/HOOK:\s*([\s\S]+)$/i);
-      topicalHook = (m?.[1] || topicalRaw).trim().slice(0, 600);
-      const cites = topicalData?.citations || topicalData?.choices?.[0]?.message?.citations;
-      if (Array.isArray(cites)) {
-        topicalSources = cites.slice(0, 6).map((c: any) =>
-          typeof c === 'string' ? { url: c } : { url: c?.url || '', title: c?.title }
-        ).filter((c) => c.url);
-      }
-      console.log(`[blog] Topical hook: "${topicalHook.slice(0, 80)}…" (${topicalSources.length} sources)`);
-    } else {
-      console.log('[blog] No topical news this week');
-    }
+  const topicalRaw = topical?.content?.trim() || '';
+  if (topicalRaw && !/^none$/i.test(topicalRaw)) {
+    const m = topicalRaw.match(/HOOK:\s*([\s\S]+)$/i);
+    topicalHook = (m?.[1] || topicalRaw).trim().slice(0, 600);
+    // `citations` (what the model actually cited), NOT `sources` (every
+    // page retrieved, most of them looked at and discarded).
+    // topical_sources is user-facing.
+    topicalSources = (topical?.citations ?? []).slice(0, 6);
+    console.log(`[blog] Topical hook: "${topicalHook.slice(0, 80)}…" (${topicalSources.length} sources)`);
+  } else {
+    console.log('[blog] No topical news this week');
   }
 
   // Step 2: Generate blog post with Claude

@@ -13,18 +13,19 @@
  *                   the distinct categories so each is touched ~bi-weekly.
  *
  * Output flow (NEVER auto-applies):
- *   1. Ask Perplexity sonar-pro.
+ *   1. Ask the shared web-research client.
  *   2. For each returned item, dedupe against legal_references and
  *      legal_ref_candidates (by source_url or title substring match).
  *   3. Insert survivors into legal_ref_candidates with status='pending'.
  *   4. Log run summary into legal_ref_discovery_runs.
  *
  * Cost control:
- *   - Hard cap: max 60 Perplexity calls per run (£0.30 ish).
+ *   - Hard cap: max 60 research calls per run (£0.30 ish).
  *   - If pending candidate queue > 100, skip with a 'queue full' note.
- *   - Every Perplexity call goes through logPerplexityCall.
+ *   - Spend is logged to the cost ledger by the research client itself.
  *
- * Per CLAUDE.md rule #3 — Perplexity only for real-time web research.
+ * All real-time web research goes through src/lib/research/web-research.ts.
+ * Never call a search provider directly from a route.
  *
  * Auth: Bearer CRON_SECRET (Vercel cron) OR logged-in admin (founder
  * "Discover now" button).
@@ -33,8 +34,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
-import { logPerplexityCall } from '@/lib/cost-ledger';
 import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
+import { researchWeb, WebResearchError } from '@/lib/research/web-research';
 import { searchByDocumentType } from '@/lib/legal-data/gov-uk-content';
 import {
   searchByQuery as searchFindCaseLaw,
@@ -59,10 +60,15 @@ const CITATION_SOURCE_RULE = [
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-const PERPLEXITY_USD_PER_CALL = 0.005; // sonar-pro flat rate per cost-ledger.ts
+/**
+ * Nominal per-call figure used for the run-row cost tally and the hard
+ * cap below. The authoritative spend is logged into the cost ledger by
+ * the research client itself.
+ */
+const RESEARCH_USD_PER_CALL = 0.005;
 const USD_TO_GBP = 0.79;
 const HARD_CAP_GBP = 0.30;
-const MAX_CALLS_PER_RUN = Math.floor(HARD_CAP_GBP / (PERPLEXITY_USD_PER_CALL * USD_TO_GBP)); // ~75
+const MAX_CALLS_PER_RUN = Math.floor(HARD_CAP_GBP / (RESEARCH_USD_PER_CALL * USD_TO_GBP)); // ~75
 const MAX_PENDING_QUEUE = 100;
 
 // Default category list — used if the legal_references table is empty
@@ -96,44 +102,34 @@ function normaliseTitle(s: string): string {
   return s.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Deliberately THROWS on failure — the caller below distinguishes an
+ * upstream quota/auth problem (skip the run, exit 200) from a genuine
+ * fault (502). `researchWeb` throws `WebResearchError` with `.status`
+ * set for that branch.
+ */
 async function callPerplexity(prompt: string): Promise<{ items: PerplexityCandidate[]; raw: unknown }> {
-  const key = process.env.PERPLEXITY_API_KEY;
-  if (!key) throw new Error('PERPLEXITY_API_KEY not set');
-  const res = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'sonar-pro',
-      messages: [
-        { role: 'system', content: CITATION_SOURCE_RULE },
-        { role: 'user', content: prompt },
-      ],
-      return_citations: true,
-    }),
+  const res = await researchWeb<PerplexityCandidate[]>({
+    prompt,
+    system: CITATION_SOURCE_RULE,
+    parse: 'json_array',
+    maxTokens: 2000,
     // Without this a stalled upstream hangs until maxDuration kills the
     // whole route with an opaque timeout.
-    signal: AbortSignal.timeout(60_000),
+    timeoutMs: 60_000,
+    // Candidates discovered here become legal citations in the compliance
+    // centre. An answer from the model's memory rather than from the live
+    // web is exactly what the CITATION SOURCE RULE exists to prevent, so
+    // an ungrounded response throws and the run is logged as an error.
+    requireGrounding: true,
+    endpoint: '/api/cron/discover-legal-refs',
   });
-  if (!res.ok) {
-    throw new Error(`Perplexity HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  }
-  const data = await res.json();
-  logPerplexityCall({ model: 'sonar-pro', endpoint: '/api/cron/discover-legal-refs' });
-  const content: string = data.choices?.[0]?.message?.content ?? '';
-  const match = content.match(/\[[\s\S]*\]/);
-  if (!match) return { items: [], raw: data };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch {
-    return { items: [], raw: data };
-  }
-  if (!Array.isArray(parsed)) return { items: [], raw: data };
-  const items = parsed.filter(
+  if (!res.parsed) return { items: [], raw: res.raw };
+  const items = res.parsed.filter(
     (u): u is PerplexityCandidate =>
       !!u && typeof u === 'object' && typeof (u as PerplexityCandidate).title === 'string',
   );
-  return { items, raw: data };
+  return { items, raw: res.raw };
 }
 
 function recentPrompt(): string {
@@ -234,6 +230,8 @@ async function logRun(args: {
       candidates_added: args.added,
       candidates_skipped_duplicate: args.skipped,
       cost_gbp: args.costGbp,
+      // Column name unchanged — existing rows and downstream queries key
+      // off it.
       perplexity_response: args.raw ?? null,
       notes: args.notes ?? null,
     })
@@ -259,12 +257,12 @@ export async function GET(request: NextRequest) {
       ? 'category_coverage'
       : 'recent_updates';
 
-  // Phase 5: alternate non-Perplexity discovery sources. When
+  // Phase 5: alternate discovery sources that need no web research. When
   // `?source=cma` or `?source=tna` is set, seed candidates from the
   // gov-uk-content / find-case-law clients respectively. These never
-  // call Perplexity so they sidestep the cost cap entirely and produce
-  // structurally-clean candidates that go straight to the founder
-  // review queue.
+  // call the research client so they sidestep the cost cap entirely and
+  // produce structurally-clean candidates that go straight to the
+  // founder review queue.
   const sourceParam = (url.searchParams.get('source') || '').toLowerCase();
   const sourceQuery = url.searchParams.get('query') || '';
   if (sourceParam === 'cma' || sourceParam === 'tna') {
@@ -299,18 +297,21 @@ export async function GET(request: NextRequest) {
   let costGbp = 0;
   try {
     perplexityResult = await callPerplexity(prompt);
-    costGbp = PERPLEXITY_USD_PER_CALL * USD_TO_GBP;
+    costGbp = RESEARCH_USD_PER_CALL * USD_TO_GBP;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await logRun({ leg, category: targetCategory, found: 0, added: 0, skipped: 0, costGbp: 0, notes: `perplexity error: ${msg}` });
+    await logRun({ leg, category: targetCategory, found: 0, added: 0, skipped: 0, costGbp: 0, notes: `research error: ${msg}` });
 
     // An unpaid or rate-limited provider is an account problem, not a broken
     // route. Returning 502 for it made every run page as a cron failure and
     // buried the real signal. Log it, report it, but exit 200 so genuine
     // faults stay distinguishable in Vercel's cron health view.
-    if (/HTTP (401|402|429)\b/.test(msg)) {
+    //
+    // `isQuotaOrAuth` covers 401/402/429, including the search-tool rate
+    // limit the client re-raises as a 429 from inside an HTTP 200.
+    if (err instanceof WebResearchError && err.isQuotaOrAuth) {
       console.warn('[discover-legal-refs] upstream quota/auth failure, skipping run:', msg);
-      return NextResponse.json({ ok: true, skipped: true, reason: 'perplexity-quota', detail: msg });
+      return NextResponse.json({ ok: true, skipped: true, reason: 'research-quota', detail: msg });
     }
 
     return NextResponse.json({ ok: false, error: msg }, { status: 502 });
@@ -427,7 +428,7 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Phase 5: alternate-source discovery (no Perplexity). Seeds
+ * Phase 5: alternate-source discovery (no web research). Seeds
  * `legal_ref_candidates` from gov.uk CMA cases (source=cma) or Find
  * Case Law (source=tna). Find Case Law is licence-gated and returns a
  * no-op when `FIND_CASE_LAW_LICENCE_ACCEPTED!=='true'`.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
+import { tryResearchWeb } from '@/lib/research/web-research';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -26,36 +27,28 @@ interface TariffData {
 }
 
 async function researchCurrentTariffs(): Promise<TariffData[]> {
-  const perplexityKey = process.env.PERPLEXITY_API_KEY;
-  if (!perplexityKey) return [];
-
   try {
     const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${perplexityKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [{
-          role: 'user',
-          content: `What are the cheapest UK energy tariffs available today (${today})? I need the top 8 cheapest dual fuel (gas + electricity) tariffs for a typical UK household (medium usage, 3-bed semi). For each tariff provide: provider name, tariff name, whether it's fixed or variable, estimated annual cost in pounds, estimated monthly cost, standing charge in pence/day, unit rate in pence/kWh, exit fee if any, and contract term in months. Include Ofgem price cap rate for comparison. Return ONLY a JSON array of objects with keys: provider, tariff_name, tariff_type (fixed/variable), annual_cost, monthly_cost, standing_charge_pence, unit_rate_pence, exit_fee, term_months. No other text.`,
-        }],
-      }),
+    const prompt = `What are the cheapest UK energy tariffs available today (${today})? I need the top 8 cheapest dual fuel (gas + electricity) tariffs for a typical UK household (medium usage, 3-bed semi). For each tariff provide: provider name, tariff name, whether it's fixed or variable, estimated annual cost in pounds, estimated monthly cost, standing charge in pence/day, unit rate in pence/kWh, exit fee if any, and contract term in months. Include Ofgem price cap rate for comparison. Return ONLY a JSON array of objects with keys: provider, tariff_name, tariff_type (fixed/variable), annual_cost, monthly_cost, standing_charge_pence, unit_rate_pence, exit_fee, term_months. No other text.`;
+
+    // Fail-soft: a research failure (including a missing key) returns
+    // null and the cron reports "no tariff data retrieved" exactly as
+    // it did before. No requireGrounding — an ungrounded answer here is
+    // unhelpful, not dangerous, and nothing user-facing is written from
+    // it without the 5% comparison gate below.
+    const res = await tryResearchWeb<TariffData[]>({
+      prompt,
+      parse: 'json_array',
+      maxTokens: 1500,
+      endpoint: '/api/cron/energy-tariff-monitor',
     });
 
-    if (!res.ok) return [];
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content || '';
+    // `extractJsonArray` returns null for a non-array payload, which
+    // also fixes the old bug where `.map()` ran on an unchecked
+    // `JSON.parse` result and threw on a JSON object.
+    if (!res || !res.parsed) return [];
 
-    // Extract JSON from response
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return [];
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    return parsed.map((t: any) => ({
+    return res.parsed.map((t: any) => ({
       provider: t.provider || 'Unknown',
       tariff_name: t.tariff_name || 'Unknown',
       tariff_type: t.tariff_type || 'variable',
@@ -153,7 +146,7 @@ export async function GET(request: NextRequest) {
 
   const admin = getAdmin();
 
-  // 1. Research current tariffs via Perplexity
+  // 1. Research current tariffs via the shared web-research client
   const tariffs = await researchCurrentTariffs();
 
   if (tariffs.length === 0) {
@@ -165,7 +158,7 @@ export async function GET(request: NextRequest) {
   for (const t of tariffs) {
     await admin.from('energy_tariffs').insert({
       ...t,
-      source: 'perplexity',
+      source: 'web-research',
       valid_from: today,
     });
   }

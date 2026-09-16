@@ -7,6 +7,8 @@
  *      hasn't been verified in the last 7 days.
  *   3. Capped at 30 refs total to keep daily spend under £0.15.
  *
+ * Research goes through src/lib/research/web-research.ts.
+ *
  * COMPLIANCE PRINCIPLE (non-negotiable): this cron is propose-only. Any
  * proposed change to canonical fields (law_name, source_url,
  * verification_status) is INSERTed into `legal_ref_corrections` with
@@ -21,17 +23,20 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { logPerplexityCall } from '@/lib/cost-ledger';
 import { checkUkLegalAuthority } from '@/lib/legal-refs-authority';
+import { tryResearchWeb } from '@/lib/research/web-research';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-const PERPLEXITY_MODEL = 'sonar-pro';
 const HARD_CAP = 30;
 const OLDEST_TARGET = 20;
 const RECENT_USAGE_HOURS = 24;
 const RECENT_USAGE_REVERIFY_DAYS = 7;
+/**
+ * Nominal per-call figure recorded on the audit rows. The authoritative
+ * spend is now logged into the cost ledger by the research client itself.
+ */
 const COST_PER_CALL_GBP = 0.005;
 
 function getAdmin() {
@@ -61,6 +66,24 @@ interface PerplexityVerdict {
   notes: string;
 }
 
+/**
+ * CITATION SOURCE RULE — carried over verbatim from the previous
+ * provider. This route deliberately uses a shorter wording than
+ * /api/admin/legal-refs/verify and /verify-all; reconciling the three is
+ * a separate change with its own review.
+ */
+const SYSTEM_PROMPT = [
+  'You are a UK legal-citation verification assistant. Return STRICT JSON only.',
+  '',
+  'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
+  'authorities — legislation.gov.uk, gov.uk subdomains, fca.org.uk, ofcom.org.uk,',
+  'ofgem.gov.uk, financial-ombudsman.org.uk, parliament.uk, bailii.org,',
+  'judiciary.uk, supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
+  'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites, news,',
+  'law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or aggregators. If the',
+  'only available source is a non-authority site, return null rather than fabricating.',
+].join('\n');
+
 function buildPrompt(ref: LegalRefRow): string {
   const yearMatch = ref.created_at?.match(/^(\d{4})/);
   const year = yearMatch ? yearMatch[1] : 'unknown';
@@ -80,50 +103,31 @@ function buildPrompt(ref: LegalRefRow): string {
 }
 
 async function askPerplexity(prompt: string): Promise<PerplexityVerdict | null> {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: PERPLEXITY_MODEL,
-        messages: [
-          { role: 'system', content: [
-              'You are a UK legal-citation verification assistant. Return STRICT JSON only.',
-              '',
-              'CITATION SOURCE RULE (mandatory): Only return URLs from primary UK legal',
-              'authorities — legislation.gov.uk, gov.uk subdomains, fca.org.uk, ofcom.org.uk,',
-              'ofgem.gov.uk, financial-ombudsman.org.uk, parliament.uk, bailii.org,',
-              'judiciary.uk, supremecourt.uk, ico.org.uk, cma.gov.uk, caa.co.uk, orr.gov.uk, nhs.uk.',
-              'NEVER cite trade associations (UK Finance, ABI, BSA), commentary sites, news,',
-              'law-firm blogs, Wikipedia, MoneySavingExpert, Which?, or aggregators. If the',
-              'only available source is a non-authority site, return null rather than fabricating.',
-            ].join('\n') },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 500,
-        temperature: 0.1,
-      }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const content: string = data?.choices?.[0]?.message?.content || '';
-    const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]);
-    const conf = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low' ? parsed.confidence : 'low';
-    return {
-      valid: !!parsed.valid,
-      current_url: typeof parsed.current_url === 'string' ? parsed.current_url : null,
-      superseded_by: typeof parsed.superseded_by === 'string' ? parsed.superseded_by : null,
-      confidence: conf,
-      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
-    };
-  } catch {
-    return null;
-  }
+  const res = await tryResearchWeb<any>({
+    prompt,
+    system: SYSTEM_PROMPT,
+    parse: 'json_object',
+    maxTokens: 500,
+    temperature: 0.1,
+    // Verdicts from this cron become pending corrections against legal
+    // citations, so they must be grounded in the live web rather than in
+    // the model's memory. An ungrounded answer throws inside the client;
+    // tryResearchWeb turns that into null, which lands in the existing
+    // "research call failed" branch below.
+    requireGrounding: true,
+    endpoint: '/api/cron/legal-refs-daily-reverify',
+    onError: (e) => console.error('[legal-refs-daily-reverify] research error:', e.message),
+  });
+  if (!res || !res.parsed) return null;
+  const parsed = res.parsed;
+  const conf = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low' ? parsed.confidence : 'low';
+  return {
+    valid: !!parsed.valid,
+    current_url: typeof parsed.current_url === 'string' ? parsed.current_url : null,
+    superseded_by: typeof parsed.superseded_by === 'string' ? parsed.superseded_by : null,
+    confidence: conf,
+    notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+  };
 }
 
 function normaliseUrl(u: string | null | undefined): string {
@@ -251,23 +255,16 @@ export async function GET(request: NextRequest) {
       counts.errors += 1;
       void admin.from('legal_ref_verifications').insert({
         ref_id: ref.id,
-        verifier: 'perplexity-sonar-pro',
+        verifier: 'claude-web-search',
         triggered_by: 'cron',
         before_status: ref.verification_status,
         after_status: 'error',
         before_url: ref.source_url,
         after_url: null,
-        notes: 'Perplexity call failed',
+        notes: 'Research call failed',
       });
       continue;
     }
-
-    logPerplexityCall({
-      model: PERPLEXITY_MODEL,
-      endpoint: '/api/cron/legal-refs-daily-reverify',
-      userId: null,
-      metadata: { legal_reference_id: ref.id },
-    });
 
     const notes = verdict.superseded_by
       ? `Superseded by: ${verdict.superseded_by}. ${verdict.notes}`.trim()
@@ -287,9 +284,12 @@ export async function GET(request: NextRequest) {
 
     if (!proposal.hasProposal) {
       counts.no_change += 1;
+      // The `perplexity_response` COLUMN name is unchanged — existing rows
+      // and downstream queries key off it. Only the provenance label value
+      // moves to the new provider.
       void admin.from('legal_ref_verifications').insert({
         ref_id: ref.id,
-        verifier: 'perplexity-sonar-pro',
+        verifier: 'claude-web-search',
         triggered_by: 'cron',
         before_status: ref.verification_status,
         after_status: ref.verification_status,
@@ -320,7 +320,7 @@ export async function GET(request: NextRequest) {
       .from('legal_ref_corrections')
       .insert({
         ref_id: ref.id,
-        proposer: 'perplexity-sonar-pro',
+        proposer: 'claude-web-search',
         before_law_name: ref.law_name,
         before_source_url: ref.source_url,
         before_status: ref.verification_status,
@@ -343,7 +343,7 @@ export async function GET(request: NextRequest) {
       counts.errors += 1;
       void admin.from('legal_ref_verifications').insert({
         ref_id: ref.id,
-        verifier: 'perplexity-sonar-pro',
+        verifier: 'claude-web-search',
         triggered_by: 'cron',
         before_status: ref.verification_status,
         after_status: 'error',
@@ -358,7 +358,7 @@ export async function GET(request: NextRequest) {
       counts.queued += 1;
       void admin.from('legal_ref_verifications').insert({
         ref_id: ref.id,
-        verifier: 'perplexity-sonar-pro',
+        verifier: 'claude-web-search',
         triggered_by: 'cron',
         before_status: ref.verification_status,
         after_status: 'pending-correction-queued',
