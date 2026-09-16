@@ -20,6 +20,7 @@
 
 import { inferOutcomeFromCorrespondence } from '@/lib/dispute-outcome/ai-extract';
 import type { ScopeStats, MerchantLegalRefStat } from '@/lib/dispute-outcome/stats';
+import { eightWeekDeadlineMs } from '@/lib/dispute-agent/escalation-clock';
 
 export type AgentState =
   | 'draft'
@@ -286,11 +287,18 @@ export async function decideNextAction(
     dispute.provider_name || dispute.merchant_normalised || 'this merchant';
   const isAssignedDebt = !!(dispute.provider_name && /on behalf of|acting for|collecting for/i.test(dispute.provider_name));
 
+  // The eight-week clock. Resolved rather than read straight off the row:
+  // `fca_8_week_deadline` is NULL on every dispute created since migration
+  // 20260501100000 backfilled it, because nothing writes it. Deriving it
+  // from the send timestamp is what makes Rule 4 reachable at all — see
+  // src/lib/dispute-agent/escalation-clock.ts.
+  const eightWeekMs = eightWeekDeadlineMs(dispute);
+
   // Rule 4 — FCA 8-week clock has hit. Highest priority across all states
   // except already-resolved ones (handled by the cron filter).
   if (
-    dispute.fca_8_week_deadline &&
-    Date.parse(dispute.fca_8_week_deadline) <= Date.now() &&
+    eightWeekMs !== null &&
+    eightWeekMs <= Date.now() &&
     state !== 'escalated' &&
     state !== 'resolved_won' &&
     state !== 'resolved_partial' &&
@@ -300,7 +308,7 @@ export async function decideNextAction(
       to_state: 'escalation_due',
       action: 'escalate_ombudsman',
       rationale:
-        `FCA 8-week deadline reached on ${new Date(dispute.fca_8_week_deadline).toDateString()}. ` +
+        `FCA 8-week deadline reached on ${new Date(eightWeekMs).toDateString()}. ` +
         `${merchantLabel} has had its statutory window — you can now escalate to ${ombudsmanForType(dispute.dispute_type)}.` +
         (historical
           ? ` Historical signal: ${(historical.merchant_win_rate * 100).toFixed(0)}% of similar disputes vs ${merchantLabel} won at this stage (${historical.sample_size} cases).`
@@ -401,8 +409,8 @@ export async function decideNextAction(
         if (inferred.suggested_outcome === 'lost') {
           // Escalate if FCA clock close, otherwise stronger followup.
           const closeToFca =
-            !!dispute.fca_8_week_deadline &&
-            Date.parse(dispute.fca_8_week_deadline) - Date.now() < FCA_8_WEEK_GRACE_DAYS * DAY_MS;
+            eightWeekMs !== null &&
+            eightWeekMs - Date.now() < FCA_8_WEEK_GRACE_DAYS * DAY_MS;
           if (closeToFca || dataGrounded) {
             return {
               to_state: 'escalation_due',
