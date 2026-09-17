@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { isAtLeast, type PlanTier } from '@/lib/tier-rank';
+import { isAtLeast, isPlanTier, type PlanTier } from '@/lib/tier-rank';
 import { resolveHouseholdTier } from '@/lib/household';
 
 // PlanTier now lives in the dependency-free @/lib/tier-rank so the Stripe
@@ -255,6 +255,32 @@ function getAdmin() {
   );
 }
 
+/**
+ * Read `profiles.subscription_tier` as a tier that actually exists here.
+ *
+ * Validate, don't cast. The production CHECK constraint on
+ * `profiles.subscription_tier` still permits six values —
+ * free / essential / pro / plus / household / dispute_pro — but
+ * PLAN_LIMITS only has four keys. `plus` and `dispute_pro` are withdrawn
+ * tiers with no entry.
+ *
+ * A bare `as PlanTier` waved either of them straight through, because
+ * `?? 'free'` only catches null/undefined and never an unrecognised
+ * string. Every downstream `PLAN_LIMITS[tier].something` then read a
+ * property off `undefined` and threw TypeError, taking out canUseWhatsApp,
+ * checkWatchdogLinkLimit, the Spaces cap and all three email-connect caps
+ * for that user.
+ *
+ * `isPlanTier` is the unknown-safe guard tier-rank.ts already exports for
+ * exactly this. Falling back to Free for an unrecognised tier is also what
+ * the TIER MATRIX note above already claims happens ("a legacy
+ * dispute_pro row falls back to Free, which is the intended behaviour for
+ * a withdrawn plan") — this makes that true.
+ */
+function readStoredTier(tier: string | null | undefined): PlanTier {
+  return isPlanTier(tier) ? tier : 'free';
+}
+
 export interface UsageCheckResult {
   allowed: boolean;
   used: number;
@@ -278,7 +304,7 @@ export async function checkUsageLimit(
     .eq('id', userId)
     .single();
 
-  const storedTier = (profile?.subscription_tier as PlanTier) ?? 'free';
+  const storedTier = readStoredTier(profile?.subscription_tier);
   const onboardingTrialActive = !!profile?.trial_ends_at
     && new Date(profile.trial_ends_at) > new Date()
     && !profile?.trial_converted_at
@@ -378,7 +404,7 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
     .eq('id', userId)
     .single();
 
-  const storedTier = (profile?.subscription_tier as PlanTier) ?? 'free';
+  const storedTier = readStoredTier(profile?.subscription_tier);
 
   const onboardingTrialActive = !!profile?.trial_ends_at
     && new Date(profile.trial_ends_at) > new Date()
@@ -422,7 +448,7 @@ export async function hasIncludedEscalationPacks(userId: string): Promise<boolea
  */
 export async function canUseWhatsApp(userId: string): Promise<boolean> {
   const tier = await getEffectiveTier(userId);
-  return PLAN_LIMITS[tier].whatsappPocketAgent === true;
+  return PLAN_LIMITS[tier]?.whatsappPocketAgent === true;
 }
 
 /**
@@ -479,7 +505,7 @@ export async function checkFreeScanGate(userId: string): Promise<FreeScanGateRes
 export async function checkWatchdogLinkLimit(userId: string): Promise<UsageCheckResult> {
   const admin = getAdmin();
   const tier = await getEffectiveTier(userId);
-  const limit = PLAN_LIMITS[tier].disputeThreadLinks;
+  const limit = (PLAN_LIMITS[tier] ?? PLAN_LIMITS.free).disputeThreadLinks;
 
   if (limit === null) {
     return { allowed: true, used: 0, limit: null, tier, upgradeRequired: false };
