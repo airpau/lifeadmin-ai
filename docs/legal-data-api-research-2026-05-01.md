@@ -245,7 +245,7 @@ field is optional and additive — existing integrations are untouched.
 
 ### Audit table
 
-Migration: `supabase/migrations/20260502000000_legal_ref_freshness_audit.sql`.
+Migration: `supabase/migrations/20260824090000_legal_ref_freshness_audit.sql`.
 Service-role-only RLS. Indexed on `(ref_id, created_at)` and
 `(caller, created_at)` so the founder-only admin can answer "which
 refs are repeatedly drift-flagged" and "is the B2B caller hammering
