@@ -30,6 +30,10 @@ import { isValidCategory, type Category } from '@/lib/categories';
 import { isPayrollLike } from '@/lib/subscriptions/payroll-filter';
 import { logAlertInteraction } from '@/lib/alert-interactions';
 import {
+  resolveTelegramSession,
+  resolveWhatsAppSession,
+} from '@/lib/pocket-agent/resolve-session';
+import {
   bumpUserIntelligence,
   voteMerchantCategoryWisdom,
 } from '@/lib/user-intelligence';
@@ -6224,21 +6228,10 @@ async function createSupportTicket(
   let telegramChatId: number | null = null;
   let whatsappPhone: string | null = null;
   if (channel === 'telegram') {
-    const { data: tgSession } = await supabase
-      .from('telegram_sessions')
-      .select('chat_id')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .single();
-    telegramChatId = tgSession?.chat_id ?? null;
+    const tgSession = await resolveTelegramSession(supabase, userId, 'riley-ticket');
+    telegramChatId = tgSession?.telegram_chat_id ?? null;
   } else if (channel === 'whatsapp') {
-    const { data: waSession } = await supabase
-      .from('whatsapp_sessions')
-      .select('whatsapp_phone')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .maybeSingle();
+    const waSession = await resolveWhatsAppSession(supabase, userId, 'riley-ticket');
     whatsappPhone = waSession?.whatsapp_phone ?? null;
   }
 

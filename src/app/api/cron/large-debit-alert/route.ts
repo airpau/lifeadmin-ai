@@ -32,6 +32,7 @@ import { sendWhatsAppTemplate } from '@/lib/whatsapp';
 import { isPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
 import { isFutureDated, endOfTodayLondonIso } from '@/lib/alerts/future-dated';
+import { resolveWhatsAppSession } from '@/lib/pocket-agent/resolve-session';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -194,13 +195,7 @@ export async function GET(request: NextRequest) {
     const refKey = `payment_outgoing_${tx.id}`;
     if (sentKeys.has(refKey)) continue;
     try {
-      const { data: session } = await supabase
-        .from('whatsapp_sessions')
-        .select('whatsapp_phone')
-        .eq('user_id', tx.user_id)
-        .eq('is_active', true)
-        .is('opted_out_at', null)
-        .maybeSingle();
+      const session = await resolveWhatsAppSession(supabase, tx.user_id, 'large-debit-alert');
       if (!session?.whatsapp_phone) {
         // No WhatsApp session — stamp the log so we don't keep
         // looking it up across re-runs.

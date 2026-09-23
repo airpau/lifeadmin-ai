@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
+import { resolveTelegramSession } from '@/lib/pocket-agent/resolve-session';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -391,14 +392,8 @@ async function processConfirmationTimeout(
         if (typeof metaTg === 'number' || (typeof metaTg === 'string' && metaTg)) {
           tgChatId = metaTg as number | string;
         } else if (row.user_id) {
-          const { data: tg } = await supabase
-            .from('telegram_sessions')
-            .select('chat_id')
-            .eq('user_id', row.user_id)
-            .order('updated_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          const cid = (tg as { chat_id: number | string | null } | null)?.chat_id;
+          const tg = await resolveTelegramSession(supabase, row.user_id, 'support-chase');
+          const cid = tg?.telegram_chat_id;
           if (cid != null) tgChatId = cid;
         }
         if (tgChatId && process.env.TELEGRAM_BOT_TOKEN) {

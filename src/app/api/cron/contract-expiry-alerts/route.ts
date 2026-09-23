@@ -5,6 +5,7 @@ import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
 import { isPayrollLike } from '@/lib/subscriptions/payroll-filter';
 import { buildRenewalDigest, formatRenewalAmount, tierWindowDays } from '@/lib/subscriptions/renewal-digest';
+import { resolveWhatsAppSession } from '@/lib/pocket-agent/resolve-session';
 
 export const maxDuration = 60;
 
@@ -263,12 +264,7 @@ export async function GET(request: NextRequest) {
     // conversation history. Proactive dispatcher sends are NOT auto-logged,
     // so without this the agent would have no record of what "1" refers to.
     if (dispatch.delivered.includes('whatsapp')) {
-      const { data: waSession } = await supabase
-        .from('whatsapp_sessions')
-        .select('whatsapp_phone')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .maybeSingle();
+      const waSession = await resolveWhatsAppSession(supabase, userId, 'contract-expiry-alerts');
       if (waSession?.whatsapp_phone) {
         await supabase.from('whatsapp_message_log').insert({
           user_id: userId,

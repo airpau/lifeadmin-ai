@@ -62,6 +62,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { sendWhatsAppTemplate } from '@/lib/whatsapp';
 import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
+import { resolveWhatsAppSession } from '@/lib/pocket-agent/resolve-session';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -82,13 +83,7 @@ async function getActiveSession(
   sb: SupabaseClient,
   userId: string,
 ): Promise<WhatsAppSession | null> {
-  const { data } = await sb
-    .from('whatsapp_sessions')
-    .select('whatsapp_phone')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .is('opted_out_at', null)
-    .maybeSingle();
+  const data = await resolveWhatsAppSession(sb, userId, 'whatsapp-daily-checks');
   return data as WhatsAppSession | null;
 }
 
