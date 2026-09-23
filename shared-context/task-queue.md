@@ -18,7 +18,7 @@ _Added 2026-08-17 by dev-sprint-runner. The April Critical list is now fully clo
 - [~PR#529] Budgets and goals PUT/DELETE ungated, only POST gated — a downgraded user keeps edit access. PR#529 gates PUT on both routes and stops GoalsAndBudgetsModal silently swallowing the 403 (every handler had `catch { /* silent */ }` and never checked the status, so the existing POST gate was invisible too). DELETE deliberately left open — see PR for reasoning. (PR created 2026-08-17)
 - [ ] `src/lib/category-taxonomy.ts` buckets `credit` as discretionary, so a bank credit is counted as spending. Pre-existing, corrupts Money Hub spending totals. (@Claude Code)
 - [ ] Branches `fix/mcp-schema-bugs` and `fix/mcp-finance-tier-essential` are unmerged. The first fixes a misleading Pro upsell shown on token failure. (@Claude Code)
-- [ ] `/pricing` shows a browser confirm and then the confirmation page — remove the browser confirm to clean up the double prompt. (@Claude Code)
+- [~PR#619] `/pricing` shows a browser confirm and then the confirmation page — remove the browser confirm to clean up the double prompt. (@Claude Code) (PR created 2026-09-23)
 - [ ] Onboarding CTAs link to `/api/auth/yapily` with no institutionId and return raw 400 JSON to the user. (@Claude Code)
 - [ ] The institution picker shows 4 UK institutions, two of them sandboxes (`mock-sandbox`, `natwest-sandbox`) — gate sandboxes out of production. (@Claude Code)
 - [ ] Money Hub "Better Deals" sits inside the Action Centre card so it did not move in the reorder. Extracting it is a larger refactor. (@Claude Code)
