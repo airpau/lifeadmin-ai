@@ -17,6 +17,13 @@ export interface YapilyInstitution {
   countries: YapilyCountry[];
   media: YapilyMediaItem[];
   features: string[];
+  /**
+   * 'SANDBOX' or 'LIVE'. Yapily returns this on the institution model, but
+   * not every response carries it, so treat its absence as unknown rather
+   * than as 'LIVE' — see isSandboxInstitution() in lib/yapily.ts, which
+   * falls back to the `-sandbox` id convention.
+   */
+  environmentType?: string;
 }
 
 export interface YapilyCountry {

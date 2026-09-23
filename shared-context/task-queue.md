@@ -20,7 +20,7 @@ _Added 2026-08-17 by dev-sprint-runner. The April Critical list is now fully clo
 - [ ] Branches `fix/mcp-schema-bugs` and `fix/mcp-finance-tier-essential` are unmerged. The first fixes a misleading Pro upsell shown on token failure. (@Claude Code)
 - [ ] `/pricing` shows a browser confirm and then the confirmation page — remove the browser confirm to clean up the double prompt. (@Claude Code)
 - [ ] Onboarding CTAs link to `/api/auth/yapily` with no institutionId and return raw 400 JSON to the user. (@Claude Code)
-- [ ] The institution picker shows 4 UK institutions, two of them sandboxes (`mock-sandbox`, `natwest-sandbox`) — gate sandboxes out of production. (@Claude Code)
+- [~PR#588] The institution picker shows 4 UK institutions, two of them sandboxes (`mock-sandbox`, `natwest-sandbox`) — gate sandboxes out of production. (@Claude Code) (PR created 2026-08-28 — filtered at the picker only, in production only. Deliberately NOT filtered inside `getInstitutions()`: the sync crons resolve institution capabilities by id through it, and live sandbox connections like Paul's `modelo-sandbox` still need to resolve. `/api/auth/yapily` still accepts a sandbox institutionId, so QA against them is unaffected.)
 - [ ] Money Hub "Better Deals" sits inside the Action Centre card so it did not move in the reorder. Extracting it is a larger refactor. (@Claude Code)
 
 ## URGENT - Email Spam Fix
