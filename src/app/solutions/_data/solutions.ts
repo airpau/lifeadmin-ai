@@ -132,7 +132,7 @@ export const PAGES: Record<string, SolutionPage> = {
       { q: 'Can it cancel subscriptions for me?', a: 'We generate a formal cancellation email citing UK Consumer Contracts Regulations that you send to the provider. Automated cancellation is coming soon.' },
     ],
     socialProof: 'UK consumers waste over £25 billion per year on unused subscriptions',
-    featureHighlight: 'We also scan your email inbox to find subscription receipts going back 2 years',
+    featureHighlight: 'We also scan your email inbox to find subscription receipts from the last 90 days',
   },
   'cancel-services': {
     slug: 'cancel-services',
@@ -241,13 +241,13 @@ export const PAGES: Record<string, SolutionPage> = {
     slug: 'email-scanner',
     title: 'Email Inbox Scanner - Find Money You Are Owed | Paybacker',
     description:
-      'Connect Gmail or Outlook and scan up to 2 years of emails for overcharges, forgotten subscriptions, flight delay compensation, debt disputes, and price increase notifications. Free plan scans the last 90 days.',
+      'Connect Gmail or Outlook and scan the last 90 days of emails for overcharges, forgotten subscriptions, flight delay compensation, debt disputes, and price increase notifications. Free on every plan.',
     h1: 'Scan your email inbox and find money you are owed',
     subtitle:
-      'Your email inbox contains proof of overcharges, price increase notifications, flight booking confirmations, and subscription receipts. Paybacker scans your emails and shows you exactly what you can claim. The free plan reads the last 90 days; Essential and Pro read up to 2 years.',
+      'Your email inbox contains proof of overcharges, price increase notifications, flight booking confirmations, and subscription receipts. Paybacker scans your emails and shows you exactly what you can claim. Every plan reads the last 90 days of history.',
     keywords: ['email scanner money', 'find overcharges email', 'scan inbox subscriptions', 'email receipt scanner', 'find money owed UK'],
     icon: Mail,
-    heroStat: '2 years',
+    heroStat: '90 days',
     heroStatLabel: 'of email history scanned',
     ctaText: 'Join the waitlist — coming soon',
     ctaLink: '/auth/signup',
@@ -260,7 +260,7 @@ export const PAGES: Record<string, SolutionPage> = {
     ],
     howItWorks: [
       { step: '1', title: 'Connect your email', description: 'Google OAuth login. Read-only access. We only scan relevant financial emails.' },
-      { step: '2', title: 'AI analyses your emails', description: 'We scan your emails for overcharges, subscriptions, compensation opportunities, and disputes. Free scans the last 90 days; Essential and Pro scan up to 2 years.' },
+      { step: '2', title: 'AI analyses your emails', description: 'We scan your emails for overcharges, subscriptions, compensation opportunities, and disputes. Every plan scans the last 90 days.' },
       { step: '3', title: 'Take action on each finding', description: 'Each opportunity has an action button: write complaint, claim compensation, add to subscriptions, or dismiss.' },
     ],
     faqs: [

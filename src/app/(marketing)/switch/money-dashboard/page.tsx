@@ -111,7 +111,7 @@ const data: SwitchPageData = {
       {
         feature: 'Email inbox scanning for overcharges',
         them: 'No',
-        us: 'Yes, Gmail or Outlook, read-only, up to two years of billing history',
+        us: 'Yes, Gmail or Outlook, read-only, the last 90 days of billing history',
       },
       {
         feature: 'Complaint and dispute letters citing UK law',
@@ -147,7 +147,7 @@ const data: SwitchPageData = {
       },
       {
         title: 'Inbox scanning that finds the problem',
-        body: 'Connect Gmail or Outlook read-only and Paybacker reads billing emails, renewal notices and price-rise letters going back up to two years. That matters because a bank feed only shows you the amount that left. Your inbox shows what you were told, when, and whether the notice they were required to give you ever arrived.',
+        body: 'Connect Gmail or Outlook read-only and Paybacker reads billing emails, renewal notices and price-rise letters from the last 90 days. That matters because a bank feed only shows you the amount that left. Your inbox shows what you were told, when, and whether the notice they were required to give you ever arrived.',
       },
       {
         title: 'Escalation tracked to the deadline',
@@ -174,7 +174,7 @@ const data: SwitchPageData = {
       },
       {
         title: 'Connect an inbox, then deal with the first thing it finds',
-        body: 'Gmail or Outlook, read-only. Two years of billing history is usually enough to turn up at least one price rise you never agreed to. If you would rather test the useful half before connecting anything, the free case checker takes a description of one problem and returns the law that applies and a draft letter, with no account.',
+        body: 'Gmail or Outlook, read-only. A quarter of billing history is usually enough to turn up at least one price rise you never agreed to. If you would rather test the useful half before connecting anything, the free case checker takes a description of one problem and returns the law that applies and a draft letter, with no account.',
       },
     ],
     note: 'You can revoke bank access at any time from your own banking app, and delete your Paybacker account and data from Settings. Paybacker LTD is ICO-registered and your data stays in the UK.',

@@ -58,7 +58,7 @@ const data: LandingPageData = {
     },
     {
       q: 'How far back does the scan go?',
-      a: 'The bank account scan covers up to 12 months of transaction history via Open Banking. The email inbox scan — available when you connect Gmail or Outlook — covers up to 2 years of receipts, billing confirmations, and subscription notifications.',
+      a: 'The bank account scan covers up to 12 months of transaction history via Open Banking. The email inbox scan — available when you connect Gmail or Outlook — covers the last 90 days of receipts, billing confirmations, and subscription notifications.',
     },
   ],
   finalCtaTitle: 'Find out what you are really paying for',
