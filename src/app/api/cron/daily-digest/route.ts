@@ -76,6 +76,10 @@ export async function GET(request: NextRequest) {
   let sent = 0;
   let skipped = 0;
   let noContent = 0;
+  // Users whose email was suppressed by the daily marketing cap but who still
+  // got the digest on Telegram / push. Reported so the founder can see the
+  // difference between "capped" and "not delivered at all".
+  let emailCapped = 0;
   const errors: string[] = [];
 
   // Weekly digest sends on Wednesday to avoid colliding with the
@@ -101,12 +105,23 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      // 1) Rate limit check
+      // 1) Email cap check — gates the EMAIL PAYLOAD ONLY, never the loop.
+      // This used to `continue`, which had two consequences beyond the email.
+      // First, it skipped the whole sendNotification call, so a user who had
+      // already had their one marketing email that day got no Telegram message
+      // and no push either — an email cap silencing the Pocket Agent channels,
+      // the same shape as the contract-expiry-alerts bug fixed in PR#532.
+      // Second, and worse, it skipped the price-increase detection below, so
+      // nothing was written to price_increase_alerts and the in-app alerts went
+      // missing too. With MAX_MARKETING_EMAILS_PER_DAY = 1 and several
+      // marketing crons in the 08:00 block, that is the common case, not an
+      // edge case. Neither detectPriceIncreases nor updateUserOpportunityScore
+      // calls a paid API, so running them for capped users costs DB queries
+      // only. DispatchInput.rateLimited is declared but never enforced, so
+      // gating the payload here is the caller's job.
       const rateCheck = await canSendEmail(supabase, user.id, 'daily_digest');
-      if (!rateCheck.allowed) {
-        skipped++;
-        continue;
-      }
+      const emailAllowed = rateCheck.allowed;
+      if (!emailAllowed) emailCapped++;
 
       // 2) Price increases (always run — time-sensitive)
       const increases = await detectPriceIncreases(user.id);
@@ -247,7 +262,7 @@ export async function GET(request: NextRequest) {
       const result = await sendNotification(supabase, {
         userId: user.id,
         event: 'daily_digest',
-        email: isPaid ? { subject: emailData.subject, html: emailData.html } : undefined,
+        email: isPaid && emailAllowed ? { subject: emailData.subject, html: emailData.html } : undefined,
         telegram: { text: telegramText },
         push: {
           title: 'Daily digest ready',
@@ -290,6 +305,7 @@ export async function GET(request: NextRequest) {
     sent,
     skipped,
     no_content: noContent,
+    email_capped: emailCapped,
     total_users: userRows.length,
     eligible_users: eligibleUserIds.size,
     errors: errors.length > 0 ? errors : undefined,
