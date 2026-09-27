@@ -712,7 +712,11 @@ Nine agents are registered in `src/lib/managed-agents/config.ts`:
 
 `alert-tester`, `digest-compiler`, `support-triager`, `email-marketer`, `ux-auditor`, `feature-tester`, `bug-triager`, `reviewer`, `builder`.
 
-There is an endpoint at `src/app/api/cron/managed-agents/route.ts`, but it is NOT listed in `vercel.json`, so Vercel cron never invokes it. `agent_messages` has 0 rows in the last 30 days, confirming no sessions have fired. These agents are fully configured and ready to run — they just need cron entries to wake them up.
+There is an endpoint at `src/app/api/cron/managed-agents/route.ts`. It was on an hourly Vercel cron until 2026-09-27, when it was removed again: all nine agents are **archived** on platform.claude.com, so every session create returned 400 and the cron's only output was ~20 "Managed agent failed" alert rows a day in `business_log`. Its `agent_messages` insert also fails silently (the table has no `agent_key`/`agent_id` columns). To bring them back: un-archive on the platform, fix that insert, then re-add the cron entry.
+
+### Legal-reference re-verification cost (2026-09-27)
+
+After the Perplexity to Claude web_search migration (#608), `/api/cron/reverify-all-legal-refs` (03:30) and `/api/cron/legal-refs-daily-reverify` (04:00) were both running nightly against the same `last_verified` cursor: ~35 Sonnet calls and ~70 searches a night, ~$4/day on the Console, and the daily route was dying at Vercel's 300s limit. `reverify-all-legal-refs` is now unscheduled (admin button only). `legal-refs-daily-reverify` is the single nightly job: 14-day staleness floor, 12-ref cap, 240s budget, one search per call, Haiku first pass with Sonnet only when Haiku proposes a change. Dials are env vars prefixed `DAILY_REVERIFY_*`. Do not put the second job back on a schedule.
 
 ### Disabled systems
 
