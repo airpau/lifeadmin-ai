@@ -1,7 +1,16 @@
 /**
- * /api/cron/reverify-all-legal-refs — daily 03:30 UTC (configured in vercel.json)
+ * /api/cron/reverify-all-legal-refs — ON DEMAND ONLY since 2026-09-27.
  *
- * Propose-only nightly re-verifier. Takes the most stale legal references,
+ * Removed from vercel.json (was daily 03:30 UTC). It duplicated
+ * /api/cron/legal-refs-daily-reverify: both ordered by `last_verified ASC`
+ * and both stamped it, so between them they re-verified all 124 refs every
+ * ~3.5 days at ~£0.07 a call, ~$4/day on the Console. The daily route is now
+ * the single scheduled re-verifier (Haiku first pass, Sonnet on change, 14-day
+ * staleness floor). This route stays for the admin "verify all" button, which
+ * authorizeAdminOrCron already serves. Do not re-add it to vercel.json
+ * without removing the other.
+ *
+ * Propose-only re-verifier. Takes the most stale legal references,
  * asks the shared web-research client for a verification verdict, and writes
  * any discrepancies as rows in legal_ref_corrections with status='pending'.
  *

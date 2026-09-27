@@ -3,6 +3,15 @@
  *
  * Triggers Claude Managed Agent sessions on schedule.
  *
+ * NOT SCHEDULED since 2026-09-27. Removed from vercel.json: every agent in
+ * AGENTS is archived on platform.claude.com, so the hourly dispatcher was
+ * creating zero sessions and writing ~20 "Managed agent failed" alert rows a
+ * day to business_log (400 "agent ... is archived"). It also cannot write
+ * its own observability rows: `agent_messages` has no agent_key/agent_id
+ * columns (schema is from_agent/to_agent/subject/body), so every insert
+ * here fails silently. Un-archive the agents and fix that insert before
+ * putting this back on a schedule. POST still works for a manual run.
+ *
  * Usage:
  *   POST /api/cron/managed-agents                       — run ALL scheduled agents
  *   POST /api/cron/managed-agents?agent=builder         — run a specific agent by key
