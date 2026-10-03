@@ -35,7 +35,6 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { PRICE_IDS } from '@/lib/stripe';
-import { TIER_DISPLAY_NAME, TIER_PRICE_GBP } from '@/lib/tier-rank';
 import { capture as posthogCapture } from '@/lib/posthog';
 
 // Basic-but-sensible email regex — local@host.tld, no spaces, no
@@ -324,21 +323,16 @@ export default function PricingCTA({ plan, className, children, style, billingCy
     e.preventDefault();
     if (loading || !priceId) return;
 
-    // Always confirm before charging the user. Three states to handle:
+    // Wait for the preview before letting the click through. Without
+    // this, a fast click could race ahead of the preview fetch (bug Paul
+    // hit 2026-04-27, charged with no confirmation).
     //
-    //   A) preview hasn't loaded yet → block the click and tell them to
-    //      wait a moment. Without this, a fast click can race ahead of
-    //      the preview fetch and we'd end up charging them with no
-    //      confirmation dialog at all (bug Paul hit 2026-04-27).
-    //
-    //   B) preview loaded, has existing sub, prorated > 0 → upgrade
-    //      confirmation with the actual £ amount.
-    //
-    //   C) preview loaded, no existing sub → fresh subscribe; show a
-    //      generic "you'll be charged £X.XX" confirmation. The Stripe
-    //      Checkout page will also show the price, but we owe them an
-    //      in-app confirm too — same standard as a downgrade or any
-    //      other money-moving click.
+    // There is deliberately no window.confirm here. The checkout route
+    // refuses any POST without `confirmed: true` and answers 409 with a
+    // redirect to /upgrade, and this component never sends that flag. So
+    // every click already lands on /upgrade, which shows the plan, the
+    // price due today and the card on file before anything is charged.
+    // A browser dialog in front of it asked the same question twice.
     if (preview === null) {
       // Preview is still in flight. Bail out gracefully — they haven't
       // been charged anything, button just doesn't do anything until
@@ -346,33 +340,6 @@ export default function PricingCTA({ plan, className, children, style, billingCy
       // (or stays as the headline) once preview resolves.
       return;
     }
-
-    // Plan name and headline price come from the canonical tier tables,
-    // not a `plan === 'pro' ? … : …` ternary. That ternary would have told
-    // a Household buyer they were being charged £4.99/month.
-    const planName = TIER_DISPLAY_NAME[plan];
-    const headlineMonthly = `£${TIER_PRICE_GBP[plan].monthly.toFixed(2)}`;
-    const headlineYearly = `£${TIER_PRICE_GBP[plan].yearly.toFixed(2)}`;
-    const headline = billingCycle === 'yearly'
-      ? `${headlineYearly}/year`
-      : `${headlineMonthly}/month`;
-
-    if (preview.hasExistingSub && preview.prorated_amount_pennies > 0) {
-      // Upgrade flow — show prorated total.
-      const confirmed = window.confirm(
-        `Upgrading to ${planName} will charge ${preview.prorated_amount_display} to your card on file today.\n\nThis is the prorated upgrade — you get a credit for the unused days on your current plan, and pay only the difference for the rest of this billing cycle.\n\nFrom your next billing date you'll be charged the full ${headline} rate. Continue?`,
-      );
-      if (!confirmed) return;
-    } else if (!preview.hasExistingSub) {
-      // Fresh-subscribe flow — Stripe Checkout will collect the card,
-      // but we still confirm the headline price first.
-      const confirmed = window.confirm(
-        `You'll be taken to a secure Stripe checkout page to start your ${planName} (${headline}) plan. You can cancel anytime. Continue?`,
-      );
-      if (!confirmed) return;
-    }
-    // Else: existing sub but prorated_amount=0 (e.g. free trial overlap).
-    // Charge is £0 today, so no dialog needed — let it through.
 
     setLoading(true);
     try {
