@@ -31,6 +31,16 @@ import { X, Loader2, ShieldCheck, Eye, Ban, ArrowRight } from 'lucide-react';
 interface BankPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * Set when the user is RECONNECTING a bank we already know, rather
+   * than adding a new one. Passed through to /api/auth/yapily so the
+   * server knows the bank before the user leaves for Yapily, which is
+   * the only moment it can shape the consent for that bank (see
+   * src/lib/yapily/institution-policy.ts). It also skips Yapily's bank
+   * list, saving a step: they asked to reconnect this bank, not choose
+   * one. Omit it and Yapily shows its own picker, as before.
+   */
+  institutionId?: string | null;
 }
 
 /**
@@ -60,7 +70,7 @@ const ASSURANCES = [
   },
 ];
 
-export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProps) {
+export default function BankPickerModal({ isOpen, onClose, institutionId }: BankPickerModalProps) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,10 +80,12 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
     setConnecting(true);
     setError(null);
     try {
-      // No institutionId — that omission is what makes Yapily show its
-      // own bank list. See src/app/api/auth/yapily/route.ts.
+      // Normally no institutionId: that omission is what makes Yapily
+      // show its own bank list. See src/app/api/auth/yapily/route.ts.
+      // On a reconnect we do know the bank, and say so.
       const returnTo = encodeURIComponent(window.location.pathname);
-      const res = await fetch(`/api/auth/yapily?returnTo=${returnTo}`);
+      const bank = institutionId ? `&institutionId=${encodeURIComponent(institutionId)}` : '';
+      const res = await fetch(`/api/auth/yapily?returnTo=${returnTo}${bank}`);
       const data = await res.json();
 
       if (data.error) {

@@ -32,19 +32,44 @@
 // connect. Neither of the two consents that survived ever saw that
 // burst.
 //
-// We cannot see inside HSBC, so we cannot say which part of the burst is
-// fatal (the refused calls, the concurrency with the initial sync, or
-// the restricted endpoints themselves). We do not need to. For a bank on
-// this list the consent's first hour goes back to what it was when HSBC
-// consents lived: transactions only, one call at a time.
+// RESULT OF THE FIRST TEST, 3 Oct 2026. Removing the burst was not
+// enough on its own. The first reconnect after this module shipped made
+// seven calls in total (hosted consent, /accounts, /consents, then four
+// spaced incremental transaction requests), every one of them
+// successful, then nothing for 68 minutes, and the first scheduled sync
+// still failed with the same refresh error (consent bb9dfa60, tracingId
+// 6ac05e3c761945853a6a96d83e2ab8c9). So the burst is not the whole
+// story, and a clean reproduction now exists for Yapily.
 //
-// The cost is that direct debits, standing orders and scheduled
-// payments are not re-harvested for these banks. What was harvested
-// before stays in upcoming_endpoint_snapshots and keeps being projected,
-// and scheduled payments still arrive as future-dated rows on the
-// ordinary transaction feed (see FUTURE_HORIZON_DAYS in sync-window.ts).
-// A bank feed that lasts an hour is worth nothing; a slightly staler
-// direct debit list is a fair price for one that lasts 90 days.
+// What that leaves, from the same log:
+//
+//   feature scope   burst at connect   outcome
+//   six named       no                 lived for days   (7 May, 14 May)
+//   six named       yes                died at ~1 hour  (18 May, 15 Aug)
+//   everything      yes                died at ~1 hour  (21 Aug to 1 Oct)
+//   everything      no                 died at ~1 hour  (3 Oct)
+//
+// The only combination HSBC has ever tolerated is the top row. Until
+// 21 Aug every consent named six feature scopes; since then we have
+// sent none, which makes Yapily request everything the bank supports,
+// and for HSBC that adds IDENTITY. So for a bank on this list we now do
+// both things the surviving consents did: no burst (below) and the same
+// six named scopes (GENTLE_FEATURE_SCOPE).
+//
+// The other explanation that fits every row is that something changed
+// on the HSBC or Yapily side around 16 May and nothing we send matters.
+// The log cannot separate the two. One reconnect with both conditions
+// restored can: if that consent also dies at an hour, this is not ours
+// to fix and it goes to Yapily.
+//
+// The cost of the gentle list is that direct debits, standing orders
+// and scheduled payments are not re-harvested for these banks. What was
+// harvested before stays in upcoming_endpoint_snapshots and keeps being
+// projected, and scheduled payments still arrive as future-dated rows
+// on the ordinary transaction feed (see FUTURE_HORIZON_DAYS in
+// sync-window.ts). A bank feed that lasts an hour is worth nothing; a
+// slightly staler direct debit list is a fair price for one that lasts
+// 90 days.
 //
 // Kept dependency-free so it can be unit-tested with `node --test`.
 
@@ -101,4 +126,49 @@ export function isGentleInstitution(
   const id = (institutionId ?? '').trim().toLowerCase();
   if (!id) return false;
   return gentleInstitutionPrefixes(envValue).some((prefix) => id.startsWith(prefix));
+}
+
+/**
+ * The feature scopes named on every consent between 6 May and 21 Aug
+ * 2026 (UPCOMING_FEATURE_SCOPES at the time), which is the only
+ * configuration an HSBC Business consent has survived under.
+ *
+ * Duplicated here rather than imported from ./upcoming so this module
+ * stays dependency-free, and so a later edit to that list for other
+ * reasons cannot silently change what HSBC is asked for.
+ *
+ * Yapily adds the base ACCOUNTS / ACCOUNT scopes itself, as it did in
+ * May. What this leaves out compared with an unscoped HSBC consent is
+ * IDENTITY, which nothing in the product reads.
+ */
+export const GENTLE_FEATURE_SCOPE: readonly string[] = [
+  'ACCOUNT_SCHEDULED_PAYMENTS',
+  'ACCOUNT_PERIODIC_PAYMENTS',
+  'ACCOUNT_DIRECT_DEBITS',
+  'ACCOUNT_TRANSACTIONS',
+  'ACCOUNT_TRANSACTIONS_WITH_MERCHANT',
+  'ACCOUNT_BALANCES',
+];
+
+/**
+ * The featureScope to name when creating a consent, or undefined to
+ * name none.
+ *
+ * Undefined is the rule (Migle Ivanauskaite, Yapily, 21 Aug 2026:
+ * naming a scope makes it a hard requirement, so the authorisation
+ * fails outright on a bank that does not implement it). A bank on the
+ * gentle list is the one exception, and it is safe there for a specific
+ * reason: this exact list authorised successfully at HSBC Business on
+ * 7 May, 14 May, 18 May and 15 Aug 2026.
+ *
+ * Only reachable when we know the bank BEFORE the user leaves for
+ * Yapily, that is on a deep link or a reconnect. A user who picks HSBC
+ * inside Yapily's own bank picker still gets an unscoped consent,
+ * because we do not learn their choice until the callback.
+ */
+export function consentFeatureScopeFor(
+  institutionId: string | null | undefined,
+  envValue: string | undefined = process.env.YAPILY_GENTLE_INSTITUTIONS,
+): readonly string[] | undefined {
+  return isGentleInstitution(institutionId, envValue) ? GENTLE_FEATURE_SCOPE : undefined;
 }

@@ -129,6 +129,10 @@ export default function MoneyHubPage() {
  // a background refetch keeping the data fresh. Cleared on manual Sync.
  const cacheRef = useRef<Map<string, any>>(new Map());
  const [showBankPicker, setShowBankPicker] = useState(false);
+ // Set only while the picker was opened from a specific bank's Reconnect
+ // button, so the consent request can name that bank. Cleared on close,
+ // so every other "connect a bank" entry point still gets Yapily's list.
+ const [reconnectInstitutionId, setReconnectInstitutionId] = useState<string | null>(null);
  const [showFcaBanner, setShowFcaBanner] = useState(false);
  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
  const [connectError, setConnectError] = useState<string | null>(null);
@@ -546,7 +550,7 @@ export default function MoneyHubPage() {
  // rows live forever in the DB but are invisible in the UI — no way
  // for the user to clean them up.
  const { data: conns } = await supabase.from('bank_connections')
- .select('id, bank_name, status, account_ids, account_display_names')
+ .select('id, bank_name, status, account_ids, account_display_names, institution_id')
  .eq('user_id', user.id)
  .in('status', ['expired', 'token_expired', 'expired_legacy', 'expiring_soon', 'revoked']);
  if (conns?.length) setExpiredConnections(conns);
@@ -923,7 +927,7 @@ export default function MoneyHubPage() {
  </div>
  ))}
  </div>
- {showBankPicker && <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />}
+ {showBankPicker && <BankPickerModal isOpen={showBankPicker} institutionId={reconnectInstitutionId} onClose={() => { setShowBankPicker(false); setReconnectInstitutionId(null); }} />}
  </div>
  );
  }
@@ -1274,7 +1278,7 @@ export default function MoneyHubPage() {
  >
    Restore data
  </button>
- <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="bg-orange-500 hover:bg-orange-600 text-black font-semibold px-3 py-1 rounded-lg text-xs">Reconnect</button>
+ <button onClick={() => { if (!connectBankDirect()) { setReconnectInstitutionId(conn.institution_id || null); setShowBankPicker(true); } }} className="bg-orange-500 hover:bg-orange-600 text-black font-semibold px-3 py-1 rounded-lg text-xs">Reconnect</button>
  <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
  <Trash2 className="h-4 w-4" />
  </button>
@@ -1932,7 +1936,7 @@ export default function MoneyHubPage() {
  </>
  )}
 
- {showBankPicker && <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />}
+ {showBankPicker && <BankPickerModal isOpen={showBankPicker} institutionId={reconnectInstitutionId} onClose={() => { setShowBankPicker(false); setReconnectInstitutionId(null); }} />}
  {disconnectModal && (
    <DisconnectBankModal
      open={!!disconnectModal}

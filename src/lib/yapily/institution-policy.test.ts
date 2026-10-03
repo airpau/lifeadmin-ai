@@ -5,7 +5,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  consentFeatureScopeFor,
   DEFAULT_GENTLE_INSTITUTION_PREFIXES,
+  GENTLE_FEATURE_SCOPE,
   gentleInstitutionPrefixes,
   isGentleInstitution,
 } from './institution-policy.ts';
@@ -62,5 +64,30 @@ describe('gentleInstitutionPrefixes', () => {
 
   it('drops empty entries from a sloppy override', () => {
     assert.deepEqual(gentleInstitutionPrefixes('hsbc,, barclays ,'), ['hsbc', 'barclays']);
+  });
+});
+
+describe('consentFeatureScopeFor', () => {
+  it('names the six May scopes for HSBC', () => {
+    assert.deepEqual(consentFeatureScopeFor('hsbcbusiness_uk', undefined), GENTLE_FEATURE_SCOPE);
+    assert.equal(GENTLE_FEATURE_SCOPE.length, 6);
+  });
+
+  it('never names IDENTITY, the scope an unscoped HSBC consent adds', () => {
+    assert.equal(GENTLE_FEATURE_SCOPE.includes('IDENTITY'), false);
+  });
+
+  it('names nothing for every other bank, per Yapily guidance', () => {
+    assert.equal(consentFeatureScopeFor('natwest', undefined), undefined);
+    assert.equal(consentFeatureScopeFor('mock-sandbox', undefined), undefined);
+  });
+
+  it('names nothing when the bank is not known yet (Yapily bank picker)', () => {
+    assert.equal(consentFeatureScopeFor(undefined, undefined), undefined);
+    assert.equal(consentFeatureScopeFor(null, undefined), undefined);
+  });
+
+  it('is switched off together with the gentle list', () => {
+    assert.equal(consentFeatureScopeFor('hsbcbusiness_uk', 'none'), undefined);
   });
 });
