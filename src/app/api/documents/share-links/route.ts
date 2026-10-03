@@ -2,7 +2,9 @@
 // POST /api/documents/share-links: create one. Body: { label?, days? }
 //      (days 1 to 90, default 30). The full link is returned ONCE; only
 //      a SHA-256 hash and prefix are stored.
-// Pro and above (PlanLimits.accountantRegister).
+// Pro and above (PlanLimits.accountantRegister). Register links only:
+// document pack links (pack_id set) are listed and created under
+// /api/documents/packs/[id]/share.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl, documentsAdmin, isResponse, requireUser, upgradeRequired } from '@/lib/documents/route-helpers';
@@ -21,6 +23,7 @@ export async function GET() {
     .from('document_share_links')
     .select('id, token_prefix, label, expires_at, revoked_at, last_used_at, use_count, created_at')
     .eq('user_id', user.id)
+    .is('pack_id', null)
     .order('created_at', { ascending: false })
     .limit(50);
   if (error) return NextResponse.json({ error: 'Could not load your share links.' }, { status: 500 });
@@ -44,6 +47,7 @@ export async function POST(req: NextRequest) {
     .from('document_share_links')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', user.id)
+    .is('pack_id', null)
     .is('revoked_at', null)
     .gt('expires_at', new Date().toISOString());
   if ((count ?? 0) >= SHARE_LINK_MAX_ACTIVE) {

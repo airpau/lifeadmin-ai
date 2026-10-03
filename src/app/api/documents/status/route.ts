@@ -10,7 +10,8 @@
 
 import { NextResponse } from 'next/server';
 import { documentsAdmin, isResponse, requireUser } from '@/lib/documents/route-helpers';
-import { documentQuota, getDocumentEntitlements } from '@/lib/documents/plan';
+import { documentQuota, getDocumentEntitlements, packBuildQuota } from '@/lib/documents/plan';
+import { packAvailability } from '@/lib/documents/packs/rows';
 import { driveConnectionStatus } from '@/lib/documents/drive';
 
 export const runtime = 'nodejs';
@@ -21,7 +22,7 @@ export async function GET() {
   const admin = documentsAdmin();
 
   const ent = await getDocumentEntitlements(user.id);
-  const [quota, drive, todoist, inboxes] = await Promise.all([
+  const [quota, drive, todoist, inboxes, packQuota] = await Promise.all([
     documentQuota(admin, user.id, ent),
     driveConnectionStatus(admin, user.id),
     admin.from('todoist_connections').select('status').eq('user_id', user.id).maybeSingle(),
@@ -32,6 +33,7 @@ export async function GET() {
       .eq('auth_method', 'oauth')
       .eq('status', 'active')
       .is('archived_at', null),
+    packBuildQuota(admin, user.id, ent),
   ]);
 
   const pickerApiKey = process.env.GOOGLE_PICKER_API_KEY || '';
@@ -42,6 +44,7 @@ export async function GET() {
       tier: ent.tier,
       entitlements: ent,
       quota,
+      packs: packAvailability(ent, packQuota),
       inboxesConnected: inboxes.count ?? 0,
       drive,
       todoist: { connected: todoist.data?.status === 'active', configured: !!process.env.TODOIST_CLIENT_ID },
