@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getAccounts, getHostedConsentRequest } from '@/lib/yapily';
 import { snapshotAccounts, upsertYapilyConnection } from '@/lib/yapily/connection-store';
 import { assignSyncOffsetMinutes, computeNextSyncAt } from '@/lib/yapily/sync-scheduler';
+import { claimConsentRequest } from '@/lib/yapily/callback-claim';
 
 export const maxDuration = 60;
 
@@ -189,6 +190,22 @@ export async function GET(request: NextRequest) {
           backedOff++;
           console.warn(
             `[yapily.abandonment] consentRequestId=${row.consent_request_id} AUTHORIZED but token/consentId missing — retrying in ${delay}ms`,
+          );
+        } else if (
+          (await claimConsentRequest(admin, row.consent_request_id, '[yapily.abandonment]')) ===
+          'duplicate'
+        ) {
+          // The redirect callback is finishing this authorisation right
+          // now (or just has). Recovering it here as well would run a
+          // second /accounts call and a second background sync on the
+          // same new consent. Leave it; the callback marks the row
+          // completed, and if it dies its claim goes stale and the next
+          // tick recovers the connection.
+          const delay = nextBackoffMs(attempts);
+          updates.next_poll_at = new Date(now.getTime() + delay).toISOString();
+          backedOff++;
+          console.log(
+            `[yapily.abandonment] consentRequestId=${row.consent_request_id} is being finished by the callback, leaving it`,
           );
         } else {
           try {

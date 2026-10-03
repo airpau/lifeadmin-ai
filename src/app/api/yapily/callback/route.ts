@@ -4,6 +4,8 @@ import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getAccounts, getHostedConsentRequest, getConsent } from '@/lib/yapily';
 import { snapshotAccounts, upsertYapilyConnection } from '@/lib/yapily/connection-store';
 import { assignSyncOffsetMinutes, computeNextSyncAt } from '@/lib/yapily/sync-scheduler';
+import { claimConsentRequest } from '@/lib/yapily/callback-claim';
+import { isGentleInstitution } from '@/lib/yapily/institution-policy';
 
 /**
  * GET /api/yapily/callback?consent=xxx&consent-id=xxx&state=xxx
@@ -209,6 +211,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(
       new URL('/dashboard/money-hub?error=invalid_callback', request.url),
     );
+  }
+
+  // ── Finish each authorisation exactly once ───────────────────────
+  //
+  // This route has been hit twice for the same authorisation (two
+  // "initial" rows in bank_sync_log seconds apart, on five separate
+  // connects between 15 Aug and 1 Oct 2026). Everything below this
+  // point talks to the bank on a consent that is seconds old, so a
+  // second pass doubles the /accounts call and fires a second full
+  // background sync in parallel with the first.
+  //
+  // Placed after the Yapily status check and before the first call
+  // that carries the consent token. A duplicate is sent to the same
+  // place the first pass will land, with nothing further done.
+  if (consentRequestId) {
+    const claim = await claimConsentRequest(
+      createAdmin(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      ),
+      consentRequestId,
+      '[yapily.callback]',
+    );
+    if (claim === 'duplicate') {
+      console.warn(
+        `[yapily.callback] consentRequestId=${consentRequestId} is already being finished, ignoring this duplicate hit`,
+      );
+      return NextResponse.redirect(new URL(`${returnTo}?connected=true`, request.url));
+    }
   }
 
   // ── Fetch the accounts the user just authorised ──
@@ -468,13 +499,27 @@ export async function GET(request: NextRequest) {
   // call ran the cron over EVERY user's connections on every single
   // bank connect — a full-tenant fan-out triggered by one person
   // linking one account.
-  fetch(
-    `${appUrl}/api/cron/sync-upcoming?connectionId=${encodeURIComponent(upsertResult.connectionId)}`,
-    {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
-    },
-  ).catch((err) => console.error('[yapily.callback] sync-upcoming trigger failed:', err));
+  //
+  // NOT for banks on the gentle list (HSBC). This kick is the one thing
+  // that separates the HSBC Business consents that lived for days from
+  // the ones that die at their first token refresh: it was added on
+  // 14 May 2026, and no HSBC consent created since has lasted much past
+  // an hour. It runs in parallel with the initial sync above, on the
+  // same consent, and on HSBC most of its calls error. See
+  // src/lib/yapily/institution-policy.ts for the evidence.
+  if (isGentleInstitution(institutionId)) {
+    console.log(
+      `[yapily.callback] institution=${institutionId} is on the gentle list, not kicking sync-upcoming for connection=${upsertResult.connectionId}`,
+    );
+  } else {
+    fetch(
+      `${appUrl}/api/cron/sync-upcoming?connectionId=${encodeURIComponent(upsertResult.connectionId)}`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+      },
+    ).catch((err) => console.error('[yapily.callback] sync-upcoming trigger failed:', err));
+  }
 
   return NextResponse.redirect(
     new URL(`${returnTo}?connected=true${upsertResult.reused ? '&merged=1' : ''}`, request.url),

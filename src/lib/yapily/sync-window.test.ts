@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeTransactionWindow,
+  needsOlderHistory,
+  planInitialSync,
   FULL_HISTORY_DAYS,
   FUTURE_HORIZON_DAYS,
   INCREMENTAL_OVERLAP_DAYS,
@@ -143,5 +145,78 @@ describe('computeTransactionWindow', () => {
         `inverted window for watermark ${latest}`,
       );
     }
+  });
+});
+
+describe('planInitialSync', () => {
+  it('gives a brand new account the full treatment', () => {
+    const plan = planInitialSync(null, NOW);
+    assert.equal(plan.backfillOlderHistory, true);
+    assert.equal(plan.window.mode, 'full_history');
+  });
+
+  it('treats an unparseable watermark as a new account', () => {
+    // Failing towards "pull everything": history a new user needs cannot
+    // be fetched later, history we already hold is merely redundant.
+    assert.equal(planInitialSync('not-a-date', NOW).backfillOlderHistory, true);
+    assert.equal(planInitialSync('', NOW).backfillOlderHistory, true);
+  });
+
+  it('makes a reconnect as light as a scheduled sync', () => {
+    // The case this exists for: a user re-authorising a bank we already
+    // hold years of history for.
+    const plan = planInitialSync(daysBefore(1), NOW);
+    assert.equal(plan.backfillOlderHistory, false);
+    assert.equal(plan.window.mode, 'incremental');
+    assert.deepEqual(plan.window, computeTransactionWindow(daysBefore(1), NOW));
+  });
+
+  it('flags a watermark too old to resume from', () => {
+    const plan = planInitialSync(daysBefore(240), NOW);
+    assert.equal(plan.backfillOlderHistory, false);
+    assert.equal(plan.staleWatermark, true);
+    assert.equal(plan.window.mode, 'full_history');
+    assert.equal(planInitialSync(daysBefore(1), NOW).staleWatermark, false);
+    assert.equal(planInitialSync(null, NOW).staleWatermark, false);
+  });
+
+  it('handles a future-dated watermark the way the scheduled sync does', () => {
+    const future = new Date(NOW.getTime() + 5 * DAY).toISOString();
+    const plan = planInitialSync(future, NOW);
+    assert.equal(plan.backfillOlderHistory, false);
+    assert.deepEqual(plan.window, computeTransactionWindow(future, NOW));
+  });
+});
+
+describe('needsOlderHistory', () => {
+  const fresh = planInitialSync(daysBefore(1), NOW);
+  const dormant = planInitialSync(daysBefore(240), NOW);
+  const brandNew = planInitialSync(null, NOW);
+
+  it('always backfills a brand new account', () => {
+    assert.equal(needsOlderHistory(brandNew, [brandNew]), true);
+    assert.equal(needsOlderHistory(brandNew, [brandNew, fresh]), true);
+  });
+
+  it('never backfills an account with recent history', () => {
+    assert.equal(needsOlderHistory(fresh, [fresh]), false);
+    assert.equal(needsOlderHistory(fresh, [fresh, dormant, brandNew]), false);
+  });
+
+  it('skips a dormant account when a sibling proves the connection was syncing', () => {
+    // The HSBC Business shape: a busy current account next to a savings
+    // account nobody has touched since January.
+    assert.equal(needsOlderHistory(dormant, [fresh, dormant]), false);
+  });
+
+  it('backfills when every account is stale, because the connection was down', () => {
+    // An outage longer than 90 days leaves a hole the recent window
+    // cannot reach. The older pull is the only thing that closes it.
+    assert.equal(needsOlderHistory(dormant, [dormant]), true);
+    assert.equal(needsOlderHistory(dormant, [dormant, dormant]), true);
+  });
+
+  it('does not let a brand new sibling stand in as proof of recent syncing', () => {
+    assert.equal(needsOlderHistory(dormant, [dormant, brandNew]), true);
   });
 });
