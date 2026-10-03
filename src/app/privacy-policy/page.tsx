@@ -43,7 +43,7 @@ export default function PrivacyPolicyPage() {
       category="Legal"
       title="Privacy Policy"
       dek="How Paybacker LTD collects, uses and protects your personal data under the UK GDPR."
-      dateLabel="Last updated March 2026"
+      dateLabel="Last updated October 2026"
       toc={TOC}
       aside={{
         eyebrow: "Questions?",
@@ -91,6 +91,36 @@ export default function PrivacyPolicyPage() {
         </p>
       </div>
 
+      <div className="callout">
+        <div className="label">Documents you keep in Paybacker (with your consent)</div>
+        <p style={{ margin: 0 }}>
+          When you use the documents vault, we save copies of bills, receipts,
+          invoices, statements, certificates, policies and similar documents
+          from your connected inbox, or files you choose from Google Drive. We
+          record details read from each document, such as the supplier, amount,
+          date and any renewal or expiry date. Files are stored privately and
+          only you, and anyone you choose to share a link with, can open them.
+        </p>
+      </div>
+      <div className="callout">
+        <div className="label">Google Drive (with your consent)</div>
+        <p style={{ margin: 0 }}>
+          If you connect Google Drive, we can only see the files you pick or
+          that Paybacker creates for you (Google&rsquo;s &ldquo;drive.file&rdquo;
+          permission). We use it to import the files you choose and, on Pro, to
+          save a copy of your documents into a Paybacker folder in your Drive.
+          We cannot see the rest of your Drive.
+        </p>
+      </div>
+      <div className="callout">
+        <div className="label">Todoist (with your consent)</div>
+        <p style={{ margin: 0 }}>
+          If you connect Todoist, we create reminder tasks for the dates you
+          ask us to, such as a renewal or expiry date. We do not read your
+          other Todoist tasks.
+        </p>
+      </div>
+
       <h2 id="how-we-use">3. How we use your data</h2>
       <p>
         We use your personal data solely to provide and improve our savings
@@ -103,6 +133,14 @@ export default function PrivacyPolicyPage() {
         <li>
           Send you alerts when contract end dates are approaching or better deals
           become available.
+        </li>
+        <li>
+          Find, sort and store the documents you ask us to keep, and remind you
+          before their due, renewal or expiry dates.
+        </li>
+        <li>
+          Let you share a read-only register of your documents with someone you
+          choose, such as your accountant, until you revoke the link.
         </li>
         <li>Provide customer support and respond to your enquiries.</li>
       </ul>
@@ -140,6 +178,49 @@ export default function PrivacyPolicyPage() {
         </li>
         <li>
           <strong>Resend</strong> — transactional email delivery.
+        </li>
+        <li>
+          <strong>Anthropic</strong>: AI processing to read bills, receipts
+          and other documents and the emails they arrive in. Anthropic does not
+          use this data to train its models.
+        </li>
+        <li>
+          <strong>Google</strong>: Gmail and Google Drive access, only when you
+          connect them.
+        </li>
+        <li>
+          <strong>Todoist</strong>: reminder tasks, only when you connect it.
+        </li>
+      </ul>
+
+      <h3 id="google-user-data">Google user data</h3>
+      <p>
+        Paybacker&rsquo;s use and transfer to any other app of information
+        received from Google APIs will adhere to the{" "}
+        <a href="https://developers.google.com/terms/api-services-user-data-policy">
+          Google API Services User Data Policy
+        </a>
+        , including the Limited Use requirements.
+      </p>
+      <ul>
+        <li>
+          We only use Gmail and Google Drive data to provide the features you
+          can see in Paybacker: finding bills, subscriptions, renewals and
+          disputes, and keeping and reminding you about your documents.
+        </li>
+        <li>We never sell Google user data or use it for advertising.</li>
+        <li>
+          We do not use Google user data to develop, improve or train
+          generalised AI or machine learning models.
+        </li>
+        <li>
+          Nobody at Paybacker reads your Google data unless you ask us to for
+          support, it is needed for security or to comply with the law, or it
+          has been aggregated and anonymised.
+        </li>
+        <li>
+          You can disconnect Gmail or Google Drive at any time in Paybacker,
+          and remove Paybacker&rsquo;s access in your Google Account settings.
         </li>
       </ul>
 
