@@ -34,55 +34,76 @@ export function isGraphDocumentCandidate(m: GraphHeader): boolean {
   return BODY_RECEIPT_SUBJECT_RE.test(subject);
 }
 
+/** Returns the subset of `ids` already handled (so they are skipped while paging). */
+export type HandledFilter = (ids: string[]) => Promise<Set<string>>;
+
+/** Pages of 50 headers walked per run before stopping (2,000 headers). */
+export const GRAPH_MAX_PAGES = 40;
+
 /**
- * Document-like messages since `sinceIso`, newest first. `truncated` is
- * true when a cap or the deadline stopped the walk before the end of the
- * window.
+ * Up to `max` UNHANDLED document-like messages received since `sinceIso`.
+ *
+ * The walk is OLDEST FIRST, so progress is chronological: when it is cut
+ * short (deadline, page cap, or `max` reached) `coveredUntil` is the
+ * receivedDateTime of the last header that was fully examined, and every
+ * candidate up to that point is either collected or already handled. The
+ * caller can safely move its incremental cursor that far, which means a
+ * busy inbox still makes progress run after run instead of being stuck
+ * on a fixed lookback.
+ *
+ * Already handled ids are filtered page by page through `isHandled`.
+ * `complete` is true only when the window was walked to its end.
  */
 export async function searchGraphDocumentIds(
   token: string,
-  opts: { sinceIso: string; max: number; maxHeaders?: number; deadlineAt?: number },
-): Promise<{ headers: GraphHeader[]; truncated: boolean }> {
-  const maxHeaders = opts.maxHeaders ?? 400;
-  const out: GraphHeader[] = [];
-  let scanned = 0;
+  opts: {
+    sinceIso: string;
+    max: number;
+    isHandled: HandledFilter;
+    deadlineAt?: number;
+    maxPages?: number;
+    fetchImpl?: typeof fetch;
+  },
+): Promise<{ ids: string[]; complete: boolean; coveredUntil: string | null }> {
+  const maxPages = opts.maxPages ?? GRAPH_MAX_PAGES;
+  const out: string[] = [];
+  let coveredUntil: string | null = null;
+  let pages = 0;
   let url: string | null =
     `${GRAPH}/messages?` +
     new URLSearchParams({
       $filter: `receivedDateTime ge ${opts.sinceIso}`,
-      $orderby: 'receivedDateTime desc',
+      $orderby: 'receivedDateTime asc',
       $select: 'id,subject,from,receivedDateTime,hasAttachments',
       $top: '50',
     }).toString();
 
-  let truncated = false;
   while (url) {
-    if (out.length >= opts.max || scanned >= maxHeaders || (opts.deadlineAt !== undefined && Date.now() >= opts.deadlineAt)) {
-      truncated = true;
-      break;
+    if (pages >= maxPages || (opts.deadlineAt !== undefined && Date.now() >= opts.deadlineAt)) {
+      return { ids: out, complete: false, coveredUntil };
     }
     const res: Response = await fetchWithRetry(
       url,
       { headers: { Authorization: `Bearer ${token}` } },
-      { label: 'graph docs list', deadlineAt: opts.deadlineAt },
+      { label: 'graph docs list', deadlineAt: opts.deadlineAt, fetchImpl: opts.fetchImpl },
     );
+    pages++;
     if (res.status === 401 || res.status === 403) throw new GraphAuthError(`Microsoft access denied (${res.status})`);
     if (!res.ok) throw new Error(`Graph list failed (${res.status})`);
     const data = (await res.json()) as { value?: GraphHeader[]; '@odata.nextLink'?: string };
-    for (const m of data.value ?? []) {
-      scanned++;
-      if (isGraphDocumentCandidate(m)) {
-        out.push(m);
-        if (out.length >= opts.max) {
-          truncated = true;
-          break;
-        }
+    const page = data.value ?? [];
+    const candidateIds = page.filter(isGraphDocumentCandidate).map((m) => m.id);
+    const handled = candidateIds.length ? await opts.isHandled(candidateIds) : new Set<string>();
+    for (const m of page) {
+      if (isGraphDocumentCandidate(m) && !handled.has(m.id)) {
+        if (out.length >= opts.max) return { ids: out, complete: false, coveredUntil };
+        out.push(m.id);
       }
+      if (m.receivedDateTime) coveredUntil = m.receivedDateTime;
     }
-    if (truncated) break;
     url = data['@odata.nextLink'] || null;
   }
-  return { headers: out, truncated };
+  return { ids: out, complete: true, coveredUntil };
 }
 
 export interface GraphFullMessage {

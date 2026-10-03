@@ -121,10 +121,14 @@ CREATE TABLE IF NOT EXISTS public.document_processed_messages (
   connection_id    uuid NOT NULL,
   provider         text NOT NULL,
   message_id       text NOT NULL,
+  -- 'partial': some attachments saved, at least one failed. Retried on
+  -- later runs until `attempts` reaches the pipeline's limit (3), then
+  -- treated as handled so one broken attachment cannot block an inbox.
   outcome          text NOT NULL CHECK (outcome IN (
-                     'saved', 'duplicate', 'no_documents', 'not_document', 'skipped'
+                     'saved', 'duplicate', 'no_documents', 'not_document', 'skipped', 'partial'
                    )),
   documents_saved  integer NOT NULL DEFAULT 0,
+  attempts         integer NOT NULL DEFAULT 1,
   detail           text,
   processed_at     timestamptz NOT NULL DEFAULT now()
 );
@@ -144,7 +148,7 @@ CREATE POLICY "Users can view own processed messages"
   USING (auth.uid() = user_id);
 
 COMMENT ON TABLE public.document_processed_messages IS
-  'Bookkeeping for the documents vault: every email message the finder has fully handled, so it is never downloaded or classified twice. Transient failures and quota stops are NOT recorded, so those messages are retried next run.';
+  'Bookkeeping for the documents vault: every email message the finder has handled, so it is never downloaded or classified twice. Transient failures and quota stops are NOT recorded and are retried next run; partly saved messages are recorded as partial and retried up to 3 times.';
 
 -- ---------------------------------------------------------------------------
 -- Incremental cursor for automatic filing (additive column)
@@ -175,13 +179,17 @@ CREATE POLICY "documents_owner_read"
     AND (storage.foldername(name))[1] = auth.uid()::text
   );
 
--- Keep updated_at current (reuse the shared trigger function if present)
-DO $$
+-- Keep updated_at current. A table-specific function (the consumer_leads
+-- pattern): there is no shared set_updated_at() in production.
+CREATE OR REPLACE FUNCTION public.documents_set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'set_updated_at') THEN
-    DROP TRIGGER IF EXISTS set_updated_at_documents ON public.documents;
-    CREATE TRIGGER set_updated_at_documents
-      BEFORE UPDATE ON public.documents
-      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-  END IF;
-END $$;
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS documents_updated_at ON public.documents;
+CREATE TRIGGER documents_updated_at
+BEFORE UPDATE ON public.documents
+FOR EACH ROW EXECUTE FUNCTION public.documents_set_updated_at();

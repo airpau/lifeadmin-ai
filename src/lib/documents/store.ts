@@ -12,6 +12,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { DOCUMENTS_BUCKET, MAX_DOCUMENT_BYTES, type DocType, type DocumentSource } from '@/lib/documents/types';
 import { extensionForMime, sanitizeFilename } from '@/lib/documents/attachments';
 import type { ClassificationResult } from '@/lib/documents/classify';
+import { countDocumentsThisMonth } from '@/lib/documents/plan';
+import { asciiFilename } from '@/lib/documents/content-disposition';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Admin = SupabaseClient<any, any, any>;
@@ -47,6 +49,13 @@ export interface StoreDocumentInput {
    * (automatic filing must not resurrect something the user removed).
    */
   allowReviveDeleted?: boolean;
+  /**
+   * Monthly cap for the user's plan (PlanLimits.documentsPerMonth), or
+   * null when uncapped. Written to documents.quota_limit_at_insert so the
+   * documents_monthly_cap trigger checks it atomically, under a per-user
+   * lock, at insert time. Concurrent runs can therefore never overrun it.
+   */
+  quotaLimit?: number | null;
 }
 
 export interface StoredDocument {
@@ -63,6 +72,7 @@ export type StoreOutcome =
   | { status: 'saved'; doc: StoredDocument; classification: ClassificationResult }
   | { status: 'duplicate'; existingId: string }
   | { status: 'skipped'; reason: 'too_large' | 'empty' }
+  | { status: 'quota' }
   | { status: 'error'; message: string };
 
 export async function storeDocument(admin: Admin, input: StoreDocumentInput): Promise<StoreOutcome> {
@@ -125,7 +135,15 @@ export async function storeDocument(admin: Admin, input: StoreDocumentInput): Pr
     if (byPart) return { status: 'duplicate', existingId: byPart.id };
   }
 
-  // 3. New: classify (cost), upload, insert.
+  // 3. Capped plans: a cheap count first so a run that has hit the cap
+  // does not pay for a classification it cannot keep. The insert trigger
+  // is still the real, atomic guard.
+  if (input.quotaLimit !== null && input.quotaLimit !== undefined) {
+    const used = await countDocumentsThisMonth(admin, input.userId);
+    if (used >= input.quotaLimit) return { status: 'quota' };
+  }
+
+  // 4. New: classify (cost), upload, insert.
   const { result, model } = await input.classify();
 
   const up = await admin.storage.from(DOCUMENTS_BUCKET).upload(path, bytes, { contentType: input.mimeType, upsert: true });
@@ -160,6 +178,7 @@ export async function storeDocument(admin: Admin, input: StoreDocumentInput): Pr
     summary: result.summary,
     confidence: result.confidence,
     classification_model: model,
+    quota_limit_at_insert: input.quotaLimit ?? null,
   };
 
   const { data: inserted, error } = await admin
@@ -169,6 +188,18 @@ export async function storeDocument(admin: Admin, input: StoreDocumentInput): Pr
     .single();
 
   if (error) {
+    if (isQuotaExceededError(error)) {
+      // The monthly cap was reached by another run between our checks
+      // and this insert. Drop the object unless a row already owns it.
+      const { data: owner } = await admin
+        .from('documents')
+        .select('id')
+        .eq('user_id', input.userId)
+        .eq('sha256', sha)
+        .maybeSingle();
+      if (!owner) await admin.storage.from(DOCUMENTS_BUCKET).remove([path]);
+      return { status: 'quota' };
+    }
     if ((error as { code?: string }).code === '23505') {
       // Lost a race with a parallel run. If no row owns our object path,
       // remove the object so storage never holds an orphan.
@@ -188,7 +219,16 @@ export async function storeDocument(admin: Admin, input: StoreDocumentInput): Pr
   return { status: 'saved', doc: inserted as StoredDocument, classification: result };
 }
 
-/** Short-lived signed URL for one stored object. */
+/** True for the error raised by the documents_monthly_cap trigger. */
+export function isQuotaExceededError(error: { message?: string; code?: string } | null | undefined): boolean {
+  return !!error && (error.message || '').includes('document_quota_exceeded');
+}
+
+/**
+ * Short-lived signed URL for one stored object. The download name is
+ * reduced to ASCII: Supabase Storage puts it into a Content-Disposition
+ * header, which cannot carry characters outside Latin-1.
+ */
 export async function signedDocumentUrl(
   admin: Admin,
   path: string,
@@ -196,7 +236,7 @@ export async function signedDocumentUrl(
 ): Promise<string | null> {
   const { data, error } = await admin.storage
     .from(DOCUMENTS_BUCKET)
-    .createSignedUrl(path, opts.expiresIn ?? 120, opts.downloadName ? { download: opts.downloadName } : undefined);
+    .createSignedUrl(path, opts.expiresIn ?? 120, opts.downloadName ? { download: asciiFilename(opts.downloadName, 'document') } : undefined);
   if (error || !data?.signedUrl) return null;
   return data.signedUrl;
 }
