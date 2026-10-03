@@ -18,6 +18,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logAnthropicCall } from '@/lib/cost-ledger';
 import { DOC_TYPES, isDocType, type DocType } from '@/lib/documents/types';
+import { parseWarrantyMonths } from '@/lib/documents/warranty';
 
 /**
  * Same Haiku model id used by the inbox scanner (src/lib/gmail.ts,
@@ -39,6 +40,14 @@ export interface ClassificationResult {
   expiry_date: string | null;
   renewal_date: string | null;
   summary: string | null;
+  /**
+   * Length of a warranty or guarantee stated on the document, in months
+   * (stage three). null when none is stated. warranty_until is worked
+   * out from the purchase date in store.ts.
+   */
+  warranty_months: number | null;
+  /** The product the warranty or guarantee covers, short. */
+  warranty_product: string | null;
   /** 0 to 1 */
   confidence: number;
 }
@@ -56,6 +65,8 @@ export function fallbackClassification(isDocument = true): ClassificationResult 
     expiry_date: null,
     renewal_date: null,
     summary: null,
+    warranty_months: null,
+    warranty_product: null,
     confidence: 0.1,
   };
 }
@@ -137,6 +148,8 @@ export function parseClassification(raw: string | null | undefined): Classificat
     expiry_date: validIsoDate(obj.expiry_date),
     renewal_date: validIsoDate(obj.renewal_date),
     summary: shortText(obj.summary, 300),
+    warranty_months: parseWarrantyMonths(obj.warranty_months),
+    warranty_product: shortText(obj.warranty_product, 120),
     confidence: Math.round(confidence * 1000) / 1000,
   };
 }
@@ -174,10 +187,12 @@ Dates are YYYY-MM-DD or null. due_date = payment due. renewal_date = when a poli
 amount and vat_amount are numbers in the document currency (no symbols) or null. currency is a 3 letter code, default GBP for UK documents.
 supplier is the company name, short (for example "British Gas", "Amazon", "HMRC").
 summary is one plain English sentence, at most 25 words, British spelling.
+warranty_months: when a receipt, invoice or warranty certificate STATES a warranty or guarantee length for something bought (for example "2 year guarantee" = 24, "12 months manufacturer warranty" = 12), the length in whole months. Otherwise null. Never guess a length that is not stated. Ignore extended warranties that were offered but not bought.
+warranty_product is the item that warranty covers, short (for example "Bosch washing machine"), or null.
 confidence is 0 to 1.
 
 JSON shape:
-{"doc_type":"...","is_document":true,"supplier":null,"amount":null,"currency":null,"vat_amount":null,"doc_date":null,"due_date":null,"expiry_date":null,"renewal_date":null,"summary":"...","confidence":0.0}`;
+{"doc_type":"...","is_document":true,"supplier":null,"amount":null,"currency":null,"vat_amount":null,"doc_date":null,"due_date":null,"expiry_date":null,"renewal_date":null,"summary":"...","warranty_months":null,"warranty_product":null,"confidence":0.0}`;
 
 let _client: Anthropic | undefined;
 function client(): Anthropic {
@@ -217,7 +232,7 @@ export async function classifyDocument(
   try {
     const message = await client().messages.create({
       model: DOCUMENT_CLASSIFIER_MODEL,
-      max_tokens: 350,
+      max_tokens: 400,
       system: SYSTEM,
       messages: [{ role: 'user', content: buildClassifierPrompt(input) }],
     });
