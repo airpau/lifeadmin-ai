@@ -90,6 +90,47 @@ export interface PlanLimits {
    * null = single-user tier (no household).
    */
   householdSeats: number | null;
+  /**
+   * Documents vault: how many documents may be SAVED into the vault per
+   * calendar month (UTC), from any source. null = unlimited.
+   *
+   * Every saved document costs one small Claude Haiku classification
+   * call, so this is the cost cap for Free. Counted on documents.created_at
+   * including ones the user later deleted, so deleting and re-finding
+   * cannot be used to go round it. Enforced in src/lib/documents/plan.ts
+   * (documentQuota) by /api/documents/find, /api/documents/drive/import
+   * and the filing pipeline itself.
+   */
+  documentsPerMonth: number | null;
+  /**
+   * Documents vault: new documents are found and filed automatically
+   * every day by /api/cron/document-filing. When false, "Find my
+   * documents" only runs when the user presses the button.
+   */
+  autoDocumentFiling: boolean;
+  /**
+   * Documents vault: reminders before a document's due, renewal or
+   * expiry date, as a calendar file (.ics) and as a Todoist task.
+   * Enforced by /api/documents/[id]/ics, /api/documents/[id]/todoist
+   * and the Todoist connect flow.
+   */
+  documentReminders: boolean;
+  /**
+   * Documents vault: a copy of every filed document is uploaded to the
+   * user's own Google Drive, in a "Paybacker" folder with subfolders by
+   * type and year. drive.file scope only. Needs a Drive connection.
+   */
+  driveDocumentFiling: boolean;
+  /**
+   * Documents vault: CSV register export and revocable, expiring
+   * read-only share links for an accountant.
+   */
+  accountantRegister: boolean;
+  /**
+   * Documents vault: maximum files per Google Drive import request.
+   * null = the server's own safety cap (DRIVE_IMPORT_HARD_CAP).
+   */
+  driveImportMaxFiles: number | null;
   features: string[];
 }
 
@@ -125,6 +166,13 @@ export interface PlanLimits {
  * Priority support ticket    —      —          ✓      ✓          ✓
  * Dispute queue priority     3      2          1      1          0
  * Ombudsman packs included   —      —          —      —          ✓
+ * Documents saved / month    20     ∞          ∞      ∞
+ * Automatic document filing  -      ✓          ✓      ✓
+ * Document reminders (.ics,  -      ✓          ✓      ✓
+ *   Todoist)
+ * Copy filed to own Drive    -      -          ✓      ✓
+ * Accountant register/share  -      -          ✓      ✓
+ * Drive import files/request 1      ∞          ∞      ∞
  *
  * NOTE: the pre-2026-08 version of this comment claimed "Dispute-reply
  * watchdog 30m auto (all tiers)" and "Dispute thread links ∞" for every
@@ -170,6 +218,12 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     ombudsmanPacksIncluded: false,
     disputeQueuePriority: 3,
     householdSeats: null,
+    documentsPerMonth: 20,
+    autoDocumentFiling: false,
+    documentReminders: false,
+    driveDocumentFiling: false,
+    accountantRegister: false,
+    driveImportMaxFiles: 1,
     features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan', 'watchdog_manual'],
   },
   essential: {
@@ -185,6 +239,12 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     ombudsmanPacksIncluded: false,
     disputeQueuePriority: 2,
     householdSeats: null,
+    documentsPerMonth: null,
+    autoDocumentFiling: true,
+    documentReminders: true,
+    driveDocumentFiling: false,
+    accountantRegister: false,
+    driveImportMaxFiles: null,
     features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'budgets_goals', 'watchdog_auto'],
   },
   pro: {
@@ -200,6 +260,12 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     ombudsmanPacksIncluded: false,
     disputeQueuePriority: 1,
     householdSeats: null,
+    documentsPerMonth: null,
+    autoDocumentFiling: true,
+    documentReminders: true,
+    driveDocumentFiling: true,
+    accountantRegister: true,
+    driveImportMaxFiles: null,
     features: PRO_FEATURES,
   },
 
@@ -224,6 +290,12 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     ombudsmanPacksIncluded: false,
     disputeQueuePriority: 1,
     householdSeats: 4,
+    documentsPerMonth: null,
+    autoDocumentFiling: true,
+    documentReminders: true,
+    driveDocumentFiling: true,
+    accountantRegister: true,
+    driveImportMaxFiles: null,
     features: [...PRO_FEATURES, 'household_seats'],
   },
 
