@@ -10,7 +10,7 @@ import { Loader2, Lock, RefreshCw, TrendingUp, X } from 'lucide-react';
 interface Rise {
   id: string;
   supplier: string;
-  cadence: 'monthly' | 'quarterly' | 'annual';
+  cadence: 'monthly' | 'quarterly' | 'half_yearly' | 'annual';
   old_amount: number;
   new_amount: number;
   old_date: string;
@@ -20,7 +20,7 @@ interface Rise {
   price_alert_id: string | null;
 }
 
-const PER: Record<Rise['cadence'], string> = { monthly: 'a month', quarterly: 'a quarter', annual: 'a year' };
+const PER: Record<Rise['cadence'], string> = { monthly: 'a month', quarterly: 'a quarter', half_yearly: 'every six months', annual: 'a year' };
 
 function fmtDate(d: string): string {
   return new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
