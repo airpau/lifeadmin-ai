@@ -372,6 +372,31 @@ async function writeInstitutionsCache(value: YapilyInstitution[]): Promise<void>
 }
 
 /**
+ * Is this one of Yapily's test institutions rather than a real bank?
+ *
+ * Yapily's sandbox institutions (mock-sandbox, natwest-sandbox,
+ * modelo-sandbox) are returned by GET /institutions with GB in their
+ * countries array, so the UK filter in getInstitutions() lets them
+ * straight through. On the live application that left the bank picker
+ * offering four "UK banks", two of which were test fixtures.
+ *
+ * Detection is deliberately belt-and-braces. `environmentType` is the
+ * field Yapily documents, but it is absent from some responses, so the
+ * `-sandbox` id suffix — the convention every known test institution
+ * follows — is the fallback that actually catches today's three.
+ *
+ * NOTE: this is a display-time predicate only. It must NOT be applied
+ * inside getInstitutions(), because the capability checks in the sync
+ * crons look connections up by institution id, and there are live
+ * sandbox connections (Paul's modelo-sandbox) whose capabilities still
+ * need to resolve.
+ */
+export function isSandboxInstitution(inst: YapilyInstitution): boolean {
+  if (inst.environmentType?.toUpperCase() === 'SANDBOX') return true;
+  return /-sandbox$/i.test(inst.id ?? '');
+}
+
+/**
  * All Yapily-supported institutions, filtered to the UK (country code
  * GB). Served from memory, then from the durable cache, and only then
  * from Yapily — at most once a week.

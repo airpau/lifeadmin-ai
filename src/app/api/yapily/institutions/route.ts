@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getInstitutions } from '@/lib/yapily';
+import { getInstitutions, isSandboxInstitution } from '@/lib/yapily';
 
 /**
  * In-memory cache for UK institution list.
@@ -35,7 +35,36 @@ export async function GET() {
   try {
     const institutions = await getInstitutions();
 
-    cachedInstitutions = institutions.map((inst) => {
+    // Yapily's test institutions come back with GB in their countries
+    // array, so the UK filter upstream does not remove them and the
+    // picker was offering mock-sandbox and natwest-sandbox alongside the
+    // real banks. Hide them in production only: locally and in preview
+    // they are how the connection flow gets exercised without a real
+    // bank login.
+    //
+    // Gating display, not connection. /api/auth/yapily still accepts a
+    // sandbox institutionId, which is what keeps existing sandbox
+    // connections (and manual QA against them) working.
+    const selectable =
+      process.env.NODE_ENV === 'production'
+        ? institutions.filter((inst) => !isSandboxInstitution(inst))
+        : institutions;
+
+    // If that filter emptied the list, the application has no live UK
+    // institutions at all. Serving the sandboxes anyway would not let a
+    // real user connect a real bank, so surface it loudly instead of
+    // quietly rendering an empty picker.
+    if (
+      process.env.NODE_ENV === 'production' &&
+      selectable.length === 0 &&
+      institutions.length > 0
+    ) {
+      console.error(
+        `[yapily.institutions] all ${institutions.length} UK institutions are sandboxes — bank picker will be empty`,
+      );
+    }
+
+    cachedInstitutions = selectable.map((inst) => {
       // Find the logo URL from the media array (prefer 'icon' type, fall back to first)
       const icon = inst.media?.find((m) => m.type === 'icon');
       const logoUrl = icon?.source || inst.media?.[0]?.source || null;
