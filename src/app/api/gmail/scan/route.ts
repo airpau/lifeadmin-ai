@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { toFindingRow, toMoneyHubAlertRow } from '@/lib/email/scan-persistence';
 
-export const maxDuration = 120;
+// Several mailboxes are scanned one after another, so allow the Pro
+// plan maximum. The loop stops starting new mailboxes at ~200s.
+export const maxDuration = 300;
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { scanEmailsForOpportunities, refreshAccessToken } from '@/lib/gmail';
+import { scanEmailsForOpportunities, refreshAccessToken, type Opportunity } from '@/lib/gmail';
+import {
+  listActiveOAuthConnections,
+  hasAnyGoogleConnectionRow,
+  hasConnectionsNeedingReauth,
+  getScanAccessToken,
+  dedupeWithinInbox,
+} from '@/lib/email/oauth-connections';
+import { decryptToken, encryptToken } from '@/lib/email/token-crypto';
 import { checkUsageLimit, incrementUsage, checkFreeScanGate } from '@/lib/plan-limits';
 import { resolveEmailScanWindow, clampSinceToWindow, buildScanWindowNotice } from '@/lib/email-scan-window';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
@@ -64,76 +74,90 @@ export async function POST(request: NextRequest) {
     (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
   );
 
-  const { data: tokenRow, error: tokenErr } = await admin
-    .from('gmail_tokens')
-    .select('*')
-    .eq('user_id', user.id)
-    .single();
+  // ---- Which mailboxes to scan ----
+  //
+  // Every active, non-archived Gmail row in email_connections, scanned one
+  // after another, each with its own token refresh written back only to
+  // its own row. This used to read the single gmail_tokens row, so only
+  // the most recently connected Gmail was ever scanned, and its refreshed
+  // token was then written over every other Gmail row the user had.
+  //
+  // gmail_tokens is only consulted for very old accounts that have no
+  // email_connections row at all (the dashboard still calls this route
+  // for them as its legacy fallback).
+  const url = new URL(request.url);
+  const forceFull = url.searchParams.get('full') === '1';
+  const { rows: googleConns, error: connListErr } = await listActiveOAuthConnections(admin, user.id, 'google');
+  if (connListErr) {
+    // Never fall back to the legacy row on a lookup error: that could scan
+    // a mailbox the user has since disconnected.
+    console.error('[gmail-scan] email_connections lookup failed:', connListErr);
+    return NextResponse.json({ error: 'Could not load your Gmail connections. Please try again.', opportunities: [] }, { status: 500 });
+  }
 
-  if (tokenErr || !tokenRow) {
-    console.error('[gmail-scan] No gmail_tokens row:', tokenErr?.message);
+  type LegacyTarget = { refreshToken: string | null; accessToken: string | null; email: string };
+  let legacyTarget: LegacyTarget | null = null;
+  if (googleConns.length === 0 && !(await hasAnyGoogleConnectionRow(admin, user.id))) {
+    const { data: legacyRow } = await admin
+      .from('gmail_tokens')
+      .select('email, access_token, refresh_token')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (legacyRow) {
+      legacyTarget = {
+        email: legacyRow.email,
+        accessToken: decryptToken(legacyRow.access_token),
+        refreshToken: decryptToken(legacyRow.refresh_token),
+      };
+    }
+  }
+
+  if (googleConns.length === 0 && !legacyTarget) {
+    if (await hasConnectionsNeedingReauth(admin, user.id, 'google')) {
+      return NextResponse.json({ error: 'Gmail token refresh failed. Please reconnect Gmail.', opportunities: [] }, { status: 401 });
+    }
+    console.error('[gmail-scan] No active Gmail connection for user');
     return NextResponse.json({ error: 'Gmail not connected. Please connect Gmail first.', opportunities: [] }, { status: 400 });
   }
 
-  // Always refresh token (they expire every hour)
-  let accessToken = tokenRow.access_token;
-  if (tokenRow.refresh_token) {
-    try {
-      console.log('[gmail-scan] Refreshing access token...');
-      const refreshed = await refreshAccessToken(tokenRow.refresh_token);
-      accessToken = refreshed.access_token;
-      const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
-      await admin.from('gmail_tokens').update({ access_token: accessToken, token_expiry: newExpiry, updated_at: new Date().toISOString() }).eq('user_id', user.id);
-      await admin.from('email_connections').update({ access_token: accessToken, token_expiry: newExpiry }).eq('user_id', user.id).eq('provider_type', 'google');
-      console.log('[gmail-scan] Token refreshed OK');
-    } catch (refreshErr: any) {
-      console.error('[gmail-scan] Token refresh failed:', refreshErr.message);
-      return NextResponse.json({ error: 'Gmail token refresh failed. Please reconnect Gmail.', opportunities: [] }, { status: 401 });
-    }
-  }
+  // Tier lookback cap. resolveEmailScanWindow goes through
+  // getEffectiveTier, so an active onboarding trial gets the paid
+  // window and a downgraded user just gets the shallower window on
+  // their next scan (no error, no broken state).
+  const scanWindow = await resolveEmailScanWindow(user.id);
 
-  try {
-    // Use the comprehensive scanning function from gmail.ts
-    // This fetches full email bodies, uses targeted queries, and has a robust Claude prompt.
-    //
-    // Incremental scans: if the user already has `last_full_scanned_at`, we
-    // narrow the recency window to messages since `last_scanned_at` (default
-    // 30 days back). The query parameter `?full=1` forces a fresh 2-year sweep
-    // and resets `last_full_scanned_at`.
-    const url = new URL(request.url);
-    const forceFull = url.searchParams.get('full') === '1';
-    const { data: connRow } = await admin
-      .from('email_connections')
-      .select('last_scanned_at, last_full_scanned_at')
-      .eq('user_id', user.id)
-      .eq('provider_type', 'google')
-      .eq('status', 'active')
-      .maybeSingle();
-    const isFullScan = forceFull || !connRow?.last_full_scanned_at;
-    // Tier lookback cap. resolveEmailScanWindow goes through
-    // getEffectiveTier, so an active onboarding trial gets the paid
-    // window and a downgraded user just gets the shallower window on
-    // their next scan (no error, no broken state).
-    const scanWindow = await resolveEmailScanWindow(user.id);
-    const rawSince = isFullScan
-      ? null
-      : (connRow?.last_scanned_at || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
-    const sinceISO = clampSinceToWindow(rawSince, scanWindow);
-    console.log(`[gmail-scan] Starting ${isFullScan ? 'FULL' : 'INCREMENTAL'} scan (since=${sinceISO}, window=${scanWindow.days}d, tier=${scanWindow.tier})...`);
-    const scanResult = await scanEmailsForOpportunities(accessToken, {
-      sinceISO,
-      userId: user.id,
-      lookbackDays: scanWindow.days,
-    });
-    let opportunities = scanResult.opportunities;
+  // ---- Time budget ----
+  //
+  // maxDuration is 300s. Everything below aims to finish by 240s:
+  //  - a mailbox is only started if at least 60s remain
+  //  - Gmail fetching for a mailbox stops 45s before the deadline (the
+  //    scanner then classifies what it already has and reports partial),
+  //    leaving time for the Haiku call and saving
+  //  - each mailbox's findings are saved and its cursor stamped as soon
+  //    as that mailbox finishes, so a slow later mailbox can never lose
+  //    an earlier one's results
+  const requestStartedAt = Date.now();
+  const HARD_DEADLINE = requestStartedAt + 240_000;
+  const MIN_TIME_TO_START_MS = 60_000;
+  const FETCH_STOP_BEFORE_DEADLINE_MS = 45_000;
 
-    console.log(`[gmail-scan] Scan complete: ${scanResult.emailsFound} found, ${scanResult.emailsScanned} scanned, ${opportunities.length} opportunities`);
+  const accountResults: Array<{
+    email: string;
+    status: 'scanned' | 'partial' | 'needs_reauth' | 'error' | 'skipped';
+    error?: string;
+    emailsFound?: number;
+    emailsScanned?: number;
+    opportunities?: number;
+  }> = [];
+  const newFindings: Opportunity[] = [];
+  let totalFound = 0;
+  let totalScanned = 0;
 
-    if (!isAdmin) {
-      await recordClaudeCall(user.id, usageCheck.tier);
-      await incrementUsage(user.id, 'scan_run');
-    }
-
+  // Persist ONE mailbox's findings. This is the original inline
+  // persistence logic, unchanged apart from being called per mailbox.
+  // Returns the new findings for the UI.
+  const persistFindings = async (found: Opportunity[]): Promise<Opportunity[]> => {
+    let opportunities = found;
     // Save opportunities to database for persistence
     if (opportunities.length > 0) {
       const sessionId = `scan_${Date.now()}`;
@@ -519,42 +543,172 @@ export async function POST(request: NextRequest) {
       // Return all new findings for the UI
       opportunities = allNew;
     }
+    return opportunities;
+  };
 
-    // Stamp last_scanned_at so the dashboard staleness check won't re-fire on the next page load.
-    // Scoped to provider_type=google so Outlook/IMAP connections are not incorrectly marked as scanned.
-    // On a full scan, also stamp last_full_scanned_at so subsequent scans run incrementally.
-    const stamp: Record<string, string> = { last_scanned_at: new Date().toISOString() };
-    if (isFullScan) stamp.last_full_scanned_at = new Date().toISOString();
-    await admin.from('email_connections')
-      .update(stamp)
-      .eq('user_id', user.id)
-      .eq('provider_type', 'google')
-      .eq('status', 'active');
+  // Scan one mailbox, save its findings, and (only if it completed)
+  // move its cursor. Returns false if the mailbox could not be scanned.
+  const scanAndSave = async (
+    label: string,
+    accessToken: string,
+    sinceISO: string | null,
+    stampConn: { id: string; emailsScanned: number; isFullScan: boolean } | null,
+  ): Promise<void> => {
+    let r: Awaited<ReturnType<typeof scanEmailsForOpportunities>>;
+    try {
+      r = await scanEmailsForOpportunities(accessToken, {
+        sinceISO,
+        userId: user.id,
+        lookbackDays: scanWindow.days,
+        fetchDeadlineAt: HARD_DEADLINE - FETCH_STOP_BEFORE_DEADLINE_MS,
+      });
+    } catch (scanErr: unknown) {
+      const msg = scanErr instanceof Error ? scanErr.message : String(scanErr);
+      console.error(`[gmail-scan] ${label} scan failed:`, msg);
+      accountResults.push({ email: label, status: 'error', error: msg || 'Scan failed' });
+      return;
+    }
+    // One Haiku classification per mailbox, so count it per mailbox.
+    if (!isAdmin) await recordClaudeCall(user.id, usageCheck.tier);
+    totalFound += r.emailsFound;
+    totalScanned += r.emailsScanned;
 
-    return NextResponse.json({
-      opportunities,
-      emailsFound: scanResult.emailsFound,
-      emailsScanned: scanResult.emailsScanned,
-      opportunityCount: opportunities.length,
-      scannedAt: new Date().toISOString(),
-      // Depth transparency. `scanWindowNotice` is null for paid tiers —
-      // a paying user never sees an upsell after a scan they paid for.
-      scanWindow: {
-        days: scanWindow.days,
-        tier: scanWindow.tier,
-        capped: scanWindow.capped,
-        fullWindowDays: scanWindow.fullWindowDays,
-        sinceISO: scanWindow.sinceISO,
-      },
-      scanWindowNotice: buildScanWindowNotice(scanWindow, opportunities.length),
+    let saved: Opportunity[];
+    try {
+      saved = await persistFindings(dedupeWithinInbox(r.opportunities));
+    } catch (saveErr: unknown) {
+      const msg = saveErr instanceof Error ? saveErr.message : String(saveErr);
+      console.error(`[gmail-scan] ${label} saving findings failed:`, msg);
+      // Cursor not moved, so the next scan picks these up again.
+      accountResults.push({ email: label, status: 'error', error: `Findings could not be saved: ${msg}` });
+      return;
+    }
+    newFindings.push(...saved);
+    accountResults.push({
+      email: label,
+      status: r.partial ? 'partial' : 'scanned',
+      ...(r.partial ? { error: 'Ran out of time, scan again to finish this inbox' } : {}),
+      emailsFound: r.emailsFound,
+      emailsScanned: r.emailsScanned,
+      opportunities: saved.length,
     });
-  } catch (err: any) {
-    console.error('Gmail scan error:', err.message);
+
+    // Stamp last_scanned_at (and last_full_scanned_at after a full scan)
+    // on this mailbox only, by row id, now that its findings are saved.
+    // A partial scan keeps the old cursor so the next scan covers the
+    // messages it did not reach (the classification cache stops those
+    // being paid for twice).
+    if (stampConn && !r.partial) {
+      const nowIso = new Date().toISOString();
+      const stamp: Record<string, string | number> = {
+        last_scanned_at: nowIso,
+        emails_scanned: stampConn.emailsScanned + r.emailsScanned,
+      };
+      if (stampConn.isFullScan) stamp.last_full_scanned_at = nowIso;
+      await admin.from('email_connections').update(stamp).eq('id', stampConn.id);
+    }
+  };
+
+  // Incremental scans, per mailbox: if a connection already has
+  // `last_full_scanned_at`, narrow its window to messages since its own
+  // `last_scanned_at` (default 30 days back). `?full=1` forces a fresh
+  // sweep on every mailbox and resets `last_full_scanned_at`.
+  //
+  // Mailboxes are scanned one after another (not in parallel) so two
+  // inboxes do not double the burst against Gmail's quota.
+  for (const conn of googleConns) {
+    if (HARD_DEADLINE - Date.now() < MIN_TIME_TO_START_MS) {
+      accountResults.push({ email: conn.email_address, status: 'skipped', error: 'Ran out of time, scan again to include this inbox' });
+      continue;
+    }
+    const tok = await getScanAccessToken(admin, conn);
+    if (!tok.ok) {
+      console.error(`[gmail-scan] ${conn.id} token unavailable (${tok.reason}): ${tok.message}`);
+      accountResults.push({ email: conn.email_address, status: tok.reason === 'needs_reauth' ? 'needs_reauth' : 'error', error: tok.message });
+      continue;
+    }
+    const isFullScan = forceFull || !conn.last_full_scanned_at;
+    const rawSince = isFullScan
+      ? null
+      : (conn.last_scanned_at || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+    const sinceISO = clampSinceToWindow(rawSince, scanWindow);
+    console.log(`[gmail-scan] ${conn.id}: starting ${isFullScan ? 'FULL' : 'INCREMENTAL'} scan (since=${sinceISO}, window=${scanWindow.days}d, tier=${scanWindow.tier})`);
+    await scanAndSave(conn.email_address, tok.accessToken, sinceISO, {
+      id: conn.id,
+      emailsScanned: conn.emails_scanned ?? 0,
+      isFullScan,
+    });
+  }
+
+  // Legacy-only account (no email_connections row at all).
+  if (legacyTarget) {
+    let accessToken = legacyTarget.accessToken;
+    let legacyOk = true;
+    if (legacyTarget.refreshToken) {
+      try {
+        const refreshed = await refreshAccessToken(legacyTarget.refreshToken);
+        accessToken = refreshed.access_token;
+        await admin.from('gmail_tokens').update({
+          access_token: encryptToken(accessToken),
+          token_expiry: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq('user_id', user.id).eq('email', legacyTarget.email);
+      } catch (refreshErr: unknown) {
+        const refreshErrMsg = refreshErr instanceof Error ? refreshErr.message : String(refreshErr);
+        console.error('[gmail-scan] legacy token refresh failed:', refreshErrMsg);
+        accountResults.push({ email: legacyTarget.email, status: 'needs_reauth', error: refreshErrMsg });
+        legacyOk = false;
+      }
+    }
+    if (legacyOk && accessToken) {
+      // Legacy rows have no scan cursor, so this is always a full sweep
+      // within the tier window, exactly as before.
+      await scanAndSave(legacyTarget.email, accessToken, clampSinceToWindow(null, scanWindow), null);
+    } else if (legacyOk) {
+      accountResults.push({ email: legacyTarget.email, status: 'needs_reauth', error: 'No usable Gmail token' });
+    }
+  }
+
+  const scannedCount = accountResults.filter((a) => a.status === 'scanned' || a.status === 'partial').length;
+  if (scannedCount === 0) {
+    const anyReauth = accountResults.some((a) => a.status === 'needs_reauth');
+    const firstError = accountResults.find((a) => a.error)?.error;
+    if (anyReauth) {
+      return NextResponse.json({ error: 'Gmail token refresh failed. Please reconnect Gmail.', opportunities: [], accounts: accountResults }, { status: 401 });
+    }
     return NextResponse.json({
-      error: err.message || 'Scan failed',
+      error: firstError || 'Scan failed',
       opportunities: [],
       emailsFound: 0,
       emailsScanned: 0,
+      accounts: accountResults,
     }, { status: 500 });
   }
+
+  // One scan run for usage, however many mailboxes it covered.
+  if (!isAdmin) await incrementUsage(user.id, 'scan_run');
+
+  console.log(`[gmail-scan] Scan complete across ${scannedCount}/${accountResults.length} mailbox(es) in ${Math.round((Date.now() - requestStartedAt) / 1000)}s: ${totalFound} found, ${totalScanned} scanned, ${newFindings.length} new findings`);
+
+  return NextResponse.json({
+    opportunities: newFindings,
+    emailsFound: totalFound,
+    emailsScanned: totalScanned,
+    opportunityCount: newFindings.length,
+    // Per-mailbox outcome (additive). Lets the UI say "2 of 3 inboxes
+    // scanned, reconnect x@gmail.com" without another round trip.
+    accounts: accountResults,
+    partial: accountResults.some((a) => a.status === 'partial' || a.status === 'skipped'),
+    scannedAt: new Date().toISOString(),
+    // Depth transparency. `scanWindowNotice` is null for paid tiers —
+    // a paying user never sees an upsell after a scan they paid for.
+    scanWindow: {
+      days: scanWindow.days,
+      tier: scanWindow.tier,
+      capped: scanWindow.capped,
+      fullWindowDays: scanWindow.fullWindowDays,
+      sinceISO: scanWindow.sinceISO,
+    },
+    scanWindowNotice: buildScanWindowNotice(scanWindow, newFindings.length),
+  });
 }

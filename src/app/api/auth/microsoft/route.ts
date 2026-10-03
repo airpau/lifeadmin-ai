@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getMicrosoftAuthUrl } from '@/lib/outlook';
 import { PLAN_LIMITS, getEffectiveTier } from '@/lib/plan-limits';
+import { createOAuthState, setOAuthNonceCookie } from '@/lib/oauth-state';
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -35,6 +36,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const state = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
-  return NextResponse.redirect(getMicrosoftAuthUrl(state));
+  // Signed state + nonce cookie, verified in the callback (CSRF protection).
+  const signed = createOAuthState(user.id, 'outlook');
+  if (!signed) {
+    return NextResponse.redirect(
+      new URL(`/dashboard/profile?error=${encodeURIComponent('Outlook connection is temporarily unavailable. Please try again later.')}`, request.url),
+    );
+  }
+  const res = NextResponse.redirect(getMicrosoftAuthUrl(signed.state));
+  return setOAuthNonceCookie(res, 'outlook', signed.nonce);
 }

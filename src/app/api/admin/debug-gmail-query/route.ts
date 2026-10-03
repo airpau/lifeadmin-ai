@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
 import { refreshAccessToken as refreshGmailToken } from '@/lib/gmail';
+import { decryptToken } from '@/lib/email/token-crypto';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,10 +30,13 @@ function getAdmin() {
 }
 
 async function ensureGmailToken(conn: any): Promise<string> {
+  // Stored tokens may be encrypted at rest (src/lib/email/token-crypto.ts).
+  const accessToken = decryptToken(conn.access_token);
+  const refreshToken = decryptToken(conn.refresh_token);
   const exp = conn.token_expiry ? new Date(conn.token_expiry).getTime() : 0;
-  if (conn.access_token && exp - Date.now() > 60_000) return conn.access_token;
-  if (!conn.refresh_token) throw new Error('No refresh token');
-  const r = await refreshGmailToken(conn.refresh_token);
+  if (accessToken && exp - Date.now() > 60_000) return accessToken;
+  if (!refreshToken) throw new Error('No refresh token');
+  const r = await refreshGmailToken(refreshToken);
   return r.access_token;
 }
 

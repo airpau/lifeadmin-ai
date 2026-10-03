@@ -19,6 +19,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { refreshAccessToken as refreshGmailToken } from '@/lib/gmail';
 import { refreshMicrosoftToken } from '@/lib/outlook';
+import { decryptToken } from '@/lib/email/token-crypto';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,14 +40,17 @@ interface BrowsedThread {
 }
 
 async function ensureToken(conn: any): Promise<string> {
+  // Stored tokens may be encrypted at rest (src/lib/email/token-crypto.ts).
+  const accessToken = decryptToken(conn.access_token);
+  const refreshToken = decryptToken(conn.refresh_token);
   const expiresAt = conn.token_expiry ? new Date(conn.token_expiry).getTime() : 0;
-  if (conn.access_token && expiresAt - Date.now() > 60_000) return conn.access_token;
-  if (!conn.refresh_token) throw new Error('No refresh token');
+  if (accessToken && expiresAt - Date.now() > 60_000) return accessToken;
+  if (!refreshToken) throw new Error('No refresh token');
   if (conn.provider_type === 'google' || conn.provider_type === 'gmail') {
-    const r = await refreshGmailToken(conn.refresh_token);
+    const r = await refreshGmailToken(refreshToken);
     return r.access_token;
   }
-  const r = await refreshMicrosoftToken(conn.refresh_token);
+  const r = await refreshMicrosoftToken(refreshToken);
   return r.access_token;
 }
 

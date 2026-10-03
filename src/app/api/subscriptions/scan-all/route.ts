@@ -71,6 +71,13 @@ export async function POST(request: NextRequest) {
 
   const results: ProviderResult[] = [];
 
+  // /api/gmail/scan and /api/outlook/scan each scan EVERY active inbox of
+  // their provider. So call each endpoint once, not once per connection:
+  // calling per connection meant N inboxes ran N full scans (N Haiku
+  // calls each) and timed out. The two providers run in parallel (each
+  // is its own function invocation with its own 300s limit), and each
+  // call is aborted at 285s so this route answers inside its own 300s.
+  const endpoints = new Map<string, typeof connections>();
   for (const conn of connections) {
     const provider = (conn.provider_type || '').toLowerCase();
     let path: string | null = null;
@@ -87,41 +94,74 @@ export async function POST(request: NextRequest) {
       });
       continue;
     }
+    const list = endpoints.get(path) ?? [];
+    list.push(conn);
+    endpoints.set(path, list);
+  }
 
-    try {
-      const res = await fetch(`${origin}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', cookie },
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
+  const providerRuns = await Promise.all(
+    Array.from(endpoints.entries()).map(async ([path, conns]) => {
+      const providerType = path === '/api/gmail/scan' ? 'google' : 'outlook';
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 285_000);
+      try {
+        const res = await fetch(`${origin}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', cookie },
+          signal: controller.signal,
+        });
+        const body = await res.json().catch(() => ({}));
+        return { providerType, conns, ok: res.ok, status: res.status, body };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Scan failed';
+        return { providerType, conns, ok: false, status: 0, body: { error: msg } };
+      } finally {
+        clearTimeout(timer);
+      }
+    }),
+  );
+
+  for (const run of providerRuns) {
+    const opps = run.ok && Array.isArray(run.body?.opportunities) ? run.body.opportunities : [];
+    if (!run.ok) {
+      // Whole provider failed: report it against each of its inboxes.
+      for (const conn of run.conns) {
         results.push({
           provider_email: conn.email_address,
-          provider_type: provider,
+          provider_type: run.providerType,
           count: 0,
           opportunities: [],
-          error: body?.error || `Scan failed (${res.status})`,
+          error: run.body?.error || `Scan failed (${run.status})`,
         });
-        continue;
       }
-      const opps = Array.isArray(body.opportunities) ? body.opportunities : [];
+      continue;
+    }
+    // Per-inbox summary from the endpoint's `accounts` array. The
+    // findings themselves are provider-level, so they are attached once.
+    const accounts: Array<{ email: string; status: string; error?: string; emailsFound?: number; emailsScanned?: number; opportunities?: number }> =
+      Array.isArray(run.body?.accounts) ? run.body.accounts : [];
+    if (accounts.length === 0) {
       results.push({
-        provider_email: conn.email_address,
-        provider_type: provider,
+        provider_email: run.conns.map((c) => c.email_address).join(', '),
+        provider_type: run.providerType,
         count: opps.length,
-        emailsFound: body.emailsFound,
-        emailsScanned: body.emailsScanned,
+        emailsFound: run.body?.emailsFound,
+        emailsScanned: run.body?.emailsScanned,
         opportunities: opps,
       });
-    } catch (err: any) {
-      results.push({
-        provider_email: conn.email_address,
-        provider_type: provider,
-        count: 0,
-        opportunities: [],
-        error: err?.message || 'Scan failed',
-      });
+      continue;
     }
+    accounts.forEach((a, i) => {
+      results.push({
+        provider_email: a.email,
+        provider_type: run.providerType,
+        count: a.opportunities ?? 0,
+        emailsFound: a.emailsFound,
+        emailsScanned: a.emailsScanned,
+        opportunities: i === 0 ? opps : [],
+        ...(a.status === 'scanned' ? {} : { error: a.error || a.status }),
+      });
+    });
   }
 
   // Merge + dedupe across all inboxes by (provider name, type) — favours the

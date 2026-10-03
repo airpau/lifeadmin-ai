@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { toMoneyHubAlertRow } from '@/lib/email/scan-persistence';
 
-export const maxDuration = 120;
+// Several mailboxes are scanned one after another, so allow the Pro
+// plan maximum. The loop stops starting new mailboxes at ~200s.
+export const maxDuration = 300;
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { scanOutlookForOpportunities, refreshMicrosoftToken } from '@/lib/outlook';
+import { scanOutlookForOpportunities, type Opportunity } from '@/lib/outlook';
+import {
+  listActiveOAuthConnections,
+  hasConnectionsNeedingReauth,
+  getScanAccessToken,
+  dedupeWithinInbox,
+} from '@/lib/email/oauth-connections';
 import { checkUsageLimit, incrementUsage, checkFreeScanGate } from '@/lib/plan-limits';
 import { resolveEmailScanWindow, buildScanWindowNotice } from '@/lib/email-scan-window';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
@@ -60,59 +68,49 @@ export async function POST(request: NextRequest) {
     (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
   );
 
-  // Check email_connections for Outlook OAuth connection
-  const { data: connection } = await admin
-    .from('email_connections')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('provider_type', 'outlook')
-    .eq('auth_method', 'oauth')
-    .eq('status', 'active')
-    .single();
+  // Every active, non-archived Outlook OAuth connection, scanned one
+  // after another. This used .single(), so a user with two Microsoft
+  // accounts got "Outlook not connected" and neither was scanned.
+  const { rows: outlookConns, error: connListErr } = await listActiveOAuthConnections(admin, user.id, 'outlook');
+  if (connListErr) {
+    console.error('[outlook-scan] email_connections lookup failed:', connListErr);
+    return NextResponse.json({ error: 'Could not load your Microsoft connections. Please try again.', opportunities: [] }, { status: 500 });
+  }
 
-  if (!connection) {
+  if (outlookConns.length === 0) {
+    if (await hasConnectionsNeedingReauth(admin, user.id, 'outlook')) {
+      return NextResponse.json({ error: 'Microsoft token refresh failed. Please reconnect your Microsoft account.', opportunities: [] }, { status: 401 });
+    }
     return NextResponse.json({ error: 'Outlook not connected. Please connect your Microsoft account first.', opportunities: [] }, { status: 400 });
   }
 
-  // Always refresh token (they expire every hour)
-  let accessToken = connection.access_token;
-  if (connection.refresh_token) {
-    try {
-      console.log('[outlook-scan] Refreshing access token...');
-      const refreshed = await refreshMicrosoftToken(connection.refresh_token);
-      accessToken = refreshed.access_token;
-      const newExpiry = new Date(Date.now() + (refreshed.expires_in || 3600) * 1000).toISOString();
-      await admin.from('email_connections').update({
-        access_token: accessToken,
-        token_expiry: newExpiry,
-        // If a new refresh token was issued, save it (Microsoft sometimes rotates)
-        ...(refreshed.refresh_token ? { refresh_token: refreshed.refresh_token } : {}),
-        updated_at: new Date().toISOString(),
-      }).eq('id', connection.id);
-      console.log('[outlook-scan] Token refreshed OK');
-    } catch (refreshErr: any) {
-      console.error('[outlook-scan] Token refresh failed:', refreshErr.message);
-      return NextResponse.json({ error: 'Microsoft token refresh failed. Please reconnect your Microsoft account.', opportunities: [] }, { status: 401 });
-    }
-  }
+  // Tier lookback cap, trial-aware via getEffectiveTier.
+  const scanWindow = await resolveEmailScanWindow(user.id);
 
-  try {
-    // Use the comprehensive scanning function (now matches Gmail capability)
-    // Tier lookback cap — trial-aware via getEffectiveTier.
-    const scanWindow = await resolveEmailScanWindow(user.id);
-    console.log(`[outlook-scan] Starting comprehensive email scan (window=${scanWindow.days}d, tier=${scanWindow.tier})...`);
-    const scanResult = await scanOutlookForOpportunities(accessToken, {
-      lookbackDays: scanWindow.days,
-    });
-    let opportunities = scanResult.opportunities;
+  // Time budget: same rules as /api/gmail/scan. Finish by ~240s of the
+  // 300s limit, only start a mailbox with 60s left, stop Graph fetching
+  // 45s before the deadline, and save each mailbox as soon as it is done.
+  const requestStartedAt = Date.now();
+  const HARD_DEADLINE = requestStartedAt + 240_000;
+  const MIN_TIME_TO_START_MS = 60_000;
+  const FETCH_STOP_BEFORE_DEADLINE_MS = 45_000;
 
-    console.log(`[outlook-scan] Scan complete: ${scanResult.emailsFound} found, ${scanResult.emailsScanned} scanned, ${opportunities.length} opportunities`);
+  const accountResults: Array<{
+    email: string;
+    status: 'scanned' | 'partial' | 'needs_reauth' | 'error' | 'skipped';
+    error?: string;
+    emailsFound?: number;
+    emailsScanned?: number;
+    opportunities?: number;
+  }> = [];
+  const newFindings: Opportunity[] = [];
+  let totalFound = 0;
+  let totalScanned = 0;
 
-    if (!isAdmin) {
-      await recordClaudeCall(user.id, usageCheck.tier);
-      await incrementUsage(user.id, 'scan_run');
-    }
-
+  // Persist ONE mailbox's findings: the original inline persistence
+  // logic, unchanged apart from being called per mailbox.
+  const persistFindings = async (found: Opportunity[]): Promise<Opportunity[]> => {
+    let opportunities = found;
     // Save opportunities to database for persistence (identical to Gmail)
     if (opportunities.length > 0) {
       // Get existing opportunity titles to avoid duplicates (across all statuses, so we don't recreate dismissed items)
@@ -232,35 +230,102 @@ export async function POST(request: NextRequest) {
       // Update opportunities to only include new ones in response
       opportunities = newOpportunities;
     }
+    return opportunities;
+  };
 
-    // Update last scanned metadata
-    await admin.from('email_connections').update({
-      last_scanned_at: new Date().toISOString(),
-      emails_scanned: (connection.emails_scanned || 0) + scanResult.emailsScanned,
-    }).eq('id', connection.id);
+  for (const conn of outlookConns) {
+    if (HARD_DEADLINE - Date.now() < MIN_TIME_TO_START_MS) {
+      accountResults.push({ email: conn.email_address, status: 'skipped', error: 'Ran out of time, scan again to include this inbox' });
+      continue;
+    }
+    // Refresh per connection; the new token (and any rotated refresh
+    // token) is written to this row only, encrypted.
+    const tok = await getScanAccessToken(admin, conn);
+    if (!tok.ok) {
+      console.error(`[outlook-scan] ${conn.id} token unavailable (${tok.reason}): ${tok.message}`);
+      accountResults.push({ email: conn.email_address, status: tok.reason === 'needs_reauth' ? 'needs_reauth' : 'error', error: tok.message });
+      continue;
+    }
+    console.log(`[outlook-scan] ${conn.id}: starting scan (window=${scanWindow.days}d, tier=${scanWindow.tier})`);
+    let r: Awaited<ReturnType<typeof scanOutlookForOpportunities>>;
+    try {
+      r = await scanOutlookForOpportunities(tok.accessToken, {
+        lookbackDays: scanWindow.days,
+        fetchDeadlineAt: HARD_DEADLINE - FETCH_STOP_BEFORE_DEADLINE_MS,
+      });
+    } catch (scanErr: unknown) {
+      const scanErrMsg = scanErr instanceof Error ? scanErr.message : String(scanErr);
+      console.error(`[outlook-scan] ${conn.id} scan failed:`, scanErrMsg);
+      accountResults.push({ email: conn.email_address, status: 'error', error: scanErrMsg || 'Scan failed' });
+      continue;
+    }
+    // One Haiku classification per mailbox, so count it per mailbox.
+    if (!isAdmin) await recordClaudeCall(user.id, usageCheck.tier);
+    totalFound += r.emailsFound;
+    totalScanned += r.emailsScanned;
 
-    return NextResponse.json({
-      opportunities,
-      emailsFound: scanResult.emailsFound,
-      emailsScanned: scanResult.emailsScanned,
-      opportunityCount: opportunities.length,
-      scannedAt: new Date().toISOString(),
-      scanWindow: {
-        days: scanWindow.days,
-        tier: scanWindow.tier,
-        capped: scanWindow.capped,
-        fullWindowDays: scanWindow.fullWindowDays,
-        sinceISO: scanWindow.sinceISO,
-      },
-      scanWindowNotice: buildScanWindowNotice(scanWindow, opportunities.length),
+    let saved: Opportunity[];
+    try {
+      saved = await persistFindings(dedupeWithinInbox(r.opportunities));
+    } catch (saveErr: unknown) {
+      const msg = saveErr instanceof Error ? saveErr.message : String(saveErr);
+      console.error(`[outlook-scan] ${conn.id} saving findings failed:`, msg);
+      accountResults.push({ email: conn.email_address, status: 'error', error: `Findings could not be saved: ${msg}` });
+      continue;
+    }
+    newFindings.push(...saved);
+    accountResults.push({
+      email: conn.email_address,
+      status: r.partial ? 'partial' : 'scanned',
+      ...(r.partial ? { error: 'Ran out of time, scan again to finish this inbox' } : {}),
+      emailsFound: r.emailsFound,
+      emailsScanned: r.emailsScanned,
+      opportunities: saved.length,
     });
-  } catch (err: any) {
-    console.error('[outlook-scan] Scan error:', err.message);
+    // Update last scanned metadata on this mailbox only, by id, now that
+    // its findings are saved. A partial scan keeps the old timestamp.
+    if (!r.partial) {
+      await admin.from('email_connections').update({
+        last_scanned_at: new Date().toISOString(),
+        emails_scanned: (conn.emails_scanned ?? 0) + r.emailsScanned,
+      }).eq('id', conn.id);
+    }
+  }
+
+  const scannedCount = accountResults.filter((a) => a.status === 'scanned' || a.status === 'partial').length;
+  if (scannedCount === 0) {
+    if (accountResults.some((a) => a.status === 'needs_reauth')) {
+      return NextResponse.json({ error: 'Microsoft token refresh failed. Please reconnect your Microsoft account.', opportunities: [], accounts: accountResults }, { status: 401 });
+    }
     return NextResponse.json({
-      error: err.message || 'Scan failed',
+      error: accountResults.find((a) => a.error)?.error || 'Scan failed',
       opportunities: [],
       emailsFound: 0,
       emailsScanned: 0,
+      accounts: accountResults,
     }, { status: 500 });
   }
+
+  // One scan run for usage, however many mailboxes it covered.
+  if (!isAdmin) await incrementUsage(user.id, 'scan_run');
+
+  console.log(`[outlook-scan] Scan complete across ${scannedCount}/${accountResults.length} mailbox(es) in ${Math.round((Date.now() - requestStartedAt) / 1000)}s: ${totalFound} found, ${totalScanned} scanned, ${newFindings.length} new findings`);
+
+  return NextResponse.json({
+    opportunities: newFindings,
+    emailsFound: totalFound,
+    emailsScanned: totalScanned,
+    opportunityCount: newFindings.length,
+    accounts: accountResults,
+    partial: accountResults.some((a) => a.status === 'partial' || a.status === 'skipped'),
+    scannedAt: new Date().toISOString(),
+    scanWindow: {
+      days: scanWindow.days,
+      tier: scanWindow.tier,
+      capped: scanWindow.capped,
+      fullWindowDays: scanWindow.fullWindowDays,
+      sinceISO: scanWindow.sinceISO,
+    },
+    scanWindowNotice: buildScanWindowNotice(scanWindow, newFindings.length),
+  });
 }

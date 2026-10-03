@@ -17,6 +17,7 @@
 
 import { refreshAccessToken as refreshGmailToken } from '../gmail';
 import { refreshMicrosoftToken } from '../outlook';
+import { decryptToken } from '../email/token-crypto';
 import { matchProviderName } from '../provider-match';
 import {
   domainsForProvider,
@@ -43,17 +44,20 @@ interface DisputeForMatching {
 // -----------------------------------------------------------------------------
 
 async function ensureFreshToken(conn: EmailConnection, provider: EmailProvider): Promise<string> {
+  // Stored tokens may be encrypted at rest (src/lib/email/token-crypto.ts).
+  const accessToken = decryptToken(conn.access_token);
+  const refreshToken = decryptToken(conn.refresh_token);
   const expiresAt = conn.token_expiry ? new Date(conn.token_expiry).getTime() : 0;
-  if (conn.access_token && expiresAt - Date.now() > 60_000) return conn.access_token;
-  if (!conn.refresh_token) {
+  if (accessToken && expiresAt - Date.now() > 60_000) return accessToken;
+  if (!refreshToken) {
     throw new Error(`No refresh token for ${provider} connection ${conn.id}`);
   }
   if (provider === 'gmail') {
-    const r = await refreshGmailToken(conn.refresh_token);
+    const r = await refreshGmailToken(refreshToken);
     return r.access_token;
   }
   if (provider === 'outlook') {
-    const r = await refreshMicrosoftToken(conn.refresh_token);
+    const r = await refreshMicrosoftToken(refreshToken);
     return r.access_token;
   }
   throw new Error(`ensureFreshToken not applicable for ${provider}`);

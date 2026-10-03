@@ -2,32 +2,53 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { exchangeMicrosoftCode } from '@/lib/outlook';
+import { verifyOAuthState, readOAuthNonceCookie, clearOAuthNonceCookie } from '@/lib/oauth-state';
+import { encryptToken } from '@/lib/email/token-crypto';
+import { PROVIDER_TYPE_ALIASES } from '@/lib/email/oauth-connections';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
+  const state = searchParams.get('state');
   const error = searchParams.get('error');
   const errorDesc = searchParams.get('error_description');
 
   const baseUrl = 'https://paybacker.co.uk';
   const returnPath = '/dashboard/profile';
 
+  // Every response from here on clears the one-time nonce cookie.
+  const redirect = (to: string) => clearOAuthNonceCookie(NextResponse.redirect(to), 'outlook');
+
   if (error) {
     console.error('[outlook-callback] OAuth error:', error, errorDesc);
-    return NextResponse.redirect(
+    return redirect(
       `${baseUrl}${returnPath}?error=${encodeURIComponent('Microsoft: ' + (errorDesc || error))}`
     );
   }
 
   if (!code) {
-    return NextResponse.redirect(`${baseUrl}${returnPath}?error=${encodeURIComponent('No authorization code received from Microsoft')}`);
+    return redirect(`${baseUrl}${returnPath}?error=${encodeURIComponent('No authorization code received from Microsoft')}`);
   }
 
   // Verify user is logged in
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.redirect(`${baseUrl}${returnPath}?error=${encodeURIComponent('Not logged in. Please log in and try again.')}`);
+    return redirect(`${baseUrl}${returnPath}?error=${encodeURIComponent('Not logged in. Please log in and try again.')}`);
+  }
+
+  // Signed state check (this callback previously never looked at state):
+  // HMAC, purpose, 15 minute expiry, nonce cookie, and user id match.
+  const check = verifyOAuthState(state, {
+    purpose: 'outlook',
+    nonceCookie: readOAuthNonceCookie(request, 'outlook'),
+    sessionUserId: user.id,
+  });
+  if (!check.ok) {
+    console.error('[outlook-callback] Rejected OAuth state:', check.reason);
+    return redirect(
+      `${baseUrl}${returnPath}?error=${encodeURIComponent('Outlook connection could not be verified. Please try connecting again.')}`
+    );
   }
 
   // Step 1: Exchange code for tokens
@@ -36,13 +57,13 @@ export async function GET(request: NextRequest) {
     tokens = await exchangeMicrosoftCode(code);
   } catch (err: any) {
     console.error('[outlook-callback] Token exchange failed:', err.message);
-    return NextResponse.redirect(
+    return redirect(
       `${baseUrl}${returnPath}?error=${encodeURIComponent('Token exchange failed: ' + err.message)}`
     );
   }
 
   if (!tokens.email) {
-    return NextResponse.redirect(
+    return redirect(
       `${baseUrl}${returnPath}?error=${encodeURIComponent('Could not get email address from Microsoft account')}`
     );
   }
@@ -62,7 +83,7 @@ export async function GET(request: NextRequest) {
     await admin.from('email_connections')
       .delete()
       .eq('user_id', user.id)
-      .eq('provider_type', 'outlook')
+      .in('provider_type', PROVIDER_TYPE_ALIASES.outlook)
       .eq('email_address', tokens.email);
 
     // Insert fresh connection
@@ -71,23 +92,23 @@ export async function GET(request: NextRequest) {
       email_address: tokens.email,
       provider_type: 'outlook',
       auth_method: 'oauth',
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token || null,
+      access_token: encryptToken(tokens.access_token),
+      refresh_token: encryptToken(tokens.refresh_token || null),
       token_expiry: expiry,
       status: 'active',
     });
 
     if (insertError) {
       console.error('[outlook-callback] DB insert error:', insertError);
-      return NextResponse.redirect(
+      return redirect(
         `${baseUrl}${returnPath}?error=${encodeURIComponent('Database error: ' + insertError.message)}`
       );
     }
 
-    return NextResponse.redirect(`${baseUrl}${returnPath}?outlook_connected=true`);
+    return redirect(`${baseUrl}${returnPath}?outlook_connected=true`);
   } catch (err: any) {
     console.error('[outlook-callback] Save error:', err.message);
-    return NextResponse.redirect(
+    return redirect(
       `${baseUrl}${returnPath}?error=${encodeURIComponent('Save failed: ' + err.message)}`
     );
   }

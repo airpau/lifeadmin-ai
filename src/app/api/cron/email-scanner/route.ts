@@ -69,8 +69,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { scanEmailsForOpportunities, refreshAccessToken, type Opportunity as GmailOpportunity } from '@/lib/gmail';
-import { scanOutlookForOpportunities, refreshMicrosoftToken } from '@/lib/outlook';
+import { scanEmailsForOpportunities, type Opportunity as GmailOpportunity } from '@/lib/gmail';
+import { scanOutlookForOpportunities } from '@/lib/outlook';
+import {
+  getScanAccessToken,
+  scanProviderOf,
+  PROVIDER_TYPE_ALIASES,
+  type OAuthConnectionRow,
+} from '@/lib/email/oauth-connections';
 import { resolveEmailScanWindow, clampSinceToWindow } from '@/lib/email-scan-window';
 import { isAtLeastEssential } from '@/lib/tier-rank';
 
@@ -135,7 +141,7 @@ export async function GET(req: NextRequest) {
       'id, user_id, provider_type, auth_method, access_token, refresh_token, token_expiry, email_address, last_scanned_at, last_full_scanned_at, emails_scanned, status',
     )
     .eq('auth_method', 'oauth')
-    .in('provider_type', ['google', 'outlook'])
+    .in('provider_type', [...PROVIDER_TYPE_ALIASES.google, ...PROVIDER_TYPE_ALIASES.outlook])
     .eq('status', 'active')
     .or(`last_scanned_at.is.null,last_scanned_at.lt.${cutoffIso}`)
     .order('last_scanned_at', { ascending: true, nullsFirst: true })
@@ -182,7 +188,7 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      const result = c.provider_type === 'google'
+      const result = scanProviderOf(c.provider_type) === 'google'
         ? await scanGmail(sb, c)
         : await scanOutlook(sb, c);
       outcomes.push(result);
@@ -243,43 +249,28 @@ async function scanGmail(sb: AdminClient, conn: ConnRow): Promise<ScanOutcome> {
   // Token refresh — Gmail access tokens expire every ~1h. The
   // user-triggered scan path refreshes before every run; the cron
   // does the same so a stale token doesn't 401 silently.
-  let accessToken = conn.access_token ?? '';
-  if (!conn.refresh_token) {
+  //
+  // getScanAccessToken decrypts the stored tokens, writes the refreshed
+  // token (encrypted) back to THIS row only, and keeps gmail_tokens in
+  // step only when it already describes this same mailbox. This used to
+  // write every connection's token into the user's single gmail_tokens
+  // row in turn, so that row ended up holding whichever mailbox the
+  // cron happened to process last. A revoked grant now marks the row
+  // needs_reauth instead of failing every night.
+  const tok = await getScanAccessToken(sb, conn as unknown as OAuthConnectionRow);
+  if (!tok.ok) {
     return {
       connectionId: conn.id,
       userId: conn.user_id,
       provider: 'google',
       email: conn.email_address,
       status: 'error',
-      error: 'no refresh_token — user must reconnect Gmail',
+      error: tok.reason === 'needs_reauth'
+        ? `needs reconnect: ${tok.message}`
+        : `token refresh failed: ${tok.message}`,
     };
   }
-  try {
-    const refreshed = await refreshAccessToken(conn.refresh_token);
-    accessToken = refreshed.access_token;
-    const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
-    await Promise.all([
-      sb.from('gmail_tokens').update({
-        access_token: accessToken,
-        token_expiry: newExpiry,
-        updated_at: new Date().toISOString(),
-      }).eq('user_id', conn.user_id),
-      sb.from('email_connections').update({
-        access_token: accessToken,
-        token_expiry: newExpiry,
-      }).eq('id', conn.id),
-    ]);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      connectionId: conn.id,
-      userId: conn.user_id,
-      provider: 'google',
-      email: conn.email_address,
-      status: 'error',
-      error: `token refresh failed: ${msg}`,
-    };
-  }
+  const accessToken = tok.accessToken;
 
   // Incremental scan window — same logic as /api/gmail/scan: if the
   // connection has never had a full scan, do one; otherwise look at
@@ -328,38 +319,22 @@ async function scanGmail(sb: AdminClient, conn: ConnRow): Promise<ScanOutcome> {
 // ─────────────────────────────────────────────────────────────────────────
 
 async function scanOutlook(sb: AdminClient, conn: ConnRow): Promise<ScanOutcome> {
-  let accessToken = conn.access_token ?? '';
-  if (!conn.refresh_token) {
+  // Same per-row refresh as the Gmail leg; a rotated Microsoft refresh
+  // token is saved (encrypted) to this row only.
+  const tok = await getScanAccessToken(sb, conn as unknown as OAuthConnectionRow);
+  if (!tok.ok) {
     return {
       connectionId: conn.id,
       userId: conn.user_id,
       provider: 'outlook',
       email: conn.email_address,
       status: 'error',
-      error: 'no refresh_token — user must reconnect Outlook',
+      error: tok.reason === 'needs_reauth'
+        ? `needs reconnect: ${tok.message}`
+        : `token refresh failed: ${tok.message}`,
     };
   }
-  try {
-    const refreshed = await refreshMicrosoftToken(conn.refresh_token);
-    accessToken = refreshed.access_token;
-    const newExpiry = new Date(Date.now() + (refreshed.expires_in || 3600) * 1000).toISOString();
-    await sb.from('email_connections').update({
-      access_token: accessToken,
-      token_expiry: newExpiry,
-      ...(refreshed.refresh_token ? { refresh_token: refreshed.refresh_token } : {}),
-      updated_at: new Date().toISOString(),
-    }).eq('id', conn.id);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      connectionId: conn.id,
-      userId: conn.user_id,
-      provider: 'outlook',
-      email: conn.email_address,
-      status: 'error',
-      error: `token refresh failed: ${msg}`,
-    };
-  }
+  const accessToken = tok.accessToken;
 
   // Tier lookback cap — same rule as the Gmail leg above.
   const outlookWindow = await resolveEmailScanWindow(conn.user_id);
