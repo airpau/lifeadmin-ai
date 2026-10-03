@@ -73,13 +73,28 @@ export default async function AdminBillingPage() {
   return (
     <AdminPage
       title="API Billing"
-      description={`Internal cost ledger — actual paid third-party API spend across Anthropic, Perplexity, Resend, Stripe, TrueLayer. Generated ${new Date(summary.generatedAt).toLocaleString('en-GB')}.`}
+      description={`Internal cost ledger — Anthropic spend from instrumented call sites only. Generated ${new Date(summary.generatedAt).toLocaleString('en-GB')}.`}
     >
+      <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="font-semibold">These totals are a floor, not the invoice.</p>
+        <p className="mt-1">
+          Only call sites that call the <code>src/lib/cost-ledger.ts</code> helpers write rows.
+          Currently instrumented: the shared complaint/dispute engine, Gmail and Outlook inbox
+          scanning, grounded web research, and report generation. Every other Anthropic call site
+          is still missing, so real Anthropic spend is higher than the figures below.
+        </p>
+        <p className="mt-1">
+          Not captured at all: <strong>Resend</strong> (no call site logs sends) and{' '}
+          <strong>Stripe</strong> (no helper). Perplexity shows nothing because it has no live
+          callers left, and TrueLayer was replaced by Yapily — both are expected to be £0.
+        </p>
+      </section>
+
       <section className="grid md:grid-cols-3 gap-4">
-        <Card label="This month so far" value={gbp(summary.monthSoFar.total_gbp)} />
-        <Card label="Last 30 days" value={gbp(summary.last30Days.total_gbp)} />
+        <Card label="This month so far (recorded)" value={gbp(summary.monthSoFar.total_gbp)} />
+        <Card label="Last 30 days (recorded)" value={gbp(summary.last30Days.total_gbp)} />
         <Card
-          label={`Projection (${summary.projection.basedOnDays}d run-rate × 30)`}
+          label={`Projection (${summary.projection.basedOnDays}d recorded run-rate × 30)`}
           value={gbp(summary.projection.monthlyRunRate_gbp)}
         />
       </section>
