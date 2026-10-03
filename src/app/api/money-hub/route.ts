@@ -234,17 +234,14 @@ export async function GET(request: Request) {
       { data: categoryOverrides },
       { data: subscriptions },
       { data: alerts },
-      // RPC calls for authoritative income/spending totals (excludes transfers correctly).
-      // Note: RPCs aggregate at user level — when a non-default Space is
-      // active the JS summariser below recomputes the actual totals
-      // from the filtered transaction set, so these RPC values are only
-      // used for the default "Everything" Space.
+      // Canonical bucket breakdown, used for the default "Everything" Space.
+      // Note: the RPC aggregates at user level — when a non-default Space is
+      // active the JS summariser below recomputes the bucket totals from the
+      // filtered transaction set, so this value is only trusted on the
+      // default Space.
       // rpcBreakdown shape: [{ fixed_cost_total, variable_cost_total,
       //   discretionary_total, spending_total, internal_transfer_total }]
       { data: rpcBreakdown },
-      { data: rpcIncomeTotal },
-      { data: rpcSpendingCategories },
-      { data: rpcIncomeCategories },
     ] = await Promise.all([
       txnQuery,
       connQuery,
@@ -255,14 +252,20 @@ export async function GET(request: Request) {
       admin.from('money_hub_category_overrides').select('*').eq('user_id', user.id),
       admin.from('subscriptions').select('*').eq('user_id', user.id).is('dismissed_at', null),
       admin.from('money_hub_alerts').select('*').eq('user_id', user.id).eq('status', 'active').limit(20),
-      // Authoritative spending/income from DB RPCs (handles transfer exclusion, dedup, overrides).
       // get_monthly_spending_breakdown is the canonical replacement for
       // get_monthly_spending_total — returns fixed_cost / variable_cost /
       // discretionary / spending_total / internal_transfer_total.
+      //
+      // This is the ONLY RPC this route needs. get_monthly_income_total,
+      // get_monthly_spending and get_monthly_income used to be fetched
+      // alongside it and every one of their results was discarded: the
+      // headline income/spending figures and both breakdowns come from
+      // summariseTransactionsForMonth below, which is deliberate — the JS
+      // summariser is the only path that respects the active Space filter
+      // and the local recategorisation/AI rule mapping. The three extra
+      // calls were regex-heavy aggregations over bank_transactions run on
+      // every load of the app's heaviest page for nothing.
       admin.rpc('get_monthly_spending_breakdown', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
-      admin.rpc('get_monthly_income_total', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
-      admin.rpc('get_monthly_spending', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
-      admin.rpc('get_monthly_income', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
     ]);
 
     // Deduplicate transactions before any computation
