@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { normalisePattern } from '@/lib/learning-engine';
+import { merchantRuleMatchesEitherWay } from '@/lib/merchant-rule-match';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
           const rulePattern = (rule.raw_name_normalised || '').toLowerCase();
           if (!rulePattern) continue;
 
-          if (pattern.includes(rulePattern) || rulePattern.includes(pattern)) {
+          if (merchantRuleMatchesEitherWay(rulePattern, pattern)) {
             const update: { id: string; user_category: string; income_type?: string } = {
               id: txn.id,
               user_category: rule.category,
