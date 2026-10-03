@@ -26,6 +26,10 @@ import {
   Trash2,
 } from 'lucide-react';
 import { DOC_TYPES, DOC_TYPE_LABELS, DOC_TYPE_SINGULAR, type DocType, type DocumentRow } from '@/lib/documents/types';
+import PacksPanel from './PacksPanel';
+import PriceRisesPanel from './PriceRisesPanel';
+import DigestOptIn from './DigestOptIn';
+import WarrantyControls, { WarrantyBadge } from './WarrantyControls';
 
 // ---------------------------------------------------------------------------
 // Types for the status endpoint
@@ -40,6 +44,11 @@ interface Status {
     driveDocumentFiling: boolean;
     accountantRegister: boolean;
     driveImportMaxFiles: number;
+    packBuildsPerMonth: number | null;
+    priceRiseWatch: boolean;
+    warrantyReminders: boolean;
+    documentDigest: boolean;
+    packSharing: boolean;
   };
   quota: { limit: number | null; used: number; remaining: number | null };
   inboxesConnected: number;
@@ -209,6 +218,7 @@ export default function DocumentsPage() {
 function DocumentsVault() {
   const params = useSearchParams();
   const focusId = params.get('doc');
+  const [tab, setTab] = useState<'documents' | 'packs'>(params.get('tab') === 'packs' ? 'packs' : 'documents');
 
   const [status, setStatus] = useState<Status | null>(null);
   const [docs, setDocs] = useState<DocumentRow[]>([]);
@@ -223,6 +233,7 @@ function DocumentsVault() {
   const [q, setQ] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [warrantyOnly, setWarrantyOnly] = useState(false);
 
   const ent = status?.entitlements;
 
@@ -238,6 +249,7 @@ function DocumentsVault() {
     if (q.trim()) sp.set('q', q.trim());
     if (from) sp.set('from', from);
     if (to) sp.set('to', to);
+    if (warrantyOnly) sp.set('warranty', '1');
     try {
       const res = await fetch(`/api/documents?${sp}`);
       const data = await res.json();
@@ -250,7 +262,7 @@ function DocumentsVault() {
     } finally {
       setLoading(false);
     }
-  }, [type, q, from, to]);
+  }, [type, q, from, to, warrantyOnly]);
 
   useEffect(() => {
     void loadStatus();
@@ -490,6 +502,27 @@ function DocumentsVault() {
         </div>
       )}
 
+      <div className="flex gap-2 border-b border-slate-200" role="tablist">
+        {([
+          ['documents', 'Documents'],
+          ['packs', 'Packs'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${tab === key ? 'border-orange-500 text-orange-700' : 'border-transparent text-slate-600 hover:text-slate-900'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'packs' ? (
+        <PacksPanel initialType={params.get('new')} initialDisputeId={params.get('dispute')} />
+      ) : (
+      <>
       {/* Actions */}
       <div className="bg-white border border-slate-200/50 rounded-2xl p-6 space-y-4">
         <div className="flex flex-wrap gap-3">
@@ -548,6 +581,9 @@ function DocumentsVault() {
         )}
       </div>
 
+      {status && <PriceRisesPanel enabled={!!ent?.priceRiseWatch} />}
+      {status && ent?.documentDigest && <DigestOptIn />}
+
       {/* Filters */}
       <div className="bg-white border border-slate-200/50 rounded-2xl p-4 flex flex-wrap gap-3 items-end">
         <label className="flex-1 min-w-[200px]">
@@ -583,6 +619,10 @@ function DocumentsVault() {
           <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider block mb-1">To</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm" />
         </label>
+        <label className="flex items-center gap-2 text-sm text-slate-700 pb-2">
+          <input type="checkbox" checked={warrantyOnly} onChange={(e) => setWarrantyOnly(e.target.checked)} />
+          Warranties only
+        </label>
       </div>
 
       {/* List */}
@@ -591,9 +631,11 @@ function DocumentsVault() {
       ) : docs.length === 0 ? (
         <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
           <FileText className="h-10 w-10 text-slate-500 mx-auto mb-4" />
-          <p className="text-slate-900 font-semibold mb-1">{q || type || from || to ? 'Nothing matches those filters' : 'No documents yet'}</p>
+          <p className="text-slate-900 font-semibold mb-1">{q || type || from || to || warrantyOnly ? 'Nothing matches those filters' : 'No documents yet'}</p>
           <p className="text-slate-600 text-sm">
-            {q || type || from || to
+            {warrantyOnly
+              ? 'No warranties yet. We pick them up from receipts that state a guarantee, and you can add one to any document with the Warranty button.'
+              : q || type || from || to
               ? 'Try a different search.'
               : 'Press Find my documents and we will pull your receipts, bills, policies and certificates out of your inbox.'}
           </p>
@@ -621,6 +663,7 @@ function DocumentsVault() {
                           {key.label} {fmtDate(key.date)}
                         </span>
                       )}
+                      <WarrantyBadge doc={d} />
                     </div>
                     <p className="text-sm text-slate-600 truncate">{d.summary || d.filename}</p>
                     <p className="text-xs text-slate-500 mt-1">
@@ -658,6 +701,14 @@ function DocumentsVault() {
                         <Lock className="h-3.5 w-3.5" /> Remind me
                       </Link>
                     )}
+                    <WarrantyControls
+                      doc={d}
+                      remindersEnabled={!!ent?.warrantyReminders}
+                      todoistConfigured={!!status?.todoist.configured}
+                      todoistConnected={!!status?.todoist.connected}
+                      onChange={(patch) => setDocs((prev) => prev.map((x) => (x.id === d.id ? { ...x, ...patch } : x)))}
+                      onNotice={(kind, text) => setNotice({ kind, text })}
+                    />
                     <button onClick={() => deleteDoc(d)} disabled={busy} title="Remove from vault" className="inline-flex items-center text-sm px-2 py-1.5 rounded-lg border border-slate-200 hover:border-red-300 text-slate-500 hover:text-red-600">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -713,6 +764,8 @@ function DocumentsVault() {
 
       {/* Accountant share panel */}
       {status && <SharePanel enabled={!!ent?.accountantRegister} />}
+      </>
+      )}
     </div>
   );
 }

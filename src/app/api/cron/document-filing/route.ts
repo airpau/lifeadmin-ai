@@ -28,6 +28,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { documentsAdmin } from '@/lib/documents/route-helpers';
 import { documentEntitlements, documentQuota } from '@/lib/documents/plan';
 import { findDocumentsForUser } from '@/lib/documents/pipeline';
+import { priceRiseWatchAfterFiling } from '@/lib/documents/price-rise-watch';
 import { getEffectiveTier } from '@/lib/plan-limits';
 import { FULL_EMAIL_SCAN_DAYS } from '@/lib/email-scan-window';
 import { PAID_PLAN_TIERS } from '@/lib/tier-rank';
@@ -169,6 +170,8 @@ export async function GET(req: NextRequest) {
       }
       usersRun++;
       saved += summary.saved;
+      // Price-rise watch over the new bills (no AI call).
+      await priceRiseWatchAfterFiling(admin, userId, ent.priceRiseWatch, summary.saved);
       results.push({
         user: userId.slice(0, 8),
         status: summary.stoppedFor ?? 'ok',
