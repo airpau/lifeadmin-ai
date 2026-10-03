@@ -16,6 +16,7 @@ import { findDocumentsForUser } from '@/lib/documents/pipeline';
 import { resolveEmailScanWindow } from '@/lib/email-scan-window';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
 import { RUN_BUSY_MESSAGE, acquireDocumentRunLock, releaseDocumentRunLock } from '@/lib/documents/run-lock';
+import { priceRiseWatchAfterFiling } from '@/lib/documents/price-rise-watch';
 
 export const runtime = 'nodejs';
 // Several inboxes one after another, with attachment downloads.
@@ -94,8 +95,13 @@ export async function POST() {
     }
   }
 
+  // Price-rise watch (Essential and above) over the newly filed bills.
+  // Pure computation, no AI call; failures are logged, never shown.
+  const priceRises = await priceRiseWatchAfterFiling(admin, user.id, ent.priceRiseWatch, summary.saved);
+
   const after = await documentQuota(admin, user.id, ent);
   return NextResponse.json({
+    priceRisesFound: priceRises?.created ?? 0,
     saved: summary.saved,
     duplicates: summary.duplicates,
     driveFiled: summary.driveFiled,
