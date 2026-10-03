@@ -57,7 +57,7 @@ export function dueOrExpiry(d: RegisterDoc): string {
   return parts.join('; ');
 }
 
-export function buildRegisterCsv(docs: RegisterDoc[], linkFor: (d: RegisterDoc) => string): string {
+export function buildRegisterCsv<T extends RegisterDoc>(docs: T[], linkFor: (d: T) => string): string {
   const rows = [REGISTER_HEADERS.map(csvCell).join(',')];
   for (const d of docs) {
     rows.push(
