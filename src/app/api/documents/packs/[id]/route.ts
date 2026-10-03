@@ -7,7 +7,8 @@
 //        old ZIP no longer matches, so it is not offered for download,
 //        and it is replaced by the next build.
 // DELETE /api/documents/packs/[id]: delete the ZIP, switch off the
-//        pack's share links and remove the pack. The row is kept (soft
+//        pack's share links and remove the pack. Refused while a build
+//        is running. The row is kept (soft
 //        delete) so the Free monthly build allowance cannot be reset by
 //        deleting.
 // Every plan.
@@ -16,12 +17,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { documentsAdmin, isResponse, requireUser } from '@/lib/documents/route-helpers';
 import { getPackDefinition } from '@/lib/documents/packs/registry';
 import { previewPack } from '@/lib/documents/packs/load';
-import { PACK_COLUMNS, cleanTitle, getOwnedPack, previewBody, publicPack, splitParams, type PackRow } from '@/lib/documents/packs/rows';
+import { BUILD_STALE_SECONDS, PACK_COLUMNS, cleanTitle, getOwnedPack, previewBody, publicPack, splitParams, type PackRow } from '@/lib/documents/packs/rows';
 import { DOCUMENTS_BUCKET } from '@/lib/documents/types';
 
 export const runtime = 'nodejs';
 
 type Params = { params: Promise<{ id: string }> };
+
+/** A build is running (and not a crashed one past its lock time). */
+function isBuilding(pack: PackRow): boolean {
+  return pack.status === 'building' && !!pack.build_started_at && Date.now() - Date.parse(pack.build_started_at) < BUILD_STALE_SECONDS * 1000;
+}
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -53,7 +59,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const admin = documentsAdmin();
   const pack = await getOwnedPack(admin, user.id, id);
   if (!pack) return NextResponse.json({ error: 'Pack not found.' }, { status: 404 });
-  if (pack.status === 'building' && pack.build_started_at && Date.now() - Date.parse(pack.build_started_at) < 330_000) {
+  if (isBuilding(pack)) {
     return NextResponse.json({ error: 'This pack is being built. Try again in a moment.' }, { status: 409 });
   }
   const def = getPackDefinition(pack.pack_type);
@@ -104,6 +110,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const admin = documentsAdmin();
   const pack = await getOwnedPack(admin, user.id, id);
   if (!pack) return NextResponse.json({ error: 'Pack not found.' }, { status: 404 });
+  if (isBuilding(pack)) {
+    return NextResponse.json({ error: 'This pack is being built. Delete it when the build has finished.' }, { status: 409 });
+  }
 
   const now = new Date().toISOString();
   // Links first, so nobody can open the pack while it is being removed.
