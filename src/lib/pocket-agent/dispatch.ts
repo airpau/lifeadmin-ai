@@ -21,6 +21,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { isWithinSessionWindow } from '@/lib/whatsapp/session-window';
+import { canUseWhatsApp } from '@/lib/plan-limits';
 
 // Loose typing — the cron passes a Supabase client with a different
 // generic instantiation than this lib's createClient inference would
@@ -65,6 +66,9 @@ export interface ActiveSession {
  *   3. If both are active and there's no preference row, prefer the
  *      most recently active channel (last_message_at) so we don't
  *      blast a long-dormant Telegram chat.
+ *   4. WhatsApp is Pro-only, so a resolved WhatsApp pick is dropped
+ *      when `canUseWhatsApp` is false, falling back to the user's
+ *      Telegram session (free on every tier) if one is active.
  *
  * Paul's report on 2026-06-07 ("alert came through to both telegram and
  * whatsapp") was the original motivating bug for this dedup.
@@ -180,7 +184,50 @@ export async function listActivePocketAgentSessions(
       }
     }
   }
-  return sessions;
+
+  // ── WhatsApp is Pro-only — enforce it here, not per caller ─────────
+  // Opting in is gated (`/api/whatsapp/opt-in` 403s non-Pro), but nothing
+  // deactivates `whatsapp_sessions` when a subscription lapses: the
+  // `customer.subscription.deleted` webhook only writes `profiles`. So a
+  // Pro user who links WhatsApp and later downgrades — or an onboarding
+  // trial that simply expires — keeps `is_active = true` forever, and
+  // every caller of this helper goes on sending paid Meta templates
+  // (£0.003–£0.06 each) to a free account.
+  //
+  // `/api/cron/whatsapp-alerts` and `whatsapp-fanout.ts` already gate on
+  // `canUseWhatsApp`, and ~15 telegram-* crons gate on
+  // `isProPocketAgentEligible`, but `/api/cron/dispute-agent` and
+  // `/api/cron/dispute-letter-followup` consume these sessions with no
+  // tier check at all. Gating centrally closes both and keeps any future
+  // caller safe by default.
+  //
+  // Telegram is free on every tier, so an ineligible WhatsApp pick falls
+  // back to the user's Telegram session when one is active — they keep
+  // getting the alert, just on the channel they're entitled to. Only a
+  // user with no active Telegram session drops out entirely.
+  const whatsappPicks = sessions.filter((s) => s.channel === 'whatsapp');
+  if (whatsappPicks.length === 0) return sessions;
+
+  const allowed = await Promise.all(
+    whatsappPicks.map((s) => canUseWhatsApp(s.user_id)),
+  );
+  const blocked = new Set(
+    whatsappPicks.filter((_, i) => !allowed[i]).map((s) => s.user_id),
+  );
+  if (blocked.size === 0) return sessions;
+
+  return sessions.flatMap((s) => {
+    if (s.channel !== 'whatsapp' || !blocked.has(s.user_id)) return [s];
+    const tgRow = tgByUser.get(s.user_id);
+    if (!tgRow) return [];
+    return [
+      {
+        user_id: s.user_id,
+        channel: 'telegram' as const,
+        destination: tgRow.telegram_chat_id,
+      },
+    ];
+  });
 }
 
 export interface DispatchResult {
