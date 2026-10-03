@@ -33,7 +33,18 @@ every route, so trials and Household seats get what `getEffectiveTier`
 says they get. No gate is written as `tier === 'pro'`.
 
 The Free monthly count includes documents the user later deleted, so
-deleting and finding again cannot be used to go round it.
+deleting and finding again cannot be used to go round it. The cap is
+enforced atomically: `storeDocument` writes the plan's cap into
+`documents.quota_limit_at_insert` and the `documents_monthly_cap`
+trigger counts this month's rows under a per-user advisory lock before
+the insert, so concurrent runs cannot overrun it. A cheap count before
+each classification avoids paying for a document that cannot be kept.
+
+Only one documents run per user at a time: Find my documents, Drive
+import and the cron all take a per-user lock
+(`document_run_lock_acquire`, with an expiry so a crashed run frees
+itself). A second press gets "already running" instead of a second run
+classifying the same files.
 
 ## How a document gets filed
 
@@ -44,12 +55,23 @@ deleting and finding again cannot be used to go round it.
      a document-like filename, and attachment-free receipts.
      Promotions, social and chats are excluded.
    - Outlook: Graph cannot mix `$search` with `$filter`, so a
-     date-bounded `$filter` over message headers only, then a subject
-     match in code (`DOCUMENT_SUBJECT_RE`, `BODY_RECEIPT_SUBJECT_RE`).
+     date-bounded `$filter` over message headers only, walked OLDEST
+     FIRST, then a subject match in code (`DOCUMENT_SUBJECT_RE`,
+     `BODY_RECEIPT_SUBJECT_RE`).
+   - Already handled messages are filtered out page by page (one ledger
+     lookup per page) and paging continues until enough unhandled
+     candidates are found, the window ends, the page cap is reached (10
+     pages per Gmail query, 40 pages of Outlook headers) or the deadline
+     hits. Each Gmail query gets its own share of the per-inbox cap, so
+     the attachment-free receipt search always runs. Pressing Find again
+     therefore moves on to messages not yet looked at.
 2. **Skip what was handled.** `document_processed_messages` holds every
-   message with a final outcome. Those are never downloaded or classified
-   again. Transient failures and quota stops are not recorded, so they
-   are retried next time.
+   message with an outcome. Final outcomes are never downloaded or
+   classified again. A message where an attachment failed, or that could
+   not be read, is recorded as `partial` and retried on later runs, up
+   to 3 attempts, so one broken attachment can never block an inbox.
+   Quota stops and a temporarily unavailable classifier are not recorded,
+   so they are retried next time.
 3. **Attachments.** Gmail MIME parts are walked (`listGmailAttachments`,
    keyed by part id because Gmail attachment ids change on every fetch).
    Graph attachments come from `/attachments` with `$select` so no bytes
@@ -114,6 +136,7 @@ appear in the sidebar.
 | `drive_connections` | drive.file grant for the vault, encrypted tokens, cached Paybacker folder id | none (service role only) |
 | `todoist_connections` | Todoist token, encrypted | none (service role only) |
 | `document_share_links` | accountant links: SHA-256 hash and prefix only, expiry, revocation | owner can select |
+| `document_run_locks` | one row per user while a documents run is in progress, with expiry | none (service role only) |
 
 Plus one nullable column, `email_connections.documents_scanned_at`, the
 cursor for incremental daily filing. Storage: bucket `documents`
@@ -126,6 +149,8 @@ Migrations, all additive:
 - `supabase/migrations/20261003120000_documents_vault.sql`
 - `supabase/migrations/20261003120100_document_integrations.sql`
 - `supabase/migrations/20261003120200_document_share_links.sql`
+- `supabase/migrations/20261003120300_document_quota_and_run_lock.sql`
+  (monthly cap trigger, `document_run_locks` and its two functions)
 
 ## Routes
 
@@ -179,11 +204,21 @@ The tools are registered in both `packages/paybacker-mcp/src/server.ts`
 `{ ok: true, skipped: ... }` without touching any inbox or calling
 Anthropic. CRON_SECRET protected.
 
-When on: users with an active OAuth inbox, pre-filtered to paid tiers,
-open trials and Household seats, then confirmed with `getEffectiveTier`.
-Least recently filed first. Run budget 250 s, at most 60 s, 25 saves and
-30 messages per inbox per user. Incremental from `documents_scanned_at`
+Rejects every call when `CRON_SECRET` is unset.
+
+When on: users on a paid tier, in an onboarding trial or holding a
+Household seat are selected in the query itself (Free users are never
+read, so they cannot crowd paid users out), then those with an active
+OAuth inbox, least recently filed first, each confirmed with
+`getEffectiveTier`. Run budget 250 s, at most 60 s, 25 saves and 30
+messages per inbox per user, under the per-user run lock (a user whose
+own Find is running is skipped). Incremental from `documents_scanned_at`
 less two days; the first run for an inbox looks back 30 days.
+
+The cursor only moves when every candidate the run collected has a final
+outcome: to the run start after a complete walk, or for Outlook to the
+last message the oldest-first walk fully examined, so even a very busy
+inbox keeps moving forward.
 
 ## Environment variables
 
@@ -236,13 +271,26 @@ Spend shows on `/dashboard/admin/billing` under the Haiku model with
 ## Security notes
 
 - Tokens: Drive and Todoist tokens are encrypted with stage one's
-  `encryptToken`; read with `decryptToken`. The Sheets connection is read
-  with `decryptToken` (plain text passes through) and never written to.
+  `encryptToken`; read with `decryptToken`.
+- Drive token isolation: the vault uses ONLY `drive_connections`. The
+  Google Sheets export connection is never used, not even server side:
+  that connect uses `include_granted_scopes` on the same Google client
+  as the Gmail inbox connect, so its token can carry `gmail.readonly`.
+  The Drive connect sets `include_granted_scopes=false`, the callback
+  refuses to store a token with any scope beyond `drive.file`,
+  `userinfo.email` and `openid`, and the Picker token route checks every
+  token with Google's tokeninfo endpoint before it reaches the browser
+  (wrong client or wider scopes: refused and the connection is marked for
+  reconnecting).
 - OAuth: Drive and Todoist connects use stage one's signed state and
   nonce cookie (`google_drive` and `todoist` purposes).
-- Drive: `drive.file` only. Disconnect does not call Google's revoke
-  endpoint, because that would also cut off the Sheets export on the same
-  Google account.
+- Drive: `drive.file` only. Disconnect wipes the stored tokens and
+  Drive then shows as not connected (there is no fallback). It does not
+  call Google's revoke endpoint, because revoking removes the whole grant
+  for Paybacker's Google client, which would also cut off the user's
+  Gmail inbox connection and Sheets export.
+- Downloads: every `Content-Disposition` has an ASCII `filename` plus a
+  UTF-8 `filename*`; signed storage URLs use an ASCII download name.
 - Storage: objects always under `<user_id>/`; delete refuses any path
   outside it; downloads are short-lived signed URLs.
 - Share tokens: 256-bit secret, hash and prefix stored, constant-time
