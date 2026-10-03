@@ -55,7 +55,7 @@ export const runtime = 'nodejs';
 const SERVER_NAME = 'paybacker-assistant';
 const SERVER_VERSION = '1.0.0';
 /** Keep in sync with the server.tool(...) registrations below. */
-const TOOL_COUNT = 7;
+const TOOL_COUNT = 10;
 
 function appBaseUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk').replace(/\/$/, '');
@@ -191,6 +191,42 @@ function createAssistantServer(bearer: string): McpServer {
       limit: z.number().min(1).max(200).optional(),
     },
     async (args) => callRest('/api/mcp/search', args, bearer),
+  );
+
+  server.tool(
+    'search_documents',
+    'Searches the user\'s documents vault: receipts, invoices, bills, statements, certificates, policies, contracts and letters filed from their inbox or Google Drive. Each result has supplier, amount, VAT, document date and any due, renewal or expiry date. Use get_document for a download link.',
+    {
+      q: z.string().max(80).optional().describe('Free text across supplier, filename, summary and email subject.'),
+      type: z
+        .enum(['receipt', 'invoice', 'bill', 'statement', 'certificate', 'policy', 'contract', 'letter', 'other'])
+        .optional(),
+      supplier: z.string().max(80).optional().describe('Supplier name contains this text.'),
+      from: z.string().optional().describe('ISO date, inclusive lower bound on the document date.'),
+      to: z.string().optional().describe('ISO date, inclusive upper bound on the document date.'),
+      limit: z.number().min(1).max(200).optional(),
+      offset: z.number().min(0).optional(),
+    },
+    async (args) => callRest('/api/mcp/documents', args, bearer),
+  );
+
+  server.tool(
+    'get_document',
+    'Gets one document from the vault by id (from search_documents) with a download link that works for 10 minutes.',
+    { id: z.string().regex(/^[0-9a-f-]{36}$/i).describe('Document id from search_documents.') },
+    async ({ id }) => callRest(`/api/mcp/documents/${encodeURIComponent(id)}`, {}, bearer),
+  );
+
+  server.tool(
+    'list_email_findings',
+    'Lists what the inbox scanner found: bills, renewals, price increases, refund opportunities and upcoming payments. Dismissed findings are left out unless status is given.',
+    {
+      type: z.string().max(40).optional().describe('finding_type, e.g. renewal, price_increase, bill.'),
+      status: z.enum(['new', 'actioned', 'dismissed', 'pending']).optional(),
+      since: z.string().optional().describe('ISO date, only findings created on or after.'),
+      limit: z.number().min(1).max(200).optional(),
+    },
+    async (args) => callRest('/api/mcp/email-findings', args, bearer),
   );
 
   return server;

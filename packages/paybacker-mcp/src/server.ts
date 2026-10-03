@@ -19,7 +19,7 @@ import {
 
 const BASE_URL = process.env.PAYBACKER_API_URL ?? 'https://paybacker.co.uk';
 const TOKEN = process.env.PAYBACKER_TOKEN;
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 if (!TOKEN) {
   console.error(
@@ -169,6 +169,56 @@ const TOOLS: Tool[] = [
       required: ['q'],
     },
   },
+  {
+    name: 'search_documents',
+    description:
+      "Search the user's documents vault: receipts, invoices, bills, statements, " +
+      'certificates, policies, contracts and letters filed from their inbox or Google Drive. ' +
+      'Each result has supplier, amount, VAT, document date and any due, renewal or expiry date. ' +
+      'Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        q: { type: 'string', description: 'Free text across supplier, filename, summary and email subject' },
+        type: {
+          type: 'string',
+          enum: ['receipt', 'invoice', 'bill', 'statement', 'certificate', 'policy', 'contract', 'letter', 'other'],
+        },
+        supplier: { type: 'string', description: 'Supplier name contains this text' },
+        from: { type: 'string', description: 'ISO date, inclusive lower bound on the document date' },
+        to: { type: 'string', description: 'ISO date, inclusive upper bound on the document date' },
+        limit: { type: 'number', minimum: 1, maximum: 200 },
+        offset: { type: 'number', minimum: 0 },
+      },
+    },
+  },
+  {
+    name: 'get_document',
+    description:
+      'Get one document from the vault by id (from search_documents), with a download ' +
+      'link that works for 10 minutes. Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Document id' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'list_email_findings',
+    description:
+      "List what Paybacker's inbox scanner found: bills, renewals, price increases, " +
+      'refund opportunities, upcoming payments. Dismissed findings are excluded unless ' +
+      'status is given. Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', description: 'finding_type, e.g. renewal, price_increase, bill' },
+        status: { type: 'string', enum: ['new', 'actioned', 'dismissed', 'pending'] },
+        since: { type: 'string', description: 'ISO date, only findings created on or after' },
+        limit: { type: 'number', minimum: 1, maximum: 200 },
+      },
+    },
+  },
 ];
 
 // ---------- Tool routing -------------------------------------------------
@@ -204,6 +254,28 @@ async function runTool(name: string, args: Record<string, unknown>): Promise<unk
         q: args.q as string,
         since: args.since as string | undefined,
         until: args.until as string | undefined,
+        limit: args.limit != null ? String(args.limit) : undefined,
+      });
+    case 'search_documents':
+      return call('/api/mcp/documents', {
+        q: args.q as string | undefined,
+        type: args.type as string | undefined,
+        supplier: args.supplier as string | undefined,
+        from: args.from as string | undefined,
+        to: args.to as string | undefined,
+        limit: args.limit != null ? String(args.limit) : undefined,
+        offset: args.offset != null ? String(args.offset) : undefined,
+      });
+    case 'get_document': {
+      const id = String(args.id ?? '');
+      if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('id must be a document id from search_documents');
+      return call(`/api/mcp/documents/${encodeURIComponent(id)}`);
+    }
+    case 'list_email_findings':
+      return call('/api/mcp/email-findings', {
+        type: args.type as string | undefined,
+        status: args.status as string | undefined,
+        since: args.since as string | undefined,
         limit: args.limit != null ? String(args.limit) : undefined,
       });
     default:
