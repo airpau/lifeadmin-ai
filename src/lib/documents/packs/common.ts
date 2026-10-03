@@ -6,8 +6,8 @@
 
 import { extensionForMime } from '@/lib/documents/attachments';
 import { DOC_TYPE_SINGULAR } from '@/lib/documents/types';
-import { addDays } from '@/lib/documents/dates';
-import type { PackDocument } from '@/lib/documents/packs/types';
+import { addDays, londonToday } from '@/lib/documents/dates';
+import type { DisputeContext, DisputeCorrespondence, PackDocument } from '@/lib/documents/packs/types';
 
 // ---------------------------------------------------------------------------
 // Document text and dates
@@ -23,7 +23,17 @@ export function docText(d: Pick<PackDocument, 'supplier' | 'summary' | 'filename
  * Same rule as the accountant register (register.ts registerDate).
  */
 export function packDate(d: Pick<PackDocument, 'doc_date' | 'email_date' | 'created_at'>): string {
-  return d.doc_date || (d.email_date ? d.email_date.slice(0, 10) : '') || d.created_at.slice(0, 10);
+  return d.doc_date || londonDateOf(d.email_date) || londonDateOf(d.created_at) || d.created_at.slice(0, 10);
+}
+
+/**
+ * The UK calendar date of a timestamp (Europe/London), so an email that
+ * arrived at 00:30 BST on 6 April belongs to 6 April, not 5 April.
+ */
+export function londonDateOf(ts: string | null | undefined): string {
+  if (!ts) return '';
+  const t = Date.parse(ts);
+  return Number.isFinite(t) ? londonToday(new Date(t)) : '';
 }
 
 /** Oldest first, then by when it was filed. */
@@ -118,6 +128,61 @@ const ID_DOCUMENT_RE =
  */
 export function looksLikeIdDocument(d: Pick<PackDocument, 'supplier' | 'summary' | 'filename' | 'email_subject'>): boolean {
   return ID_DOCUMENT_RE.test(docText(d));
+}
+
+/** The same test on free text, e.g. a correspondence attachment's file name. */
+export function looksLikeIdText(text: string | null | undefined): boolean {
+  return !!text && ID_DOCUMENT_RE.test(text.replace(/[_.-]+/g, ' '));
+}
+
+// ---------------------------------------------------------------------------
+// Dispute correspondence attachments
+// ---------------------------------------------------------------------------
+
+/** Object path of a correspondence attachment, only when it is this user's file on this dispute. */
+export function correspondenceObjectPath(url: string, userId: string, disputeId: string): string | null {
+  const m = /\/storage\/v1\/object\/(?:public|sign|authenticated)\/correspondence-files\/([^?#]+)/.exec(url || '');
+  if (!m) return null;
+  let path: string;
+  try {
+    path = decodeURIComponent(m[1]);
+  } catch {
+    return null;
+  }
+  if (path.includes('..')) return null;
+  return path.startsWith(`disputes/${userId}/${disputeId}/`) ? path : null;
+}
+
+export interface AttachmentPlanItem {
+  c: DisputeCorrespondence;
+  a: DisputeCorrespondence['attachments'][number];
+  path: string;
+}
+
+/**
+ * Which correspondence attachments go into a dispute bundle: the user's
+ * own files on this dispute, never one whose name looks like an identity
+ * document (those are listed as excluded).
+ */
+export function disputeAttachmentPlan(
+  dispute: DisputeContext | null | undefined,
+  userId: string,
+): { included: AttachmentPlanItem[]; excluded: Array<{ id: string; reason: string }>; bytes: number } {
+  const included: AttachmentPlanItem[] = [];
+  const excluded: Array<{ id: string; reason: string }> = [];
+  if (!dispute) return { included, excluded, bytes: 0 };
+  for (const c of dispute.correspondence) {
+    for (const a of c.attachments) {
+      const path = correspondenceObjectPath(a.url, userId, dispute.id);
+      if (!path) continue;
+      if (looksLikeIdText(a.filename) || looksLikeIdText(path.split('/').pop() ?? '')) {
+        excluded.push({ id: `${c.id}:${a.filename ?? path}`, reason: 'A correspondence attachment that looks like an identity document was left out.' });
+        continue;
+      }
+      included.push({ c, a, path });
+    }
+  }
+  return { included, excluded, bytes: included.reduce((s, x) => s + Math.max(0, Number(x.a.size) || 0), 0) };
 }
 
 // ---------------------------------------------------------------------------

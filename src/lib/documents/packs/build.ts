@@ -4,9 +4,10 @@
  * ZIP at <user_id>/packs/<pack_id>/<name>.zip in the same bucket.
  *
  * Limits, for Vercel's 300 second functions:
- *  - MAX_PACK_BYTES (100 MB) of source files per pack, checked from the
+ *  - MAX_PACK_BYTES (95 MB) of source files per pack, checked from the
  *    stored sizes before anything is downloaded and again as files
- *    arrive (correspondence attachments have no stored size)
+ *    arrive, so the ZIP with its index and CSV stays under the bucket's
+ *    100 MB object limit (checked again on the finished ZIP)
  *  - a deadline passed by the route (about 240 seconds), checked before
  *    every download and before zipping, so a slow build fails cleanly
  *    with a message instead of being killed mid-upload
@@ -27,6 +28,8 @@ import { asciiFilename } from '@/lib/documents/content-disposition';
 import {
   attachmentFileName,
   cleanNamePart,
+  correspondenceObjectPath,
+  disputeAttachmentPlan,
   longDate,
   money,
   packDate,
@@ -41,8 +44,13 @@ import type { AnyPackDefinition, PackDocument } from '@/lib/documents/packs/type
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Admin = SupabaseClient<any, any, any>;
 
-/** Most source bytes one pack may hold. The bucket limit is set to match. */
-export const MAX_PACK_BYTES = 100 * 1024 * 1024;
+/**
+ * Most source bytes one pack may hold: 95 MB, so the ZIP plus the index
+ * PDF and the CSV stays under the bucket's 100 MB object limit.
+ */
+export const MAX_PACK_BYTES = 95 * 1024 * 1024;
+/** The documents bucket's object limit (migration 20261003130000). */
+export const MAX_PACK_ZIP_BYTES = 100 * 1024 * 1024;
 const DOWNLOAD_CONCURRENCY = 4;
 const CORRESPONDENCE_BUCKET = 'correspondence-files';
 
@@ -52,19 +60,8 @@ export class PackBuildError extends Error {
   }
 }
 
-/** Object path of a correspondence attachment, only when it is this user's file on this dispute. */
-export function correspondenceObjectPath(url: string, userId: string, disputeId: string): string | null {
-  const m = /\/storage\/v1\/object\/(?:public|sign|authenticated)\/correspondence-files\/([^?#]+)/.exec(url || '');
-  if (!m) return null;
-  let path: string;
-  try {
-    path = decodeURIComponent(m[1]);
-  } catch {
-    return null;
-  }
-  if (path.includes('..')) return null;
-  return path.startsWith(`disputes/${userId}/${disputeId}/`) ? path : null;
-}
+/** Re-exported for callers and tests that know it from here. */
+export { correspondenceObjectPath };
 
 /** File name for the ZIP itself: ASCII, no spaces at the ends. */
 export function packZipName(title: string): string {
@@ -127,11 +124,9 @@ export async function buildPackBundle(
     throw new PackBuildError('pack too large', `This pack would be ${Math.ceil(preview.bytes / 1048576)} MB, over the ${MAX_PACK_BYTES / 1048576} MB limit. Remove some documents and try again.`);
   }
 
-  const attachments = dispute
-    ? dispute.correspondence.flatMap((c) =>
-        c.attachments.map((a) => ({ c, a, path: correspondenceObjectPath(a.url, userId, dispute.id) })),
-      ).filter((x) => !!x.path)
-    : [];
+  // Correspondence attachments: the user's own files on this dispute,
+  // never one whose name looks like an identity document.
+  const attachments = disputeAttachmentPlan(dispute, userId).included;
   const total = selected.length + attachments.length;
 
   // Names first, so the index and the ZIP agree.
@@ -162,7 +157,7 @@ export async function buildPackBundle(
   });
   await runLimited(attachments, DOWNLOAD_CONCURRENCY, async (x, j) => {
     checkTime();
-    const bytes = await downloadObject(admin, CORRESPONDENCE_BUCKET, x.path!);
+    const bytes = await downloadObject(admin, CORRESPONDENCE_BUCKET, x.path);
     if (!bytes || bytes.length > MAX_DOCUMENT_BYTES) {
       skipped++;
       return;
@@ -202,7 +197,8 @@ export async function buildPackBundle(
   }));
   const notes: string[] = [];
   if (preview.selection.excluded.length) {
-    notes.push(`${preview.selection.excluded.length} document${preview.selection.excluded.length === 1 ? ' was' : 's were'} left out because ${preview.selection.excluded.length === 1 ? 'it looks' : 'they look'} like an identity document. Identity documents are never put in a pack.`);
+    const n = preview.selection.excluded.length;
+    notes.push(`${n} file${n === 1 ? ' was' : 's were'} left out because ${n === 1 ? 'it looks' : 'they look'} like an identity document. Identity documents are never put in a pack.`);
   }
   if (preview.selection.truncated) notes.push('This pack holds the first 300 documents only.');
   if (skipped) notes.push(`${skipped} file${skipped === 1 ? '' : 's'} could not be read from storage and ${skipped === 1 ? 'is' : 'are'} not in the ZIP.`);
@@ -237,6 +233,9 @@ export async function buildPackBundle(
   }
   const zipBytes = await zip.generateAsync({ type: 'nodebuffer', platform: 'UNIX' });
   checkTime();
+  if (zipBytes.length > MAX_PACK_ZIP_BYTES) {
+    throw new PackBuildError('zip too large', `This pack came to more than ${MAX_PACK_ZIP_BYTES / 1048576} MB. Remove some documents and try again.`);
+  }
 
   const zipName = packZipName(args.title);
   const storagePath = `${userId}/packs/${packId}/${zipName.replace(/[^A-Za-z0-9._-]+/g, '-')}`;

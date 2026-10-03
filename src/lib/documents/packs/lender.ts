@@ -18,9 +18,10 @@
  *
  * Recency rules, with `today` in Europe/London:
  *  - "the last three months" are the three calendar months before the
- *    current one. A statement counts for the month of its date; one
- *    dated in the current month counts for the month before, because
- *    statements are issued just after the period they cover.
+ *    current one. A statement counts for the period it states; failing
+ *    that, one dated in the first 10 days of a month counts for the month
+ *    before (statements are issued just after the period they cover),
+ *    and a later one for its own month.
  *  - "within three months" for proof of address and payslips is 92 days.
  *  - insurance and mortgage statements must be from the last 13 months,
  *    or (insurance) still running by its renewal or expiry date.
@@ -73,10 +74,39 @@ export function requiredStatementMonths(today: string): string[] {
   return [monthsBefore(today, 3), monthsBefore(today, 2), monthsBefore(today, 1)];
 }
 
-/** Which month a statement counts for (current month counts for the one before). */
-export function statementMonth(d: PackDocument, today: string): string {
-  const m = monthOf(packDate(d));
-  return m === monthOf(today) ? monthsBefore(today, 1) : m;
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const PERIOD_RE = new RegExp(`\\b(${[...MONTHS.map((m) => `${m}|${m.slice(0, 3)}`), 'sept'].join('|')})\\.?\\s+(20\\d{2})\\b`, 'gi');
+
+/**
+ * The statement period stated in its wording ("statement for August
+ * 2026"), as YYYY-MM, when there is exactly one month named and it is
+ * not after the statement's own date. Otherwise null.
+ */
+export function statedPeriod(d: PackDocument): string | null {
+  const text = [d.summary, d.email_subject, d.filename].filter(Boolean).join(' ');
+  const found = new Set<string>();
+  for (const m of text.matchAll(PERIOD_RE)) {
+    const idx = MONTHS.findIndex((name) => name.startsWith(m[1].toLowerCase().slice(0, 3)));
+    if (idx >= 0) found.add(`${m[2]}-${String(idx + 1).padStart(2, '0')}`);
+  }
+  if (found.size !== 1) return null;
+  const ym = [...found][0];
+  return ym <= monthOf(packDate(d)) ? ym : null;
+}
+
+/**
+ * Which month a statement covers: the period it states when known;
+ * otherwise a statement dated in the first 10 days of a month covers the
+ * month before (statements are issued just after the period), and any
+ * later date covers its own month. The same rule for every month, so
+ * statements issued on the 2nd of each month cover a full run.
+ */
+export function statementMonth(d: PackDocument, _today?: string): string {
+  void _today;
+  const stated = statedPeriod(d);
+  if (stated) return stated;
+  const date = packDate(d);
+  return Number(date.slice(8, 10)) <= 10 ? monthsBefore(date, 1) : monthOf(date);
 }
 
 function recent(d: PackDocument, today: string, days: number): boolean {
