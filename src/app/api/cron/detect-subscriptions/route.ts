@@ -9,6 +9,7 @@ import {
   LOOKBACK_DAYS,
 } from '@/lib/subscriptions/recurring-qualification';
 import { isBankDirectionCode } from '@/lib/money-hub-classification';
+import { merchantRuleRegexSource } from '@/lib/merchant-rule-match';
 
 export const maxDuration = 120;
 
@@ -275,14 +276,35 @@ export async function GET(request: NextRequest) {
     .from('merchant_rules')
     .select('raw_name, display_name');
 
+  //
+  // Matched with a word-aware regex, not `ILIKE '%raw_name%'`. The
+  // substring test stamped "Transport for London" on rent paid through
+  // PayProp ("ACCRENTFLAT1" contains t-f-l), "RAC" on every gym member
+  // called Tracey or Rachel, and "EE" on anything with a double e.
+  // Because this step only fills NULLs, whichever wrong rule got there
+  // first stuck for good. See src/lib/merchant-rule-match.ts.
+  //
+  // Longest rule first, so "AIRBNB PAYMENTS UK" wins over a shorter rule
+  // that also matches the same line.
   if (rules && userIds.length > 0) {
-    for (const rule of rules) {
-      await supabase
+    const ordered = [...rules].sort(
+      (a, b) => (b.raw_name || '').trim().length - (a.raw_name || '').trim().length,
+    );
+    for (const rule of ordered) {
+      const pattern = merchantRuleRegexSource(rule.raw_name);
+      if (!pattern || !rule.display_name) continue;
+      const { error: enrichErr } = await supabase
         .from('bank_transactions')
         .update({ merchant_name: rule.display_name })
         .in('user_id', userIds)
         .is('merchant_name', null)
-        .ilike('description', `%${rule.raw_name}%`);
+        // PostgREST `imatch` is PostgreSQL `~*`.
+        .filter('description', 'imatch', pattern);
+      if (enrichErr) {
+        console.error(
+          `[detect-subscriptions] merchant enrichment failed for rule "${rule.raw_name}": ${enrichErr.message}`,
+        );
+      }
     }
   }
 

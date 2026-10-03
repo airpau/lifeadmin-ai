@@ -10,6 +10,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { merchantRuleMatchesEitherWay } from '@/lib/merchant-rule-match';
 
 function getAdmin() {
   return createClient(
@@ -238,8 +239,9 @@ export async function applyLearnedRules(
     const rulePattern = (rule.raw_name_normalised || '').toLowerCase();
     if (!rulePattern) continue;
 
-    // Check if patterns match (either contains the other)
-    const matches = pattern.includes(rulePattern) || rulePattern.includes(pattern);
+    // Word-aware match, not a raw substring test. See
+    // src/lib/merchant-rule-match.ts for what the substring test cost.
+    const matches = merchantRuleMatchesEitherWay(rulePattern, pattern);
     if (!matches) continue;
 
     // If amount range specified, check it
@@ -315,7 +317,10 @@ export function getLearnedRuleFromCache(
     const rulePattern = (rule.raw_name_normalised || '').toLowerCase();
     if (!rulePattern) continue;
 
-    const isMatch = pattern.includes(rulePattern) || rulePattern.includes(pattern);
+    // Word-aware match, not a raw substring test: a three-letter rule
+    // like "tfl" used to fire on "payprop client accrentflat1". See
+    // src/lib/merchant-rule-match.ts.
+    const isMatch = merchantRuleMatchesEitherWay(rulePattern, pattern);
     if (!isMatch) continue;
 
     // Check amount range if applicable
