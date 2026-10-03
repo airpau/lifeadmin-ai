@@ -104,17 +104,30 @@ async function loadUserRouting(
       .select('email, subscription_tier, quiet_hours_start, quiet_hours_end, notification_timezone')
       .eq('id', userId)
       .maybeSingle(),
+    // Both session tables are unique on the channel identity
+    // (telegram_chat_id / whatsapp_phone), NOT on user_id — a user who links a
+    // second number or device has more than one row. Without limit(1) that is a
+    // PGRST116 multi-row error, `.data` comes back null, and this function
+    // reports the user as having neither channel: every Telegram and WhatsApp
+    // notification routed through sendNotification is silently dropped for
+    // them. Ordering by last_message_at picks the session they actually read,
+    // matching the tie-break in lib/pocket-agent/dispatch.ts.
     supabase
       .from('telegram_sessions')
       .select('telegram_chat_id, is_active')
       .eq('user_id', userId)
       .eq('is_active', true)
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .limit(1)
       .maybeSingle(),
     supabase
       .from('whatsapp_sessions')
       .select('whatsapp_phone, is_active')
       .eq('user_id', userId)
       .eq('is_active', true)
+      .is('opted_out_at', null)
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .limit(1)
       .maybeSingle(),
     supabase
       .from('notification_preferences')

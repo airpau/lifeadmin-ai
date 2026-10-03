@@ -26,6 +26,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isAtLeastPro } from '@/lib/tier-rank';
+import {
+  resolveTelegramSession,
+  resolveWhatsAppSession,
+} from '@/lib/pocket-agent/resolve-session';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -175,14 +179,8 @@ async function notifyTicketUser(
     tgChatId = metaTgChat as number | string;
   } else if (userId) {
     // Fall back to a linked telegram_sessions row.
-    const { data: tgSession } = await supabase
-      .from('telegram_sessions')
-      .select('chat_id')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const cid = (tgSession as { chat_id: number | string | null } | null)?.chat_id;
+    const tgSession = await resolveTelegramSession(supabase, userId, 'builder-verify');
+    const cid = tgSession?.telegram_chat_id;
     if (cid != null) tgChatId = cid;
   }
   if (tgChatId && process.env.TELEGRAM_BOT_TOKEN) {
@@ -224,15 +222,8 @@ async function notifyTicketUser(
       // they stay as explicit special cases.
       const proLike = isAtLeastPro(tier) || tier === 'b2b' || tier === 'admin';
       if (proLike) {
-        const { data: waSession } = await supabase
-          .from('whatsapp_sessions')
-          .select('phone_number, opted_in')
-          .eq('user_id', userId)
-          .eq('opted_in', true)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        const phone = (waSession as { phone_number: string | null } | null)?.phone_number ?? null;
+        const waSession = await resolveWhatsAppSession(supabase, userId, 'builder-verify');
+        const phone = waSession?.whatsapp_phone ?? null;
         if (phone) {
           await fetch(
             `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
