@@ -18,6 +18,8 @@ export interface DocumentFilters {
   supplier?: string | null;
   /** Free text across supplier, filename, summary and subject. */
   q?: string | null;
+  /** Only documents with a warranty or guarantee date, soonest first. */
+  warranty?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -37,6 +39,7 @@ export function filtersFromSearchParams(sp: URLSearchParams): DocumentFilters {
     to: validIsoDate(sp.get('to')),
     supplier: cleanSearchText(sp.get('supplier')) || null,
     q: cleanSearchText(sp.get('q')) || null,
+    warranty: sp.get('warranty') === '1' || sp.get('warranty') === 'true',
     limit: Number.isFinite(limit) ? Math.min(200, Math.max(1, Math.floor(limit))) : 50,
     offset: Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0,
   };
@@ -60,12 +63,13 @@ export async function listDocuments(
     const like = `%${f.q}%`;
     query = query.or(`supplier.ilike.${like},filename.ilike.${like},summary.ilike.${like},email_subject.ilike.${like}`);
   }
+  if (f.warranty) query = query.not('warranty_until', 'is', null);
   const limit = f.limit ?? 50;
   const offset = f.offset ?? 0;
-  const { data, count, error } = await query
-    .order('doc_date', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
+  const ordered = f.warranty
+    ? query.order('warranty_until', { ascending: true }).order('created_at', { ascending: false })
+    : query.order('doc_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+  const { data, count, error } = await ordered.range(offset, offset + limit - 1);
   return { rows: (data as unknown as DocumentRow[] | null) ?? [], total: count ?? 0, error: error?.message ?? null };
 }
 

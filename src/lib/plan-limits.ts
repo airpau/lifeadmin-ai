@@ -131,6 +131,38 @@ export interface PlanLimits {
    * null = the server's own safety cap (DRIVE_IMPORT_HARD_CAP).
    */
   driveImportMaxFiles: number | null;
+  /**
+   * Document packs: how many packs may be BUILT (bundled into a ZIP with
+   * an index PDF) per calendar month (UTC). null = unlimited. Previewing
+   * a pack's checklist is free on every plan. Rebuilding a pack already
+   * counted this month does not use another build. Enforced atomically by
+   * the document_pack_claim_build() function, called from
+   * /api/documents/packs/[id]/build.
+   */
+  packBuildsPerMonth: number | null;
+  /**
+   * Documents vault: year on year price-rise watch over the user's bills,
+   * statements and renewals. Runs after filing and on demand. Monthly
+   * bills also feed the existing price_increase_alerts system.
+   */
+  priceRiseWatch: boolean;
+  /**
+   * Documents vault: calendar (.ics) and Todoist reminders before a
+   * warranty or guarantee runs out. Storing and editing warranty dates is
+   * available on every plan.
+   */
+  warrantyReminders: boolean;
+  /**
+   * Documents vault: weekly digest of due, renewal, expiry and warranty
+   * dates in the next 30 days, through the notification dispatcher
+   * (event 'document_digest').
+   */
+  documentDigest: boolean;
+  /**
+   * Document packs: share a built pack by a revocable, expiring link
+   * (for an accountant, lender or ombudsman).
+   */
+  packSharing: boolean;
   features: string[];
 }
 
@@ -173,6 +205,13 @@ export interface PlanLimits {
  * Copy filed to own Drive    -      -          ✓      ✓
  * Accountant register/share  -      -          ✓      ✓
  * Drive import files/request 1      ∞          ∞      ∞
+ * Pack checklist preview     ✓      ✓          ✓      ✓
+ * Pack builds / month        1      ∞          ∞      ∞
+ * Warranty store, own dates  ✓      ✓          ✓      ✓
+ * Price-rise watch (vault)   -      ✓          ✓      ✓
+ * Warranty reminders         -      ✓          ✓      ✓
+ * Weekly documents digest    -      ✓          ✓      ✓
+ * Share a pack by link       -      -          ✓      ✓
  *
  * NOTE: the pre-2026-08 version of this comment claimed "Dispute-reply
  * watchdog 30m auto (all tiers)" and "Dispute thread links ∞" for every
@@ -224,6 +263,11 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     driveDocumentFiling: false,
     accountantRegister: false,
     driveImportMaxFiles: 1,
+    packBuildsPerMonth: 1,
+    priceRiseWatch: false,
+    warrantyReminders: false,
+    documentDigest: false,
+    packSharing: false,
     features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan', 'watchdog_manual'],
   },
   essential: {
@@ -245,6 +289,11 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     driveDocumentFiling: false,
     accountantRegister: false,
     driveImportMaxFiles: null,
+    packBuildsPerMonth: null,
+    priceRiseWatch: true,
+    warrantyReminders: true,
+    documentDigest: true,
+    packSharing: false,
     features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'budgets_goals', 'watchdog_auto'],
   },
   pro: {
@@ -266,6 +315,11 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     driveDocumentFiling: true,
     accountantRegister: true,
     driveImportMaxFiles: null,
+    packBuildsPerMonth: null,
+    priceRiseWatch: true,
+    warrantyReminders: true,
+    documentDigest: true,
+    packSharing: true,
     features: PRO_FEATURES,
   },
 
@@ -296,6 +350,11 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     driveDocumentFiling: true,
     accountantRegister: true,
     driveImportMaxFiles: null,
+    packBuildsPerMonth: null,
+    priceRiseWatch: true,
+    warrantyReminders: true,
+    documentDigest: true,
+    packSharing: true,
     features: [...PRO_FEATURES, 'household_seats'],
   },
 

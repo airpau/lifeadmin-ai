@@ -14,6 +14,7 @@ import { extensionForMime, sanitizeFilename } from '@/lib/documents/attachments'
 import type { ClassificationResult } from '@/lib/documents/classify';
 import { countDocumentsThisMonth } from '@/lib/documents/plan';
 import { asciiFilename } from '@/lib/documents/content-disposition';
+import { computeWarrantyUntil, purchaseDateOf, warrantyNote } from '@/lib/documents/warranty';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Admin = SupabaseClient<any, any, any>;
@@ -117,6 +118,8 @@ export async function storeDocument(admin: Admin, input: StoreDocumentInput): Pr
         expiry_date: null,
         renewal_date: null,
         summary: null,
+        warranty_months: null,
+        warranty_product: null,
         confidence: 0,
       },
     };
@@ -181,11 +184,32 @@ export async function storeDocument(admin: Admin, input: StoreDocumentInput): Pr
     quota_limit_at_insert: input.quotaLimit ?? null,
   };
 
-  const { data: inserted, error } = await admin
+  // Warranty or guarantee (stage three). Only written when the classifier
+  // found one, so documents without one never touch the new columns.
+  const warranty: Record<string, string> = {};
+  // A warranty certificate that states its own end date, with no length,
+  // uses that date.
+  const until =
+    computeWarrantyUntil(purchaseDateOf({ doc_date: result.doc_date, email_date: input.emailDate ?? null }), result.warranty_months) ??
+    (result.expiry_date && /warrant|guarantee/i.test(`${result.summary ?? ''} ${result.warranty_product ?? ''}`) ? result.expiry_date : null);
+  const note = warrantyNote(result.warranty_months, result.warranty_product);
+  if (until) warranty.warranty_until = until;
+  if (note && (until || result.warranty_months)) warranty.warranty_note = note;
+
+  let { data: inserted, error } = await admin
     .from('documents')
-    .insert(row)
+    .insert({ ...row, ...warranty })
     .select('id, doc_type, doc_date, supplier, filename, mime_type, created_at')
     .single();
+  if (error && Object.keys(warranty).length > 0 && (error as { code?: string }).code === '42703') {
+    // The warranty columns are not there yet (migration 20261003130000
+    // not applied). Keep the document; lose only the warranty date.
+    ({ data: inserted, error } = await admin
+      .from('documents')
+      .insert(row)
+      .select('id, doc_type, doc_date, supplier, filename, mime_type, created_at')
+      .single());
+  }
 
   if (error) {
     if (isQuotaExceededError(error)) {

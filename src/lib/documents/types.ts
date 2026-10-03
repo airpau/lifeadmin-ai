@@ -61,7 +61,7 @@ export const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
 export const DOCUMENT_LIST_COLUMNS =
   'id, source, provider, filename, mime_type, size_bytes, doc_type, supplier, amount, currency, vat_amount, ' +
   'doc_date, due_date, expiry_date, renewal_date, summary, confidence, email_subject, email_from, email_date, ' +
-  'drive_link, drive_filed_at, drive_error, todoist_task_id, status, created_at';
+  'drive_link, drive_filed_at, drive_error, todoist_task_id, warranty_until, warranty_note, warranty_todoist_task_id, status, created_at';
 
 export interface DocumentRow {
   id: string;
@@ -88,6 +88,10 @@ export interface DocumentRow {
   drive_filed_at: string | null;
   drive_error: string | null;
   todoist_task_id: string | null;
+  /** Last day of a warranty or guarantee (stage three, 20261003130000). */
+  warranty_until: string | null;
+  warranty_note: string | null;
+  warranty_todoist_task_id: string | null;
   status: 'active' | 'deleted';
   created_at: string;
 }
