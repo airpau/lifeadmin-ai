@@ -58,10 +58,28 @@ export const DOCUMENTS_BUCKET = 'documents';
 export const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
 
 /** Columns the dashboard and APIs list. Never includes storage internals beyond the path. */
-export const DOCUMENT_LIST_COLUMNS =
+export const DOCUMENT_LIST_COLUMNS_STAGE2 =
   'id, source, provider, filename, mime_type, size_bytes, doc_type, supplier, amount, currency, vat_amount, ' +
   'doc_date, due_date, expiry_date, renewal_date, summary, confidence, email_subject, email_from, email_date, ' +
-  'drive_link, drive_filed_at, drive_error, todoist_task_id, warranty_until, warranty_note, warranty_todoist_task_id, status, created_at';
+  'drive_link, drive_filed_at, drive_error, todoist_task_id, status, created_at';
+
+/** Stage three adds the warranty columns (migration 20261003130000). */
+export const DOCUMENT_LIST_COLUMNS = `${DOCUMENT_LIST_COLUMNS_STAGE2}, warranty_until, warranty_note, warranty_todoist_task_id`;
+
+/**
+ * True when Postgres or PostgREST says a column does not exist (the
+ * stage three migration has not been applied yet). Callers retry with
+ * the stage two columns so existing pages and links keep working.
+ */
+export function isMissingColumnError(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return error.code === '42703' || error.code === 'PGRST204' || /column .* does not exist|Could not find the '.*' column/i.test(error.message || '');
+}
+
+/** Fill the stage three fields on rows read without them. */
+export function withWarrantyDefaults<T extends object>(rows: T[]): Array<T & { warranty_until: null; warranty_note: null; warranty_todoist_task_id: null }> {
+  return rows.map((r) => ({ warranty_until: null, warranty_note: null, warranty_todoist_task_id: null, ...r }));
+}
 
 export interface DocumentRow {
   id: string;
