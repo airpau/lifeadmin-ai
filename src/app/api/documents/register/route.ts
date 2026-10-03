@@ -13,6 +13,7 @@ import { appBaseUrl, documentsAdmin, isResponse, requireUser, upgradeRequired } 
 import { UPGRADE_COPY, getDocumentEntitlements } from '@/lib/documents/plan';
 import { filtersFromSearchParams, listDocuments } from '@/lib/documents/query';
 import { buildRegisterCsv } from '@/lib/documents/register';
+import { contentDisposition } from '@/lib/documents/content-disposition';
 import type { DocumentRow } from '@/lib/documents/types';
 
 export const runtime = 'nodejs';
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(csv, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="paybacker-documents-register-${today}.csv"`,
+      'Content-Disposition': contentDisposition(`paybacker-documents-register-${today}.csv`),
       'Cache-Control': 'private, no-store',
     },
   });
