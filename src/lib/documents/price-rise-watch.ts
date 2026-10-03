@@ -20,7 +20,10 @@
  *    auto-tuned threshold (getEffectiveThreshold) is respected. From
  *    there the existing dashboard card, Telegram alerts cron and chat
  *    tool pick the alert up as they do for bank alerts.
- *  - QUARTERLY and YEARLY rises (an insurance renewal, an annual bill)
+ *  - A rise the user dismissed is not raised again for that supplier for
+ *    12 months, and a rise still showing is updated in place when a newer
+ *    bill arrives, so next month's bill never adds a second row or alert.
+ *  - QUARTERLY, HALF YEARLY and YEARLY rises (an insurance renewal, an annual bill)
  *    are NOT written to price_increase_alerts. Its consumers treat
  *    old_amount and new_amount as monthly payments: the Telegram alerts
  *    cron says "went up by £X/month" and "raised your direct debit".
@@ -41,6 +44,9 @@ import {
   DEFAULT_PCT_THRESHOLD,
   alertCategoryFor,
   detectPriceRises,
+  feedsPriceAlerts,
+  priceRiseAction,
+  type ExistingRise,
   type PriceDoc,
   type PriceRiseFinding,
 } from '@/lib/documents/price-rise';
@@ -90,44 +96,57 @@ export async function runPriceRiseWatch(admin: Admin, userId: string, opts: { fe
     if (f.increasePct > threshold || f.annualIncrease > DEFAULT_ANNUAL_THRESHOLD_GBP) findings.push(f);
   }
 
-  const { data: existing } = await admin
+  const { data: existingRows, error: existingErr } = await admin
     .from('document_price_rises')
-    .select('old_document_id, new_document_id')
-    .eq('user_id', userId);
-  const seen = new Set(((existing ?? []) as Array<{ old_document_id: string; new_document_id: string }>).map((r) => `${r.old_document_id}|${r.new_document_id}`));
+    .select('id, supplier_normalised, cadence, status, new_date, old_document_id, new_document_id, price_alert_id')
+    .eq('user_id', userId)
+    .order('new_date', { ascending: false })
+    .limit(2000);
+  if (existingErr) throw new Error(`price-rise watch: ${existingErr.message}`);
+  const existing = (existingRows as ExistingRise[] | null) ?? [];
+  const today = londonToday();
 
-  const fresh = findings.filter((f) => !seen.has(`${f.oldDoc.id}|${f.newDoc.id}`));
   let created = 0;
   let fed = 0;
-  const isSuppressed = feedAlerts && fresh.some((f) => f.cadence === 'monthly') ? await buildPriceAlertSuppressor(admin, userId) : null;
+  let isSuppressed: Awaited<ReturnType<typeof buildPriceAlertSuppressor>> | null = null;
 
-  for (const f of fresh) {
+  for (const f of findings) {
+    const fields = {
+      supplier: f.supplier,
+      supplier_normalised: f.supplierNormalised,
+      doc_type: f.docType,
+      cadence: f.cadence,
+      old_document_id: f.oldDoc.id,
+      new_document_id: f.newDoc.id,
+      old_amount: f.oldAmount,
+      new_amount: f.newAmount,
+      old_date: f.oldDate,
+      new_date: f.newDate,
+      increase_pct: f.increasePct,
+      annual_increase: f.annualIncrease,
+    };
+    const action = priceRiseAction(f, existing, today);
+    if (action.kind === 'skip') continue;
+    if (action.kind === 'update') {
+      // Still active: move it on to the newer documents. No second row,
+      // and no second alert (the first one, if any, is still showing).
+      await admin.from('document_price_rises').update(fields).eq('id', action.id).eq('user_id', userId);
+      const r = existing.find((x) => x.id === action.id);
+      if (r) Object.assign(r, { old_document_id: f.oldDoc.id, new_document_id: f.newDoc.id, new_date: f.newDate });
+      continue;
+    }
     const { data: row, error: insErr } = await admin
       .from('document_price_rises')
-      .upsert(
-        {
-          user_id: userId,
-          supplier: f.supplier,
-          supplier_normalised: f.supplierNormalised,
-          doc_type: f.docType,
-          cadence: f.cadence,
-          old_document_id: f.oldDoc.id,
-          new_document_id: f.newDoc.id,
-          old_amount: f.oldAmount,
-          new_amount: f.newAmount,
-          old_date: f.oldDate,
-          new_date: f.newDate,
-          increase_pct: f.increasePct,
-          annual_increase: f.annualIncrease,
-        },
-        { onConflict: 'user_id,old_document_id,new_document_id', ignoreDuplicates: true },
-      )
+      .upsert({ user_id: userId, ...fields }, { onConflict: 'user_id,old_document_id,new_document_id', ignoreDuplicates: true })
       .select('id')
       .maybeSingle();
     if (insErr || !row) continue;
     created++;
+    existing.push({ id: (row as { id: string }).id, supplier_normalised: f.supplierNormalised, cadence: f.cadence, status: 'active', new_date: f.newDate, old_document_id: f.oldDoc.id, new_document_id: f.newDoc.id, price_alert_id: null });
 
-    if (f.cadence !== 'monthly' || !isSuppressed) continue;
+    // Only suppliers billed about monthly (typical gap of 45 days or less).
+    if (!feedAlerts || !feedsPriceAlerts(f)) continue;
+    isSuppressed = isSuppressed ?? (await buildPriceAlertSuppressor(admin, userId));
     const merchant = alertMerchantName(f.supplier);
     if (isSuppressed({ merchantNormalized: merchant, oldAmount: f.oldAmount, newAmount: f.newAmount })) continue;
     const { data: alert, error: alertErr } = await admin
