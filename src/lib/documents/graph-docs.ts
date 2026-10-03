@@ -34,10 +34,15 @@ export function isGraphDocumentCandidate(m: GraphHeader): boolean {
   return BODY_RECEIPT_SUBJECT_RE.test(subject);
 }
 
+/**
+ * Document-like messages since `sinceIso`, newest first. `truncated` is
+ * true when a cap or the deadline stopped the walk before the end of the
+ * window.
+ */
 export async function searchGraphDocumentIds(
   token: string,
   opts: { sinceIso: string; max: number; maxHeaders?: number; deadlineAt?: number },
-): Promise<GraphHeader[]> {
+): Promise<{ headers: GraphHeader[]; truncated: boolean }> {
   const maxHeaders = opts.maxHeaders ?? 400;
   const out: GraphHeader[] = [];
   let scanned = 0;
@@ -50,8 +55,12 @@ export async function searchGraphDocumentIds(
       $top: '50',
     }).toString();
 
-  while (url && out.length < opts.max && scanned < maxHeaders) {
-    if (opts.deadlineAt !== undefined && Date.now() >= opts.deadlineAt) break;
+  let truncated = false;
+  while (url) {
+    if (out.length >= opts.max || scanned >= maxHeaders || (opts.deadlineAt !== undefined && Date.now() >= opts.deadlineAt)) {
+      truncated = true;
+      break;
+    }
     const res: Response = await fetchWithRetry(
       url,
       { headers: { Authorization: `Bearer ${token}` } },
@@ -64,12 +73,16 @@ export async function searchGraphDocumentIds(
       scanned++;
       if (isGraphDocumentCandidate(m)) {
         out.push(m);
-        if (out.length >= opts.max) break;
+        if (out.length >= opts.max) {
+          truncated = true;
+          break;
+        }
       }
     }
+    if (truncated) break;
     url = data['@odata.nextLink'] || null;
   }
-  return out;
+  return { headers: out, truncated };
 }
 
 export interface GraphFullMessage {
