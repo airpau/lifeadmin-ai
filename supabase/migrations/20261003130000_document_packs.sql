@@ -63,6 +63,12 @@ CREATE TABLE IF NOT EXISTS public.document_packs (
   -- When this pack last used a monthly build allowance (Free plan cap).
   -- Kept when a pack is deleted, so deleting cannot reset the allowance.
   counted_build_at     timestamptz,
+  -- How many counted builds this pack used in the month of
+  -- counted_build_at, and a hash of what that build contained (pack
+  -- type, options, document ids). Rebuilding the same contents is free;
+  -- a changed pack is a new build.
+  counted_builds       integer NOT NULL DEFAULT 0,
+  counted_build_hash   text,
   deleted_at           timestamptz,
   created_at           timestamptz NOT NULL DEFAULT now(),
   updated_at           timestamptz NOT NULL DEFAULT now()
@@ -97,7 +103,7 @@ COMMENT ON TABLE public.document_packs IS
   'Document packs built from the documents vault (dispute evidence, mortgage or lender, tax year, insurance claim). The ZIP lives in the private documents bucket under <user_id>/packs/. Written only by server routes.';
 
 CREATE OR REPLACE FUNCTION public.document_packs_set_updated_at()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
   NEW.updated_at = now();
   RETURN NEW;
@@ -149,8 +155,8 @@ CREATE TABLE IF NOT EXISTS public.document_price_rises (
   supplier             text NOT NULL,
   supplier_normalised  text NOT NULL,
   doc_type             text NOT NULL,
-  -- How often the supplier bills: monthly, quarterly or annual.
-  cadence              text NOT NULL CHECK (cadence IN ('monthly', 'quarterly', 'annual')),
+  -- How often the supplier bills: monthly, quarterly, half yearly or annual.
+  cadence              text NOT NULL CHECK (cadence IN ('monthly', 'quarterly', 'half_yearly', 'annual')),
   old_document_id      uuid NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
   new_document_id      uuid NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
   old_amount           numeric(12, 2) NOT NULL,
@@ -192,7 +198,7 @@ COMMENT ON TABLE public.document_price_rises IS
   'Year on year price rises found by comparing a supplier''s bills, statements and renewals in the documents vault. Pure computation, no AI. Monthly ones are also written to price_increase_alerts.';
 
 CREATE OR REPLACE FUNCTION public.document_price_rises_set_updated_at()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
   NEW.updated_at = now();
   RETURN NEW;
@@ -207,29 +213,38 @@ FOR EACH ROW EXECUTE FUNCTION public.document_price_rises_set_updated_at();
 -- 5. Claim a pack build
 -- ---------------------------------------------------------------------------
 -- Returns jsonb:
---   {"result":"ok","counted":bool,"prev_counted_build_at":timestamptz|null}
+--   {"result":"ok","counted":bool,"prev":{counted_build_at, counted_builds, counted_build_hash}}
 --   {"result":"busy"}       another build of this pack is running
 --   {"result":"quota"}      the monthly build allowance is used up
+--   {"result":"changed"}    the pack was edited after the caller read it
 --   {"result":"not_found"}
--- p_monthly_limit NULL = unlimited. A pack already counted this month
--- can be rebuilt without using another build. p_stale_seconds: a
--- 'building' status older than this is treated as a crashed build.
+-- p_monthly_limit NULL = unlimited. Builds are counted per calendar
+-- month (UTC) across all the user's packs, deleted ones included.
+-- Rebuilding a pack whose contents hash (p_material_hash) matches the
+-- build already counted this month is free; a pack with changed
+-- contents is a new build. p_expected_updated_at: the pack's updated_at
+-- when the caller read it (NULL skips the check), so a concurrent edit
+-- is never built with stale contents. p_stale_seconds: a 'building'
+-- status older than this is treated as a crashed build.
 CREATE OR REPLACE FUNCTION public.document_pack_claim_build(
   p_user_id uuid,
   p_pack_id uuid,
   p_monthly_limit integer,
-  p_stale_seconds integer
+  p_stale_seconds integer,
+  p_material_hash text,
+  p_expected_updated_at timestamptz
 )
-RETURNS jsonb LANGUAGE plpgsql AS $$
+RETURNS jsonb LANGUAGE plpgsql SET search_path = public AS $$
 DECLARE
   r record;
   month_start timestamptz := date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
   used integer;
   will_count boolean := false;
+  same_month boolean;
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('document_packs_build:' || p_user_id::text, 0));
 
-  SELECT status, build_started_at, counted_build_at
+  SELECT status, build_started_at, counted_build_at, counted_builds, counted_build_hash, updated_at
     INTO r
     FROM public.document_packs
    WHERE id = p_pack_id AND user_id = p_user_id AND deleted_at IS NULL
@@ -244,8 +259,15 @@ BEGIN
     RETURN jsonb_build_object('result', 'busy');
   END IF;
 
-  IF p_monthly_limit IS NOT NULL AND (r.counted_build_at IS NULL OR r.counted_build_at < month_start) THEN
-    SELECT count(*) INTO used
+  IF p_expected_updated_at IS NOT NULL AND r.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RETURN jsonb_build_object('result', 'changed');
+  END IF;
+
+  same_month := r.counted_build_at IS NOT NULL AND r.counted_build_at >= month_start;
+
+  IF p_monthly_limit IS NOT NULL
+     AND NOT (same_month AND r.counted_build_hash IS NOT DISTINCT FROM p_material_hash) THEN
+    SELECT COALESCE(sum(counted_builds), 0) INTO used
       FROM public.document_packs
      WHERE user_id = p_user_id
        AND counted_build_at >= month_start;
@@ -259,29 +281,37 @@ BEGIN
      SET status = 'building',
          build_started_at = now(),
          error = NULL,
-         counted_build_at = CASE WHEN will_count THEN now() ELSE counted_build_at END
+         counted_build_at = CASE WHEN will_count THEN now() ELSE counted_build_at END,
+         counted_builds = CASE WHEN NOT will_count THEN counted_builds
+                               WHEN same_month THEN counted_builds + 1
+                               ELSE 1 END,
+         counted_build_hash = CASE WHEN will_count THEN p_material_hash ELSE counted_build_hash END
    WHERE id = p_pack_id AND user_id = p_user_id;
 
   RETURN jsonb_build_object(
     'result', 'ok',
     'counted', will_count,
-    'prev_counted_build_at', r.counted_build_at
+    'prev', jsonb_build_object(
+      'counted_build_at', r.counted_build_at,
+      'counted_builds', r.counted_builds,
+      'counted_build_hash', r.counted_build_hash
+    )
   );
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.document_pack_claim_build(uuid, uuid, integer, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.document_pack_claim_build(uuid, uuid, integer, integer, text, timestamptz) FROM PUBLIC;
 
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-    REVOKE ALL ON FUNCTION public.document_pack_claim_build(uuid, uuid, integer, integer) FROM anon;
+    REVOKE ALL ON FUNCTION public.document_pack_claim_build(uuid, uuid, integer, integer, text, timestamptz) FROM anon;
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-    REVOKE ALL ON FUNCTION public.document_pack_claim_build(uuid, uuid, integer, integer) FROM authenticated;
+    REVOKE ALL ON FUNCTION public.document_pack_claim_build(uuid, uuid, integer, integer, text, timestamptz) FROM authenticated;
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-    GRANT EXECUTE ON FUNCTION public.document_pack_claim_build(uuid, uuid, integer, integer) TO service_role;
+    GRANT EXECUTE ON FUNCTION public.document_pack_claim_build(uuid, uuid, integer, integer, text, timestamptz) TO service_role;
   END IF;
 END $$;
 
