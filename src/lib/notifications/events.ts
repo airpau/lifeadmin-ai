@@ -56,7 +56,8 @@ export type NotificationEventType =
   | 'payment_received'       // Pocket Agent buzz when a credit lands
   | 'payment_outgoing'       // Pocket Agent buzz when a debit clears
   | 'dd_warning'             // Direct debit due in the next 24-72h
-  | 'churn_prompted';        // Asked user why they cancelled (Phase 3 churn capture)
+  | 'churn_prompted'         // Asked user why they cancelled (Phase 3 churn capture)
+  | 'document_digest';       // Weekly due/renewal/expiry/warranty dates from the documents vault (Essential+)
 
 export type NotificationChannel = 'email' | 'telegram' | 'whatsapp' | 'push';
 
@@ -479,6 +480,16 @@ export const EVENT_CATALOG: EventMeta[] = [
     allowedChannels: ['email', 'telegram'],
     group: 'service',
     scheduleKind: 'none',
+  },
+  {
+    event: 'document_digest',
+    label: 'Documents: dates coming up',
+    description: 'Once a week, the renewals, payment dates, expiry dates and warranties in your documents vault for the next 30 days. Essential and above.',
+    defaultEmail: true, defaultTelegram: true, defaultWhatsapp: false, defaultPush: false,
+    allowedChannels: ['email', 'telegram', 'push'],
+    group: 'reminders',
+    scheduleKind: 'cron',
+    defaultCron: '0 8 * * 1',
   },
 ];
 

@@ -71,6 +71,7 @@
     { "path": "/api/cron/ad-metrics",                       "schedule": "0 7 * * *" },
     { "path": "/api/cron/ad-strategist",                    "schedule": "0 8 * * *" },
     { "path": "/api/cron/yapily-consent-abandonment",       "schedule": "* * * * *" },
-    { "path": "/api/cron/document-filing",                  "schedule": "40 6 * * *" }
+    { "path": "/api/cron/document-filing",                  "schedule": "40 6 * * *" },
+    { "path": "/api/cron/document-digest",                  "schedule": "20 8 * * 1" }
   ]
 }
