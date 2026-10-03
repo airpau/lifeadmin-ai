@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl, documentsAdmin, isResponse, requireUser, upgradeRequired } from '@/lib/documents/route-helpers';
 import { UPGRADE_COPY, getDocumentEntitlements } from '@/lib/documents/plan';
+import { isMissingColumnError } from '@/lib/documents/types';
 import { SHARE_LINK_MAX_ACTIVE, clampShareDays, generateShareToken, shareLinkStatus } from '@/lib/documents/share-token';
 
 export const runtime = 'nodejs';
@@ -19,13 +20,17 @@ export async function GET() {
   const ent = await getDocumentEntitlements(user.id);
   if (!ent.accountantRegister) return upgradeRequired(UPGRADE_COPY.register, 'pro');
 
-  const { data, error } = await documentsAdmin()
-    .from('document_share_links')
-    .select('id, token_prefix, label, expires_at, revoked_at, last_used_at, use_count, created_at')
-    .eq('user_id', user.id)
-    .is('pack_id', null)
-    .order('created_at', { ascending: false })
-    .limit(50);
+  const list = (registerOnly: boolean) => {
+    let q = documentsAdmin()
+      .from('document_share_links')
+      .select('id, token_prefix, label, expires_at, revoked_at, last_used_at, use_count, created_at')
+      .eq('user_id', user.id);
+    if (registerOnly) q = q.is('pack_id', null);
+    return q.order('created_at', { ascending: false }).limit(50);
+  };
+  let { data, error } = await list(true);
+  // Before the stage three migration there is no pack_id: every link is a register link.
+  if (isMissingColumnError(error)) ({ data, error } = await list(false));
   if (error) return NextResponse.json({ error: 'Could not load your share links.' }, { status: 500 });
   return NextResponse.json({
     links: (data ?? []).map((l) => ({ ...l, status: shareLinkStatus({ expires_at: l.expires_at, revoked_at: l.revoked_at }) })),
@@ -43,13 +48,18 @@ export async function POST(req: NextRequest) {
   const days = clampShareDays(body.days);
   const admin = documentsAdmin();
 
-  const { count } = await admin
-    .from('document_share_links')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .is('pack_id', null)
-    .is('revoked_at', null)
-    .gt('expires_at', new Date().toISOString());
+  const active = (registerOnly: boolean) => {
+    let q = admin
+      .from('document_share_links')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .is('revoked_at', null)
+      .gt('expires_at', new Date().toISOString());
+    if (registerOnly) q = q.is('pack_id', null);
+    return q;
+  };
+  let { count, error: countErr } = await active(true);
+  if (isMissingColumnError(countErr)) ({ count, error: countErr } = await active(false));
   if ((count ?? 0) >= SHARE_LINK_MAX_ACTIVE) {
     return NextResponse.json({ error: `You can have up to ${SHARE_LINK_MAX_ACTIVE} active share links. Revoke one first.` }, { status: 400 });
   }

@@ -4,7 +4,15 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { DOCUMENT_LIST_COLUMNS, isDocType, type DocType, type DocumentRow } from '@/lib/documents/types';
+import {
+  DOCUMENT_LIST_COLUMNS,
+  DOCUMENT_LIST_COLUMNS_STAGE2,
+  isDocType,
+  isMissingColumnError,
+  withWarrantyDefaults,
+  type DocType,
+  type DocumentRow,
+} from '@/lib/documents/types';
 import { validIsoDate } from '@/lib/documents/classify';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -50,26 +58,36 @@ export async function listDocuments(
   userId: string,
   f: DocumentFilters,
 ): Promise<{ rows: DocumentRow[]; total: number; error: string | null }> {
-  let query = admin
-    .from('documents')
-    .select(DOCUMENT_LIST_COLUMNS, { count: 'exact' })
-    .eq('user_id', userId)
-    .eq('status', 'active');
-  if (f.type) query = query.eq('doc_type', f.type);
-  if (f.from) query = query.gte('doc_date', f.from);
-  if (f.to) query = query.lte('doc_date', f.to);
-  if (f.supplier) query = query.ilike('supplier', `%${f.supplier}%`);
-  if (f.q) {
-    const like = `%${f.q}%`;
-    query = query.or(`supplier.ilike.${like},filename.ilike.${like},summary.ilike.${like},email_subject.ilike.${like}`);
+  const run = async (columns: string, stage3: boolean) => {
+    let query = admin
+      .from('documents')
+      .select(columns, { count: 'exact' })
+      .eq('user_id', userId)
+      .eq('status', 'active');
+    if (f.type) query = query.eq('doc_type', f.type);
+    if (f.from) query = query.gte('doc_date', f.from);
+    if (f.to) query = query.lte('doc_date', f.to);
+    if (f.supplier) query = query.ilike('supplier', `%${f.supplier}%`);
+    if (f.q) {
+      const like = `%${f.q}%`;
+      query = query.or(`supplier.ilike.${like},filename.ilike.${like},summary.ilike.${like},email_subject.ilike.${like}`);
+    }
+    if (f.warranty && stage3) query = query.not('warranty_until', 'is', null);
+    const limit = f.limit ?? 50;
+    const offset = f.offset ?? 0;
+    const ordered =
+      f.warranty && stage3
+        ? query.order('warranty_until', { ascending: true }).order('created_at', { ascending: false })
+        : query.order('doc_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+    return ordered.range(offset, offset + limit - 1);
+  };
+  let { data, count, error } = await run(DOCUMENT_LIST_COLUMNS, true);
+  if (isMissingColumnError(error)) {
+    // Stage three migration not applied yet: list without warranty data.
+    if (f.warranty) return { rows: [], total: 0, error: null };
+    ({ data, count, error } = await run(DOCUMENT_LIST_COLUMNS_STAGE2, false));
+    return { rows: withWarrantyDefaults((data as unknown as DocumentRow[] | null) ?? []), total: count ?? 0, error: error?.message ?? null };
   }
-  if (f.warranty) query = query.not('warranty_until', 'is', null);
-  const limit = f.limit ?? 50;
-  const offset = f.offset ?? 0;
-  const ordered = f.warranty
-    ? query.order('warranty_until', { ascending: true }).order('created_at', { ascending: false })
-    : query.order('doc_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
-  const { data, count, error } = await ordered.range(offset, offset + limit - 1);
   return { rows: (data as unknown as DocumentRow[] | null) ?? [], total: count ?? 0, error: error?.message ?? null };
 }
 
@@ -80,12 +98,19 @@ export async function getOwnedDocument(
   id: string,
 ): Promise<(DocumentRow & { storage_path: string | null }) | null> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
-  const { data } = await admin
-    .from('documents')
-    .select(`${DOCUMENT_LIST_COLUMNS}, storage_path`)
-    .eq('user_id', userId)
-    .eq('id', id)
-    .eq('status', 'active')
-    .maybeSingle();
-  return (data as unknown as (DocumentRow & { storage_path: string | null }) | null) ?? null;
+  const run = (columns: string) =>
+    admin
+      .from('documents')
+      .select(`${columns}, storage_path`)
+      .eq('user_id', userId)
+      .eq('id', id)
+      .eq('status', 'active')
+      .maybeSingle();
+  const first = await run(DOCUMENT_LIST_COLUMNS);
+  if (isMissingColumnError(first.error)) {
+    const second = await run(DOCUMENT_LIST_COLUMNS_STAGE2);
+    if (!second.data) return null;
+    return withWarrantyDefaults([second.data as unknown as DocumentRow & { storage_path: string | null }])[0];
+  }
+  return (first.data as unknown as (DocumentRow & { storage_path: string | null }) | null) ?? null;
 }

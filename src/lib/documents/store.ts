@@ -9,7 +9,7 @@
 
 import { createHash } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { DOCUMENTS_BUCKET, MAX_DOCUMENT_BYTES, type DocType, type DocumentSource } from '@/lib/documents/types';
+import { DOCUMENTS_BUCKET, MAX_DOCUMENT_BYTES, isMissingColumnError, type DocType, type DocumentSource } from '@/lib/documents/types';
 import { extensionForMime, sanitizeFilename } from '@/lib/documents/attachments';
 import type { ClassificationResult } from '@/lib/documents/classify';
 import { countDocumentsThisMonth } from '@/lib/documents/plan';
@@ -201,7 +201,7 @@ export async function storeDocument(admin: Admin, input: StoreDocumentInput): Pr
     .insert({ ...row, ...warranty })
     .select('id, doc_type, doc_date, supplier, filename, mime_type, created_at')
     .single();
-  if (error && Object.keys(warranty).length > 0 && (error as { code?: string }).code === '42703') {
+  if (error && Object.keys(warranty).length > 0 && isMissingColumnError(error)) {
     // The warranty columns are not there yet (migration 20261003130000
     // not applied). Keep the document; lose only the warranty date.
     ({ data: inserted, error } = await admin
