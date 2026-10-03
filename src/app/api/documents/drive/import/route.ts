@@ -4,8 +4,10 @@
 // Each file is downloaded with the user's own drive.file token (Google
 // Docs, Sheets and Slides exported to PDF), then deduped, classified and
 // stored exactly like an email document. Free: one file per request and
-// the monthly document cap; paid plans: up to DRIVE_IMPORT_HARD_CAP.
-// Files that came FROM Drive are not filed back into Drive.
+// the monthly document cap (checked atomically at insert time by the
+// documents_monthly_cap trigger); paid plans: up to DRIVE_IMPORT_HARD_CAP.
+// One documents run per user at a time (run-lock.ts). Files that came
+// FROM Drive are not filed back into Drive.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { documentsAdmin, isResponse, requireUser } from '@/lib/documents/route-helpers';
@@ -14,13 +16,18 @@ import { DriveError, downloadDriveFile, getDriveAccess } from '@/lib/documents/d
 import { isAllowedDocumentMime, mimeFor } from '@/lib/documents/attachments';
 import { classifyDocument } from '@/lib/documents/classify';
 import { storeDocument } from '@/lib/documents/store';
+import { RUN_BUSY_MESSAGE, acquireDocumentRunLock, releaseDocumentRunLock } from '@/lib/documents/run-lock';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 const FILE_ID_RE = /^[A-Za-z0-9_-]{10,200}$/;
+/** Stop starting new files with this long left of maxDuration. */
+const IMPORT_BUDGET_MS = 100_000;
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
+  const deadlineAt = startedAt + IMPORT_BUDGET_MS;
   const user = await requireUser();
   if (isResponse(user)) return user;
   const admin = documentsAdmin();
@@ -56,61 +63,78 @@ export async function POST(req: NextRequest) {
   }
   const token = access.access.accessToken;
 
+  const lock = await acquireDocumentRunLock(admin, user.id, 150, 'drive-import');
+  if (!lock.ok) {
+    return lock.reason === 'busy'
+      ? NextResponse.json({ error: RUN_BUSY_MESSAGE, alreadyRunning: true }, { status: 409 })
+      : NextResponse.json({ error: 'Importing is temporarily unavailable. Please try again shortly.' }, { status: 503 });
+  }
   let remaining = quota.remaining;
   const results: Array<{ fileId: string; status: 'saved' | 'duplicate' | 'skipped' | 'error'; documentId?: string; message?: string }> = [];
-
-  for (const fileId of ids) {
-    if (remaining !== null && remaining <= 0) {
-      results.push({ fileId, status: 'skipped', message: UPGRADE_COPY.quota(quota.limit ?? 0) });
-      continue;
-    }
-    try {
-      const file = await downloadDriveFile(token, fileId);
-      const mime = mimeFor(file.filename, file.mimeType);
-      if (!isAllowedDocumentMime(mime)) {
-        results.push({ fileId, status: 'skipped', message: 'That type of file cannot be stored in the vault. PDFs, photos and Office files work best.' });
+  try {
+    for (const fileId of ids) {
+      if (Date.now() > deadlineAt) {
+        results.push({ fileId, status: 'skipped', message: 'We ran out of time for this one. Please import it again.' });
         continue;
       }
-      const outcome = await storeDocument(admin, {
-        userId: user.id,
-        source: 'drive',
-        provider: 'google_drive',
-        driveSourceFileId: fileId,
-        filename: file.filename,
-        mimeType: mime,
-        bytes: file.bytes,
-        allowReviveDeleted: true,
-        classify: async () => {
-          const r = await classifyDocument(
-            { mode: 'drive', filename: file.filename, mimeType: mime },
-            { userId: user.id, endpoint: '/api/documents/drive/import' },
-          );
-          return { result: r.result, model: r.model };
-        },
-      });
-      if (outcome.status === 'saved') {
-        if (remaining !== null) remaining--;
-        results.push({ fileId, status: 'saved', documentId: outcome.doc.id });
-      } else if (outcome.status === 'duplicate') {
-        results.push({ fileId, status: 'duplicate', documentId: outcome.existingId, message: 'Already in your vault.' });
-      } else if (outcome.status === 'skipped') {
-        results.push({ fileId, status: 'skipped', message: outcome.reason === 'too_large' ? 'That file is larger than 15 MB.' : 'That file is empty.' });
-      } else {
-        results.push({ fileId, status: 'error', message: 'We could not save that file. Please try again.' });
+      if (remaining !== null && remaining <= 0) {
+        results.push({ fileId, status: 'skipped', message: UPGRADE_COPY.quota(quota.limit ?? 0) });
+        continue;
       }
-    } catch (err) {
-      const status = err instanceof DriveError ? err.status : 0;
-      const message =
-        status === 413
-          ? 'That file is larger than 15 MB.'
-          : status === 404 || status === 403
-            ? 'We do not have access to that file. Please pick it again.'
-            : status === 415
-              ? 'That type of Google file cannot be imported.'
-              : 'Google Drive did not return that file. Please try again.';
-      console.warn('[documents.drive-import] failed:', err instanceof Error ? err.message : err);
-      results.push({ fileId, status: 'error', message });
+      try {
+        const file = await downloadDriveFile(token, fileId, deadlineAt);
+        const mime = mimeFor(file.filename, file.mimeType);
+        if (!isAllowedDocumentMime(mime)) {
+          results.push({ fileId, status: 'skipped', message: 'That type of file cannot be stored in the vault. PDFs, photos and Office files work best.' });
+          continue;
+        }
+        const outcome = await storeDocument(admin, {
+          userId: user.id,
+          source: 'drive',
+          provider: 'google_drive',
+          driveSourceFileId: fileId,
+          filename: file.filename,
+          mimeType: mime,
+          bytes: file.bytes,
+          allowReviveDeleted: true,
+          quotaLimit: ent.documentsPerMonth,
+          classify: async () => {
+            const r = await classifyDocument(
+              { mode: 'drive', filename: file.filename, mimeType: mime },
+              { userId: user.id, endpoint: '/api/documents/drive/import' },
+            );
+            return { result: r.result, model: r.model };
+          },
+        });
+        if (outcome.status === 'saved') {
+          if (remaining !== null) remaining--;
+          results.push({ fileId, status: 'saved', documentId: outcome.doc.id });
+        } else if (outcome.status === 'duplicate') {
+          results.push({ fileId, status: 'duplicate', documentId: outcome.existingId, message: 'Already in your vault.' });
+        } else if (outcome.status === 'quota') {
+          remaining = 0;
+          results.push({ fileId, status: 'skipped', message: UPGRADE_COPY.quota(quota.limit ?? 0) });
+        } else if (outcome.status === 'skipped') {
+          results.push({ fileId, status: 'skipped', message: outcome.reason === 'too_large' ? 'That file is larger than 15 MB.' : 'That file is empty.' });
+        } else {
+          results.push({ fileId, status: 'error', message: 'We could not save that file. Please try again.' });
+        }
+      } catch (err) {
+        const status = err instanceof DriveError ? err.status : 0;
+        const message =
+          status === 413
+            ? 'That file is larger than 15 MB.'
+            : status === 404 || status === 403
+              ? 'We do not have access to that file. Please pick it again.'
+              : status === 415
+                ? 'That type of Google file cannot be imported.'
+                : 'Google Drive did not return that file. Please try again.';
+        console.warn('[documents.drive-import] failed:', err instanceof Error ? err.message : err);
+        results.push({ fileId, status: 'error', message });
+      }
     }
+  } finally {
+    await releaseDocumentRunLock(admin, user.id, lock.holder);
   }
 
   return NextResponse.json({
