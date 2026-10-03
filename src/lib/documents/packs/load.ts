@@ -7,8 +7,9 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { DOCUMENT_LIST_COLUMNS } from '@/lib/documents/types';
-import { londonToday } from '@/lib/documents/dates';
+import { DOCUMENT_LIST_COLUMNS, DOCUMENT_LIST_COLUMNS_STAGE2, isMissingColumnError, withWarrantyDefaults } from '@/lib/documents/types';
+import { disputeAttachmentPlan } from '@/lib/documents/packs/common';
+import { addDays, londonToday } from '@/lib/documents/dates';
 import { buildEvidencePack } from '@/lib/escalation-pack/build';
 import {
   buildTimeline,
@@ -35,6 +36,19 @@ import type {
 type Admin = SupabaseClient<any, any, any>;
 
 const PACK_DOC_COLUMNS = `${DOCUMENT_LIST_COLUMNS}, storage_path`;
+const PACK_DOC_COLUMNS_STAGE2 = `${DOCUMENT_LIST_COLUMNS_STAGE2}, storage_path`;
+
+/** Run a documents read; retry with the stage two columns when the warranty columns are missing. */
+async function readDocs(run: (columns: string) => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>): Promise<PackDocument[]> {
+  let { data, error } = await run(PACK_DOC_COLUMNS);
+  if (isMissingColumnError(error)) {
+    ({ data, error } = await run(PACK_DOC_COLUMNS_STAGE2));
+    if (error) throw new Error(`Could not load documents: ${error.message}`);
+    return withWarrantyDefaults((data as PackDocument[] | null) ?? []) as PackDocument[];
+  }
+  if (error) throw new Error(`Could not load documents: ${error.message}`);
+  return (data as PackDocument[] | null) ?? [];
+}
 /** Most candidates one pack looks at. */
 const MAX_CANDIDATES = 3000;
 const PAGE = 1000;
@@ -46,29 +60,31 @@ export async function loadCandidates(admin: Admin, userId: string, q: CandidateQ
   }
   const out: PackDocument[] = [];
   for (let offset = 0; offset < MAX_CANDIDATES; offset += PAGE) {
-    let query = admin.from('documents').select(PACK_DOC_COLUMNS).eq('user_id', userId).eq('status', 'active');
-    if (q.types && q.types.length) query = query.in('doc_type', q.types);
-    if (q.from || q.to) {
-      // The document's own date, else the email date, else when it was
-      // filed: the same fallback as the register, so an undated receipt
-      // that arrived in the tax year is not missed.
-      const from = q.from ?? '1990-01-01';
-      const to = q.to ?? '2100-12-31';
-      const toNext = new Date(Date.parse(`${to}T00:00:00Z`) + 86_400_000).toISOString();
-      const fromTs = `${from}T00:00:00Z`;
-      // Timestamps are quoted: they contain '.' and ':', which PostgREST
-      // treats as reserved inside or().
-      query = query.or(
-        [
-          `and(doc_date.gte.${from},doc_date.lte.${to})`,
-          `and(doc_date.is.null,email_date.gte."${fromTs}",email_date.lt."${toNext}")`,
-          `and(doc_date.is.null,email_date.is.null,created_at.gte."${fromTs}",created_at.lt."${toNext}")`,
-        ].join(','),
-      );
-    }
-    const { data, error } = await query.order('created_at', { ascending: true }).range(offset, offset + PAGE - 1);
-    if (error) throw new Error(`Could not load documents: ${error.message}`);
-    const rows = (data as unknown as PackDocument[] | null) ?? [];
+    const rows = await readDocs((columns) => {
+      let query = admin.from('documents').select(columns).eq('user_id', userId).eq('status', 'active');
+      if (q.types && q.types.length) query = query.in('doc_type', q.types);
+      if (q.from || q.to) {
+        // The document's own date, else the email date, else when it was
+        // filed: the same fallback as the register, so an undated receipt
+        // that arrived in the tax year is not missed. Email and filing
+        // times are read a day wide either side and the definition then
+        // applies the exact UK (Europe/London) date.
+        const from = q.from ?? '1990-01-01';
+        const to = q.to ?? '2100-12-31';
+        const fromTs = `${addDays(from, -1)}T00:00:00Z`;
+        const toNext = `${addDays(to, 2)}T00:00:00Z`;
+        // Timestamps are quoted: they contain ':', which PostgREST treats
+        // as reserved inside or().
+        query = query.or(
+          [
+            `and(doc_date.gte.${from},doc_date.lte.${to})`,
+            `and(doc_date.is.null,email_date.gte."${fromTs}",email_date.lt."${toNext}")`,
+            `and(doc_date.is.null,email_date.is.null,created_at.gte."${fromTs}",created_at.lt."${toNext}")`,
+          ].join(','),
+        );
+      }
+      return query.order('created_at', { ascending: true }).range(offset, offset + PAGE - 1);
+    });
     out.push(...rows);
     if (rows.length < PAGE) break;
   }
@@ -85,14 +101,8 @@ export async function loadDocsByIds(admin: Admin, userId: string, ids: string[])
   if (clean.length === 0) return [];
   const out: PackDocument[] = [];
   for (let i = 0; i < clean.length; i += 200) {
-    const { data, error } = await admin
-      .from('documents')
-      .select(PACK_DOC_COLUMNS)
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .in('id', clean.slice(i, i + 200));
-    if (error) throw new Error(`Could not load documents: ${error.message}`);
-    out.push(...(((data as unknown as PackDocument[] | null) ?? [])));
+    const chunk = clean.slice(i, i + 200);
+    out.push(...(await readDocs((columns) => admin.from('documents').select(columns).eq('user_id', userId).eq('status', 'active').in('id', chunk))));
   }
   return out;
 }
@@ -198,7 +208,11 @@ export async function previewPack(
   const added = await loadDocsByIds(admin, userId, manual.added_ids);
   const selection = resolveSelection(def, candidates, added, manual, ctx);
   const checklist = evaluateChecklist(def, selection.selected, ctx);
-  const attachmentCount = (ctx.dispute?.correspondence ?? []).reduce((s, c) => s + c.attachments.length, 0);
+  // Correspondence attachments go in too (never ones that look like ID),
+  // and count towards the size estimate.
+  const attachments = disputeAttachmentPlan(ctx.dispute, userId);
+  selection.excluded.push(...attachments.excluded);
+  const attachmentCount = attachments.included.length;
   return {
     ok: true,
     preview: {
@@ -209,7 +223,7 @@ export async function previewPack(
       checklist,
       missing: missingItems(checklist),
       timeline: def.timeline ? buildTimeline(ctx, selection.selected, selection.selected.length + attachmentCount) : [],
-      bytes: selectionBytes(selection.selected),
+      bytes: selectionBytes(selection.selected) + attachments.bytes,
       title: def.defaultTitle(params, ctx),
       description: def.describeParams(params, ctx),
     },
