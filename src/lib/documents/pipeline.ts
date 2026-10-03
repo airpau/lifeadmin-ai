@@ -12,12 +12,25 @@
  *  - fetchWithRetry deadlines on every Gmail and Graph call
  *  - extractGmailBodyText / graphBodyToText for the classifier's context
  *
- * Guarantees:
- *  - a message is recorded in document_processed_messages once it has a
- *    final outcome, and is never downloaded or classified again
- *  - transient failures and quota stops are NOT recorded, so those
- *    messages are retried on the next run
- *  - the Free monthly cap is checked before every save
+ * How it behaves:
+ *  - candidates are searched with already handled messages filtered out
+ *    page by page, so pressing Find again moves on to messages not yet
+ *    looked at (see searchGmailDocumentIds / searchGraphDocumentIds)
+ *  - a message with a final outcome is recorded in
+ *    document_processed_messages and never downloaded or classified again
+ *  - a message where some attachments saved and others failed (or that
+ *    threw while being read) is recorded as 'partial' and retried on later
+ *    runs, at most MAX_PARTIAL_ATTEMPTS times in all
+ *  - quota stops and a temporarily unavailable classifier are not
+ *    recorded at all, so those messages are retried next run
+ *  - capped plans: a cheap count before each classification, then the
+ *    atomic documents_monthly_cap trigger at insert time, so concurrent
+ *    runs cannot overrun the monthly cap. Callers also hold the per-user
+ *    run lock (run-lock.ts), so two runs never classify the same file.
+ *  - the incremental cursor (email_connections.documents_scanned_at) only
+ *    moves when every candidate this run collected has a final outcome:
+ *    to the run start when the whole window was walked, or for Outlook to
+ *    the last fully examined message when the walk was cut short
  *  - nothing is sent anywhere: the only writes are to the user's own
  *    vault and, for Pro with Drive connected, the user's own Drive
  */
@@ -73,6 +86,8 @@ const CONNECTION_START_MARGIN_MS = 35_000;
 const INCREMENTAL_OVERLAP_MS = 2 * 24 * 60 * 60 * 1000;
 /** Give up on an inbox after this many per-message errors in one run. */
 const MAX_ERRORS_PER_CONNECTION = 5;
+/** A 'partial' message is retried until it has been attempted this many times. */
+export const MAX_PARTIAL_ATTEMPTS = 3;
 
 export interface FindOptions {
   userId: string;
@@ -114,7 +129,7 @@ export interface FindSummary {
 }
 
 type MessageOutcome =
-  | { kind: 'final'; outcome: 'saved' | 'duplicate' | 'no_documents' | 'not_document' | 'skipped'; saved: number; duplicates: number; detail?: string }
+  | { kind: 'final'; outcome: 'saved' | 'duplicate' | 'no_documents' | 'not_document' | 'skipped' | 'partial'; saved: number; duplicates: number; detail?: string }
   | { kind: 'retry'; reason: 'quota' | 'transient'; saved: number; duplicates: number; detail?: string };
 
 interface RunState {
@@ -128,7 +143,7 @@ function quotaLeft(s: RunState): boolean {
   return s.opts.maxSaves === null || s.summary.saved < s.opts.maxSaves;
 }
 
-async function afterStore(s: RunState, outcome: StoreOutcome, bytes: Buffer): Promise<'saved' | 'duplicate' | 'skipped' | 'error'> {
+async function afterStore(s: RunState, outcome: StoreOutcome, bytes: Buffer): Promise<'saved' | 'duplicate' | 'skipped' | 'quota' | 'error'> {
   if (outcome.status === 'saved') {
     s.summary.saved++;
     s.summary.savedIds.push(outcome.doc.id);
@@ -144,6 +159,7 @@ async function afterStore(s: RunState, outcome: StoreOutcome, bytes: Buffer): Pr
     return 'duplicate';
   }
   if (outcome.status === 'skipped') return 'skipped';
+  if (outcome.status === 'quota') return 'quota';
   console.warn('[documents.pipeline] store failed:', outcome.message);
   return 'error';
 }
@@ -197,6 +213,7 @@ async function handleMessage(
         filename: a.filename,
         mimeType: a.mimeType,
         bytes,
+        quotaLimit: opts.ent.documentsPerMonth,
         classify: async () => {
           classifiedHere = true;
           const r = await classifyDocument(
@@ -210,10 +227,13 @@ async function handleMessage(
       const r = await afterStore(s, outcome, bytes);
       if (r === 'saved') saved++;
       else if (r === 'duplicate') duplicates++;
+      else if (r === 'quota') return { kind: 'retry', reason: 'quota', saved, duplicates };
       else if (r === 'error') errors++;
     }
-    if (errors > 0 && saved === 0 && duplicates === 0) {
-      return { kind: 'retry', reason: 'transient', saved, duplicates, detail: 'attachment errors' };
+    if (errors > 0) {
+      // Never record a message as done while one of its attachments
+      // failed. 'partial' is retried (the saved parts dedupe for free).
+      return { kind: 'final', outcome: 'partial', saved, duplicates, detail: `${errors} attachment(s) failed` };
     }
     if (saved > 0) return { kind: 'final', outcome: 'saved', saved, duplicates };
     if (duplicates > 0) return { kind: 'final', outcome: 'duplicate', saved, duplicates };
@@ -254,26 +274,37 @@ async function handleMessage(
     filename: `${datePart} ${m.subject || 'Email receipt'}.html`,
     mimeType: 'text/html',
     bytes,
+    quotaLimit: opts.ent.documentsPerMonth,
     classify: async () => ({ result: precomputed, model: c.model }),
   });
   const r = await afterStore(s, outcome, bytes);
   if (r === 'saved') return { kind: 'final', outcome: 'saved', saved: 1, duplicates: 0 };
   if (r === 'duplicate') return { kind: 'final', outcome: 'duplicate', saved: 0, duplicates: 1 };
   if (r === 'skipped') return { kind: 'final', outcome: 'skipped', saved: 0, duplicates: 0 };
-  return { kind: 'retry', reason: 'transient', saved: 0, duplicates: 0, detail: 'store failed' };
+  if (r === 'quota') return { kind: 'retry', reason: 'quota', saved: 0, duplicates: 0 };
+  return { kind: 'final', outcome: 'partial', saved: 0, duplicates: 0, detail: 'store failed' };
 }
 
-async function alreadyProcessed(admin: Admin, userId: string, connectionId: string, ids: string[]): Promise<Set<string>> {
+/** Pure: is a ledger row a message we should not look at again? */
+export function isHandledLedgerRow(row: { outcome: string; attempts?: number | null }): boolean {
+  return row.outcome !== 'partial' || (row.attempts ?? 1) >= MAX_PARTIAL_ATTEMPTS;
+}
+
+/** The subset of `ids` already handled for this connection (one query per 100 ids). */
+async function handledIds(admin: Admin, userId: string, connectionId: string, ids: string[]): Promise<Set<string>> {
   const done = new Set<string>();
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
-    const { data } = await admin
+    const { data, error } = await admin
       .from('document_processed_messages')
-      .select('message_id')
+      .select('message_id, outcome, attempts')
       .eq('user_id', userId)
       .eq('connection_id', connectionId)
       .in('message_id', chunk);
-    for (const r of data ?? []) done.add(r.message_id as string);
+    if (error) throw new Error(`Processed lookup failed: ${error.message}`);
+    for (const r of data ?? []) {
+      if (isHandledLedgerRow(r as { outcome: string; attempts: number })) done.add(r.message_id as string);
+    }
   }
   return done;
 }
@@ -287,19 +318,32 @@ async function recordProcessed(
   o: Extract<MessageOutcome, { kind: 'final' }>,
 ): Promise<void> {
   try {
-    await admin.from('document_processed_messages').upsert(
-      {
-        user_id: userId,
-        connection_id: conn.id,
-        provider,
-        message_id: messageId,
-        outcome: o.outcome,
-        documents_saved: o.saved,
-        detail: o.detail ?? null,
-        processed_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,connection_id,message_id', ignoreDuplicates: true },
-    );
+    const base = {
+      user_id: userId,
+      connection_id: conn.id,
+      provider,
+      message_id: messageId,
+      outcome: o.outcome,
+      documents_saved: o.saved,
+      detail: o.detail ?? null,
+      processed_at: new Date().toISOString(),
+    };
+    if (o.outcome === 'partial') {
+      // Count the attempt so a permanently broken message stops being retried.
+      const { data: prev } = await admin
+        .from('document_processed_messages')
+        .select('attempts')
+        .eq('user_id', userId)
+        .eq('connection_id', conn.id)
+        .eq('message_id', messageId)
+        .maybeSingle();
+      await admin
+        .from('document_processed_messages')
+        .upsert({ ...base, attempts: ((prev?.attempts as number | null) ?? 0) + 1 }, { onConflict: 'user_id,connection_id,message_id' });
+      return;
+    }
+    // A final outcome replaces an earlier 'partial' row.
+    await admin.from('document_processed_messages').upsert(base, { onConflict: 'user_id,connection_id,message_id' });
   } catch {
     // Bookkeeping: worst case the message is looked at again next run,
     // where the SHA-256 check stops it being saved twice.
@@ -334,26 +378,31 @@ async function processConnection(s: RunState, conn: OAuthConnectionRow, provider
     opts.trigger === 'cron' && lastDocScanAt ? new Date(new Date(lastDocScanAt).getTime() - INCREMENTAL_OVERLAP_MS) : null;
   const fetchDeadline = opts.deadlineAt - MESSAGE_START_MARGIN_MS;
 
-  let ids: string[];
-  let searchTruncated = false;
+  const isHandled = (batch: string[]) => handledIds(admin, opts.userId, conn.id, batch);
+  let todo: string[];
+  let searchComplete = false;
+  let coveredUntil: string | null = null;
   try {
     if (provider === 'google') {
       const found = await searchGmailDocumentIds(token, {
         recency: gmailRecency({ sinceEpochSeconds: incrementalSince ? incrementalSince.getTime() / 1000 : null, days: opts.lookbackDays }),
-        max: opts.maxMessagesPerConnection * 2,
+        max: opts.maxMessagesPerConnection,
+        isHandled,
         deadlineAt: fetchDeadline,
       });
-      ids = found.ids;
-      searchTruncated = found.truncated;
+      todo = found.ids;
+      searchComplete = found.complete;
     } else {
       const since = incrementalSince ?? new Date(Date.now() - opts.lookbackDays * 86_400_000);
       const found = await searchGraphDocumentIds(token, {
         sinceIso: since.toISOString(),
-        max: opts.maxMessagesPerConnection * 2,
+        max: opts.maxMessagesPerConnection,
+        isHandled,
         deadlineAt: fetchDeadline,
       });
-      ids = found.headers.map((h) => h.id);
-      searchTruncated = found.truncated;
+      todo = found.ids;
+      searchComplete = found.complete;
+      coveredUntil = found.coveredUntil;
     }
   } catch (err) {
     summary.status = 'error';
@@ -361,24 +410,21 @@ async function processConnection(s: RunState, conn: OAuthConnectionRow, provider
     return summary;
   }
 
-  const done = await alreadyProcessed(admin, opts.userId, conn.id, ids);
-  const todo = ids.filter((id) => !done.has(id)).slice(0, opts.maxMessagesPerConnection);
   summary.candidates = todo.length;
   let errors = 0;
-  // Incomplete when the search itself was cut short, or when more
-  // unhandled messages were found than this run will look at. Either way
-  // the incremental cursor must not move past them.
-  let incomplete = searchTruncated || ids.length - done.size > todo.length;
+  // True while every collected candidate has reached a final, non-partial
+  // outcome. The cursor may only move when this holds.
+  let allSettled = true;
 
   for (const id of todo) {
     if (Date.now() > opts.deadlineAt - MESSAGE_START_MARGIN_MS) {
       s.summary.stoppedFor = s.summary.stoppedFor ?? 'time';
-      incomplete = true;
+      allSettled = false;
       break;
     }
     if (!quotaLeft(s)) {
       s.summary.stoppedFor = 'quota';
-      incomplete = true;
+      allSettled = false;
       break;
     }
     let outcome: MessageOutcome;
@@ -418,14 +464,27 @@ async function processConnection(s: RunState, conn: OAuthConnectionRow, provider
       }
     } catch (err) {
       errors++;
+      allSettled = false;
       console.warn(`[documents.pipeline] message ${id} failed:`, err instanceof Error ? err.message : err);
-      if (err instanceof GmailAuthError || err instanceof GraphAuthError || errors >= MAX_ERRORS_PER_CONNECTION) {
+      if (err instanceof GmailAuthError || err instanceof GraphAuthError) {
         summary.status = 'error';
-        summary.error = 'Too many errors reading this inbox. We will try again later.';
-        incomplete = true;
+        summary.error = 'Inbox access was refused. Please reconnect it.';
         break;
       }
-      incomplete = true;
+      // Counts as an attempt, so a message that always fails to load is
+      // eventually set aside instead of blocking this inbox for ever.
+      await recordProcessed(admin, opts.userId, conn, provider, id, {
+        kind: 'final',
+        outcome: 'partial',
+        saved: 0,
+        duplicates: 0,
+        detail: (err instanceof Error ? err.message : 'read failed').slice(0, 200),
+      });
+      if (errors >= MAX_ERRORS_PER_CONNECTION) {
+        summary.status = 'error';
+        summary.error = 'Too many errors reading this inbox. We will try again later.';
+        break;
+      }
       continue;
     }
 
@@ -433,9 +492,10 @@ async function processConnection(s: RunState, conn: OAuthConnectionRow, provider
     summary.duplicates += outcome.duplicates;
     if (outcome.kind === 'final') {
       summary.processed++;
+      if (outcome.outcome === 'partial') allSettled = false;
       await recordProcessed(admin, opts.userId, conn, provider, id, outcome);
     } else {
-      incomplete = true;
+      allSettled = false;
       if (outcome.reason === 'quota') {
         s.summary.stoppedFor = 'quota';
         break;
@@ -443,13 +503,21 @@ async function processConnection(s: RunState, conn: OAuthConnectionRow, provider
     }
   }
 
-  if (summary.status === 'scanned' && incomplete) summary.status = 'partial';
-  if (summary.status === 'scanned') {
-    // Only a complete pass moves the incremental cursor forward.
-    await admin.from('email_connections').update({ documents_scanned_at: runStartedAt }).eq('id', conn.id);
+  // Cursor: only when every collected candidate is settled. A complete
+  // walk moves it to the start of this run; an Outlook walk that was cut
+  // short moves it to the last message it fully examined (oldest-first
+  // order guarantees nothing before that point is left unhandled).
+  let cursor: string | null = null;
+  if (allSettled && summary.status === 'scanned') {
+    if (searchComplete) cursor = runStartedAt;
+    else if (coveredUntil && (!lastDocScanAt || Date.parse(coveredUntil) > Date.parse(lastDocScanAt))) cursor = coveredUntil;
   }
+  if (cursor) await admin.from('email_connections').update({ documents_scanned_at: cursor }).eq('id', conn.id);
+  if (summary.status === 'scanned' && !(allSettled && searchComplete)) summary.status = 'partial';
   return summary;
 }
+
+
 
 /** Run "Find my documents" for one user across every connected inbox. */
 export async function findDocumentsForUser(admin: Admin, opts: FindOptions): Promise<FindSummary> {
@@ -457,7 +525,7 @@ export async function findDocumentsForUser(admin: Admin, opts: FindOptions): Pro
     opts,
     admin,
     summary: { connections: [], saved: 0, duplicates: 0, classified: 0, driveFiled: 0, driveFailed: 0, stoppedFor: null, savedIds: [] },
-    drive: opts.ent.driveDocumentFiling ? new DriveFilingContext(admin, opts.userId) : null,
+    drive: opts.ent.driveDocumentFiling ? new DriveFilingContext(admin, opts.userId, opts.deadlineAt) : null,
   };
 
   const conns: Array<{ row: OAuthConnectionRow; provider: OAuthScanProvider }> = [];

@@ -37,39 +37,88 @@ async function gmailGet(token: string, url: string, label: string, deadlineAt?: 
 
 export class GmailAuthError extends Error {}
 
+/** Returns the subset of `ids` already handled (so they are skipped while paging). */
+export type HandledFilter = (ids: string[]) => Promise<Set<string>>;
+
+/** Pages of 100 ids walked per query before giving up for this run. */
+export const GMAIL_MAX_PAGES_PER_QUERY = 10;
+
 /**
- * Message ids matching any of the document queries, newest first,
- * de-duplicated. `truncated` is true when the cap or the deadline cut the
- * search short, so the caller must not treat the window as fully covered.
+ * Up to `max` UNHANDLED message ids matching the document queries.
+ *
+ * Already handled ids are filtered out page by page (one batched lookup
+ * per page through `isHandled`), and paging continues until enough
+ * unhandled candidates are collected, the window is exhausted, the
+ * deadline hits or the page cap is reached. Each query gets its own
+ * share of `max` (unused share rolls forward to later queries), so the
+ * attachment-free receipt search still runs when the attachment
+ * searches have plenty.
+ *
+ * `complete` is true only when every query was walked to the end of its
+ * results. It is false when the deadline, a page cap or a query's share
+ * cut the walk short, so the caller knows unseen candidates may remain.
  */
 export async function searchGmailDocumentIds(
   token: string,
-  opts: { recency: string; max: number; deadlineAt?: number },
-): Promise<{ ids: string[]; truncated: boolean }> {
+  opts: {
+    recency: string;
+    max: number;
+    isHandled: HandledFilter;
+    deadlineAt?: number;
+    maxPagesPerQuery?: number;
+    fetchImpl?: typeof fetch;
+  },
+): Promise<{ ids: string[]; complete: boolean }> {
+  const queries = gmailDocumentQueries(opts.recency);
+  const maxPages = opts.maxPagesPerQuery ?? GMAIL_MAX_PAGES_PER_QUERY;
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const q of gmailDocumentQueries(opts.recency)) {
+  let complete = true;
+
+  for (let qi = 0; qi < queries.length; qi++) {
+    const share = Math.ceil(Math.max(0, opts.max - out.length) / (queries.length - qi));
+    let collected = 0;
+    let pages = 0;
     let pageToken: string | undefined;
-    do {
-      if (out.length >= opts.max) return { ids: out, truncated: true };
-      if (opts.deadlineAt !== undefined && Date.now() >= opts.deadlineAt) return { ids: out, truncated: true };
-      const params = new URLSearchParams({ q, maxResults: String(Math.min(100, opts.max)) });
+    while (true) {
+      if (opts.deadlineAt !== undefined && Date.now() >= opts.deadlineAt) return { ids: out, complete: false };
+      if (pages >= maxPages) {
+        complete = false;
+        break;
+      }
+      const params = new URLSearchParams({ q: queries[qi], maxResults: '100' });
       if (pageToken) params.set('pageToken', pageToken);
-      const res = await gmailGet(token, `${GMAIL}/messages?${params}`, 'gmail docs list', opts.deadlineAt);
+      const res = await fetchWithRetry(
+        `${GMAIL}/messages?${params}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+        { label: 'gmail docs list', deadlineAt: opts.deadlineAt, fetchImpl: opts.fetchImpl },
+      );
+      pages++;
       if (res.status === 401 || res.status === 403) throw new GmailAuthError(`Gmail access denied (${res.status})`);
       if (!res.ok) throw new Error(`Gmail list failed (${res.status})`);
       const data = (await res.json()) as { messages?: Array<{ id: string }>; nextPageToken?: string };
-      for (const m of data.messages ?? []) {
-        if (!seen.has(m.id)) {
-          seen.add(m.id);
-          out.push(m.id);
-          if (out.length >= opts.max) return { ids: out, truncated: true };
+      const pageIds = (data.messages ?? []).map((m) => m.id).filter((id) => !seen.has(id));
+      pageIds.forEach((id) => seen.add(id));
+      const handled = pageIds.length ? await opts.isHandled(pageIds) : new Set<string>();
+      let overflow = false;
+      for (const id of pageIds) {
+        if (handled.has(id)) continue;
+        if (collected >= share) {
+          overflow = true;
+          break;
         }
+        out.push(id);
+        collected++;
+      }
+      if (overflow) {
+        complete = false;
+        break;
       }
       pageToken = data.nextPageToken;
-    } while (pageToken);
+      if (!pageToken) break;
+    }
   }
-  return { ids: out, truncated: false };
+  return { ids: out, complete };
 }
 
 export interface GmailFullMessage {

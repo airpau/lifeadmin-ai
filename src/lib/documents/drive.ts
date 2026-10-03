@@ -193,11 +193,22 @@ export async function getDriveAccess(admin: Admin, userId: string): Promise<Driv
 // Drive API
 // ---------------------------------------------------------------------------
 
-async function driveFetch(token: string, url: string, init: RequestInit = {}, label = 'drive'): Promise<Response> {
+/**
+ * One Drive API call through fetchWithRetry. With `deadlineAt` the call
+ * is refused when the deadline has (nearly) passed, no retry starts after
+ * it, and each attempt's timeout is trimmed to the time that is left.
+ */
+async function driveFetch(token: string, url: string, init: RequestInit = {}, label = 'drive', deadlineAt?: number): Promise<Response> {
+  let timeoutMs = 40_000;
+  if (deadlineAt !== undefined) {
+    const left = deadlineAt - Date.now();
+    if (left < 2_000) throw new DriveError('Stopped: the run is out of time.', 504);
+    timeoutMs = Math.min(timeoutMs, left);
+  }
   const res = await fetchWithRetry(
     url,
     { ...init, headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) } },
-    { label, timeoutMs: 40_000, maxElapsedMs: 60_000 },
+    { label, timeoutMs, maxElapsedMs: Math.min(60_000, timeoutMs + 20_000), deadlineAt },
   );
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -209,10 +220,10 @@ async function driveFetch(token: string, url: string, init: RequestInit = {}, la
 const q = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
 /** Find a folder by exact name in a parent, creating it if missing. Never duplicates on a normal run. */
-export async function ensureFolder(token: string, name: string, parentId: string): Promise<string> {
+export async function ensureFolder(token: string, name: string, parentId: string, deadlineAt?: number): Promise<string> {
   const query = `name = '${q(name)}' and '${q(parentId)}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`;
   const found = (await (
-    await driveFetch(token, `${DRIVE}/files?${new URLSearchParams({ q: query, fields: 'files(id,name)', pageSize: '10' })}`, {}, 'drive find folder')
+    await driveFetch(token, `${DRIVE}/files?${new URLSearchParams({ q: query, fields: 'files(id,name)', pageSize: '10' })}`, {}, 'drive find folder', deadlineAt)
   ).json()) as { files?: Array<{ id: string }> };
   if (found.files && found.files.length > 0) return found.files[0].id;
   const made = (await (
@@ -221,24 +232,25 @@ export async function ensureFolder(token: string, name: string, parentId: string
       `${DRIVE}/files?fields=id`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] }) },
       'drive create folder',
+      deadlineAt,
     )
   ).json()) as { id: string };
   return made.id;
 }
 
 /** The user's "Paybacker" root folder: the cached id if it still exists, else find or create it. */
-export async function ensurePaybackerRoot(token: string, cachedId: string | null): Promise<string> {
+export async function ensurePaybackerRoot(token: string, cachedId: string | null, deadlineAt?: number): Promise<string> {
   if (cachedId) {
     try {
       const meta = (await (
-        await driveFetch(token, `${DRIVE}/files/${encodeURIComponent(cachedId)}?fields=id,trashed`, {}, 'drive root check')
+        await driveFetch(token, `${DRIVE}/files/${encodeURIComponent(cachedId)}?fields=id,trashed`, {}, 'drive root check', deadlineAt)
       ).json()) as { id: string; trashed?: boolean };
       if (meta.id && !meta.trashed) return meta.id;
     } catch {
       // deleted or no longer visible to this app: recreate below
     }
   }
-  return ensureFolder(token, PAYBACKER_FOLDER_NAME, 'root');
+  return ensureFolder(token, PAYBACKER_FOLDER_NAME, 'root', deadlineAt);
 }
 
 /** Drive filename in the "YYYY-MM-DD Type, Supplier.ext" house style (en and em dashes removed). */
@@ -264,6 +276,7 @@ export async function uploadToDrive(
   folderId: string,
   mime: string,
   bytes: Buffer,
+  deadlineAt?: number,
 ): Promise<{ id: string; webViewLink: string | null }> {
   const start = await driveFetch(
     token,
@@ -278,6 +291,7 @@ export async function uploadToDrive(
       body: JSON.stringify({ name, parents: [folderId] }),
     },
     'drive upload start',
+    deadlineAt,
   );
   const session = start.headers.get('location');
   if (!session) throw new DriveError('Drive did not return an upload session URL.', 502);
@@ -286,6 +300,7 @@ export async function uploadToDrive(
     session,
     { method: 'PUT', headers: { 'Content-Type': mime }, body: new Uint8Array(bytes) },
     'drive upload put',
+    deadlineAt,
   );
   const f = (await put.json()) as { id: string; webViewLink?: string };
   return { id: f.id, webViewLink: f.webViewLink ?? null };
@@ -299,9 +314,9 @@ export interface DriveFileMeta {
   trashed?: boolean;
 }
 
-export async function getDriveFileMeta(token: string, fileId: string): Promise<DriveFileMeta> {
+export async function getDriveFileMeta(token: string, fileId: string, deadlineAt?: number): Promise<DriveFileMeta> {
   return (await (
-    await driveFetch(token, `${DRIVE}/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,trashed`, {}, 'drive meta')
+    await driveFetch(token, `${DRIVE}/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,trashed`, {}, 'drive meta', deadlineAt)
   ).json()) as DriveFileMeta;
 }
 
@@ -312,8 +327,9 @@ export async function getDriveFileMeta(token: string, fileId: string): Promise<D
 export async function downloadDriveFile(
   token: string,
   fileId: string,
+  deadlineAt?: number,
 ): Promise<{ bytes: Buffer; mimeType: string; filename: string }> {
-  const meta = await getDriveFileMeta(token, fileId);
+  const meta = await getDriveFileMeta(token, fileId, deadlineAt);
   if (meta.trashed) throw new DriveError('That file is in the Drive bin.', 410);
   if (GOOGLE_EXPORTABLE.has(meta.mimeType)) {
     const res = await driveFetch(
@@ -321,6 +337,7 @@ export async function downloadDriveFile(
       `${DRIVE}/files/${encodeURIComponent(fileId)}/export?mimeType=application/pdf`,
       {},
       'drive export',
+      deadlineAt,
     );
     const bytes = Buffer.from(await res.arrayBuffer());
     if (bytes.length > MAX_DOCUMENT_BYTES) throw new DriveError('That file is larger than 15 MB.', 413);
@@ -330,7 +347,7 @@ export async function downloadDriveFile(
     throw new DriveError('That type of Google file cannot be imported.', 415);
   }
   if (meta.size && Number(meta.size) > MAX_DOCUMENT_BYTES) throw new DriveError('That file is larger than 15 MB.', 413);
-  const res = await driveFetch(token, `${DRIVE}/files/${encodeURIComponent(fileId)}?alt=media`, {}, 'drive download');
+  const res = await driveFetch(token, `${DRIVE}/files/${encodeURIComponent(fileId)}?alt=media`, {}, 'drive download', deadlineAt);
   const bytes = Buffer.from(await res.arrayBuffer());
   if (bytes.length > MAX_DOCUMENT_BYTES) throw new DriveError('That file is larger than 15 MB.', 413);
   return { bytes, mimeType: meta.mimeType, filename: sanitizeFilename(meta.name) };
@@ -351,7 +368,12 @@ export class DriveFilingContext {
   private rootId: string | null = null;
   private folders = new Map<string, string>();
 
-  constructor(private readonly admin: Admin, private readonly userId: string) {}
+  constructor(
+    private readonly admin: Admin,
+    private readonly userId: string,
+    /** Absolute epoch ms; Drive calls stop at the run's deadline. */
+    private readonly deadlineAt?: number,
+  ) {}
 
   private async resolve(): Promise<DriveAccess | null> {
     if (this.access || this.failed) return this.access;
@@ -367,7 +389,7 @@ export class DriveFilingContext {
   private async folderFor(docType: DocType, year: string): Promise<string> {
     const a = this.access!;
     if (!this.rootId) {
-      this.rootId = await ensurePaybackerRoot(a.accessToken, a.rootFolderId);
+      this.rootId = await ensurePaybackerRoot(a.accessToken, a.rootFolderId, this.deadlineAt);
       if (a.source === 'drive_connection' && a.connectionId && this.rootId !== a.rootFolderId) {
         await this.admin.from('drive_connections').update({ root_folder_id: this.rootId }).eq('id', a.connectionId);
       }
@@ -375,8 +397,8 @@ export class DriveFilingContext {
     const key = `${docType}/${year}`;
     const cached = this.folders.get(key);
     if (cached) return cached;
-    const typeFolder = await ensureFolder(a.accessToken, DOC_TYPE_LABELS[docType] ?? 'Other', this.rootId);
-    const yearFolder = await ensureFolder(a.accessToken, year, typeFolder);
+    const typeFolder = await ensureFolder(a.accessToken, DOC_TYPE_LABELS[docType] ?? 'Other', this.rootId, this.deadlineAt);
+    const yearFolder = await ensureFolder(a.accessToken, year, typeFolder, this.deadlineAt);
     this.folders.set(key, yearFolder);
     return yearFolder;
   }
@@ -406,7 +428,7 @@ export class DriveFilingContext {
       const year = (doc.doc_date || doc.created_at || new Date().toISOString()).slice(0, 4);
       const folderId = await this.folderFor(doc.doc_type, year);
       const name = driveFilenameFor(doc);
-      const up = await uploadToDrive(access.accessToken, name, folderId, doc.mime_type, doc.bytes);
+      const up = await uploadToDrive(access.accessToken, name, folderId, doc.mime_type, doc.bytes, this.deadlineAt);
       await this.admin
         .from('documents')
         .update({ drive_file_id: up.id, drive_link: up.webViewLink, drive_filed_at: new Date().toISOString(), drive_error: null })
