@@ -26,6 +26,7 @@ import LatestSupplierReplyCard from '@/components/dispute/LatestSupplierReplyCar
 import WatchdogCard from '@/components/dispute/WatchdogCard';
 import { DisputeAgentBanner } from '@/components/disputes/DisputeAgentBanner';
 import EscalationPackCard from '@/components/disputes/EscalationPackCard';
+import EvidenceBundleCard from '@/components/disputes/EvidenceBundleCard';
 import LetterModal from '@/components/disputes/LetterModal';
 import AddCorrespondenceModal from '@/components/disputes/AddCorrespondenceModal';
 import ResolveDisputeModal from '@/components/disputes/ResolveDisputeModal';
@@ -1368,6 +1369,10 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       <CollapsibleSection title="Escalation pack" icon={Scale}>
         <EscalationPackCard disputeId={disputeId} />
       </CollapsibleSection>
+
+      {/* Evidence bundle: links to the documents vault's dispute evidence
+          pack for this dispute. Read only towards the dispute. */}
+      <EvidenceBundleCard disputeId={disputeId} providerName={dispute.provider_name} />
 
       {/* Tip */}
       <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-4 py-3">
