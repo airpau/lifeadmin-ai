@@ -167,6 +167,123 @@ export function computeTransactionWindow(
 }
 
 /**
+ * What the post-authorisation sync should fetch for one account.
+ */
+export interface InitialSyncPlan {
+  /** The recent window to request. Always requested. */
+  window: TransactionWindow;
+  /**
+   * Whether to ALSO pull the older 91 to 365 day history.
+   *
+   * True for an account we hold nothing for. That history is only
+   * obtainable in the few minutes after the customer authenticates, so
+   * a first connection has to take it then. A reconnection does not:
+   * we already store it, and Yapily's guidance is explicit that
+   * "historical transaction data is stored client-side; subsequent
+   * fetches retrieve only recent data".
+   *
+   * This is the per-account answer. The route combines it across the
+   * connection's accounts with needsOlderHistory() below.
+   */
+  backfillOlderHistory: boolean;
+  /**
+   * We hold history for this account, but nothing from the last
+   * FULL_HISTORY_DAYS. Either the account is simply dormant, or the
+   * connection has been broken for longer than the recent window can
+   * reach back. The account alone cannot tell us which.
+   */
+  staleWatermark: boolean;
+}
+
+/**
+ * Final decision on the older-history pull for one account, given the
+ * plans for every account on the same connection.
+ *
+ * A stale watermark is ambiguous on its own (see staleWatermark). The
+ * other accounts settle it: if any of them has a recent transaction,
+ * the connection was syncing recently and the stale account is merely
+ * quiet, so there is no gap to fill. If EVERY account is stale, the
+ * connection itself was down for more than 90 days, the recent window
+ * cannot cover the outage, and the older pull is the only way to close
+ * the hole in the user's history.
+ */
+export function needsOlderHistory(
+  plan: InitialSyncPlan,
+  allPlansOnConnection: readonly InitialSyncPlan[],
+): boolean {
+  if (plan.backfillOlderHistory) return true;
+  if (!plan.staleWatermark) return false;
+  const connectionSyncedRecently = allPlansOnConnection.some(
+    (p) => !p.backfillOlderHistory && !p.staleWatermark,
+  );
+  return !connectionSyncedRecently;
+}
+
+/**
+ * Pure planning step for the post-authorisation sync, separated from
+ * the DB lookup so it can be unit-tested.
+ *
+ * Until 2026-10-03 every authorisation pulled the full 12 months for
+ * every account, including when the user was re-authorising a bank we
+ * already held years of history for. On a four-account HSBC Business
+ * login that was eight heavy requests against a brand new consent, on
+ * every single reconnect, to fetch rows the dedup layer then threw
+ * away. A reconnect now costs the same as an ordinary scheduled sync:
+ * one incremental request per account.
+ */
+export function planInitialSync(
+  latestTransactionAt: string | Date | null | undefined,
+  now: Date = new Date(),
+): InitialSyncPlan {
+  const raw = latestTransactionAt ? new Date(latestTransactionAt) : null;
+  const hasStoredHistory = raw !== null && !Number.isNaN(raw.getTime());
+  const window = computeTransactionWindow(hasStoredHistory ? raw : null, now);
+  return {
+    window,
+    backfillOlderHistory: !hasStoredHistory,
+    // computeTransactionWindow falls back to the full window exactly
+    // when the watermark is too old (or absurd) to resume from.
+    staleWatermark: hasStoredHistory && window.mode === 'full_history',
+  };
+}
+
+/**
+ * Looks up the newest stored transaction for one account and returns
+ * the plan for its post-authorisation sync.
+ *
+ * Fails safe in the same direction as resolveTransactionWindow: if the
+ * lookup errors we behave as though the account were new and pull
+ * everything. Fetching history we already have is wasteful; skipping
+ * history a new user needs is not recoverable once the bank's window
+ * for it has closed.
+ */
+export async function resolveInitialSyncPlan(
+  supabase: SupabaseClient,
+  params: { userId: string; accountId: string; now?: Date },
+): Promise<InitialSyncPlan> {
+  const now = params.now ?? new Date();
+  try {
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .select('timestamp')
+      .eq('user_id', params.userId)
+      .eq('account_id', params.accountId)
+      .order('timestamp', { ascending: false })
+      .limit(1);
+    if (error) throw new Error(error.message);
+
+    const rows = data as Array<{ timestamp: string }> | null;
+    return planInitialSync(rows?.[0]?.timestamp ?? null, now);
+  } catch (err) {
+    console.warn(
+      `[sync-window] initial-sync watermark lookup failed for account=${params.accountId}, treating as a new account:`,
+      err instanceof Error ? err.message : err,
+    );
+    return planInitialSync(null, now);
+  }
+}
+
+/**
  * Looks up the newest stored transaction for one account and returns
  * the window to request.
  *

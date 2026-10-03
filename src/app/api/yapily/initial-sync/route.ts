@@ -4,6 +4,12 @@ import { getAllTransactions, yapilySleep, PER_CONSENT_CALL_DELAY_MS } from '@/li
 import { detectRecurring } from '@/lib/detect-recurring';
 import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import { upsertYapilyTransactions, type AccountSnapshot } from '@/lib/yapily/connection-store';
+import {
+  needsOlderHistory,
+  resolveInitialSyncPlan,
+  type InitialSyncPlan,
+} from '@/lib/yapily/sync-window';
+import { staleClaimCutoff } from '@/lib/yapily/sync-scheduler';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes for full 12-month sync
@@ -18,12 +24,18 @@ function getAdmin() {
 /**
  * POST /api/yapily/initial-sync
  *
- * Background endpoint triggered by the OAuth callback. Pulls 12 months
- * of transaction history per account and writes them via the dedup-
- * aware store, which keys on (user, account_identifications_hash,
- * stable_tx_hash). Re-running this endpoint against the same consent
- * is a no-op for transactions we already have — the partial unique
- * index makes duplicates physically impossible.
+ * Background endpoint triggered by the OAuth callback. For an account
+ * we hold nothing for it pulls 12 months of history; for an account we
+ * already hold (a reconnect) it pulls only what is new since the last
+ * stored transaction. Rows are written via the dedup-aware store, which
+ * keys on (user, account_identifications_hash, stable_tx_hash), so
+ * re-seeing a transaction is a no-op.
+ *
+ * Only ONE sync may touch a consent at a time. This route claims the
+ * connection (sync_claimed_at) before its first Yapily call and releases
+ * it when done, exactly as cron/bank-sync and bank/sync-now do. A second
+ * trigger for the same connection returns immediately instead of running
+ * a duplicate set of calls in parallel on a brand new consent.
  *
  * Body: { connectionId, userId, consentToken, accountSnapshots }
  *
@@ -50,6 +62,77 @@ export async function POST(request: NextRequest) {
 
   const supabase = getAdmin();
 
+  // ── One sync per consent at a time ───────────────────────────────
+  //
+  // bank_sync_log shows this route running TWICE for the same connect,
+  // seconds apart, on 15 Aug, 26 Aug, 17 Sep, 24 Sep and 1 Oct 2026:
+  // the callback was hit twice and each hit fired its own background
+  // sync. Two full syncs then ran in parallel on a consent that was
+  // seconds old, which is precisely the pattern Yapily told us "can
+  // cause race conditions, unexpected errors, or premature consent
+  // expiry".
+  //
+  // Same claim the cron and the Sync button use, so it also keeps a
+  // scheduled run from starting on this consent while we are mid-sync.
+  // A claim older than SYNC_CLAIM_STALE_MINUTES is treated as abandoned,
+  // and this route's maxDuration is well inside that.
+  const { data: claimed, error: claimErr } = await supabase
+    .from('bank_connections')
+    .update({ sync_claimed_at: new Date().toISOString() })
+    .eq('id', connectionId)
+    .or(`sync_claimed_at.is.null,sync_claimed_at.lt.${staleClaimCutoff()}`)
+    .select('id');
+
+  if (claimErr) {
+    // Fail open: a bookkeeping error must not cost a new user their
+    // first sync. Worst case is the old behaviour.
+    console.error(
+      `[yapily.initial-sync] claim failed for connection=${connectionId}, proceeding without it:`,
+      claimErr.message,
+    );
+  } else if (!claimed || claimed.length === 0) {
+    console.warn(
+      `[yapily.initial-sync] connection=${connectionId} is already being synced, skipping this duplicate trigger`,
+    );
+    return NextResponse.json({ ok: true, skipped: 'already_syncing' });
+  }
+  const holdsClaim = !claimErr;
+
+  try {
+    return await runInitialSync({
+      supabase,
+      connectionId,
+      userId,
+      consentToken,
+      accountSnapshots,
+    });
+  } finally {
+    if (holdsClaim) {
+      const { error: releaseErr } = await supabase
+        .from('bank_connections')
+        .update({ sync_claimed_at: null })
+        .eq('id', connectionId);
+      if (releaseErr) {
+        // Not fatal: the claim goes stale on its own. Worth knowing
+        // about, because until it does the cron skips this connection.
+        console.error(
+          `[yapily.initial-sync] failed to release claim on connection=${connectionId}:`,
+          releaseErr.message,
+        );
+      }
+    }
+  }
+}
+
+async function runInitialSync(args: {
+  supabase: ReturnType<typeof getAdmin>;
+  connectionId: string;
+  userId: string;
+  consentToken: string;
+  accountSnapshots: AccountSnapshot[];
+}): Promise<NextResponse> {
+  const { supabase, connectionId, userId, consentToken, accountSnapshots } = args;
+
   // Yapily's 5-minute deadline (Migle, 29 Apr): if historical
   // transactions older than 90 days aren't pulled within 5 minutes
   // of consent grant, some banks return 403 and force a fresh
@@ -71,9 +154,28 @@ export async function POST(request: NextRequest) {
   const HISTORICAL_BUDGET_MS = 270 * 1000; // 4m30s — safety margin under Yapily's 5min
   const startedAt = Date.now();
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const toDate = tomorrow.toISOString();
+  // ── What does each account actually need? ────────────────────────
+  //
+  // Decided up front, from what we already store, BEFORE pass 1 writes
+  // anything. An account we hold nothing for gets the full treatment
+  // (90 days, then the older history while the bank still allows it).
+  // An account we already hold gets one incremental request, the same
+  // one the scheduled sync would make. See planInitialSync.
+  const plans = new Map<string, InitialSyncPlan>();
+  for (const account of accountSnapshots) {
+    plans.set(
+      account.yapilyAccountId,
+      await resolveInitialSyncPlan(supabase, { userId, accountId: account.yapilyAccountId }),
+    );
+  }
+  const allPlans = Array.from(plans.values());
+  const wantsOlderHistory = (accountId: string) =>
+    needsOlderHistory(plans.get(accountId)!, allPlans);
+  const backfillCount = accountSnapshots.filter((a) => wantsOlderHistory(a.yapilyAccountId)).length;
+  console.log(
+    `[yapily.initial-sync] connection=${connectionId} accounts=${accountSnapshots.length} ` +
+      `older_history_for=${backfillCount} recent_only_for=${accountSnapshots.length - backfillCount}`,
+  );
 
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
@@ -118,14 +220,16 @@ export async function POST(request: NextRequest) {
     consentCallsMade++;
   };
 
-  // PASS 1 — last 90 days for every account. Sequential AND spaced.
+  // PASS 1: the recent window for every account. Sequential AND spaced.
+  // 90 days for a new account, incremental for one we already hold.
   for (const account of accountSnapshots) {
+    const plan = plans.get(account.yapilyAccountId)!;
     try {
       await spaceConsentCall();
       const transactions = await getAllTransactions(
         account.yapilyAccountId,
         consentToken,
-        { from: ninetyDaysAgoIso, before: toDate },
+        { from: plan.window.from, before: plan.window.before },
       );
       apiCallsMade += Math.max(1, Math.ceil(transactions.length / 1000));
       if (transactions.length === 0) continue;
@@ -151,7 +255,15 @@ export async function POST(request: NextRequest) {
   // we never blow Yapily's 5-min historical window. The day-90
   // boundary is exclusive on the older side (bank's day -90 is
   // already in pass 1) and inclusive on the older side at -365.
+  //
+  // Only where there is something to fetch: a new account, or a
+  // connection that was down for longer than pass 1 reaches back (see
+  // needsOlderHistory). An account we already hold history for is not
+  // asked again. The request is the heaviest one this route makes, it
+  // lands on a consent that is minutes old, and everything it returns
+  // is thrown away by the dedup layer.
   for (const account of accountSnapshots) {
+    if (!wantsOlderHistory(account.yapilyAccountId)) continue;
     if (Date.now() - startedAt + PER_CONSENT_CALL_DELAY_MS > HISTORICAL_BUDGET_MS) {
       historicalSkipped++;
       console.warn(

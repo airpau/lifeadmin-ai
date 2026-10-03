@@ -11,7 +11,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/encrypt';
-import { getInstitutionFeatures, isUnsupportedFeatureError } from '@/lib/yapily';
+import {
+  getInstitutionFeatures,
+  isUnsupportedFeatureError,
+  yapilySleep,
+  PER_CONSENT_CALL_DELAY_MS,
+} from '@/lib/yapily';
+import { isGentleInstitution } from '@/lib/yapily/institution-policy';
 import {
   getScheduledPayments,
   getPeriodicPayments,
@@ -169,6 +175,8 @@ export async function GET(request: NextRequest) {
     endpointsSkippedUnsupported: number;
     /** Once-per-consent endpoints not called because we already have them. */
     endpointsSkippedAlreadyHarvested: number;
+    /** Once-per-consent endpoints not called because this bank is on the gentle list. */
+    endpointsSkippedByPolicy: number;
     /** Endpoints newly recorded as 424/501 unsupported this run. */
     endpointsMarkedUnsupported: number;
     /** Rows re-projected from a stored snapshot instead of a fresh call. */
@@ -186,6 +194,7 @@ export async function GET(request: NextRequest) {
     otherFailures: 0,
     endpointsSkippedUnsupported: 0,
     endpointsSkippedAlreadyHarvested: 0,
+    endpointsSkippedByPolicy: 0,
     endpointsMarkedUnsupported: 0,
     mandateRowsProjected: 0,
     alertsDispatched: 0,
@@ -312,6 +321,29 @@ export async function GET(request: NextRequest) {
     const newlyUnsupported = new Set<string>();
     let harvestSucceeded = false;
 
+    // ── Gentle institutions (HSBC) ──────────────────────────────────
+    //
+    // For a bank on this list we make NO scheduled-payments,
+    // periodic-payments or direct-debits calls at all, and we space the
+    // one call that remains (pending transactions) the way the
+    // transaction sync already spaces its own. The evidence is in
+    // src/lib/yapily/institution-policy.ts: these calls, fired at an
+    // HSBC Business consent, are the difference between a consent that
+    // lasts 90 days and one that lasts an hour.
+    //
+    // Deliberately NOT recorded in unsupported_features. That column
+    // means "the bank told us it cannot do this", and the UI turns it
+    // into "your bank does not share this data". Here the bank can; we
+    // are choosing not to ask. Snapshots harvested before this policy
+    // existed are still re-projected below, so the forward view keeps
+    // the direct debits it already knows about.
+    const gentle = isGentleInstitution(conn.institution_id);
+    let consentCallsThisRun = 0;
+    const spaceConsentCall = async () => {
+      if (gentle && consentCallsThisRun > 0) await yapilySleep(PER_CONSENT_CALL_DELAY_MS);
+      consentCallsThisRun++;
+    };
+
     for (const accountId of conn.account_ids) {
       const rows: UpsertRow[] = [];
 
@@ -326,6 +358,10 @@ export async function GET(request: NextRequest) {
 
       const endpoints: Array<[string, string, () => Promise<UpcomingRow[]>]> = [];
       for (const [feature, label, fn] of candidateEndpoints) {
+        if (gentle && ONCE_PER_CONSENT_ENDPOINTS.has(label)) {
+          summary.endpointsSkippedByPolicy++;
+          continue;
+        }
         if (!supports(feature)) {
           summary.endpointsSkippedUnsupported++;
           console.log(
@@ -353,6 +389,7 @@ export async function GET(request: NextRequest) {
 
       for (const [feature, label, fn] of endpoints) {
         try {
+          await spaceConsentCall();
           const fetched = await fn();
           for (const r of fetched) {
             rows.push(toUpsertRow(r, conn, accountId));
@@ -464,6 +501,7 @@ export async function GET(request: NextRequest) {
       // support varies WITHIN banks that advertise transactions.
       if (supports(FEATURE_TRANSACTIONS)) {
         try {
+          await spaceConsentCall();
           const pending = await getPendingTransactions(accountId, decrypted);
           for (const r of pending) rows.push(toUpsertRow(r, conn, accountId));
         } catch (err) {
