@@ -7,7 +7,7 @@ import { clearOAuthNonceCookie, readOAuthNonceCookie, verifyOAuthState } from '@
 import { encryptToken } from '@/lib/email/token-crypto';
 import { documentsAdmin } from '@/lib/documents/route-helpers';
 import { createClient } from '@/lib/supabase/server';
-import { DRIVE_FILE_SCOPE } from '@/lib/documents/drive';
+import { DRIVE_FILE_SCOPE, isBrowserSafeDriveScope } from '@/lib/documents/drive';
 
 export const runtime = 'nodejs';
 
@@ -65,6 +65,13 @@ export async function GET(req: NextRequest) {
   // The user can untick the Drive box on Google's consent screen.
   if (!(tokens.scope || '').split(/\s+/).includes(DRIVE_FILE_SCOPE)) {
     return back('drive_error=scope_missing');
+  }
+  // Never store a token that can do more than drive.file (it is the one
+  // Google Picker gets in the browser). Google should never return extra
+  // scopes for this non-incremental request; refuse if it ever does.
+  if (!isBrowserSafeDriveScope(tokens.scope)) {
+    console.error('[google-drive callback] refused a token with unexpected scopes');
+    return back('drive_error=scope_unexpected');
   }
 
   let email: string | null = null;
