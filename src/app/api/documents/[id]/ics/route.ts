@@ -11,6 +11,7 @@ import { KEY_DATE_LABEL, isKeyDateKind, londonToday, pickReminderDate } from '@/
 import { buildDocumentIcs } from '@/lib/documents/ics';
 import { DOC_TYPE_SINGULAR } from '@/lib/documents/types';
 import { sanitizeFilename } from '@/lib/documents/attachments';
+import { contentDisposition } from '@/lib/documents/content-disposition';
 
 export const runtime = 'nodejs';
 
@@ -34,7 +35,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const what = doc.supplier ? `${doc.supplier} ${DOC_TYPE_SINGULAR[doc.doc_type].toLowerCase()}` : DOC_TYPE_SINGULAR[doc.doc_type];
   const nice = new Date(`${pick.date}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' });
   const link = `${appBaseUrl()}/dashboard/documents?doc=${doc.id}`;
-  const summary = `${KEY_DATE_LABEL[pick.kind]} tomorrow: ${what}`;
   const description = [
     `${KEY_DATE_LABEL[pick.kind]} on ${nice}.`,
     doc.amount !== null ? `Amount: £${Number(doc.amount).toFixed(2)}${doc.currency && doc.currency !== 'GBP' ? ` (${doc.currency})` : ''}.` : null,
@@ -45,13 +45,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .filter(Boolean)
     .join('\n');
 
-  const ics = buildDocumentIcs({ uid: `${doc.id}-${pick.kind}`, keyDate: pick.date, summary, description, url: link });
+  const ics = buildDocumentIcs({ uid: `${doc.id}-${pick.kind}`, keyDate: pick.date, label: KEY_DATE_LABEL[pick.kind], what, description, url: link });
   const filename = sanitizeFilename(`Paybacker reminder ${what} ${pick.date}.ics`);
 
   return new NextResponse(ics, {
     headers: {
       'Content-Type': 'text/calendar; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${filename.replace(/"/g, '')}"`,
+      'Content-Disposition': contentDisposition(filename),
       'Cache-Control': 'private, no-store',
     },
   });

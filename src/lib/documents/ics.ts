@@ -2,8 +2,11 @@
  * RFC 5545 calendar file for a document reminder. Pure.
  *
  * One VEVENT at 09:00 Europe/London on the day BEFORE the key date
- * (renewal, due or expiry), 30 minutes long, with VALARM reminders 30, 7
- * and 1 days before the event. An alarm is only included when it would
+ * (renewal, due or expiry), 30 minutes long, titled "<Label> tomorrow:
+ * <what>". VALARM reminders fire at 09:00 London 30, 7 and 1 days before
+ * the KEY date, each worded for its own timing ("Renews in 30 days: X",
+ * "Renews in 7 days: X", "Renews tomorrow: X"). The 1 day alarm is the
+ * event itself (TRIGGER:PT0S). An alarm is only included when it would
  * still fire in the future, so a renewal 10 days away gets the 7 and 1
  * day alarms and not the 30 day one.
  *
@@ -101,12 +104,21 @@ const VTIMEZONE_LONDON = [
   'END:VTIMEZONE',
 ];
 
+/** "Renews in 30 days: X", "Renews in 7 days: X", "Renews tomorrow: X". */
+export function icsReminderText(label: string, what: string, daysBefore: number): string {
+  const when = daysBefore === 1 ? 'tomorrow' : `in ${daysBefore} days`;
+  return `${label} ${when}: ${what}`;
+}
+
 export interface DocumentIcsInput {
   /** Stable id, e.g. `${documentId}-renewal`. */
   uid: string;
   /** The key date itself (YYYY-MM-DD). The event is the day before. */
   keyDate: string;
-  summary: string;
+  /** What happens on the key date, e.g. "Renews", "Payment due", "Expires". */
+  label: string;
+  /** What it is, e.g. "British Gas policy". */
+  what: string;
   description: string;
   url?: string | null;
   now?: Date;
@@ -131,20 +143,22 @@ export function buildDocumentIcs(input: DocumentIcsInput): string {
     `DTSTAMP:${utcStamp(now)}`,
     `DTSTART;TZID=Europe/London:${start}`,
     `DTEND;TZID=Europe/London:${end}`,
-    `SUMMARY:${escapeIcsText(input.summary)}`,
+    `SUMMARY:${escapeIcsText(icsReminderText(input.label, input.what, 1))}`,
     `DESCRIPTION:${escapeIcsText(input.description)}`,
     ...(input.url ? [`URL:${input.url}`] : []),
     'TRANSP:TRANSPARENT',
   ];
 
   for (const days of ICS_ALARM_DAYS) {
-    const fireAt = eventStart.getTime() - days * 86_400_000;
+    // The event is already one day before the key date.
+    const beforeEvent = days - 1;
+    const fireAt = eventStart.getTime() - beforeEvent * 86_400_000;
     if (fireAt <= now.getTime()) continue;
     lines.push(
       'BEGIN:VALARM',
       'ACTION:DISPLAY',
-      `DESCRIPTION:${escapeIcsText(`${input.summary} (${days === 1 ? 'tomorrow' : `in ${days} days`})`)}`,
-      `TRIGGER:-P${days}D`,
+      `DESCRIPTION:${escapeIcsText(icsReminderText(input.label, input.what, days))}`,
+      beforeEvent === 0 ? 'TRIGGER:PT0S' : `TRIGGER:-P${beforeEvent}D`,
       'END:VALARM',
     );
   }
