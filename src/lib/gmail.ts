@@ -111,12 +111,14 @@ interface EmailData {
   body: string;
 }
 
-async function fetchEmailList(accessToken: string, query: string, maxResults = 100): Promise<GmailMessage[]> {
+async function fetchEmailList(accessToken: string, query: string, maxResults = 100, deadlineAt?: number): Promise<GmailMessage[]> {
   const allMessages: GmailMessage[] = [];
   let pageToken: string | undefined;
 
-  // Paginate through results to get up to maxResults
+  // Paginate through results to get up to maxResults (stopping early at
+  // the caller's deadline with whatever pages we already have).
   while (allMessages.length < maxResults) {
+    if (deadlineAt !== undefined && Date.now() >= deadlineAt) break;
     const params = new URLSearchParams({
       q: query,
       maxResults: String(Math.min(100, maxResults - allMessages.length)),
@@ -126,7 +128,7 @@ async function fetchEmailList(accessToken: string, query: string, maxResults = 1
     const res = await fetchWithRetry(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
-      { label: 'gmail list' },
+      { label: 'gmail list', deadlineAt },
     );
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
@@ -144,11 +146,11 @@ async function fetchEmailList(accessToken: string, query: string, maxResults = 1
   return allMessages.slice(0, maxResults);
 }
 
-async function fetchEmailDetail(accessToken: string, messageId: string): Promise<EmailData> {
+async function fetchEmailDetail(accessToken: string, messageId: string, deadlineAt?: number): Promise<EmailData> {
   const res = await fetchWithRetry(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
-    { label: 'gmail get' },
+    { label: 'gmail get', deadlineAt },
   );
   if (!res.ok) throw new Error(`Failed to fetch message ${messageId} (${res.status})`);
   const msg = await res.json();
@@ -292,8 +294,17 @@ export async function scanEmailsForOpportunities(
      * how an unbounded bill happens quietly.
      */
     lookbackDays?: number;
+    /**
+     * Epoch ms after which no new Gmail request is started. The scan then
+     * classifies what it already fetched and returns partial: true, so
+     * the route can save findings without moving the mailbox's cursor.
+     */
+    fetchDeadlineAt?: number;
   }
-): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number; cacheHits?: number }> {
+): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number; cacheHits?: number; partial?: boolean }> {
+  const deadlineAt = options?.fetchDeadlineAt;
+  const pastDeadline = () => deadlineAt !== undefined && Date.now() >= deadlineAt;
+  let partial = false;
   // Build the recency clause once. Depth is the single largest AI cost
   // in the product, so this is the enforcement point for the Gmail path:
   // every one of the 15 parallel queries below is rewritten through
@@ -337,9 +348,14 @@ export async function scanEmailsForOpportunities(
     billMessages, disputeResponseMessages, cancellationMessages,
     trialMessages, insuranceRenewalMessages, ddMessages,
     energyBroadbandMessages, governmentMessages,
-  ] = await mapWithConcurrency(listJobs, 3, ([query, max]) =>
-    fetchEmailList(accessToken, withRecency(query, sinceClause), max),
-  );
+  ] = await mapWithConcurrency(listJobs, 3, async ([query, max]) => {
+    if (pastDeadline()) {
+      partial = true;
+      return [] as GmailMessage[];
+    }
+    return fetchEmailList(accessToken, withRecency(query, sinceClause), max, deadlineAt);
+  });
+  if (pastDeadline()) partial = true;
 
   const seen = new Set<string>();
   const allMessages = [
@@ -354,7 +370,7 @@ export async function scanEmailsForOpportunities(
     return true;
   });
 
-  if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
+  if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0, partial };
 
   // Fetch message details with at most 8 requests in flight (previously
   // bursts of 25), each retried on 429/5xx. Failures are still settled
@@ -365,8 +381,13 @@ export async function scanEmailsForOpportunities(
     emailsToScan,
     8,
     async (m): Promise<PromiseSettledResult<EmailData>> => {
+      // Out of time: stop starting new fetches; classify what we have.
+      if (pastDeadline()) {
+        partial = true;
+        return { status: 'rejected', reason: new Error('deadline') };
+      }
       try {
-        return { status: 'fulfilled', value: await fetchEmailDetail(accessToken, m.id) };
+        return { status: 'fulfilled', value: await fetchEmailDetail(accessToken, m.id, deadlineAt) };
       } catch (reason) {
         return { status: 'rejected', reason };
       }
@@ -493,7 +514,7 @@ export async function scanEmailsForOpportunities(
     if (emails.length === 0 && cachedOpportunities.length > 0) {
       console.log('[gmail] All emails served from cache — skipping Claude call');
       allOpportunities.push(...cachedOpportunities);
-      return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: fulfilledEmails.length, cacheHits };
+      return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: fulfilledEmails.length, cacheHits, partial };
     }
     const message = await anthropic.messages.create({
       model: SCAN_MODEL,
@@ -732,9 +753,12 @@ Look for: emails from gov.uk, hmrc.gov.uk, dvla.gov.uk, nhs.uk, student finance,
   // For high-confidence opportunities where Claude returned no paymentAmount,
   // fetch the full message body and try regex first, then fall back to a
   // cheap targeted Claude call.
-  await runPriceFallback(allOpportunities, fulfilledEmails, accessToken, anthropic);
+  // Optional extra pass; skipped when we are already out of time.
+  if (!pastDeadline()) {
+    await runPriceFallback(allOpportunities, fulfilledEmails, accessToken, anthropic);
+  }
 
-  return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: fulfilledEmails.length, cacheHits };
+  return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: fulfilledEmails.length, cacheHits, partial };
 }
 
 const PRICEY_CONTEXT_RE = /(total|amount|charged|due|pay|renews|renewal|subscription|premium|bill|invoice|cost|price)/i;

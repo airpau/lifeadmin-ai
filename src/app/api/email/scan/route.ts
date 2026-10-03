@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { toMoneyHubAlertRow } from '@/lib/email/scan-persistence';
 
-export const maxDuration = 120;
+// Matches /api/gmail/scan and /api/outlook/scan, which this route proxies
+// to for OAuth connections (Vercel Pro limit, as other routes use).
+export const maxDuration = 300;
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import {
@@ -12,6 +14,7 @@ import { checkUsageLimit, incrementUsage, checkFreeScanGate } from '@/lib/plan-l
 import { resolveEmailScanWindow, buildScanWindowNotice } from '@/lib/email-scan-window';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { getUserPlan } from '@/lib/get-user-plan';
+import { scanProviderOf } from '@/lib/email/oauth-connections';
 
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -94,7 +97,7 @@ export async function POST(req: NextRequest) {
 
     // For OAuth connections (Google/Outlook), use their dedicated scan endpoints
     if (conn.auth_method === 'oauth') {
-      if (conn.provider_type === 'google') {
+      if (scanProviderOf(conn.provider_type) === 'google') {
         console.log('[email/scan] Redirecting Google OAuth connection to /api/gmail/scan');
         const gmailRes = await fetch(new URL('/api/gmail/scan', req.url), {
           method: 'POST',
@@ -106,7 +109,7 @@ export async function POST(req: NextRequest) {
         const gmailData = await gmailRes.json();
         return NextResponse.json(gmailData, { status: gmailRes.status });
       }
-      if (conn.provider_type === 'outlook') {
+      if (scanProviderOf(conn.provider_type) === 'outlook') {
         console.log('[email/scan] Redirecting Outlook OAuth connection to /api/outlook/scan');
         const outlookRes = await fetch(new URL('/api/outlook/scan', req.url), {
           method: 'POST',

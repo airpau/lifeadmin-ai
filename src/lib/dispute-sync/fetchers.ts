@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 import { refreshAccessToken as refreshGmailToken } from '../gmail';
 import { refreshMicrosoftToken } from '../outlook';
 import { decryptToken, encryptToken, isTokenUnreadable } from '../email/token-crypto';
-import { OAuthRefreshError } from '../email/oauth-refresh-error';
+import { isPermanentRefreshFailure } from '../email/oauth-refresh-error';
 import type {
   EmailConnection,
   FetchedMessage,
@@ -144,7 +144,9 @@ async function markConnectionNeedsReauth(
         last_error: message.slice(0, 500),
         last_error_at: new Date().toISOString(),
       })
-      .eq('id', connectionId);
+      .eq('id', connectionId)
+      // Leave disconnected rows alone.
+      .in('status', ['active', 'needs_reauth']);
 
     await db.from('business_log').insert({
       category: 'watchdog_error',
@@ -181,7 +183,10 @@ async function persistRefreshedToken(
         last_error: null,
         last_error_at: null,
       })
-      .eq('id', connectionId);
+      .eq('id', connectionId)
+      // Self-heal a needs_reauth row as before, but never resurrect a
+      // connection the user has disconnected (or that was archived).
+      .in('status', ['active', 'needs_reauth']);
   } catch {
     // Non-fatal — the in-memory token still works for this request.
   }
@@ -223,10 +228,11 @@ async function ensureFreshToken(conn: EmailConnection, provider: EmailProvider):
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Token refresh failed';
     // Only a revoked / expired grant needs the user to reconnect. A
-    // network blip, a Google/Microsoft 5xx or our own client config
+    // network error, a Google/Microsoft 5xx or our own client config
     // problem used to flip the row to needs_reauth too, which hid the
-    // inbox from every other feature until the user reconnected.
-    if (err instanceof OAuthRefreshError && !err.permanent) {
+    // inbox from every other feature until the user reconnected. Those
+    // are rethrown as-is so the caller just retries on its next run.
+    if (!isPermanentRefreshFailure(err)) {
       throw err;
     }
     await markConnectionNeedsReauth(conn.id, provider, message);

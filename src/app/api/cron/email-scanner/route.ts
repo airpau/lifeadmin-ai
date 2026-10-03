@@ -71,7 +71,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { scanEmailsForOpportunities, type Opportunity as GmailOpportunity } from '@/lib/gmail';
 import { scanOutlookForOpportunities } from '@/lib/outlook';
-import { getScanAccessToken, type OAuthConnectionRow } from '@/lib/email/oauth-connections';
+import {
+  getScanAccessToken,
+  scanProviderOf,
+  PROVIDER_TYPE_ALIASES,
+  type OAuthConnectionRow,
+} from '@/lib/email/oauth-connections';
 import { resolveEmailScanWindow, clampSinceToWindow } from '@/lib/email-scan-window';
 import { isAtLeastEssential } from '@/lib/tier-rank';
 
@@ -136,7 +141,7 @@ export async function GET(req: NextRequest) {
       'id, user_id, provider_type, auth_method, access_token, refresh_token, token_expiry, email_address, last_scanned_at, last_full_scanned_at, emails_scanned, status',
     )
     .eq('auth_method', 'oauth')
-    .in('provider_type', ['google', 'outlook'])
+    .in('provider_type', [...PROVIDER_TYPE_ALIASES.google, ...PROVIDER_TYPE_ALIASES.outlook])
     .eq('status', 'active')
     .or(`last_scanned_at.is.null,last_scanned_at.lt.${cutoffIso}`)
     .order('last_scanned_at', { ascending: true, nullsFirst: true })
@@ -183,7 +188,7 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      const result = c.provider_type === 'google'
+      const result = scanProviderOf(c.provider_type) === 'google'
         ? await scanGmail(sb, c)
         : await scanOutlook(sb, c);
       outcomes.push(result);

@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { exchangeMicrosoftCode } from '@/lib/outlook';
 import { verifyOAuthState, readOAuthNonceCookie, clearOAuthNonceCookie } from '@/lib/oauth-state';
 import { encryptToken } from '@/lib/email/token-crypto';
+import { PROVIDER_TYPE_ALIASES } from '@/lib/email/oauth-connections';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
     await admin.from('email_connections')
       .delete()
       .eq('user_id', user.id)
-      .eq('provider_type', 'outlook')
+      .in('provider_type', PROVIDER_TYPE_ALIASES.outlook)
       .eq('email_address', tokens.email);
 
     // Insert fresh connection

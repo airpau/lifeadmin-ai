@@ -4,7 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { exchangeCodeForTokens } from '@/lib/gmail';
 import { verifyOAuthState, readOAuthNonceCookie, clearOAuthNonceCookie } from '@/lib/oauth-state';
 import { encryptToken } from '@/lib/email/token-crypto';
-import { shouldWriteLegacyGmailTokens } from '@/lib/email/oauth-connections';
+import { shouldWriteLegacyGmailTokens, PROVIDER_TYPE_ALIASES } from '@/lib/email/oauth-connections';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -95,7 +95,9 @@ export async function GET(request: NextRequest) {
     await admin.from('email_connections')
       .delete()
       .eq('user_id', user.id)
-      .eq('provider_type', 'google')
+      // Older rows are labelled 'gmail'; clear those too or the insert
+      // below hits the (user_id, email_address) unique constraint.
+      .in('provider_type', PROVIDER_TYPE_ALIASES.google)
       .eq('email_address', tokens.email);
 
     const { error: connErr } = await admin.from('email_connections').insert({

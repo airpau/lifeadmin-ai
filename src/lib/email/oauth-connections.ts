@@ -34,6 +34,23 @@ type Admin = SupabaseClient<any, any, any>;
 
 export type OAuthScanProvider = 'google' | 'outlook';
 
+/**
+ * provider_type values that mean each provider. Production still has a
+ * few rows labelled 'gmail' (older label) and the dashboard also accepts
+ * 'microsoft'; treat them the same without migrating data.
+ */
+export const PROVIDER_TYPE_ALIASES: Record<OAuthScanProvider, string[]> = {
+  google: ['google', 'gmail'],
+  outlook: ['outlook', 'microsoft'],
+};
+
+export function scanProviderOf(providerType: string | null | undefined): OAuthScanProvider | null {
+  const p = (providerType || '').toLowerCase();
+  if (PROVIDER_TYPE_ALIASES.google.includes(p)) return 'google';
+  if (PROVIDER_TYPE_ALIASES.outlook.includes(p)) return 'outlook';
+  return null;
+}
+
 export interface OAuthConnectionRow {
   id: string;
   user_id: string;
@@ -66,7 +83,7 @@ export async function listActiveOAuthConnections(
     .from('email_connections')
     .select(OAUTH_CONNECTION_COLUMNS)
     .eq('user_id', userId)
-    .eq('provider_type', provider)
+    .in('provider_type', PROVIDER_TYPE_ALIASES[provider])
     .eq('auth_method', 'oauth')
     .eq('status', 'active')
     .is('archived_at', null)
@@ -80,7 +97,7 @@ export async function hasAnyGoogleConnectionRow(admin: Admin, userId: string): P
     .from('email_connections')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .eq('provider_type', 'google');
+    .in('provider_type', PROVIDER_TYPE_ALIASES.google);
   return (count ?? 0) > 0;
 }
 
@@ -94,31 +111,35 @@ export async function hasConnectionsNeedingReauth(
     .from('email_connections')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .eq('provider_type', provider)
+    .in('provider_type', PROVIDER_TYPE_ALIASES[provider])
     .in('status', ['needs_reauth', 'expired']);
   return (count ?? 0) > 0;
 }
 
 /**
- * Merge opportunities from several mailboxes. Drops repeats of the same
- * message id and of the same title (the persistence code downstream
- * already dedupes against the database by title, so two inboxes that
- * both received "Netflix price increase" must not insert it twice).
+ * Drop repeats inside ONE mailbox's results: the same message id, or (as
+ * a fallback for findings without an id) the same title. Results from
+ * different mailboxes are never merged here, because the same title in
+ * two inboxes can be two different accounts (two Netflix plans, two
+ * energy bills). Database-level dedupe in the persistence code is
+ * unchanged.
  */
-export function mergeOpportunities<T extends { title?: string | null; emailId?: string | null }>(lists: T[][]): T[] {
+export function dedupeWithinInbox<T extends { title?: string | null; emailId?: string | null }>(list: T[]): T[] {
   const seenIds = new Set<string>();
   const seenTitles = new Set<string>();
   const out: T[] = [];
-  for (const list of lists) {
-    for (const o of list) {
-      const id = o.emailId || '';
-      const title = (o.title || '').trim().toLowerCase();
-      if (id && seenIds.has(id)) continue;
-      if (title && seenTitles.has(title)) continue;
-      if (id) seenIds.add(id);
-      if (title) seenTitles.add(title);
+  for (const o of list) {
+    const id = o.emailId || '';
+    if (id) {
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
       out.push(o);
+      continue;
     }
+    const title = (o.title || '').trim().toLowerCase();
+    if (title && seenTitles.has(title)) continue;
+    if (title) seenTitles.add(title);
+    out.push(o);
   }
   return out;
 }
@@ -136,7 +157,10 @@ export async function markConnectionNeedsReauth(admin: Admin, connectionId: stri
         last_error: message.slice(0, 500),
         last_error_at: new Date().toISOString(),
       })
-      .eq('id', connectionId);
+      .eq('id', connectionId)
+      // Never turn a connection the user disconnected meanwhile back into
+      // something the UI shows.
+      .eq('status', 'active');
   } catch {
     // Bookkeeping must never mask the real failure.
   }
@@ -200,7 +224,7 @@ export async function shouldWriteLegacyGmailTokens(admin: Admin, userId: string,
     .from('email_connections')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .eq('provider_type', 'google')
+    .in('provider_type', PROVIDER_TYPE_ALIASES.google)
     .eq('status', 'active')
     .eq('email_address', existing.email);
   return (count ?? 0) === 0;
@@ -221,7 +245,7 @@ export async function getScanAccessToken(
   opts: { alwaysRefresh?: boolean } = {},
 ): Promise<ScanTokenResult> {
   const alwaysRefresh = opts.alwaysRefresh ?? true;
-  const provider: OAuthScanProvider = conn.provider_type === 'outlook' ? 'outlook' : 'google';
+  const provider: OAuthScanProvider = scanProviderOf(conn.provider_type) ?? 'google';
   const label = provider === 'google' ? 'Gmail' : 'Microsoft';
 
   if (isTokenUnreadable(conn.refresh_token) || (!conn.refresh_token && isTokenUnreadable(conn.access_token))) {
@@ -266,12 +290,15 @@ export async function getScanAccessToken(
         access_token: encryptToken(newAccess),
         token_expiry: tokenExpiry,
         ...(rotatedRefresh ? { refresh_token: encryptToken(rotatedRefresh) } : {}),
-        status: 'active',
         last_error: null,
         last_error_at: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', conn.id);
+      .eq('id', conn.id)
+      // Status is not touched. The guard means a connection the user
+      // disconnected while this scan was running is left disconnected
+      // (and does not get a fresh token written back to it).
+      .eq('status', 'active');
     if (updErr) console.error(`[oauth-connections] token persist failed for ${conn.id}:`, updErr.message);
 
     if (provider === 'google') {

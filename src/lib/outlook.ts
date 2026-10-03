@@ -146,7 +146,8 @@ interface EmailData {
 async function fetchMessagesBySearch(
   accessToken: string,
   kqlQuery: string,
-  maxResults = 100
+  maxResults = 100,
+  deadlineAt?: number,
 ): Promise<GraphMessage[]> {
   const allMessages: GraphMessage[] = [];
   let url: string | null =
@@ -159,12 +160,14 @@ async function fetchMessagesBySearch(
     }).toString();
 
   while (url && allMessages.length < maxResults) {
+    // Stop paginating at the caller's deadline; keep what we have.
+    if (deadlineAt !== undefined && Date.now() >= deadlineAt) break;
     const res: Response = await fetchWithRetry(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         ConsistencyLevel: 'eventual',
       },
-    }, { label: 'graph search' });
+    }, { label: 'graph search', deadlineAt });
     if (!res.ok) {
       const errText = await res.text();
       console.error(`[outlook] Graph search failed (${res.status}): ${errText.substring(0, 300)}`);
@@ -319,8 +322,13 @@ export async function scanOutlookForOpportunities(
   options?: {
     /** Tier lookback cap in days (PLAN_LIMITS[tier].emailScanDays). */
     lookbackDays?: number;
+    /** Epoch ms after which no new Graph request is started (partial scan). */
+    fetchDeadlineAt?: number;
   }
-): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
+): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number; partial?: boolean }> {
+  const deadlineAt = options?.fetchDeadlineAt;
+  const pastDeadline = () => deadlineAt !== undefined && Date.now() >= deadlineAt;
+  let partial = false;
   // Run all queries in parallel (same strategy as Gmail)
   console.log('[outlook] Starting comprehensive email scan (11 queries, 3 at a time)...');
   const lookbackDays = options?.lookbackDays;
@@ -349,9 +357,14 @@ export async function scanOutlookForOpportunities(
     subjectMsgs, senderMsgs1, senderMsgs2, senderMsgs3,
     expirationMsgs, paymentMsgs, priceChangeMsgs,
     trialMsgs, insuranceMsgs, ddMsgs, governmentMsgs,
-  ] = await mapWithConcurrency(searchJobs, 3, ([kql, max]) =>
-    fetchMessagesBySearch(accessToken, kql, max),
-  );
+  ] = await mapWithConcurrency(searchJobs, 3, async ([kql, max]) => {
+    if (pastDeadline()) {
+      partial = true;
+      return [] as GraphMessage[];
+    }
+    return fetchMessagesBySearch(accessToken, kql, max, deadlineAt);
+  });
+  if (pastDeadline()) partial = true;
 
   // Deduplicate by message ID
   const seen = new Set<string>();
@@ -378,7 +391,7 @@ export async function scanOutlookForOpportunities(
 
   console.log(`[outlook] Total unique messages: ${allMessages.length} (subject: ${subjectMsgs.length}, senders1: ${senderMsgs1.length}, senders2: ${senderMsgs2.length}, senders3: ${senderMsgs3.length}, expirations: ${expirationMsgs.length}, payments: ${paymentMsgs.length}, priceChanges: ${priceChangeMsgs.length})`);
 
-  if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
+  if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0, partial };
 
   // Convert to EmailData and extract bodies (Graph already returns body inline)
   const emails: EmailData[] = allMessages.slice(0, 200).map(toEmailData);
@@ -592,9 +605,12 @@ urgency values:
   // £ body-fallback pass (mirrors Gmail). Outlook bodies are already inlined
   // by the Graph API, so we don't need a second fetch — regex first, then
   // haiku as a last resort.
-  await runOutlookPriceFallback(allOpportunities, emails, anthropic);
+  // Optional extra pass; skipped when we are already out of time.
+  if (!pastDeadline()) {
+    await runOutlookPriceFallback(allOpportunities, emails, anthropic);
+  }
 
-  return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: emails.length };
+  return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: emails.length, partial };
 }
 
 const PRICEY_CONTEXT_RE = /(total|amount|charged|due|pay|renews|renewal|subscription|premium|bill|invoice|cost|price)/i;
