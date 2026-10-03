@@ -49,7 +49,6 @@ const CATEGORY_ALIASES: Record<string, string> = {
   loans: 'loan',
   'credit cards': 'credit_card',
   'credit-cards': 'credit_card',
-  credit: 'credit_card',
   'car finance': 'car_finance',
   'car-finance': 'car_finance',
   fees: 'fee',
@@ -58,6 +57,15 @@ const CATEGORY_ALIASES: Record<string, string> = {
   bank_transfer: 'transfers',
   transfer: 'transfers',
   TRANSFER: 'transfers',
+  // Bank DIRECTION code, not a category. Yapily writes the direction
+  // ('CREDIT' / 'DEBIT') into bank_transactions.category, so a bare 'credit'
+  // means money IN — it is not a credit-card bill. It used to sit with the
+  // plurals above as credit → credit_card, which buckets as fixed_cost, i.e.
+  // an incoming payment classified as spending. Every current caller filters
+  // on amount < 0 before bucketing, so no live total is wrong today, but the
+  // mapping is a trap for the next caller that does not.
+  // See BANK_DIRECTION_CODES in money-hub-classification.ts.
+  credit: 'income',
   // Bill-shape synonyms
   bill_payment: 'bills',
   billpayment: 'bills',
