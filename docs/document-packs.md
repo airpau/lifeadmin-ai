@@ -39,14 +39,22 @@ them server side.
 
 The Free build allowance:
 
-- A pack counts once a calendar month (UTC) however many times it is
-  rebuilt. Rebuilding after adding a document is free.
-- A deleted pack still counts (soft delete keeps `counted_build_at`), so
+- Builds are counted per calendar month (UTC). Each build stores a hash
+  of what it contained (pack type, options, document ids and, for
+  disputes, the correspondence). Rebuilding the same contents in the same
+  month is free; a pack whose contents changed is a new build, so editing
+  one pack cannot be used to build any number of different packs.
+- A deleted pack still counts (soft delete keeps its counters), so
   deleting cannot reset the allowance.
 - A build that fails gives the allowance back.
-- The check and the "one build of this pack at a time" lock are taken
+- The allowance check, the "one build of this pack at a time" lock and a
+  "the pack has not been edited since it was read" check are taken
   together, atomically, by `document_pack_claim_build()` under a per-user
-  advisory lock, so two tabs cannot both use the last build.
+  advisory lock, so two tabs cannot both use the last build and an edit
+  made during a build is never built with stale contents.
+- A pack cannot be deleted while it is building. If it is deleted in the
+  moment between the check and the build finishing, the new ZIP is
+  removed and the pack stays deleted.
 
 ## The packs engine
 
@@ -110,10 +118,14 @@ download name (`asciiFilename`); the route also returns the full
 
 ### Limits
 
-- 100 MB of source files per pack (`MAX_PACK_BYTES`), checked from the
-  stored sizes before anything is downloaded and again as files arrive.
-  The migration raises the `documents` bucket object limit from 15 MB to
-  100 MB for this; single documents are still capped at 15 MB in code.
+- 95 MB of source files per pack (`MAX_PACK_BYTES`, correspondence
+  attachments included), checked from the stored sizes before anything
+  is downloaded and again as files arrive, so the ZIP with its index PDF
+  and CSV stays under the bucket's 100 MB object limit (checked again on
+  the finished ZIP). The migration raises the `documents` bucket object
+  limit from 15 MB to 100 MB for this; single documents are still capped
+  at 15 MB in code. The Supabase project's own upload limit (Storage
+  settings) must also be at least 100 MB.
 - At most 300 documents per pack.
 - The build runs in the request (`maxDuration` 300) with a 240 second
   budget, checked before every download and before zipping, so a slow
@@ -136,7 +148,9 @@ only; it never changes a dispute's state, outcome or correspondence.
   domain, fuzzily matches the dispute's `provider_name` or
   `merchant_normalised`. The user can add or remove any document.
 - Correspondence attachments (uploaded to `correspondence-files`) are
-  included when their path is under `disputes/<user_id>/<dispute_id>/`.
+  included when their path is under `disputes/<user_id>/<dispute_id>/`,
+  except ones whose file name looks like an identity document, which are
+  left out and listed as excluded like vault documents.
 - Checklist: the letters you sent (required), the company's replies,
   bills, invoices or statements from the company (required), contract or
   terms, proof of payment.
@@ -156,7 +170,7 @@ the last 400 days.
 
 | Item | Rule | Required |
 |---|---|---|
-| Bank statements for the last three months | the three calendar months before the current one; a statement counts for the month of its date, and one dated this month counts for last month; credit card, mortgage, loan, pension, savings and bill-like statements are not bank statements | yes |
+| Bank statements for the last three months | the three calendar months before the current one; a statement counts for the period it states ("statement for August 2026") when it names one month; otherwise one dated in the first 10 days of a month counts for the month before (statements are issued just after their period) and a later one for its own month, the same rule for every month; credit card, mortgage, loan, pension, savings and bill-like statements are not bank statements | yes |
 | Payslips | statement or letter with payslip wording, last 92 days, latest three | no |
 | Proof of address | a bill (not a mobile phone bill) or a council tax letter, dated in the last 92 days, latest one | yes |
 | Buildings or home insurance | policy or certificate with home, buildings or contents wording, still running by its renewal or expiry date, or dated in the last 400 days if it has neither | yes |
@@ -219,13 +233,16 @@ Rules:
 - Pounds only, above £5.
 - Same supplier: fuzzy match on the normalised name. Bills compare with
   bills, policies with policies.
-- Cadence from the gaps between the supplier's documents: median gap up
-  to 45 days monthly, up to 135 quarterly, 300 or more yearly (policies
-  are always yearly).
+- Cadence from the typical (median) gap between the supplier's
+  documents: up to 45 days monthly, up to 135 quarterly, up to 250 half
+  yearly, 300 or more yearly (policies are always yearly). A gap between
+  250 and 300 days is unclear and the supplier is skipped rather than
+  guessed.
 - The newest document is compared with the one dated closest to a year
-  earlier: within 20 days (monthly), 35 (quarterly) or 60 (yearly).
+  earlier: within 20 days (monthly), 35 (quarterly), 45 (half yearly) or
+  60 (yearly).
 - Flag when the rise is **more than 5 percent or more than £50 a year**
-  (difference times 12, 4 or 1). The per-merchant threshold the existing
+  (difference times 12, 4, 2 or 1). The per-merchant threshold the existing
   alert system auto-tunes (`getEffectiveThreshold`) is respected; it can
   only raise the 5 percent.
 - A new amount over three times the old one is treated as two different
@@ -238,7 +255,8 @@ Audited first: `price_increase_alerts` (migration 20260401000000),
 the `price-increases` cron, the `telegram-alerts` cron and the dashboard
 `PriceIncreaseCard`.
 
-- **Monthly rises are fed into `price_increase_alerts`**, in exactly the
+- **Monthly rises (typical gap of 45 days or less) are fed into
+  `price_increase_alerts`**, in exactly the
   shape the bank detector writes: monthly old and new amounts,
   `annual_impact` = difference x 12, `merchant_normalized` from the same
   `normaliseMerchantName()`, a category where the wording makes it clear.
@@ -247,16 +265,20 @@ the `price-increases` cron, the `telegram-alerts` cron and the dashboard
   recently dismissed identical one stops a duplicate. From there the
   dashboard card, the Telegram alerts cron and the chat tool pick it up
   as they do bank alerts. The vault does not send its own notification.
-- **Quarterly and yearly rises are not**, because the consumers of that
+- **Quarterly, half yearly and yearly rises are not**, because the consumers of that
   table treat the amounts as monthly direct debits: the Telegram alerts
   cron says "raised your direct debit" and "went up by £X/month". A £60
   rise on a yearly home insurance renewal would be announced as £60 a
   month. Fitting those in would mean changing that contract, so they are
   recorded only in the new `document_price_rises` table and shown on the
   Documents page.
-- Every finding, monthly or not, is recorded in `document_price_rises`
-  (one row per pair of documents, so a dismissed rise never comes back),
-  with `price_alert_id` set when it was fed in.
+- Every finding, monthly or not, is recorded in `document_price_rises`,
+  with `price_alert_id` set when it was fed in. Before a finding is
+  recorded or fed in: if the user dismissed a rise for the same supplier
+  and cadence dated in the last 12 months, it is skipped (so next month's
+  bill does not bring it back); if one is still active, that row is
+  updated to the newer documents instead of adding a second row or a
+  second alert.
 
 ## 6. Warranties and guarantees
 
@@ -271,7 +293,8 @@ the `price-increases` cron, the `telegram-alerts` cron and the dashboard
   The purchase date is the document date, else the email date. A warranty
   certificate that states its own end date and no length uses that date.
 - If the warranty columns are missing (migration not applied), the
-  document is still saved, without the warranty.
+  document is still saved, without the warranty, and every documents
+  list, search and share link page retries without the new columns.
 - `PATCH /api/documents/[id]/warranty` (every plan): set the end date, or
   a length in months from the purchase date, and a note; or clear it.
 - Reminders (Essential and above): `GET /api/documents/[id]/warranty/ics`
@@ -282,27 +305,34 @@ the `price-increases` cron, the `telegram-alerts` cron and the dashboard
 
 ## 7. Weekly digest
 
-`/api/cron/document-digest`, Mondays 08:20 UTC (`vercel.json`).
+`/api/cron/document-digest`, Mondays 08:20 UTC (`vercel.json`; 09:20 in
+British Summer Time).
 
 **Off until `DOCUMENT_DIGEST_CRON_ENABLED=true`.** Rejects every call
 when `CRON_SECRET` is unset.
 
+- **Opt in.** The new event `document_digest` is in `EVENT_CATALOG`
+  with every channel off by default, so it does nothing until the user
+  turns it on, on the notification settings page or with the "Turn on the
+  weekly digest" button on the Documents page (Essential and above; the
+  same preference row). It is `scheduleKind: 'system'`: the time is fixed
+  by the cron, so it is not offered as reschedulable.
 - Finds documents with a due, renewal, expiry or warranty date from today
   to today + 30 days (London dates, both ends inclusive), grouped by user;
-  only users entitled to `documentDigest` get one. Up to 25 dates each,
-  soonest first.
-- Sent through `sendNotification()` with the new event
-  `document_digest` (added to `EVENT_CATALOG`, so it appears on the
-  notification settings page; defaults: email and Telegram on, push and
-  WhatsApp off). The user's channel choices and quiet hours apply.
+  only users who opted in and are entitled to `documentDigest` get one.
+  Up to 25 dates each, soonest first.
+- Sent through `sendNotification()`, so the user's channel choices and
+  quiet hours apply.
 - Email cap: the email leg only goes when `canSendEmail()` allows it, and
   a delivered email is recorded with `markEmailSent()`. The task type is
   the existing `renewal_reminder`, because `tasks_type_check` only allows
   listed types and widening it means replacing the constraint. Telegram
   and push are not affected by the email cap, as in the renewal
   reminders cron.
-- Once a week at most: a `notification_log` row keyed on the ISO week is
-  claimed before sending and released when nothing was delivered.
+- Once a week at most: a `notification_log` row with reference key
+  `document_digest:<user id>:<ISO week>` is claimed before sending and
+  released when nothing was delivered. The user id is in the key because
+  production has a unique index on `reference_key` alone.
 
 ## Tables and migration
 
@@ -311,15 +341,18 @@ statement removes anything, safe to run twice:
 
 | Change | Notes |
 |---|---|
-| `document_packs` | owner can select, writes server side, `updated_at` trigger; `pack_type` has no CHECK on purpose |
+| `document_packs` | owner can select, writes server side, `updated_at` trigger; `pack_type` has no CHECK on purpose; `counted_build_at`, `counted_builds`, `counted_build_hash` for the Free allowance |
 | `document_share_links.pack_id` | nullable, cascades when a pack row is removed |
 | `documents.warranty_until`, `warranty_note`, `warranty_todoist_task_id` | nullable, partial index on `warranty_until` |
-| `document_price_rises` | owner can select, unique per document pair |
-| `document_pack_claim_build()` | service role only |
+| `document_price_rises` | owner can select, unique per document pair; cadence monthly, quarterly, half_yearly or annual |
+| `document_pack_claim_build()` | service role only, `search_path` pinned (as are the two trigger functions) |
 | `documents` bucket object limit 15 MB to 100 MB | only ever raised |
 
-**Apply it before deploying the code.** The list, register and share
-queries now select the new columns.
+Apply it before switching on the new features. The existing pages do not
+depend on it: documents lists, search, downloads, reminders, the register
+and accountant share links retry without the new columns (`42703` or
+`PGRST204`) if the code is deployed first. The packs, price rises and
+digest need the migration.
 
 ## Routes
 
@@ -331,7 +364,7 @@ Logged in (cookie session):
 | `GET, POST /api/documents/packs` | list, create a draft (validates options, works out the checklist) | all |
 | `POST /api/documents/packs/preview` | checklist without saving | all |
 | `GET, PATCH, DELETE /api/documents/packs/[id]` | fresh checklist, change, delete | all |
-| `POST /api/documents/packs/[id]/build` | build the ZIP | Free 1 a month |
+| `POST /api/documents/packs/[id]/build` | build the ZIP | Free 1 build a month |
 | `GET /api/documents/packs/[id]/download` | signed URL | all |
 | `GET, POST /api/documents/packs/[id]/share` | list, create pack links | Pro+ |
 | `GET /api/documents/packs/disputes` | the user's disputes, for the picker | all |
