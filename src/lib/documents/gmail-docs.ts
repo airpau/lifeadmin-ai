@@ -37,18 +37,22 @@ async function gmailGet(token: string, url: string, label: string, deadlineAt?: 
 
 export class GmailAuthError extends Error {}
 
-/** Message ids matching any of the document queries, newest first, de-duplicated. */
+/**
+ * Message ids matching any of the document queries, newest first,
+ * de-duplicated. `truncated` is true when the cap or the deadline cut the
+ * search short, so the caller must not treat the window as fully covered.
+ */
 export async function searchGmailDocumentIds(
   token: string,
   opts: { recency: string; max: number; deadlineAt?: number },
-): Promise<string[]> {
+): Promise<{ ids: string[]; truncated: boolean }> {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const q of gmailDocumentQueries(opts.recency)) {
     let pageToken: string | undefined;
     do {
-      if (out.length >= opts.max) return out;
-      if (opts.deadlineAt !== undefined && Date.now() >= opts.deadlineAt) return out;
+      if (out.length >= opts.max) return { ids: out, truncated: true };
+      if (opts.deadlineAt !== undefined && Date.now() >= opts.deadlineAt) return { ids: out, truncated: true };
       const params = new URLSearchParams({ q, maxResults: String(Math.min(100, opts.max)) });
       if (pageToken) params.set('pageToken', pageToken);
       const res = await gmailGet(token, `${GMAIL}/messages?${params}`, 'gmail docs list', opts.deadlineAt);
@@ -59,13 +63,13 @@ export async function searchGmailDocumentIds(
         if (!seen.has(m.id)) {
           seen.add(m.id);
           out.push(m.id);
-          if (out.length >= opts.max) return out;
+          if (out.length >= opts.max) return { ids: out, truncated: true };
         }
       }
       pageToken = data.nextPageToken;
     } while (pageToken);
   }
-  return out;
+  return { ids: out, truncated: false };
 }
 
 export interface GmailFullMessage {

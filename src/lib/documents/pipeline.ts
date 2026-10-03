@@ -335,21 +335,25 @@ async function processConnection(s: RunState, conn: OAuthConnectionRow, provider
   const fetchDeadline = opts.deadlineAt - MESSAGE_START_MARGIN_MS;
 
   let ids: string[];
+  let searchTruncated = false;
   try {
     if (provider === 'google') {
-      ids = await searchGmailDocumentIds(token, {
+      const found = await searchGmailDocumentIds(token, {
         recency: gmailRecency({ sinceEpochSeconds: incrementalSince ? incrementalSince.getTime() / 1000 : null, days: opts.lookbackDays }),
         max: opts.maxMessagesPerConnection * 2,
         deadlineAt: fetchDeadline,
       });
+      ids = found.ids;
+      searchTruncated = found.truncated;
     } else {
       const since = incrementalSince ?? new Date(Date.now() - opts.lookbackDays * 86_400_000);
-      const headers = await searchGraphDocumentIds(token, {
+      const found = await searchGraphDocumentIds(token, {
         sinceIso: since.toISOString(),
         max: opts.maxMessagesPerConnection * 2,
         deadlineAt: fetchDeadline,
       });
-      ids = headers.map((h) => h.id);
+      ids = found.headers.map((h) => h.id);
+      searchTruncated = found.truncated;
     }
   } catch (err) {
     summary.status = 'error';
@@ -361,7 +365,10 @@ async function processConnection(s: RunState, conn: OAuthConnectionRow, provider
   const todo = ids.filter((id) => !done.has(id)).slice(0, opts.maxMessagesPerConnection);
   summary.candidates = todo.length;
   let errors = 0;
-  let incomplete = ids.length - done.size > todo.length; // more left than this run will look at
+  // Incomplete when the search itself was cut short, or when more
+  // unhandled messages were found than this run will look at. Either way
+  // the incremental cursor must not move past them.
+  let incomplete = searchTruncated || ids.length - done.size > todo.length;
 
   for (const id of todo) {
     if (Date.now() > opts.deadlineAt - MESSAGE_START_MARGIN_MS) {
