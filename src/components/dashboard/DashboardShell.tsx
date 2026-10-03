@@ -14,6 +14,8 @@ const I = {
   wallet: 'M21 12V7H5a2 2 0 0 1 0-4h14v4M3 5v14a2 2 0 0 0 2 2h16v-5',
   card: 'M2 7h20v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2zM2 10h20',
   file: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6',
+  // Documents vault. A folder, so it does not read as the Disputes row.
+  folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   calendar: 'M3 7h18v14H3zM16 3v4M8 3v4M3 11h18',
   tag: 'M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4M4 6v12a2 2 0 0 0 2 2h14v-4',
   trophy:
@@ -79,6 +81,13 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { key: 'subscriptions', label: 'Subscriptions', icon: 'card', href: '/dashboard/subscriptions' },
       { key: 'disputes', label: 'Disputes', icon: 'file', href: '/dashboard/disputes' },
       { key: 'vault', label: 'Contract Vault', icon: 'calendar', href: '/dashboard/contract-vault' },
+      {
+        key: 'documents',
+        label: 'Documents',
+        icon: 'folder',
+        href: '/dashboard/documents',
+        badge: { t: 'New', c: 'new' },
+      },
     ],
   },
   {
@@ -124,6 +133,7 @@ function getActiveKey(pathname: string): string {
   if (pathname.startsWith('/dashboard/subscriptions')) return 'subscriptions';
   if (pathname.startsWith('/dashboard/disputes')) return 'disputes';
   if (pathname.startsWith('/dashboard/contract-vault')) return 'vault';
+  if (pathname.startsWith('/dashboard/documents')) return 'documents';
   if (pathname.startsWith('/dashboard/deals')) return 'deals';
   if (pathname.startsWith('/dashboard/rewards')) return 'rewards';
   if (pathname.startsWith('/dashboard/pocket-agent')) return 'pocket-agent';
