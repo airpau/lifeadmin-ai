@@ -124,7 +124,7 @@ const data: SwitchPageData = {
       {
         feature: 'Email inbox scanning for overcharges',
         them: 'No',
-        us: 'Yes, Gmail or Outlook, read-only, up to two years of billing history',
+        us: 'Yes, Gmail or Outlook, read-only, the last 90 days of billing history',
       },
       {
         feature: 'Complaint and dispute letters citing UK law',
@@ -160,7 +160,7 @@ const data: SwitchPageData = {
       },
       {
         title: 'Inbox scanning that finds the problem',
-        body: 'Connect Gmail or Outlook read-only and Paybacker reads billing emails, renewal notices and price-rise letters going back up to two years. This is where the things a bank feed cannot see turn up: the tariff that went up in writing, the trial that converted, the delayed flight you never claimed for. Bank data tells you what left your account. Your inbox tells you what you were told about it.',
+        body: 'Connect Gmail or Outlook read-only and Paybacker reads billing emails, renewal notices and price-rise letters from the last 90 days. This is where the things a bank feed cannot see turn up: the tariff that went up in writing, the trial that converted, the delayed flight you never claimed for. Bank data tells you what left your account. Your inbox tells you what you were told about it.',
       },
       {
         title: 'Escalation tracked to the deadline',

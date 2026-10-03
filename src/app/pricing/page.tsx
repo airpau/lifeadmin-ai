@@ -162,7 +162,7 @@ const COMPARE_ROWS: ReadonlyArray<readonly [string, string, string, string]> = [
   ['AI dispute letters', '3 / month', 'Unlimited', 'Unlimited'],
   ['Bank sync (read-only, FCA via Yapily)', '2 accounts', '3 accounts', 'Unlimited'],
   ['Email inbox scan + Watchdog reply polling', '1 inbox', '3 inboxes', 'Unlimited'],
-  ['Inbox scan history (how far back we read)', '90 days', '2 years', '2 years'],
+  ['Inbox scan history (how far back we read)', '90 days', '90 days', '90 days'],
   ['Subscription tracker', '•', '•', '•'],
   ['Money Hub (basic spending overview)', '•', '•', '•'],
   ['Money Hub Budgets, Savings Goals, full categories', '—', '•', '•'],
