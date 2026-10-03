@@ -9,14 +9,21 @@
  *    driveOrganise.ts), and upload a copy of each document (resumable
  *    upload ported from MailHub's mailToDrive.ts).
  *
- * Token source, in order:
- *  1. drive_connections (this feature's own connect flow, tokens
- *     encrypted with stage one's token-crypto)
- *  2. google_sheets_connections (Pro users who already connected Sheets
- *     hold drive.file for the same Google OAuth client). Its tokens are
- *     read with decryptToken, which passes plain text through, and are
- *     NEVER written back from here: the Sheets export reads that row as
- *     plain text, so writing an encrypted token would break it.
+ * Token source: ONLY drive_connections, this feature's own connect flow
+ * (drive.file plus userinfo.email, no include_granted_scopes), tokens
+ * encrypted with stage one's token-crypto.
+ *
+ * The Google Sheets export connection is deliberately NOT used, even
+ * server side. That connect asks Google for include_granted_scopes on the
+ * same OAuth client as the Gmail inbox connect, so its token can carry
+ * gmail.readonly as well as drive.file. Using it here would put a token
+ * able to read the whole mailbox into Drive code paths (and, through the
+ * Picker, into the browser), and would make "Disconnect Drive" a lie
+ * while the Sheets connection exists.
+ *
+ * Every token handed to the browser is checked first against Google's
+ * tokeninfo endpoint (checkBrowserSafeDriveToken) and refused if it
+ * carries any scope beyond drive.file, userinfo.email and openid.
  *
  * Every Google call uses fetchWithRetry. No restricted scope is used.
  */
@@ -59,7 +66,7 @@ export class DriveError extends Error {
 
 export interface DriveAccess {
   accessToken: string;
-  source: 'drive_connection' | 'sheets_connection';
+  source: 'drive_connection';
   googleEmail: string | null;
   connectionId: string | null;
   rootFolderId: string | null;
@@ -69,7 +76,7 @@ export type DriveAccessResult =
   | { ok: true; access: DriveAccess }
   | { ok: false; reason: 'not_connected' | 'needs_reauth' | 'unavailable'; message: string };
 
-/** Which Drive connection (if any) a user has, without refreshing tokens. */
+/** Whether the user has the vault's own Drive connection, without refreshing tokens. */
 export async function driveConnectionStatus(
   admin: Admin,
   userId: string,
@@ -80,19 +87,56 @@ export async function driveConnectionStatus(
     .eq('user_id', userId)
     .maybeSingle();
   if (own?.status === 'active') return { connected: true, source: 'drive_connection', needsReauth: false, email: own.google_email ?? null };
-  const { data: sheets } = await admin
-    .from('google_sheets_connections')
-    .select('status, email')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (sheets && (sheets.status ?? 'active') === 'active') {
-    return { connected: true, source: 'sheets_connection', needsReauth: false, email: sheets.email ?? null };
-  }
   return { connected: false, source: null, needsReauth: own?.status === 'needs_reauth', email: own?.google_email ?? null };
 }
 
+// ---------------------------------------------------------------------------
+// Scope safety for tokens that leave the server
+// ---------------------------------------------------------------------------
+
+/** The only scopes a browser-bound Drive token may carry. */
+export const BROWSER_SAFE_DRIVE_SCOPES = new Set<string>([
+  DRIVE_FILE_SCOPE,
+  'https://www.googleapis.com/auth/userinfo.email',
+  'email',
+  'openid',
+]);
+
+/** Pure: true when `scope` includes drive.file and nothing outside the allow list. */
+export function isBrowserSafeDriveScope(scope: string | null | undefined): boolean {
+  const scopes = (scope || '').split(/[\s,]+/).filter(Boolean);
+  if (!scopes.includes(DRIVE_FILE_SCOPE)) return false;
+  return scopes.every((x) => BROWSER_SAFE_DRIVE_SCOPES.has(x));
+}
+
+/**
+ * Ask Google what an access token can actually do before it is sent to
+ * the browser.
+ *  - 'safe': the token belongs to our OAuth client and carries drive.file
+ *    and nothing beyond drive.file, userinfo.email and openid
+ *  - 'unsafe': it carries anything else or belongs to another client
+ *  - 'unverified': tokeninfo could not be reached; treat as a refusal
+ */
+export async function checkBrowserSafeDriveToken(
+  accessToken: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<'safe' | 'unsafe' | 'unverified'> {
+  let info: { scope?: string; aud?: string; azp?: string };
+  try {
+    const res = await fetchImpl(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`);
+    if (res.status >= 500) return 'unverified';
+    if (!res.ok) return 'unsafe';
+    info = (await res.json()) as { scope?: string; aud?: string; azp?: string };
+  } catch {
+    return 'unverified';
+  }
+  const clientId = process.env.GOOGLE_CLIENT_ID || '';
+  if (clientId && info.aud !== clientId && info.azp !== clientId) return 'unsafe';
+  return isBrowserSafeDriveScope(info.scope) ? 'safe' : 'unsafe';
+}
+
 export async function getDriveAccess(admin: Admin, userId: string): Promise<DriveAccessResult> {
-  // 1. The vault's own connection
+  // The vault's own connection only (see the header comment).
   const { data: own } = await admin
     .from('drive_connections')
     .select('id, google_email, access_token, refresh_token, token_expiry, root_folder_id, status')
@@ -139,33 +183,6 @@ export async function getDriveAccess(admin: Admin, userId: string): Promise<Driv
         return { ok: false, reason: 'needs_reauth', message: 'Please reconnect Google Drive.' };
       }
       return { ok: false, reason: 'unavailable', message };
-    }
-  }
-
-  // 2. Fall back to an existing Sheets connection (drive.file, same client)
-  const { data: sheets } = await admin
-    .from('google_sheets_connections')
-    .select('email, access_token, refresh_token, token_expiry, status')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (sheets && (sheets.status ?? 'active') === 'active') {
-    const access = decryptToken(sheets.access_token);
-    const refresh = decryptToken(sheets.refresh_token);
-    const expiresAt = sheets.token_expiry ? new Date(sheets.token_expiry).getTime() : 0;
-    const base = { source: 'sheets_connection' as const, googleEmail: sheets.email ?? null, connectionId: null, rootFolderId: null };
-    if (access && expiresAt - Date.now() > 60_000) return { ok: true, access: { ...base, accessToken: access } };
-    if (refresh) {
-      try {
-        // In memory only: see the header comment for why we never write back.
-        const r = await refreshAccessToken(refresh);
-        return { ok: true, access: { ...base, accessToken: r.access_token } };
-      } catch (err) {
-        return {
-          ok: false,
-          reason: isPermanentRefreshFailure(err) ? 'needs_reauth' : 'unavailable',
-          message: 'Please reconnect Google Drive.',
-        };
-      }
     }
   }
 

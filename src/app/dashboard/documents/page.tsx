@@ -43,7 +43,7 @@ interface Status {
   };
   quota: { limit: number | null; used: number; remaining: number | null };
   inboxesConnected: number;
-  drive: { connected: boolean; source: 'drive_connection' | 'sheets_connection' | null; needsReauth: boolean; email: string | null };
+  drive: { connected: boolean; source: 'drive_connection' | null; needsReauth: boolean; email: string | null };
   todoist: { connected: boolean; configured: boolean };
   picker: { configured: boolean; apiKey: string; appId: string };
 }
@@ -679,16 +679,16 @@ function DocumentsVault() {
               <HardDrive className="inline h-4 w-4 mr-1 text-slate-500" />
               Google Drive:{' '}
               {status.drive.connected
-                ? `connected${status.drive.email ? ` (${status.drive.email})` : ''}${status.drive.source === 'sheets_connection' ? ' through your Google Sheets export' : ''}`
+                ? `connected${status.drive.email ? ` (${status.drive.email})` : ''}`
                 : status.drive.needsReauth
                   ? 'needs reconnecting'
                   : 'not connected'}
             </span>
-            {status.drive.connected && status.drive.source === 'drive_connection' ? (
+            {status.drive.connected ? (
               <button onClick={() => disconnect('drive')} className="text-slate-500 hover:text-red-600 text-xs">Disconnect</button>
-            ) : !status.drive.connected ? (
+            ) : (
               <a href="/api/auth/google-drive" className="text-orange-600 font-semibold text-xs hover:underline">Connect</a>
-            ) : null}
+            )}
           </div>
           {status.todoist.configured && (
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">

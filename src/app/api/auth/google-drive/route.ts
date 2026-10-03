@@ -36,6 +36,12 @@ export async function GET() {
   url.searchParams.set('scope', [DRIVE_FILE_SCOPE, 'https://www.googleapis.com/auth/userinfo.email'].join(' '));
   url.searchParams.set('access_type', 'offline');
   url.searchParams.set('prompt', 'consent');
+  // Deliberately NOT incremental. With include_granted_scopes=true Google
+  // would fold the user's Gmail grant (gmail.readonly, same OAuth client)
+  // into this token, and this token is the one Google Picker uses in the
+  // browser. 'false' is Google's default; it is set explicitly so nobody
+  // "fixes" it later.
+  url.searchParams.set('include_granted_scopes', 'false');
   url.searchParams.set('state', signed.state);
 
   return setOAuthNonceCookie(NextResponse.redirect(url.toString()), 'google_drive', signed.nonce);

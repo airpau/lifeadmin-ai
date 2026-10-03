@@ -7,6 +7,9 @@
 // user's Google Sheets export if it uses the same Google account. The
 // user can remove access entirely at myaccount.google.com/permissions.
 // Files already filed into their Drive stay there; they are the user's.
+// The vault never falls back to any other Google connection, so after
+// this Drive shows as not connected and nothing touches Drive again
+// until the user reconnects.
 
 import { NextResponse } from 'next/server';
 import { documentsAdmin, isResponse, requireUser } from '@/lib/documents/route-helpers';
