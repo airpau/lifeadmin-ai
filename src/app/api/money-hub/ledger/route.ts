@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     }
     query = applySpaceToTxnQuery(query, activeSpace);
 
-    const [{ data: txns }, { data: overrideRows }, { data: bankConns }] = await Promise.all([
+    const [{ data: txns, error: txnError }, { data: overrideRows }, { data: bankConns }] = await Promise.all([
       query,
       sb.from('money_hub_category_overrides')
         .select('merchant_pattern, transaction_id, user_category')
@@ -99,6 +99,15 @@ export async function GET(request: NextRequest) {
         .select('id, bank_name, account_name')
         .eq('user_id', user.id),
     ]);
+
+    // A failed transactions query must not read as "this user has no
+    // transactions". Without this check `data` is null, `(txns ?? [])`
+    // silently yields an empty ledger, and a schema or permissions
+    // fault looks identical to an empty account.
+    if (txnError) {
+      console.error('[money-hub/ledger] transactions query failed:', txnError);
+      return NextResponse.json({ error: 'Failed to load transactions' }, { status: 500 });
+    }
 
     await loadLearnedRules();
     const overrides = buildMoneyHubOverrideMaps(overrideRows ?? []);
