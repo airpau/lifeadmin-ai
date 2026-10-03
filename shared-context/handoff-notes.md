@@ -1,4 +1,50 @@
-# Handoff Notes — Last Updated 10 Jun 2026
+# Handoff Notes: Last Updated 3 Oct 2026
+
+## Session: Claude (cloud) on the HSBC daily reconnect loop, the Transport for London mislabel, and MailHub sending (3 Oct 2026)
+
+### HSBC Business consents: NOT fixed, Paybacker's side ruled out
+
+Every HSBC Business (`hsbcbusiness_uk`) consent dies at its first token refresh, about an hour after authorisation: 403 "We didn't managed to fix this unauthorized by refreshing the authorization credential", while `GET /consents` still reads AUTHORIZED. NatWest on the same user has never failed.
+
+Two controlled tests on 3 Oct, both failed:
+
+1. **PR #622** (no post-connect burst, single-flight callback claim, reconnect-aware initial sync). Reconnect 00:36 UTC, seven successful calls, 68 minutes of silence, dead at 01:45. Consent `bb9dfa60-91dc-4fb0-9bee-f7f9d1ae85cf`, tracingId `6ac05e3c761945853a6a96d83e2ab8c9`.
+2. **PR #624** (HSBC consents name the six May feature scopes when the reconnect starts from the HSBC row's Reconnect button). Reconnect 02:09 UTC, consent `1f85d74d-0a9b-46c5-a72c-51af78664182` had exactly the six scopes and no IDENTITY, initial sync done 02:13, no calls after, dead at the 05:45 cron. tracingId `6ac0967dac4764bc72b0fd2ce1b5fbf2`.
+
+Test 2 reproduced the only configuration HSBC ever tolerated (7 May and 14 May consents lasted days) and still died, so something changed on the HSBC or Yapily side around 16 May. An email with the test 1 reproduction went to Migle Ivanauskaite at Yapily from hello@paybacker.co.uk at 03:26 UTC. A follow-up with the test 2 result is drafted for Paul, not sent.
+
+**Do not ask Paul for another HSBC reconnect. It tests nothing.**
+
+### Open decisions and follow-ups from the HSBC work
+
+- **Keep or revert the scope naming in #624.** It did not help, and the scoped consent came back with NEW Yapily account ids, so HSBC is now split in Paybacker: history under `04e638ed` (`PNae6W0h3CyGMZimjdXrvw` and friends, 2,057 lines on the current account), 13 lines under `34a98c41` (`8Bi2tBqcU1ovbuvNuB2H4g` and friends). Nothing has been remapped. Paybacker keys accounts on the Yapily account id; keying on `account_identifications_hash` would survive this.
+- The header comment in `src/lib/yapily/institution-policy.ts` still describes test 2 as pending. Update it with the result when the keep or revert decision is made.
+- `upcoming_endpoint_snapshots` rows for HSBC are keyed by the old account ids.
+- The duplicate-callback guard caught a real second callback hit at 02:12:40, so that part of #622 earns its keep regardless.
+- Migration `20261003000000_yapily_callback_claim.sql` is applied to production.
+
+### Money Hub: rent labelled "Transport for London" (fixed, PR #626)
+
+Merchant rules were applied by raw substring (`ILIKE '%TFL%'`, `.includes()`), and "ACCRENTFLAT1" contains t-f-l. New matcher in `src/lib/merchant-rule-match.ts`: rules under 6 characters must match a whole word, longer rules must start at a word boundary. Used by `cron/detect-subscriptions` (via PostgREST `imatch`), `learning-engine.ts` and `cron/apply-learned-rules`. 44 tests.
+
+Data repair run once in production after the deploy: `merchant_name` set to NULL on 378 rows where a rule only matched inside a word (RAC 133, EE 93, Ring Protect 60, SSE Energy 35, ICO Data Protection 26, BT 8, Transport for London 7, and a few others). Five rows were left alone because the label was right even though the new matcher would not produce it (Anthropic on "SUBSCRIPANTHROPIC.COM", Wise on "TransferWise", Tesco on "PERSONALTESCOCREDI").
+
+Not done:
+
+- Some of those 378 rows also carry a `user_category` that came from the wrong rule (RingGo parking filed under security, 59 rows). Not changed: engine-set and user-set values cannot be told apart.
+- Four SQL functions still match merchant rules with `LIKE '%...%'`: `recategorise_all_transactions`, `learn_from_category_override` and the two cancellation-info lookups. Same bug, not yet fixed.
+- "CLAUDE.AI" and "TRANSFERWISE" have no rule of their own, so new lines of that shape will no longer be labelled Anthropic or Wise.
+
+### MailHub can now send (outside this repo)
+
+`mail_send` was added to Paul's MailHub MCP server (`~/workspace/mailhub-mcp`, Vercel project `mailhub-mcp`, v1.5.0, deployed 03:22 UTC). Plain text, Gmail only, and only from mailboxes on the send list (`hello@paybacker.co.uk` by default, `MAIL_SEND_MAILBOXES` to change, `none` to switch off). The standing rule is still MailHub only for Gmail, Calendar and Drive.
+
+### gymIQ bank feed
+
+No longer reads Paybacker. Another session moved it to Lunchflow overnight on 3 Oct and set the Paybacker credential inactive. Details and the things not to redo are in the project doc `claude/gymiq-bank-feed-known-issues.md`.
+
+---
+
 
 ## Session: Cowork Desktop — Social Bundle 3 loaded + posting resumed (10 Jun 2026)
 
