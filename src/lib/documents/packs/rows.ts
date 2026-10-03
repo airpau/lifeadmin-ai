@@ -3,6 +3,7 @@
  * and the plan availability shown on the Packs tab.
  */
 
+import { createHash } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { DocumentEntitlements, PackBuildQuota } from '@/lib/documents/plan';
 import { isPackType, type PackType } from '@/lib/documents/packs/types';
@@ -12,7 +13,7 @@ import type { PackPreview } from '@/lib/documents/packs/load';
 type Admin = SupabaseClient<any, any, any>;
 
 export const PACK_COLUMNS =
-  'id, pack_type, title, params, status, document_ids, missing, checklist, storage_path, size_bytes, file_count, error, generated_at, build_started_at, counted_build_at, created_at, updated_at';
+  'id, pack_type, title, params, status, document_ids, missing, checklist, storage_path, size_bytes, file_count, error, generated_at, build_started_at, counted_build_at, counted_builds, counted_build_hash, created_at, updated_at';
 
 export interface PackRow {
   id: string;
@@ -30,6 +31,8 @@ export interface PackRow {
   generated_at: string | null;
   build_started_at: string | null;
   counted_build_at: string | null;
+  counted_builds?: number | null;
+  counted_build_hash?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -138,4 +141,32 @@ export function cleanTitle(v: unknown, fallback: string): string {
   if (typeof v !== 'string') return fallback;
   const t = v.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
   return t || fallback;
+}
+
+function stable(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(stable);
+  if (v && typeof v === 'object') {
+    return Object.fromEntries(
+      Object.keys(v as Record<string, unknown>)
+        .sort()
+        .map((k) => [k, stable((v as Record<string, unknown>)[k])]),
+    );
+  }
+  return v;
+}
+
+/**
+ * What a build contains, as a hash: pack type, options, the documents
+ * in it (order free) and, for dispute bundles, the correspondence.
+ * Rebuilding with the same hash in the same month is free on Free; a
+ * changed pack is a new build (document_pack_claim_build).
+ */
+export function packMaterialHash(packType: string, options: Record<string, unknown>, documentIds: string[], extraIds: string[] = []): string {
+  const material = {
+    type: packType,
+    options: stable(options),
+    documents: [...documentIds].map((x) => x.toLowerCase()).sort(),
+    extra: [...extraIds].sort(),
+  };
+  return createHash('sha256').update(JSON.stringify(material)).digest('hex');
 }

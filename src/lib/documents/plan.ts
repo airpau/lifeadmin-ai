@@ -138,18 +138,21 @@ export interface PackBuildQuota {
 }
 
 /**
- * Pack builds used this calendar month (UTC). A pack counts once a month
- * however many times it is rebuilt, and still counts after it is deleted
- * (counted_build_at is kept on the soft-deleted row). The atomic check is
- * document_pack_claim_build(); this is for display.
+ * Pack builds used this calendar month (UTC). Rebuilding a pack with the
+ * same contents does not count again; a pack whose contents changed is a
+ * new build. Deleted packs still count (the soft-deleted row keeps its
+ * counters). The atomic check is document_pack_claim_build(); this is
+ * for display.
  */
 export async function packBuildQuota(admin: Admin, userId: string, ent: DocumentEntitlements, now: Date = new Date()): Promise<PackBuildQuota> {
   if (ent.packBuildsPerMonth === null) return { limit: null, used: 0, remaining: null };
-  const { count, error } = await admin
+  const { data, error } = await admin
     .from('document_packs')
-    .select('id', { count: 'exact', head: true })
+    .select('counted_builds')
     .eq('user_id', userId)
     .gte('counted_build_at', monthStartUtc(now).toISOString());
-  const used = error ? ent.packBuildsPerMonth : count ?? 0;
+  const used = error
+    ? ent.packBuildsPerMonth
+    : ((data ?? []) as Array<{ counted_builds: number | null }>).reduce((s, r) => s + (Number(r.counted_builds) || 0), 0);
   return { limit: ent.packBuildsPerMonth, used, remaining: Math.max(0, ent.packBuildsPerMonth - used) };
 }
