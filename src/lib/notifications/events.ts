@@ -484,12 +484,15 @@ export const EVENT_CATALOG: EventMeta[] = [
   {
     event: 'document_digest',
     label: 'Documents: dates coming up',
-    description: 'Once a week, the renewals, payment dates, expiry dates and warranties in your documents vault for the next 30 days. Essential and above.',
-    defaultEmail: true, defaultTelegram: true, defaultWhatsapp: false, defaultPush: false,
+    description: 'Monday mornings, the renewals, payment dates, expiry dates and warranties in your documents vault for the next 30 days. Off until you turn it on. Essential and above.',
+    // Opt in: every channel is off until the user turns one on here or
+    // on the Documents page.
+    defaultEmail: false, defaultTelegram: false, defaultWhatsapp: false, defaultPush: false,
     allowedChannels: ['email', 'telegram', 'push'],
     group: 'reminders',
-    scheduleKind: 'cron',
-    defaultCron: '0 8 * * 1',
+    // The send time is fixed by the cron (vercel.json: Mondays 08:20 UTC),
+    // so users can switch it on or off but not reschedule it.
+    scheduleKind: 'system',
   },
 ];
 

@@ -28,6 +28,7 @@ import {
 import { DOC_TYPES, DOC_TYPE_LABELS, DOC_TYPE_SINGULAR, type DocType, type DocumentRow } from '@/lib/documents/types';
 import PacksPanel from './PacksPanel';
 import PriceRisesPanel from './PriceRisesPanel';
+import DigestOptIn from './DigestOptIn';
 import WarrantyControls, { WarrantyBadge } from './WarrantyControls';
 
 // ---------------------------------------------------------------------------
@@ -581,6 +582,7 @@ function DocumentsVault() {
       </div>
 
       {status && <PriceRisesPanel enabled={!!ent?.priceRiseWatch} />}
+      {status && ent?.documentDigest && <DigestOptIn />}
 
       {/* Filters */}
       <div className="bg-white border border-slate-200/50 rounded-2xl p-4 flex flex-wrap gap-3 items-end">
