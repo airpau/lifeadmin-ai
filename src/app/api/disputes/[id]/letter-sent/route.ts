@@ -29,6 +29,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCancellationInfo } from '@/lib/cancellation-provider';
+import { EIGHT_WEEKS_MS } from '@/lib/dispute-agent/escalation-clock';
 
 export const runtime = 'nodejs';
 
@@ -56,7 +57,7 @@ export async function POST(
 
   const { data: dispute, error: loadErr } = await supabase
     .from('disputes')
-    .select('id, provider_name, status')
+    .select('id, provider_name, status, first_letter_sent_at, fca_8_week_deadline')
     .eq('id', disputeId)
     .eq('user_id', user.id)
     .maybeSingle();
@@ -64,13 +65,40 @@ export async function POST(
   if (!dispute) return NextResponse.json({ error: 'Dispute not found' }, { status: 404 });
 
   // Flip dispute state.
+  //
+  // This is the moment first contact happens, and therefore the moment
+  // the eight-week regulator clock starts. Both columns that carry it
+  // were read-only across the whole codebase — migration 20260501100000
+  // created and backfilled them once and nothing has written them since,
+  // so every dispute raised after that backfill left the Dispute Agent's
+  // Rule 4 (`escalate_ombudsman`, its highest-priority rule) unreachable.
+  // Stamp them here so the data is right going forward; rows sent before
+  // this existed are covered on read by resolveEightWeekDeadline().
+  //
+  // Only ever set when NULL. `sent_at` is deliberately restamped on every
+  // "I've sent it" — a chaser is still a send — but FIRST contact is what
+  // starts the statutory window, so it must not move.
+  const now = new Date();
+  const sendUpdate: Record<string, string> = {
+    status: 'awaiting_response',
+    tracking_status: 'sent',
+    sent_at: now.toISOString(),
+  };
+  if (!dispute.first_letter_sent_at) {
+    sendUpdate.first_letter_sent_at = now.toISOString();
+  }
+  if (!dispute.fca_8_week_deadline) {
+    const anchor = dispute.first_letter_sent_at
+      ? Date.parse(dispute.first_letter_sent_at)
+      : now.getTime();
+    if (!Number.isNaN(anchor)) {
+      sendUpdate.fca_8_week_deadline = new Date(anchor + EIGHT_WEEKS_MS).toISOString();
+    }
+  }
+
   const { error: updErr } = await supabase
     .from('disputes')
-    .update({
-      status: 'awaiting_response',
-      tracking_status: 'sent',
-      sent_at: new Date().toISOString(),
-    })
+    .update(sendUpdate)
     .eq('id', disputeId)
     .eq('user_id', user.id);
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });

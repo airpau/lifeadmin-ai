@@ -34,6 +34,7 @@ import {
   type ActiveSession,
 } from '@/lib/pocket-agent/dispatch';
 import { isTestAccount } from '@/lib/test-accounts';
+import { eightWeekDeadlineMs } from '@/lib/dispute-agent/escalation-clock';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -297,6 +298,7 @@ interface StalledDispute {
   agent_state: string | null;
   updated_at: string;
   first_letter_sent_at: string | null;
+  sent_at: string | null;
   fca_8_week_deadline: string | null;
   dispute_type: string | null;
 }
@@ -331,7 +333,7 @@ async function runStallSweep(
   const { data: rows, error } = await supabase
     .from('disputes')
     .select(
-      'id, user_id, provider_name, merchant_normalised, status, agent_state, updated_at, stall_alert_sent_at, archived_at, first_letter_sent_at, fca_8_week_deadline, dispute_type',
+      'id, user_id, provider_name, merchant_normalised, status, agent_state, updated_at, stall_alert_sent_at, archived_at, first_letter_sent_at, sent_at, fca_8_week_deadline, dispute_type',
     )
     .or('status.eq.open,agent_state.in.(draft,awaiting_user_input)')
     .lt('updated_at', stalledBefore)
@@ -431,16 +433,18 @@ async function runStallSweep(
       // an ADR letter once a complaint is unresolved after SIX weeks. This
       // column and its 8-week default therefore over-state the wait for
       // Ofcom-regulated disputes; treat 6 weeks as the trigger for those.
-      let daysToFca: number | null = null;
-      if (d.fca_8_week_deadline) {
-        daysToFca = Math.floor(
-          (new Date(d.fca_8_week_deadline).getTime() - Date.now()) / 86_400_000,
-        );
-      } else if (d.first_letter_sent_at) {
-        const sentAt = new Date(d.first_letter_sent_at).getTime();
-        const eightWeeksLater = sentAt + 56 * 86_400_000;
-        daysToFca = Math.floor((eightWeeksLater - Date.now()) / 86_400_000);
-      }
+      //
+      // The two-branch version this replaces looked complete but could
+      // never produce a number: `fca_8_week_deadline` and
+      // `first_letter_sent_at` are both written by nothing, so on any
+      // dispute raised since migration 20260501100000 backfilled them
+      // both branches were NULL and the ESCALATE copy below was dead.
+      // The shared resolver adds `sent_at` as the anchor of last resort.
+      const deadlineMs = eightWeekDeadlineMs(d);
+      const daysToFca: number | null =
+        deadlineMs === null
+          ? null
+          : Math.floor((deadlineMs - Date.now()) / 86_400_000);
 
       if (daysToFca !== null && daysToFca <= 7) {
         const deadlineText = daysToFca <= 0
