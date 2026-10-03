@@ -664,6 +664,14 @@ phase the cron chains must follow the same pattern.
 - **B2B exposure:** `DisputeResponse.agent_recommendation` — additive optional field with `recommended_action / rationale / next_review_in_days / data_grounded / historical_signal`. Only populated when the caller registers the dispute with Paybacker's autonomous agent (per-active-case pricing). Backward-compatible.
 - **Hard rule:** AI proposes — user approves. The cron NEVER auto-sends a letter. Approving `escalate_ombudsman` drafts the escalation letter; the user files via the regulator's website (Ombudsman APIs are not public).
 
+### 14. Documents vault (added 2026-10-03, B2C)
+- Finds receipts, invoices, bills, statements, certificates, policies, contracts and letters in connected inboxes or Google Drive (Picker, drive.file only) and files them at `/dashboard/documents`. Full write-up: `docs/email-documents-vault.md`.
+- Tables: `documents`, `document_processed_messages`, `drive_connections`, `todoist_connections`, `document_share_links`, `document_run_locks`; private bucket `documents` (objects under `<user_id>/`). Separate from the Contract Vault on purpose. Free's monthly cap is enforced atomically by the `documents_monthly_cap` trigger; one documents run per user at a time via `document_run_lock_acquire`.
+- Drive tokens come ONLY from `drive_connections` (drive.file, never `include_granted_scopes`). Never use the Google Sheets connection's token for Drive work: it can carry `gmail.readonly`.
+- Plan fields on `PlanLimits`: `documentsPerMonth` (Free 20), `autoDocumentFiling` (Essential+), `documentReminders` (Essential+: .ics and Todoist), `driveDocumentFiling` and `accountantRegister` (Pro+), `driveImportMaxFiles` (Free 1). Read through `src/lib/documents/plan.ts`.
+- Cron `/api/cron/document-filing` is in `vercel.json` but is a no-op unless `DOCUMENT_FILING_CRON_ENABLED=true`. Classification is one Haiku call per new document, logged to the cost ledger.
+- Env: `GOOGLE_PICKER_API_KEY`, `GOOGLE_CLOUD_PROJECT_NUMBER`, `TODOIST_CLIENT_ID`, `TODOIST_CLIENT_SECRET`, `DOCUMENT_FILING_CRON_ENABLED`.
+
 ---
 
 ## AI AGENT TEAM — HONEST STATE (verified 17 April 2026)

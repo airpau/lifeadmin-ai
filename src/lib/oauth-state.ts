@@ -26,7 +26,10 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import type { NextRequest, NextResponse } from 'next/server';
 
-export type OAuthStatePurpose = 'gmail' | 'outlook' | 'google_sheets';
+// google_drive and todoist were added with the documents vault: the
+// Drive (drive.file) connect for Picker import and Pro filing, and the
+// Todoist connect for document reminders.
+export type OAuthStatePurpose = 'gmail' | 'outlook' | 'google_sheets' | 'google_drive' | 'todoist';
 
 export const OAUTH_STATE_MAX_AGE_SECONDS = 15 * 60;
 const CLOCK_SKEW_MS = 60_000;
