@@ -86,6 +86,9 @@ Print the absolute path with `echo "$(pwd)/dist/server.js"` from the repo root
 | `get_net_worth_snapshot` | Assets, liabilities, net worth, and savings goals progress |
 | `get_open_disputes` | Open complaint / dispute cases |
 | `search_transactions` | Free-text search across descriptions and merchants |
+| `search_documents` | Search your documents vault: receipts, invoices, bills, statements, certificates, policies, contracts and letters |
+| `get_document` | One document's details plus a download link that works for 10 minutes |
+| `list_email_findings` | What the inbox scanner found: bills, renewals, price increases, refund opportunities |
 
 ## Security notes
 
