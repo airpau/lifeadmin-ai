@@ -6,6 +6,7 @@ import {
   createHostedConsentRequest,
   isHostedPagesEnabled,
 } from '@/lib/yapily';
+import { consentFeatureScopeFor } from '@/lib/yapily/institution-policy';
 import { TIER_CONFIG, type BankTier } from '@/lib/bank-tier-config';
 import { getEffectiveTier } from '@/lib/plan-limits';
 import { isPlanTier } from '@/lib/tier-rank';
@@ -151,6 +152,22 @@ export async function GET(request: NextRequest) {
   // Do NOT reintroduce a featureScope array here to "be explicit". The
   // capability check belongs at CALL time (see sync-upcoming, which
   // gates on the consent's granted featureScope), not at CONSENT time.
+  //
+  // ONE EXCEPTION, added 2026-10-03: a bank on the gentle list (HSBC).
+  // Every HSBC Business consent created without a featureScope has died
+  // at its first token refresh, about an hour after authorisation. The
+  // only HSBC Business consents that ever survived named the six scopes
+  // returned here. This is not being explicit for tidiness: it restores
+  // the one configuration with evidence behind it, on the one bank that
+  // needs it, using a list that bank has already authorised four times.
+  // See src/lib/yapily/institution-policy.ts. Undefined for every other
+  // bank, and whenever the bank is not known yet (Yapily's own picker).
+  const featureScope = consentFeatureScopeFor(institutionId);
+  if (featureScope) {
+    console.log(
+      `[yapily.auth] institution=${institutionId} is on the gentle list, naming ${featureScope.length} feature scopes on the consent`,
+    );
+  }
   try {
     if (hostedPages) {
       // Hosted Pages flow — canonical since 2026-08-21.
@@ -169,7 +186,7 @@ export async function GET(request: NextRequest) {
       // bug where our cached list disagreed with what Yapily would
       // actually accept.
       //
-      // No featureScope — see the note above.
+      // No featureScope, except for a gentle-list bank. See the note above.
       const hosted = await createHostedConsentRequest({
         applicationUserId: user.id,
         redirectUrl: redirectWithState,
@@ -178,6 +195,7 @@ export async function GET(request: NextRequest) {
         institutionId,
         language: 'EN',
         location: 'GB',
+        featureScope,
       });
 
       // Track this in-flight request so the abandonment poller can
@@ -224,11 +242,13 @@ export async function GET(request: NextRequest) {
     // Legacy flow — reachable only via the YAPILY_HOSTED_PAGES_ENABLED
     // kill switch. institutionId is guaranteed present here by the
     // guard at the top of this handler.
-    // No featureScope argument — see the note above.
+    // No featureScope argument, except for a gentle-list bank. See the
+    // note above.
     const authData = await createAccountAuthorisation(
       institutionId!,
       redirectWithState,
       user.id,
+      featureScope,
     );
     console.log(
       `Yapily auth (legacy): created authorisation for user=${user.id} institution=${institutionId}`
