@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { refreshAccessToken } from '@/lib/gmail';
+import { decryptToken, encryptToken } from '@/lib/email/token-crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
@@ -70,13 +71,15 @@ export async function POST(request: NextRequest) {
 
   if (!tokenRow) return NextResponse.json({ error: 'Gmail not connected' }, { status: 400 });
 
-  let accessToken = tokenRow.access_token;
-  if (tokenRow.token_expiry && new Date(tokenRow.token_expiry) < new Date()) {
-    if (!tokenRow.refresh_token) return NextResponse.json({ error: 'Token expired' }, { status: 400 });
-    const refreshed = await refreshAccessToken(tokenRow.refresh_token);
+  // Tokens may be encrypted at rest (src/lib/email/token-crypto.ts).
+  let accessToken = decryptToken(tokenRow.access_token);
+  const refreshToken = decryptToken(tokenRow.refresh_token);
+  if (!accessToken || (tokenRow.token_expiry && new Date(tokenRow.token_expiry) < new Date())) {
+    if (!refreshToken) return NextResponse.json({ error: 'Token expired' }, { status: 400 });
+    const refreshed = await refreshAccessToken(refreshToken);
     accessToken = refreshed.access_token;
     await admin.from('gmail_tokens').update({
-      access_token: accessToken,
+      access_token: encryptToken(accessToken),
       token_expiry: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
     }).eq('user_id', user.id);
   }

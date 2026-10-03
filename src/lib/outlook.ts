@@ -1,3 +1,7 @@
+import { OAuthRefreshError } from '@/lib/email/oauth-refresh-error';
+import { fetchWithRetry, mapWithConcurrency } from '@/lib/email/fetch-retry';
+import { graphBodyToText } from '@/lib/email/body-text';
+
 const OUTLOOK_SCOPES = [
   'openid',
   'profile',
@@ -78,7 +82,16 @@ export async function refreshMicrosoftToken(refreshToken: string): Promise<{
       }),
     }
   );
-  if (!res.ok) throw new Error('Failed to refresh Microsoft token');
+  if (!res.ok) {
+    // Same message as before for existing callers; the status and OAuth
+    // error code let new callers decide whether a reconnect is needed.
+    let code = '';
+    try {
+      const body = await res.json();
+      code = typeof body?.error === 'string' ? body.error : '';
+    } catch { /* ignore */ }
+    throw new OAuthRefreshError('Failed to refresh Microsoft token', res.status, code);
+  }
   return res.json();
 }
 
@@ -146,12 +159,12 @@ async function fetchMessagesBySearch(
     }).toString();
 
   while (url && allMessages.length < maxResults) {
-    const res: Response = await fetch(url, {
+    const res: Response = await fetchWithRetry(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         ConsistencyLevel: 'eventual',
       },
-    });
+    }, { label: 'graph search' });
     if (!res.ok) {
       const errText = await res.text();
       console.error(`[outlook] Graph search failed (${res.status}): ${errText.substring(0, 300)}`);
@@ -197,9 +210,9 @@ async function fetchMessagesByFilter(
     }).toString();
 
   while (url && allMessages.length < maxResults) {
-    const res: Response = await fetch(url, {
+    const res: Response = await fetchWithRetry(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    }, { label: 'graph filter' });
     if (!res.ok) {
       const errText = await res.text();
       console.error(`[outlook] Graph filter failed (${res.status}): ${errText.substring(0, 300)}`);
@@ -216,17 +229,10 @@ async function fetchMessagesByFilter(
 
 /** Extract plain text body from a Graph message, stripping HTML. */
 function extractBody(msg: GraphMessage): string {
-  const raw = msg.body?.content || '';
-  // Strip HTML tags, normalise whitespace, keep up to 1500 chars
-  return raw
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#\d+;/g, '')
+  // Shared converter: drops head/style/script, decodes named and numeric
+  // entities (the old version deleted numeric ones such as &#163; for £),
+  // then normalise whitespace and keep up to 1500 chars as before.
+  return graphBodyToText(msg.body)
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 1500);
@@ -316,30 +322,36 @@ export async function scanOutlookForOpportunities(
   }
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
   // Run all queries in parallel (same strategy as Gmail)
-  console.log('[outlook] Starting comprehensive email scan (11 parallel queries)...');
+  console.log('[outlook] Starting comprehensive email scan (11 queries, 3 at a time)...');
   const lookbackDays = options?.lookbackDays;
   const cutoffMs =
     typeof lookbackDays === 'number' && lookbackDays > 0 && lookbackDays < FULL_SWEEP_DAYS
       ? Date.now() - lookbackDays * 24 * 60 * 60 * 1000
       : null;
 
+  // Three searches in flight at a time (was all eleven at once, which is
+  // what Graph throttles with 429 + Retry-After). fetchWithRetry handles
+  // the throttling responses that still happen.
+  const searchJobs: Array<[string, number]> = [
+    [KQL_SUBJECT, 200],
+    [KQL_SENDERS_1, 200],
+    [KQL_SENDERS_2, 200],
+    [KQL_SENDERS_3, 200],
+    [KQL_EXPIRATIONS, 100],
+    [KQL_PAYMENTS, 100],
+    [KQL_PRICE_CHANGES, 100],
+    [KQL_TRIALS, 100],
+    [KQL_INSURANCE, 100],
+    [KQL_DD, 100],
+    [KQL_GOVERNMENT, 100],
+  ];
   const [
     subjectMsgs, senderMsgs1, senderMsgs2, senderMsgs3,
     expirationMsgs, paymentMsgs, priceChangeMsgs,
     trialMsgs, insuranceMsgs, ddMsgs, governmentMsgs,
-  ] = await Promise.all([
-    fetchMessagesBySearch(accessToken, KQL_SUBJECT, 200),
-    fetchMessagesBySearch(accessToken, KQL_SENDERS_1, 200),
-    fetchMessagesBySearch(accessToken, KQL_SENDERS_2, 200),
-    fetchMessagesBySearch(accessToken, KQL_SENDERS_3, 200),
-    fetchMessagesBySearch(accessToken, KQL_EXPIRATIONS, 100),
-    fetchMessagesBySearch(accessToken, KQL_PAYMENTS, 100),
-    fetchMessagesBySearch(accessToken, KQL_PRICE_CHANGES, 100),
-    fetchMessagesBySearch(accessToken, KQL_TRIALS, 100),
-    fetchMessagesBySearch(accessToken, KQL_INSURANCE, 100),
-    fetchMessagesBySearch(accessToken, KQL_DD, 100),
-    fetchMessagesBySearch(accessToken, KQL_GOVERNMENT, 100),
-  ]);
+  ] = await mapWithConcurrency(searchJobs, 3, ([kql, max]) =>
+    fetchMessagesBySearch(accessToken, kql, max),
+  );
 
   // Deduplicate by message ID
   const seen = new Set<string>();

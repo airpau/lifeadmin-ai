@@ -13,6 +13,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { refreshAccessToken as refreshGmailToken } from '../gmail';
 import { refreshMicrosoftToken } from '../outlook';
+import { decryptToken, encryptToken, isTokenUnreadable } from '../email/token-crypto';
+import { OAuthRefreshError } from '../email/oauth-refresh-error';
 import type {
   EmailConnection,
   FetchedMessage,
@@ -161,6 +163,7 @@ async function persistRefreshedToken(
   connectionId: string,
   accessToken: string,
   expiresInSeconds: number,
+  rotatedRefreshToken?: string,
 ): Promise<void> {
   const db = admin();
   try {
@@ -168,8 +171,11 @@ async function persistRefreshedToken(
     await db
       .from('email_connections')
       .update({
-        access_token: accessToken,
+        // Encrypted at rest (plain text if EMAIL_ENCRYPTION_KEY is unset).
+        access_token: encryptToken(accessToken),
         token_expiry: expiry,
+        // Microsoft can rotate refresh tokens; keep the newest one.
+        ...(rotatedRefreshToken ? { refresh_token: encryptToken(rotatedRefreshToken) } : {}),
         // If we were previously flagged, a successful refresh clears the flag.
         status: 'active',
         last_error: null,
@@ -182,11 +188,21 @@ async function persistRefreshedToken(
 }
 
 async function ensureFreshToken(conn: EmailConnection, provider: EmailProvider): Promise<string> {
+  // Stored tokens may be encrypted (enc:v1:...) or legacy plain text.
+  // An encrypted token we cannot read is a server configuration problem
+  // (EMAIL_ENCRYPTION_KEY missing or changed), not the user's fault, so
+  // it must not flip the connection to needs_reauth.
+  if (isTokenUnreadable(conn.refresh_token) || (!conn.refresh_token && isTokenUnreadable(conn.access_token))) {
+    throw new Error('Stored email token could not be decrypted (EMAIL_ENCRYPTION_KEY missing or changed).');
+  }
+  const accessToken = decryptToken(conn.access_token);
+  const refreshToken = decryptToken(conn.refresh_token);
+
   const expiresAt = conn.token_expiry ? new Date(conn.token_expiry).getTime() : 0;
   const now = Date.now();
-  if (conn.access_token && expiresAt - now > 60_000) return conn.access_token;
+  if (accessToken && expiresAt - now > 60_000) return accessToken;
 
-  if (!conn.refresh_token) {
+  if (!refreshToken) {
     const msg = `No refresh token on file — user must reconnect ${provider}.`;
     await markConnectionNeedsReauth(conn.id, provider, msg);
     throw new EmailConnectionAuthError(msg, conn.id, provider);
@@ -194,18 +210,25 @@ async function ensureFreshToken(conn: EmailConnection, provider: EmailProvider):
 
   try {
     if (provider === 'gmail') {
-      const refreshed = await refreshGmailToken(conn.refresh_token);
+      const refreshed = await refreshGmailToken(refreshToken);
       await persistRefreshedToken(conn.id, refreshed.access_token, refreshed.expires_in);
       return refreshed.access_token;
     }
     if (provider === 'outlook') {
-      const refreshed = await refreshMicrosoftToken(conn.refresh_token);
-      await persistRefreshedToken(conn.id, refreshed.access_token, refreshed.expires_in);
+      const refreshed = await refreshMicrosoftToken(refreshToken);
+      await persistRefreshedToken(conn.id, refreshed.access_token, refreshed.expires_in, refreshed.refresh_token);
       return refreshed.access_token;
     }
     throw new Error(`ensureFreshToken called for non-OAuth provider: ${provider}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Token refresh failed';
+    // Only a revoked / expired grant needs the user to reconnect. A
+    // network blip, a Google/Microsoft 5xx or our own client config
+    // problem used to flip the row to needs_reauth too, which hid the
+    // inbox from every other feature until the user reconnected.
+    if (err instanceof OAuthRefreshError && !err.permanent) {
+      throw err;
+    }
     await markConnectionNeedsReauth(conn.id, provider, message);
     throw new EmailConnectionAuthError(message, conn.id, provider);
   }

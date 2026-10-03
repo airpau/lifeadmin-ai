@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getGoogleAuthUrl } from '@/lib/gmail';
+import { createOAuthState, setOAuthNonceCookie } from '@/lib/oauth-state';
 
 export async function GET() {
   try {
@@ -11,10 +12,11 @@ export async function GET() {
       return NextResponse.redirect(new URL('/auth/login?redirect=/dashboard/profile', process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'));
     }
 
-    // State must be base64(userId:timestamp) — matches what the callback expects
-    const state = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
-    const authUrl = getGoogleAuthUrl(state);
-    return NextResponse.redirect(authUrl);
+    // Legacy entry point, kept working: same signed state + nonce cookie
+    // as /api/auth/google, which the callback now requires.
+    const signed = createOAuthState(user.id, 'gmail');
+    if (!signed) throw new Error('OAuth state secret not configured');
+    return setOAuthNonceCookie(NextResponse.redirect(getGoogleAuthUrl(signed.state)), 'gmail', signed.nonce);
   } catch {
     return NextResponse.redirect(new URL('/dashboard/profile?error=gmail_auth_failed', process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'));
   }

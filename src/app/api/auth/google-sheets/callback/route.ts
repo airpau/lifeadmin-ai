@@ -6,6 +6,7 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { verifyOAuthState, readOAuthNonceCookie, clearOAuthNonceCookie } from '@/lib/oauth-state'
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!
@@ -15,11 +16,50 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code')
+  const state = req.nextUrl.searchParams.get('state')
   const error = req.nextUrl.searchParams.get('error')
 
+  // Every response from here on clears the one-time nonce cookie.
+  const redirect = (to: string) => clearOAuthNonceCookie(NextResponse.redirect(to), 'google_sheets')
+
   if (error || !code) {
-    return NextResponse.redirect(
+    return redirect(
       `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/export?sheets_error=access_denied`
+    )
+  }
+
+  // Read Supabase session via the SSR cookie helper (same pattern as
+  // /api/google-sheets/disconnect). The previous approach used the
+  // supabase-js client with a manually-forwarded cookie header, which
+  // doesn't parse the sb-* auth cookies and always returned no user.
+  //
+  // Done BEFORE the code exchange now, so the signed state can be checked
+  // against the logged-in user before we touch Google at all.
+  const cookieStore = await cookies()
+  const supabaseUserClient = createServerClient(
+    SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { get: (name: string) => cookieStore.get(name)?.value } }
+  )
+  const { data: { user } } = await supabaseUserClient.auth.getUser()
+
+  if (!user) {
+    return redirect(
+      `${process.env.NEXT_PUBLIC_APP_URL}/auth/login?sheets_error=not_logged_in&redirect=/dashboard/export`
+    )
+  }
+
+  // Signed state (this flow previously sent none): HMAC, purpose,
+  // 15 minute expiry, nonce cookie, and user id match.
+  const check = verifyOAuthState(state, {
+    purpose: 'google_sheets',
+    nonceCookie: readOAuthNonceCookie(req, 'google_sheets'),
+    sessionUserId: user.id,
+  })
+  if (!check.ok) {
+    console.error('[google-sheets callback] Rejected OAuth state:', check.reason)
+    return redirect(
+      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/export?sheets_error=invalid_state`
     )
   }
 
@@ -39,7 +79,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokens.access_token) {
     console.error('Google Sheets OAuth error:', tokens)
-    return NextResponse.redirect(
+    return redirect(
       `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/export?sheets_error=token_failed`
     )
   }
@@ -49,24 +89,6 @@ export async function GET(req: NextRequest) {
     headers: { Authorization: `Bearer ${tokens.access_token}` },
   })
   const userInfo = await userInfoRes.json()
-
-  // 3. Read Supabase session via the SSR cookie helper (same pattern as
-  // /api/google-sheets/disconnect). The previous approach used the
-  // supabase-js client with a manually-forwarded cookie header, which
-  // doesn't parse the sb-* auth cookies and always returned no user.
-  const cookieStore = await cookies()
-  const supabaseUserClient = createServerClient(
-    SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { get: (name: string) => cookieStore.get(name)?.value } }
-  )
-  const { data: { user } } = await supabaseUserClient.auth.getUser()
-
-  if (!user) {
-    return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/auth/login?sheets_error=not_logged_in&redirect=/dashboard/export`
-    )
-  }
 
   // Service-role client used for the upsert (bypasses RLS) and the profile lookup.
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -96,7 +118,7 @@ export async function GET(req: NextRequest) {
 
   if (!sheet.spreadsheetId) {
     console.error('Sheet creation failed:', sheet)
-    return NextResponse.redirect(
+    return redirect(
       `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/export?sheets_error=sheet_create_failed`
     )
   }
@@ -145,7 +167,7 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  return NextResponse.redirect(
+  return redirect(
     `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/export?sheets_connected=true`
   )
 }

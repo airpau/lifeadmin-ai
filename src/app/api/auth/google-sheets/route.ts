@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getEffectiveTier } from '@/lib/plan-limits'
 import { isAtLeastPro } from '@/lib/tier-rank'
+import { createOAuthState, setOAuthNonceCookie } from '@/lib/oauth-state'
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!
 const REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/google-sheets/callback`
@@ -45,5 +46,13 @@ export async function GET() {
   authUrl.searchParams.set('prompt', 'consent') // force refresh_token
   authUrl.searchParams.set('include_granted_scopes', 'true')
 
-  return NextResponse.redirect(authUrl.toString())
+  // Signed state + nonce cookie, verified in the callback (CSRF
+  // protection). This flow previously sent no state at all.
+  const signed = createOAuthState(user.id, 'google_sheets')
+  if (!signed) {
+    return NextResponse.json({ error: 'Google Sheets connection is temporarily unavailable.' }, { status: 503 })
+  }
+  authUrl.searchParams.set('state', signed.state)
+
+  return setOAuthNonceCookie(NextResponse.redirect(authUrl.toString()), 'google_sheets', signed.nonce)
 }

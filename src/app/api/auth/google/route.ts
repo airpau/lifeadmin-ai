@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getGoogleAuthUrl } from '@/lib/gmail';
 import { PLAN_LIMITS, getEffectiveTier } from '@/lib/plan-limits';
+import { createOAuthState, setOAuthNonceCookie } from '@/lib/oauth-state';
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -38,9 +39,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // State = base64(userId:timestamp) — verified in callback to prevent CSRF
-  const state = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
-  const authUrl = getGoogleAuthUrl(state);
-
-  return NextResponse.redirect(authUrl);
+  // Signed state + nonce cookie, verified in the callback (CSRF protection).
+  const signed = createOAuthState(user.id, 'gmail');
+  if (!signed) {
+    return NextResponse.redirect(
+      new URL(`/dashboard/profile?error=${encodeURIComponent('Gmail connection is temporarily unavailable. Please try again later.')}`, request.url),
+    );
+  }
+  const res = NextResponse.redirect(getGoogleAuthUrl(signed.state));
+  return setOAuthNonceCookie(res, 'gmail', signed.nonce);
 }

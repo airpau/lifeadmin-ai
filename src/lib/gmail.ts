@@ -1,3 +1,7 @@
+import { OAuthRefreshError } from '@/lib/email/oauth-refresh-error';
+import { fetchWithRetry, mapWithConcurrency } from '@/lib/email/fetch-retry';
+import { extractGmailBodyText } from '@/lib/email/body-text';
+
 const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/userinfo.email',
@@ -86,9 +90,9 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
     // access_denied / invalid_grant = token revoked or app was unverified
     const code = body.error ?? '';
     if (code === 'invalid_grant' || code === 'access_denied') {
-      throw new Error('Gmail access revoked — please reconnect Gmail in the Scanner settings. This can happen if our app verification recently changed.');
+      throw new OAuthRefreshError('Gmail access revoked — please reconnect Gmail in the Scanner settings. This can happen if our app verification recently changed.', res.status, code);
     }
-    throw new Error(`Failed to refresh Gmail token (${res.status}): ${body.error_description ?? body.error ?? 'unknown error'}`);
+    throw new OAuthRefreshError(`Failed to refresh Gmail token (${res.status}): ${body.error_description ?? body.error ?? 'unknown error'}`, res.status, code);
   }
   return res.json();
 }
@@ -119,9 +123,10 @@ async function fetchEmailList(accessToken: string, query: string, maxResults = 1
     });
     if (pageToken) params.set('pageToken', pageToken);
 
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      { label: 'gmail list' },
     );
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
@@ -140,31 +145,20 @@ async function fetchEmailList(accessToken: string, query: string, maxResults = 1
 }
 
 async function fetchEmailDetail(accessToken: string, messageId: string): Promise<EmailData> {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+    { label: 'gmail get' },
   );
-  if (!res.ok) throw new Error(`Failed to fetch message ${messageId}`);
+  if (!res.ok) throw new Error(`Failed to fetch message ${messageId} (${res.status})`);
   const msg = await res.json();
 
   const headers = msg.payload?.headers || [];
   const get = (name: string) => headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
 
-  // Extract plain text body
-  let body = '';
-  const extractBody = (part: any): string => {
-    if (part.mimeType === 'text/plain' && part.body?.data) {
-      return Buffer.from(part.body.data, 'base64').toString('utf-8');
-    }
-    if (part.parts) {
-      for (const p of part.parts) {
-        const text = extractBody(p);
-        if (text) return text;
-      }
-    }
-    return '';
-  };
-  body = extractBody(msg.payload);
+  // Walk the whole MIME tree: text/plain if present, otherwise text/html
+  // converted to readable text. HTML-only bills used to come back empty.
+  const body = extractGmailBodyText(msg.payload);
 
   return {
     id: msg.id,
@@ -316,31 +310,36 @@ export async function scanEmailsForOpportunities(
   const sinceClause = Number.isFinite(cursorMs)
     ? `after:${Math.floor(Math.max(cursorMs, windowFloorMs) / 1000)}`
     : `newer_than:${lookbackDays}d`;
-  // Run all queries in parallel for comprehensive scanning
-  // Scan up to 250 emails per query for thorough coverage (2 years of history)
+  // Run the queries with limited concurrency. Firing all 15 at once
+  // (each paginating) is what produced bursts of 429s from Gmail; three
+  // in flight plus fetchWithRetry backoff keeps us inside the per-user
+  // quota without making the scan noticeably slower.
+  const listJobs: Array<[string, number]> = [
+    [SCAN_QUERY_SUBJECT, 250],
+    [SCAN_QUERY_SENDERS_1, 250],
+    [SCAN_QUERY_SENDERS_2, 250],
+    [SCAN_QUERY_SENDERS_3, 250],
+    [SCAN_QUERY_EXPIRATIONS, 100],
+    [SCAN_QUERY_PAYMENTS, 100],
+    [SCAN_QUERY_PRICE_CHANGES, 100],
+    [SCAN_QUERY_BILLS, 100],
+    [SCAN_QUERY_DISPUTE_RESPONSES, 50],
+    [SCAN_QUERY_CANCELLATIONS, 50],
+    [SCAN_QUERY_TRIALS, 100],
+    [SCAN_QUERY_INSURANCE_RENEWALS, 100],
+    [SCAN_QUERY_DD_NOTICES, 100],
+    [SCAN_QUERY_ENERGY_BROADBAND, 150],
+    [SCAN_QUERY_GOVERNMENT, 100],
+  ];
   const [
     subjectMessages, senderMessages1, senderMessages2, senderMessages3,
     expirationMessages, paymentMessages, priceChangeMessages,
     billMessages, disputeResponseMessages, cancellationMessages,
     trialMessages, insuranceRenewalMessages, ddMessages,
     energyBroadbandMessages, governmentMessages,
-  ] = await Promise.all([
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_SUBJECT, sinceClause), 250),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_SENDERS_1, sinceClause), 250),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_SENDERS_2, sinceClause), 250),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_SENDERS_3, sinceClause), 250),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_EXPIRATIONS, sinceClause), 100),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_PAYMENTS, sinceClause), 100),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_PRICE_CHANGES, sinceClause), 100),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_BILLS, sinceClause), 100),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_DISPUTE_RESPONSES, sinceClause), 50),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_CANCELLATIONS, sinceClause), 50),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_TRIALS, sinceClause), 100),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_INSURANCE_RENEWALS, sinceClause), 100),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_DD_NOTICES, sinceClause), 100),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_ENERGY_BROADBAND, sinceClause), 150),
-    fetchEmailList(accessToken, withRecency(SCAN_QUERY_GOVERNMENT, sinceClause), 100),
-  ]);
+  ] = await mapWithConcurrency(listJobs, 3, ([query, max]) =>
+    fetchEmailList(accessToken, withRecency(query, sinceClause), max),
+  );
 
   const seen = new Set<string>();
   const allMessages = [
@@ -357,21 +356,26 @@ export async function scanEmailsForOpportunities(
 
   if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
 
-  // Scan emails for comprehensive financial intelligence
-  // Process in batches of 25 to avoid Gmail rate limits
-  const batchSize = 25;
+  // Fetch message details with at most 8 requests in flight (previously
+  // bursts of 25), each retried on 429/5xx. Failures are still settled
+  // rather than thrown, but are now counted and logged instead of being
+  // dropped silently.
   const emailsToScan = allMessages.slice(0, 200);
-  const allDetails: PromiseSettledResult<EmailData>[] = [];
-
-  for (let i = 0; i < emailsToScan.length; i += batchSize) {
-    const batch = emailsToScan.slice(i, i + batchSize);
-    const results = await Promise.allSettled(
-      batch.map((m) => fetchEmailDetail(accessToken, m.id))
-    );
-    allDetails.push(...results);
+  const details: PromiseSettledResult<EmailData>[] = await mapWithConcurrency(
+    emailsToScan,
+    8,
+    async (m): Promise<PromiseSettledResult<EmailData>> => {
+      try {
+        return { status: 'fulfilled', value: await fetchEmailDetail(accessToken, m.id) };
+      } catch (reason) {
+        return { status: 'rejected', reason };
+      }
+    },
+  );
+  const failedDetails = details.filter((d) => d.status === 'rejected').length;
+  if (failedDetails > 0) {
+    console.warn(`[gmail] ${failedDetails}/${emailsToScan.length} message fetches failed after retries`);
   }
-
-  const details = allDetails;
 
   const fulfilledEmails = details
     .filter((r): r is PromiseFulfilledResult<EmailData> => r.status === 'fulfilled')
@@ -773,25 +777,14 @@ async function runPriceFallback(
     // The cached body is truncated to 1500 chars. For the fallback, fetch the
     // full message body from Gmail.
     try {
-      const res = await fetch(
+      const res = await fetchWithRetry(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${opp.emailId}?format=full`,
         { headers: { Authorization: `Bearer ${accessToken}` } },
+        { label: 'gmail get (price fallback)', retries: 2 },
       );
       if (res.ok) {
         const msg = await res.json();
-        const extract = (part: any): string => {
-          if (part.mimeType === 'text/plain' && part.body?.data) {
-            return Buffer.from(part.body.data, 'base64').toString('utf-8');
-          }
-          if (part.parts) {
-            for (const p of part.parts) {
-              const t = extract(p);
-              if (t) return t;
-            }
-          }
-          return '';
-        };
-        const full = extract(msg.payload || {});
+        const full = extractGmailBodyText(msg.payload || {});
         if (full) body = full.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       }
     } catch {
