@@ -55,7 +55,7 @@ export const runtime = 'nodejs';
 const SERVER_NAME = 'paybacker-assistant';
 const SERVER_VERSION = '1.0.0';
 /** Keep in sync with the server.tool(...) registrations below. */
-const TOOL_COUNT = 10;
+const TOOL_COUNT = 12;
 
 function appBaseUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk').replace(/\/$/, '');
@@ -227,6 +227,23 @@ function createAssistantServer(bearer: string): McpServer {
       limit: z.number().min(1).max(200).optional(),
     },
     async (args) => callRest('/api/mcp/email-findings', args, bearer),
+  );
+
+  server.tool(
+    'list_packs',
+    'Lists the user\'s document packs: dispute evidence bundles, mortgage or lender packs, tax year packs and insurance claim packs, with what each is missing and whether it has been built. Use get_pack for the full checklist and a download link.',
+    {
+      type: z.enum(['dispute_evidence', 'lender', 'tax_year', 'insurance_claim']).optional(),
+      limit: z.number().min(1).max(50).optional(),
+    },
+    async (args) => callRest('/api/mcp/packs', args, bearer),
+  );
+
+  server.tool(
+    'get_pack',
+    'Gets one document pack by id (from list_packs): its checklist, the documents in it and, when built, a download link for the ZIP that works for 10 minutes. Read only: it never builds or shares a pack.',
+    { id: z.string().regex(/^[0-9a-f-]{36}$/i).describe('Pack id from list_packs.') },
+    async ({ id }) => callRest(`/api/mcp/packs/${encodeURIComponent(id)}`, {}, bearer),
   );
 
   return server;

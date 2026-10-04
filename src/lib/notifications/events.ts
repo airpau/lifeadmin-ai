@@ -56,7 +56,8 @@ export type NotificationEventType =
   | 'payment_received'       // Pocket Agent buzz when a credit lands
   | 'payment_outgoing'       // Pocket Agent buzz when a debit clears
   | 'dd_warning'             // Direct debit due in the next 24-72h
-  | 'churn_prompted';        // Asked user why they cancelled (Phase 3 churn capture)
+  | 'churn_prompted'         // Asked user why they cancelled (Phase 3 churn capture)
+  | 'document_digest';       // Weekly due/renewal/expiry/warranty dates from the documents vault (Essential+)
 
 export type NotificationChannel = 'email' | 'telegram' | 'whatsapp' | 'push';
 
@@ -479,6 +480,19 @@ export const EVENT_CATALOG: EventMeta[] = [
     allowedChannels: ['email', 'telegram'],
     group: 'service',
     scheduleKind: 'none',
+  },
+  {
+    event: 'document_digest',
+    label: 'Documents: dates coming up',
+    description: 'Monday mornings, the renewals, payment dates, expiry dates and warranties in your documents vault for the next 30 days. Off until you turn it on. Essential and above.',
+    // Opt in: every channel is off until the user turns one on here or
+    // on the Documents page.
+    defaultEmail: false, defaultTelegram: false, defaultWhatsapp: false, defaultPush: false,
+    allowedChannels: ['email', 'telegram', 'push'],
+    group: 'reminders',
+    // The send time is fixed by the cron (vercel.json: Mondays 08:20 UTC),
+    // so users can switch it on or off but not reschedule it.
+    scheduleKind: 'system',
   },
 ];
 

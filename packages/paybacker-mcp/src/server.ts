@@ -19,7 +19,7 @@ import {
 
 const BASE_URL = process.env.PAYBACKER_API_URL ?? 'https://paybacker.co.uk';
 const TOKEN = process.env.PAYBACKER_TOKEN;
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 
 if (!TOKEN) {
   console.error(
@@ -219,6 +219,31 @@ const TOOLS: Tool[] = [
       },
     },
   },
+  {
+    name: 'list_packs',
+    description:
+      "List the user's document packs: dispute evidence bundles, mortgage or lender packs, " +
+      'tax year packs and insurance claim packs, with what each is missing and whether it ' +
+      'has been built. Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['dispute_evidence', 'lender', 'tax_year', 'insurance_claim'] },
+        limit: { type: 'number', minimum: 1, maximum: 50 },
+      },
+    },
+  },
+  {
+    name: 'get_pack',
+    description:
+      'Get one document pack by id (from list_packs): its checklist, the documents in it and, ' +
+      'when built, a download link for the ZIP that works for 10 minutes. Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Pack id' } },
+      required: ['id'],
+    },
+  },
 ];
 
 // ---------- Tool routing -------------------------------------------------
@@ -278,6 +303,16 @@ async function runTool(name: string, args: Record<string, unknown>): Promise<unk
         since: args.since as string | undefined,
         limit: args.limit != null ? String(args.limit) : undefined,
       });
+    case 'list_packs':
+      return call('/api/mcp/packs', {
+        type: args.type as string | undefined,
+        limit: args.limit != null ? String(args.limit) : undefined,
+      });
+    case 'get_pack': {
+      const id = String(args.id ?? '');
+      if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('id must be a pack id from list_packs');
+      return call(`/api/mcp/packs/${encodeURIComponent(id)}`);
+    }
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
