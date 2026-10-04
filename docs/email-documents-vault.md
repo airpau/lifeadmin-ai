@@ -1,5 +1,8 @@
 # Documents vault (email upgrade, stage two)
 
+Stage three (document packs, warranties, price-rise watch and the weekly
+digest) is described in `docs/document-packs.md`.
+
 The documents vault finds receipts, invoices, bills, statements,
 certificates, policies, contracts and letters in a user's connected
 inboxes (Gmail and Outlook), or takes them from Google Drive, and files

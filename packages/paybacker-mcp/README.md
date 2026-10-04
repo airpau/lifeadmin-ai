@@ -89,6 +89,8 @@ Print the absolute path with `echo "$(pwd)/dist/server.js"` from the repo root
 | `search_documents` | Search your documents vault: receipts, invoices, bills, statements, certificates, policies, contracts and letters |
 | `get_document` | One document's details plus a download link that works for 10 minutes |
 | `list_email_findings` | What the inbox scanner found: bills, renewals, price increases, refund opportunities |
+| `list_packs` | Your document packs (dispute evidence, mortgage, tax year, insurance claim) and what each is missing |
+| `get_pack` | One pack's checklist and documents, plus a download link for the built ZIP that works for 10 minutes |
 
 ## Security notes
 

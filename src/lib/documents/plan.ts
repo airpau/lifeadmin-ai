@@ -28,6 +28,12 @@ export interface DocumentEntitlements {
   accountantRegister: boolean;
   /** Effective per-request Drive import cap (never above DRIVE_IMPORT_HARD_CAP). */
   driveImportMaxFiles: number;
+  /** Pack builds a calendar month. null = unlimited. Previews are free on every plan. */
+  packBuildsPerMonth: number | null;
+  priceRiseWatch: boolean;
+  warrantyReminders: boolean;
+  documentDigest: boolean;
+  packSharing: boolean;
 }
 
 export function limitsFor(tier: PlanTier | string | null | undefined): PlanLimits {
@@ -46,6 +52,11 @@ export function documentEntitlements(tier: PlanTier | string | null | undefined)
     driveDocumentFiling: l.driveDocumentFiling,
     accountantRegister: l.accountantRegister,
     driveImportMaxFiles: Math.min(l.driveImportMaxFiles ?? DRIVE_IMPORT_HARD_CAP, DRIVE_IMPORT_HARD_CAP),
+    packBuildsPerMonth: l.packBuildsPerMonth,
+    priceRiseWatch: l.priceRiseWatch,
+    warrantyReminders: l.warrantyReminders,
+    documentDigest: l.documentDigest,
+    packSharing: l.packSharing,
   };
 }
 
@@ -109,4 +120,39 @@ export const UPGRADE_COPY = {
   quota: (limit: number) =>
     `You have saved ${limit} documents this month, which is the Free plan limit. Upgrade to Essential for unlimited documents and automatic filing.`,
   driveImportOne: 'On the Free plan you can import one file from Google Drive at a time. Upgrade to import several at once.',
+  packBuilds: (limit: number) =>
+    `You have built ${limit === 1 ? 'your free pack' : `${limit} packs`} this month. Upgrade to Essential to build as many packs as you need. You can still check what any pack would contain.`,
+  priceRiseWatch: 'Price-rise watch comes with Essential. We compare your bills and renewals year on year and tell you when a supplier puts its price up.',
+  warrantyReminders: 'Warranty reminders come with Essential. You can still save and edit warranty dates on any plan.',
+  packSharing: 'Sharing a pack by link comes with Pro. You can still download the pack and send it yourself.',
 } as const;
+
+// ---------------------------------------------------------------------------
+// Document packs: monthly build allowance (Free)
+// ---------------------------------------------------------------------------
+
+export interface PackBuildQuota {
+  limit: number | null;
+  used: number;
+  remaining: number | null;
+}
+
+/**
+ * Pack builds used this calendar month (UTC). Rebuilding a pack with the
+ * same contents does not count again; a pack whose contents changed is a
+ * new build. Deleted packs still count (the soft-deleted row keeps its
+ * counters). The atomic check is document_pack_claim_build(); this is
+ * for display.
+ */
+export async function packBuildQuota(admin: Admin, userId: string, ent: DocumentEntitlements, now: Date = new Date()): Promise<PackBuildQuota> {
+  if (ent.packBuildsPerMonth === null) return { limit: null, used: 0, remaining: null };
+  const { data, error } = await admin
+    .from('document_packs')
+    .select('counted_builds')
+    .eq('user_id', userId)
+    .gte('counted_build_at', monthStartUtc(now).toISOString());
+  const used = error
+    ? ent.packBuildsPerMonth
+    : ((data ?? []) as Array<{ counted_builds: number | null }>).reduce((s, r) => s + (Number(r.counted_builds) || 0), 0);
+  return { limit: ent.packBuildsPerMonth, used, remaining: Math.max(0, ent.packBuildsPerMonth - used) };
+}

@@ -16,6 +16,7 @@ import { DriveError, downloadDriveFile, getDriveAccess } from '@/lib/documents/d
 import { isAllowedDocumentMime, mimeFor } from '@/lib/documents/attachments';
 import { classifyDocument } from '@/lib/documents/classify';
 import { storeDocument } from '@/lib/documents/store';
+import { priceRiseWatchAfterFiling } from '@/lib/documents/price-rise-watch';
 import { RUN_BUSY_MESSAGE, acquireDocumentRunLock, releaseDocumentRunLock } from '@/lib/documents/run-lock';
 
 export const runtime = 'nodejs';
@@ -137,9 +138,13 @@ export async function POST(req: NextRequest) {
     await releaseDocumentRunLock(admin, user.id, lock.holder);
   }
 
+  const savedCount = results.filter((r) => r.status === 'saved').length;
+  const priceRises = await priceRiseWatchAfterFiling(admin, user.id, ent.priceRiseWatch, savedCount);
+
   return NextResponse.json({
-    saved: results.filter((r) => r.status === 'saved').length,
+    saved: savedCount,
     results,
+    priceRisesFound: priceRises?.created ?? 0,
     quota: await documentQuota(admin, user.id, ent),
   });
 }
