@@ -222,6 +222,9 @@ export const LEGAL_ROUTES: RouteEntry[] = [
   { path: '/cookie-policy', title: 'Cookie policy', summary: 'Cookies set by paybacker.co.uk and how to control them.', changeFrequency: 'monthly', priority: 0.2 },
   { path: '/legal/methodology', title: 'Methodology', summary: 'How Paybacker sources, verifies and maintains every legal citation it uses.', changeFrequency: 'monthly', priority: 0.3 },
   { path: '/legal/ethics-code', title: 'Code of ethics', summary: 'The commitments Paybacker holds itself to, including never charging a success fee.', changeFrequency: 'monthly', priority: 0.3 },
+  { path: '/legal/complaints-procedure', title: 'Complaints procedure', summary: 'How to complain to Paybacker, what happens next, how long it takes and where to go if you are not happy with our answer.', changeFrequency: 'yearly', priority: 0.3 },
+  { path: '/legal/security', title: 'Security', summary: 'How Paybacker protects your data: read-only bank connections, encryption, UK data storage and strict access controls.', changeFrequency: 'yearly', priority: 0.3 },
+  { path: '/legal/fair-treatment', title: 'Treating customers fairly', summary: 'Our Consumer Duty commitments: clear prices, plain English, easy cancellation and extra help when you need it.', changeFrequency: 'yearly', priority: 0.3 },
   { path: '/legal/how-we-cite', title: 'How we cite the law', summary: 'Where Paybacker’s legal citations come from, which sources we accept and which we reject, what is checked before a letter is produced, and what we do not claim.', changeFrequency: 'monthly', priority: 0.3 },
 ];
 
