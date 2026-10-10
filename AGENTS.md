@@ -17,3 +17,12 @@ Paul switches between Claude, Codex and other tools, including from his phone. `
 ## Never deploy from a local folder
 
 Only deploy code that is already pushed to GitHub. Before any deploy (`vercel --prod`, `fly deploy` or any other), run `git pull --ff-only`, then check that `git status` is clean and `git log origin/HEAD..HEAD` is empty. If either check fails, commit and push first (on a branch if you are not Claude). Never deploy uncommitted, unpushed or branch-only work. This stops one tool's deploy from wiping out another tool's work. Deploying pushed code the usual way is unchanged.
+
+## Finishing work (so nothing stays only on this machine)
+
+If you changed any files (skip this for read-only tasks), before you stop:
+
+1. Update `HANDOVER.md`: what was asked, what is done, what is half done, the exact next step, what must not be touched.
+2. Commit as Paul Airey <aireypaul@googlemail.com> on a branch (never `main` or `master` unless you are Claude and this repo's rules allow it), push the branch and open a pull request.
+3. Do not deploy. Merging and deploying is for Paul or a Claude session.
+4. If you could not push, say so plainly in your last message. Never leave work only in a local folder without telling Paul.
