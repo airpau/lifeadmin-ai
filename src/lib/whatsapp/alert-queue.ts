@@ -31,6 +31,7 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { TEMPLATES } from './template-registry';
+import { isSingleDailyDigestEnabled, nextMorningDigestSlot } from './daily-digest';
 
 export const DIGEST_DEDUP_PREFIX = 'digest:';
 
@@ -176,7 +177,13 @@ export async function enqueueDigestItem(
         parameters: input.parameters ?? null,
         source: 'digest',
       },
-      release_after: nextDigestSlot().toISOString(),
+      // Single-daily-digest mode (WHATSAPP_SINGLE_DAILY_DIGEST) folds every
+      // queued item into tomorrow's 07:30 morning brief instead of the
+      // 18:00 evening digest. See ./daily-digest.ts.
+      release_after: (isSingleDailyDigestEnabled()
+        ? nextMorningDigestSlot()
+        : nextDigestSlot()
+      ).toISOString(),
       dedup_key: dedupKey,
     });
     if (error) {
@@ -316,3 +323,61 @@ export function buildEveningDigestBody(
   return parts.join('\n');
 }
 
+
+// ─────────────────────── single daily digest (morning) ───────────────────────
+
+/**
+ * Pending digest rows for one user that are due now. Used by the 07:30
+ * morning brief when WHATSAPP_SINGLE_DAILY_DIGEST is on. Returns [] on
+ * any error (the brief still goes out; the rows stay pending for the
+ * next run).
+ */
+export async function loadDueDigestRows(
+  sb: SupabaseClient,
+  userId: string,
+  now: Date = new Date(),
+  limit = 200,
+): Promise<QueuedDigestRow[]> {
+  try {
+    const { data, error } = await sb
+      .from('whatsapp_alert_queue')
+      .select('id, user_id, event_type, template_name, payload')
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .lte('release_after', now.toISOString())
+      .like('dedup_key', `${DIGEST_DEDUP_PREFIX}%`)
+      .order('created_at', { ascending: true })
+      .limit(limit);
+    if (error || !Array.isArray(data)) return [];
+    return data as QueuedDigestRow[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Settle digest rows after a delivery attempt. 'sent' and 'cancelled'
+ * free the unique pending dedup key; never throws.
+ */
+export async function markDigestRows(
+  sb: SupabaseClient,
+  ids: string[],
+  status: 'sent' | 'cancelled',
+): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    await sb
+      .from('whatsapp_alert_queue')
+      .update({ status, sent_at: new Date().toISOString() })
+      .in('id', ids);
+  } catch (e) {
+    console.warn('[whatsapp/alert-queue] mark rows failed', (e as Error)?.message ?? e);
+  }
+}
+
+/** Registry category of a template (null when unknown). */
+export function templateCategoryOf(templateName?: string | null): string | null {
+  if (!templateName) return null;
+  const tpl = (TEMPLATES as Record<string, { category?: string }>)[templateName];
+  return tpl?.category ?? null;
+}

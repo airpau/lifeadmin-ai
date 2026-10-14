@@ -390,10 +390,31 @@ export async function sendNotification(
   // Quiet-hours rule: push, telegram and whatsapp are suppressed (they
   // buzz the user's phone). Email still sends — it lives in an inbox
   // and is the polite quiet-hours fallback.
+  // Single daily WhatsApp digest (WHATSAPP_SINGLE_DAILY_DIGEST, default
+  // off): WhatsApp items are queued for tomorrow's morning brief, which is
+  // itself outside quiet hours, so quiet hours must not drop them here.
+  // MARKETING templates (paybacker_better_deal_found) are never folded
+  // into the utility digest: different lawful basis (PECR). They keep the
+  // existing consent + 24h frequency gate in the send facade.
+  const { classifyWhatsAppSend, isSingleDailyDigestEnabled } = await import(
+    '@/lib/whatsapp/daily-digest'
+  );
+  let singleDailyWhatsApp = isSingleDailyDigestEnabled();
+  if (singleDailyWhatsApp && input.whatsapp?.templateName) {
+    const { templateCategoryOf } = await import('@/lib/whatsapp/alert-queue');
+    singleDailyWhatsApp =
+      classifyWhatsAppSend({
+        templateName: input.whatsapp.templateName,
+        category: templateCategoryOf(input.whatsapp.templateName),
+      }) === 'digest';
+  }
+
   for (const channel of channels) {
     if (
       quiet &&
-      (channel === 'push' || channel === 'telegram' || channel === 'whatsapp')
+      (channel === 'push' ||
+        channel === 'telegram' ||
+        (channel === 'whatsapp' && !singleDailyWhatsApp))
     ) {
       skipped.push({ channel, reason: 'quiet hours' });
       continue;
@@ -405,6 +426,35 @@ export async function sendNotification(
     } else if (channel === 'telegram' && input.telegram && routing.telegramChatId) {
       if (await sendTelegram(routing.telegramChatId, input.telegram)) delivered.push('telegram');
       else skipped.push({ channel: 'telegram', reason: 'send failed' });
+    } else if (
+      channel === 'whatsapp' &&
+      input.whatsapp &&
+      routing.whatsappPhone &&
+      singleDailyWhatsApp
+    ) {
+      // One WhatsApp message a day: queue for the morning brief instead of
+      // sending (text or template). Falls back to 'send failed' only if the
+      // queue write itself fails.
+      const { enqueueDigestItem, renderTemplatePreview } = await import(
+        '@/lib/whatsapp/alert-queue'
+      );
+      const wa = input.whatsapp;
+      const line =
+        wa.text ??
+        (wa.templateName
+          ? renderTemplatePreview(wa.templateName, wa.templateParameters ?? [])
+          : null) ??
+        input.event.replace(/_/g, ' ');
+      const outcome = await enqueueDigestItem(supabase, {
+        userId: input.userId,
+        eventType: input.event,
+        line,
+        templateName: wa.templateName ?? null,
+        parameters: wa.templateParameters,
+        dedupKey: `${input.event}:${(wa.templateParameters ?? [wa.text ?? '']).join('|')}`.slice(0, 200),
+      });
+      if (outcome !== 'error') delivered.push('whatsapp');
+      else skipped.push({ channel: 'whatsapp', reason: 'digest queue failed' });
     } else if (channel === 'whatsapp' && input.whatsapp && routing.whatsappPhone) {
       // Phase 2 — send-time optimisation: hold non-urgent, non-critical alerts
       // for the user's learned best hour. The release cron re-dispatches with
