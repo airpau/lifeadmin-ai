@@ -35,6 +35,22 @@ export async function PATCH(
       }
     }
 
+    // A user confirming a row ("Yes, it's mine") or restoring one the
+    // bank detector hid is final: record it so the daily re-check never
+    // overrides the user. Only these two fixed values can be written.
+    // "I don't recognise this" also sends needs_review:false, together
+    // with status 'flagged'; that is NOT a confirmation.
+    const userConfirmed =
+      body.needs_review === false && (body.status === undefined || body.status === 'active');
+    const userRestored = body.detection_status === 'confirmed';
+    const detectionFields: Record<string, unknown> = {};
+    if (userConfirmed || userRestored) {
+      detectionFields.detection_status = 'confirmed';
+      detectionFields.detection_reason = userRestored ? 'user_restored' : 'user_confirmed';
+      detectionFields.detection_checked_at = new Date().toISOString();
+      if (userRestored) sanitisedBody.needs_review = false;
+    }
+
     // Fetch original before update (for learning)
     const { data: original } = await supabase
       .from('subscriptions')
@@ -43,13 +59,25 @@ export async function PATCH(
       .eq('user_id', user.id)
       .single();
 
-    const { data, error } = await supabase
-      .from('subscriptions')
-      .update(sanitisedBody)
-      .eq('id', id)
-      .eq('user_id', user.id)
-      .select()
-      .single();
+    const runUpdate = (fields: Record<string, unknown>) =>
+      supabase
+        .from('subscriptions')
+        .update(fields)
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+    let { data, error } = await runUpdate({ ...sanitisedBody, ...detectionFields });
+    // detection_* columns arrive with migration 20261014120000; until it
+    // is applied, save the user's change without them.
+    if (
+      error &&
+      Object.keys(detectionFields).length > 0 &&
+      (error.code === '42703' || error.code === 'PGRST204' || /detection_/.test(error.message || ''))
+    ) {
+      ({ data, error } = await runUpdate(sanitisedBody));
+    }
 
     if (error) throw error;
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });

@@ -15,8 +15,8 @@ import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers
 import { isCreditProduct } from '@/lib/credit-product-detector';
 import ComparisonCard from '@/components/subscriptions/ComparisonCard';
 import { cleanMerchantName } from '@/lib/merchant-utils';
-import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
-import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, categoryMatchesFilterGroup, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
+import { countActiveSubscriptions, isHiddenBySystem } from '@/lib/subscriptions/active-count';
+import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, categoryMatchesFilterGroup, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon, resolveSubscriptionCategory } from '@/lib/category-config';
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 import ScanWindowNotice, { type ScanWindowNoticeData } from '@/components/scanner/ScanWindowNotice';
@@ -88,6 +88,11 @@ interface Subscription {
   contract_end_source?: string | null;
   logo_url?: string | null;
   needs_review?: boolean;
+  /** Written by some writers instead of `category`; used as a display fallback. */
+  category_normalized?: string | null;
+  /** Bank detector verdict (migration 20261014120000). */
+  detection_status?: 'confirmed' | 'needs_review' | 'dismissed_by_system' | null;
+  detection_reason?: string | null;
 }
 
 interface BankConnection {
@@ -149,6 +154,10 @@ export default function SubscriptionsPage() {
   // default view. Toggle is only rendered when there's at least
   // one archived row, otherwise it's just clutter.
   const [archivedFilter, setArchivedFilter] = useState<'active' | 'archived'>('active');
+  // Rows the bank detector judged to be one-off payments are hidden by
+  // default (never deleted). This toggle shows them so the user can
+  // restore any it got wrong.
+  const [showSystemHidden, setShowSystemHidden] = useState(false);
   const [userTier, setUserTier] = useState('free');
   const [tierLoaded, setTierLoaded] = useState(false);
   const [unrecognisedSub, setUnrecognisedSub] = useState<Subscription | null>(null);
@@ -278,7 +287,17 @@ export default function SubscriptionsPage() {
         })(),
       ]);
       if (subsRes.ok) {
-        const data = await subsRes.json();
+        const raw: Array<Subscription & { cancellation_info?: any }> = await subsRes.json();
+        // Resolve every row to ONE canonical category key up front, so the
+        // pill, the filter chips, grouping, sorting and the edit form all
+        // agree. Raw values arrived as 'Streaming', 'loans', 'Internet',
+        // or NULL with only category_normalized set, which rendered as
+        // "Uncategorised", split duplicate groups, and left the edit
+        // dropdown showing the raw key instead of the label.
+        const data = raw.map((s) => ({
+          ...s,
+          category: resolveSubscriptionCategory(s.category, s.category_normalized),
+        }));
         setSubscriptions(data);
         // Seed providerCancelInfo from inline cancellation_info attached
         // by /api/subscriptions. Prevents an N+1 follow-up fetch per
@@ -484,7 +503,8 @@ export default function SubscriptionsPage() {
     // archive_subscription have archived_at set; default view
     // hides them.
     const archiveFiltered = subscriptions.filter((s) =>
-      archivedFilter === 'archived' ? !!s.archived_at : !s.archived_at,
+      (archivedFilter === 'archived' ? !!s.archived_at : !s.archived_at) &&
+      (showSystemHidden || !isHiddenBySystem(s)),
     );
     const filtered = archiveFiltered.filter(s => !isFinancePayment(s.provider_name));
     const dedupKey = (s: Subscription) => {
@@ -509,6 +529,9 @@ export default function SubscriptionsPage() {
     return filtered.filter(s => keptIds.has(s.id));
   })();
   const archivedSubsCount = subscriptions.filter((s) => !!s.archived_at).length;
+  const systemHiddenCount = subscriptions.filter(
+    (s) => isHiddenBySystem(s) && s.status === 'active' && !s.archived_at,
+  ).length;
   const hiddenFinanceCount = subscriptions.filter(s => s.status === 'active' && isFinancePayment(s.provider_name)).length;
 
   const displaySubscriptions = (() => {
@@ -2037,7 +2060,7 @@ export default function SubscriptionsPage() {
                 <div>
                   <p className="text-slate-900 font-medium">{normaliseProviderName(s.provider_name)}</p>
                   <p className="text-slate-600 text-sm capitalize">
-                    {s.category} · {s.amount > 0 ? formatGBP(s.amount) : '£?'}/{s.billing_cycle}
+                    {getCategoryLabel(s.category || '')} · {s.amount > 0 ? formatGBP(s.amount) : '£?'}/{s.billing_cycle}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -2134,6 +2157,22 @@ export default function SubscriptionsPage() {
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.monthly_total)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
             <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {countActiveSubscriptions(subscriptions) + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
           </div>
+        </div>
+      )}
+
+      {/* Rows the bank detector judged to be one-off payments. Hidden by
+          default, never deleted; this toggle lets the user check them. */}
+      {systemHiddenCount > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 text-xs text-slate-600">
+          <span>
+            {systemHiddenCount} one-off payment{systemHiddenCount === 1 ? '' : 's'} hidden from this list
+          </span>
+          <button
+            onClick={() => setShowSystemHidden((v) => !v)}
+            className="px-3 py-1.5 rounded-full font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+          >
+            {showSystemHidden ? 'Hide them' : 'Show them'}
+          </button>
         </div>
       )}
 
@@ -2594,6 +2633,13 @@ export default function SubscriptionsPage() {
                   </div>
                 </div>
               </div>
+
+              {isHiddenBySystem(sub) && sub.status === 'active' && (
+                <p className="mt-4 text-xs text-slate-600">
+                  Hidden from your list: your bank history shows this as a one-off or irregular payment, not a regular one.
+                  Press &quot;This Is Mine&quot; to keep tracking it.
+                </p>
+              )}
 
               {sub.needs_review && sub.status === 'active' && (
                 <div className="mt-4 pt-4 border-t border-amber-300 flex flex-wrap gap-2">
@@ -3203,7 +3249,7 @@ export default function SubscriptionsPage() {
                     className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500"
                   >
                     {!SORTED_CATEGORIES.some((c) => c.value === editForm.category) && editForm.category && (
-                      <option key={editForm.category} value={editForm.category}>{editForm.category}</option>
+                      <option key={editForm.category} value={editForm.category}>{getCategoryLabel(editForm.category)}</option>
                     )}
                     {SORTED_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
@@ -3473,7 +3519,7 @@ export default function SubscriptionsPage() {
                     className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500"
                   >
                     {!SORTED_CATEGORIES.some((c) => c.value === newSub.category) && newSub.category && (
-                      <option key={newSub.category} value={newSub.category}>{newSub.category}</option>
+                      <option key={newSub.category} value={newSub.category}>{getCategoryLabel(newSub.category)}</option>
                     )}
                     {SORTED_CATEGORIES.map((c) => (
                       <option key={c.value} value={c.value}>{c.label}</option>

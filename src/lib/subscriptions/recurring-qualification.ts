@@ -169,6 +169,11 @@ export const COUNCIL_TAX_PATTERNS: RegExp[] = [
   /\bwestminster\b.*\bcouncil\b/i,
   /\bhounslow\b/i,
   /\b(lbh|lbw|lbc)\b/i, // common council abbreviations
+  // Bank lines that end in a council suffix ("TESTVALLEY BC",
+  // "BROXBOURNE BC") and named city councils seen in production.
+  /\b(bc|mbc|dc)\s*$/i,
+  /\bcity of westminster\b/i,
+  /\bborough of\b/i,
 ];
 
 export function isCouncilTaxMerchant(merchantName: string): boolean {
