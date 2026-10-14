@@ -127,3 +127,34 @@ describe('merchantRuleMatchesEitherWay', () => {
     assert.equal(merchantRuleMatchesEitherWay('tfl', 'payprop client accrentflat'), false);
   });
 });
+
+import { toWhitespaceTolerantIlike } from './merchant-rule-match.ts';
+
+describe('toWhitespaceTolerantIlike: saved overrides vs padded bank columns', () => {
+  // A plain %pattern% ILIKE against these real descriptions matched nothing.
+  const cases: Array<[string, string]> = [
+    ['airprop ltd airprop', 'AIRPROP LTD       AIRPROP LTD'],
+    ['brockfield ltd energie', 'Brockfield LTD    Energie'],
+    ['capital on tap mtksccwoueyh', 'Capital On Tap    MTksccwoueyh'],
+  ];
+  // Emulate Postgres ILIKE for patterns built from % and literals.
+  const ilike = (value: string, pattern: string) => {
+    const re = new RegExp('^' + pattern.split('%').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'is');
+    return re.test(value);
+  };
+  for (const [saved, description] of cases) {
+    it(`"${saved}" matches "${description}"`, () => {
+      assert.equal(ilike(description, `%${saved}%`), false, 'plain pattern should miss (the bug)');
+      const p = toWhitespaceTolerantIlike(saved);
+      assert.ok(p);
+      assert.equal(ilike(description, p), true);
+    });
+  }
+  it('collapses and trims whitespace in the saved pattern', () => {
+    assert.equal(toWhitespaceTolerantIlike('  Prime  Video '), '%prime%video%');
+  });
+  it('returns null for an empty pattern', () => {
+    assert.equal(toWhitespaceTolerantIlike('   '), null);
+    assert.equal(toWhitespaceTolerantIlike(null), null);
+  });
+});

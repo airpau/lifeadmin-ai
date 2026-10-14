@@ -118,3 +118,26 @@ export function merchantRuleMatchesEitherWay(
 ): boolean {
   return merchantRuleMatches(rule, pattern) || merchantRuleMatches(pattern, rule);
 }
+
+/**
+ * Build an ILIKE "contains" pattern from a saved merchant override that
+ * tolerates any run of whitespace between words.
+ *
+ * Bank descriptions are fixed-width columns ("AIRPROP LTD       AIRPROP"),
+ * while the pattern saved from the Money Hub picker is a cleaned label with
+ * single spaces ("airprop ltd airprop"). A plain `%pattern%` ILIKE matched
+ * none of them, so the recategorise call reported "0 transactions", wrote
+ * nothing to bank_transactions, and every surface that reads the stored
+ * category kept the old one. Measured 2026-10-14: 3 of 17 saved merchant
+ * overrides matched 0 rows by plain ILIKE but 16 rows once whitespace was
+ * normalised (e.g. "airprop ltd airprop": 0 vs 12).
+ *
+ * The runtime matcher in money-hub-classification already collapses
+ * whitespace on both sides, which is why the Money Hub card looked right
+ * while the stored rows stayed wrong.
+ */
+export function toWhitespaceTolerantIlike(pattern: string | null | undefined): string | null {
+  const words = String(pattern ?? '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return null;
+  return `%${words.join('%')}%`;
+}

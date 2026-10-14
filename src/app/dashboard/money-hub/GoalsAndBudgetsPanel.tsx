@@ -58,11 +58,12 @@ export default function GoalsAndBudgetsPanel({ data, isPro, refreshData, selecte
                 <button
                   key={b.id}
                   onClick={() => setDrillCategory(b.category)}
-                  className="mb-3 w-full text-left group hover:bg-slate-100 rounded-lg px-2 -mx-2 py-1 transition-colors"
+                  /* No -mx-2 / px-2: with w-full that pair left the bar 16px short of the card edge. */
+                  className="mb-3 block w-full text-left group hover:bg-slate-100 rounded-lg py-1 transition-colors"
                 >
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-900 capitalize group-hover:text-mint-400 transition-colors">{(b.category || '').replace(/_/g, ' ')}</span>
-                    <span className={`text-xs font-medium ${b.status === 'over_budget' ? 'text-red-400' : b.status === 'warning' ? 'text-amber-400' : 'text-slate-500'}`}>
+                  <div className="flex justify-between gap-2 text-sm mb-1">
+                    <span className="text-slate-900 capitalize min-w-0 truncate group-hover:text-mint-400 transition-colors">{(b.category || '').replace(/_/g, ' ')}</span>
+                    <span className={`text-xs font-medium whitespace-nowrap shrink-0 ${b.status === 'over_budget' ? 'text-red-400' : b.status === 'warning' ? 'text-amber-400' : 'text-slate-500'}`}>
                       £{fmtNum(b.spent)} / £{fmtNum(b.monthly_limit)}
                     </span>
                   </div>
@@ -100,9 +101,9 @@ export default function GoalsAndBudgetsPanel({ data, isPro, refreshData, selecte
                 const remaining = Math.max(0, g.target_amount - g.current_amount);
                 return (
                   <div key={g.id} className="mb-3">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-slate-900 flex items-center gap-1">{g.emoji} {g.goal_name}</span>
-                      <span className="text-slate-500 text-xs">£{fmtNum(g.current_amount)} / £{fmtNum(g.target_amount)}</span>
+                    <div className="flex justify-between items-baseline gap-2 text-sm mb-1">
+                      <span className="text-slate-900 min-w-0 break-words">{g.emoji} {g.goal_name}</span>
+                      <span className="text-slate-500 text-xs whitespace-nowrap shrink-0">£{fmtNum(g.current_amount)} / £{fmtNum(g.target_amount)}</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-1.5">
                       <div className="bg-mint-400 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />

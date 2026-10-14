@@ -1,5 +1,7 @@
 import { categoriseWithLearningSync } from '@/lib/learning-engine';
 import { isExcludedIncomeType, normalizeIncomeTypeKey } from '@/lib/income-normalise';
+import { normalizeSpendingCategoryKey } from '@/lib/money-hub-category-keys';
+import { buildRefundMerchantIndex, reclassifyAsRefund } from '@/lib/money-hub-refunds';
 
 const SOFT_SPENDING_CATEGORIES = new Set(['bills', 'shopping', 'other']);
 const CREDIT_BANK_CATEGORIES = new Set(['CREDIT', 'INTEREST']);
@@ -16,30 +18,10 @@ const REAL_INCOME_TYPES = new Set([
   'other',
 ]);
 
-// Aliases normalise synonyms to the canonical keys defined in
-// src/lib/category-config.ts. Every VALUE in this map MUST be a key
-// in CATEGORY_CONFIG — otherwise we alias one drift bug into another
-// (e.g. pre-2026-04-23 `utility -> energy` pointed at a key that
-// didn't yet exist in the config, producing "Energy" labels that
-// rendered via the generic title-case fallback).
-const SPENDING_CATEGORY_ALIASES: Record<string, string> = {
-  // Plural → singular for keys that exist as both forms in upstream
-  // data. CATEGORY_CONFIG now carries both `loan` and `loans` so
-  // either renders; the alias keeps the internal key space tidy.
-  fees: 'fee',
-  loans: 'loan',
-  utilities: 'utility',
-  // Bank-provided "BILL_PAYMENT" raw category should collapse into 'bills'.
-  bill_payment: 'bills',
-  billpayment: 'bills',
-  'bill-payment': 'bills',
-  // Narrower food split — honour the canonical values the detector
-  // returns rather than collapsing to "food".
-  dining: 'eating_out',
-  restaurants: 'eating_out',
-  supermarkets: 'groceries',
-  supermarket: 'groceries',
-};
+// The alias map and normalizeSpendingCategoryKey live in a leaf module so
+// category-config.ts (client) and node:test can share them. Re-exported
+// here so existing imports keep working.
+export { SPENDING_CATEGORY_ALIASES, normalizeSpendingCategoryKey } from '@/lib/money-hub-category-keys';
 
 type OverrideMap = Map<string, string>;
 
@@ -84,13 +66,6 @@ export const BANK_DIRECTION_CODES = new Set(['credit', 'debit', 'interest']);
 /** True when a value is a bank direction code rather than a real category. */
 export function isBankDirectionCode(value: any): boolean {
   return BANK_DIRECTION_CODES.has(String(value ?? '').toLowerCase().trim());
-}
-
-export function normalizeSpendingCategoryKey(value: any): string {
-  if (typeof value !== 'string') value = String(value || '');
-  const key = value.toLowerCase().trim();
-  if (!key) return '';
-  return SPENDING_CATEGORY_ALIASES[key] || key;
 }
 
 export function getMoneyHubMonthBounds(selectedMonth?: string | null, baseDate = new Date()) {
@@ -155,6 +130,12 @@ export function buildMoneyHubOverrideMaps(rows: MoneyHubCategoryOverrideRow[] | 
       merchantOverrides.push({ pattern, category });
     }
   }
+
+  // Longest pattern first, so the most specific rule wins when several
+  // match ("broxbourne councilcheshunt" over "broxbourne"). Without this
+  // the winner depended on the order Postgres happened to return the
+  // rows in. The auto_categorise_transactions SQL pass uses the same rule.
+  merchantOverrides.sort((a, b) => b.pattern.length - a.pattern.length);
 
   return { transactionOverrides, merchantOverrides };
 }
@@ -310,6 +291,45 @@ export function resolveMoneyHubTransaction(
     (isBankDirectionCode(txn.category) ? '' : normalizeSpendingCategoryKey(txn.category)) ||
     detectFallbackSpendingCategory(description);
   return { amount, kind: 'spending', spendingCategory: fallbackCategory || 'other', incomeType: null };
+}
+
+export { buildRefundMerchantIndex, reclassifyAsRefund, refundMerchantKey } from '@/lib/money-hub-refunds';
+
+/**
+ * One resolver for every Money Hub surface that totals transactions: user
+ * override, base rules, the internal-transfer pair heuristic, then refund
+ * netting. Results are memoised per row, so callers can summarise several
+ * months from the same list without re-running the rules.
+ */
+export function createMoneyHubResolver(
+  txns: MoneyHubTransactionLike[],
+  overrides: ReturnType<typeof buildMoneyHubOverrideMaps>,
+  internalTransfers: Set<string>,
+) {
+  const baseCache = new Map<MoneyHubTransactionLike, { resolved: ResolvedMoneyHubTransaction; overridden: boolean }>();
+  const base = (txn: MoneyHubTransactionLike) => {
+    const cached = baseCache.get(txn);
+    if (cached) return cached;
+    const overrideCategory = findMatchingCategoryOverride(txn, overrides.transactionOverrides, overrides.merchantOverrides);
+    const resolved = resolveMoneyHubTransaction(txn, overrideCategory);
+    if (txn.id && internalTransfers.has(txn.id)) {
+      resolved.kind = 'transfer';
+      resolved.spendingCategory = 'transfers';
+    }
+    const out = { resolved, overridden: !!overrideCategory };
+    baseCache.set(txn, out);
+    return out;
+  };
+
+  const debitRows = txns
+    .filter((t) => (parseFloat(String(t.amount)) || 0) < 0)
+    .map((txn) => ({ txn, resolved: base(txn).resolved }));
+  const refundIndex = buildRefundMerchantIndex(debitRows);
+
+  return (txn: MoneyHubTransactionLike): ResolvedMoneyHubTransaction => {
+    const { resolved, overridden } = base(txn);
+    return reclassifyAsRefund(txn, { ...resolved }, refundIndex, overridden);
+  };
 }
 
 export function applyInternalTransferHeuristic(txns: any[]) {

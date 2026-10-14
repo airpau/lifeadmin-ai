@@ -1035,8 +1035,10 @@ export default function MoneyHubPage() {
  )}
 
  {/* HEADER */}
- <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
- <div>
+ {/* Side by side only from lg: at md (768px) the control cluster wrapped
+     into three ragged rows next to a squeezed title. */}
+ <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+ <div className="min-w-0">
  <h1 className="text-3xl md:text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)] flex items-center gap-3">
  <Wallet className="h-9 w-9 text-emerald-600" /> Money Hub
  </h1>
@@ -1380,19 +1382,21 @@ export default function MoneyHubPage() {
  {/* Expected Bills (for the selected month) */}
  {expectedBills.length > 0 && (
  <div className="card">
- <div className="flex items-center justify-between mb-4">
- <h3 className="font-semibold text-lg flex items-center gap-2">
+ {/* Wraps on phones: the title, total and three-item legend used to share
+     one 343px row, so each piece broke onto two lines. */}
+ <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-4">
+ <h3 className="font-semibold text-lg flex flex-wrap items-center gap-x-2 gap-y-0.5">
  <Clock className="h-5 w-5 text-amber-600" />
  Expected Bills
- <span className="text-slate-500 text-sm font-normal">£{fmtNum(expectedBillsTotal)} expected</span>
+ <span className="text-slate-500 text-sm font-normal whitespace-nowrap">£{fmtNum(expectedBillsTotal)} expected</span>
  </h3>
- <div className="flex items-center gap-3 text-xs text-slate-500">
+ <div className="flex items-center gap-3 text-xs text-slate-500 whitespace-nowrap">
  <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-400 rounded-full" /> Paid</span>
  <span className="flex items-center gap-1"><span className="w-2 h-2 bg-red-400 rounded-full" /> Past due</span>
  <span className="flex items-center gap-1"><span className="w-2 h-2 bg-amber-500 rounded-full" /> Upcoming</span>
  </div>
  </div>
- <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+ <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
  {(showAllBills ? expectedBills : expectedBills.slice(0, 12)).map((bill: any) => {
  const statusColor = bill.paid
  ? 'border-green-500/30 bg-green-500/5'
@@ -1464,19 +1468,19 @@ export default function MoneyHubPage() {
  {/* Financial Action Centre (Pro) */}
  {isPro && (
  <div className="card">
- <div className="flex items-center justify-between mb-4">
- <h3 className="font-semibold text-lg flex items-center gap-2">
+ <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-4">
+ <h3 className="font-semibold text-lg flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
  <Zap className="h-5 w-5 text-amber-600" />
  Financial Action Centre
  {facItems.length > 0 && (
- <span className="text-xs font-normal text-slate-600 ml-1">
+ <span className="text-xs font-normal text-slate-600 whitespace-nowrap">
  {facCounts.overdue > 0 && <span className="text-red-400 font-semibold">{facCounts.overdue} overdue · </span>}
  {facCounts.due_soon > 0 && <span className="text-amber-600 font-semibold">{facCounts.due_soon} due soon · </span>}
  {facItems.length} tracked
  </span>
  )}
  </h3>
- <Link href="/dashboard/deals" className="text-emerald-600 hover:text-emerald-500 text-sm font-medium">Browse deals →</Link>
+ <Link href="/dashboard/deals" className="text-emerald-600 hover:text-emerald-500 text-sm font-medium whitespace-nowrap">Browse deals →</Link>
  </div>
 
  {/* Email scan results / alerts */}
@@ -1518,8 +1522,8 @@ export default function MoneyHubPage() {
  {alerts.slice(0, 5).map((a: any) => (
  <div key={a.id} className="flex items-center justify-between gap-3 bg-slate-50/50 rounded-lg p-3 border border-slate-200">
  <div className="min-w-0 flex-1">
- <p className="text-sm text-slate-900 font-medium truncate">{a.title}</p>
- {a.details && <p className="text-xs text-slate-500 truncate">{a.details}</p>}
+ <p className="text-sm text-slate-900 font-medium line-clamp-2 sm:truncate">{a.title}</p>
+ {a.details && <p className="text-xs text-slate-500 line-clamp-2 sm:truncate">{a.details}</p>}
  </div>
  {a.value_gbp > 0 && <span className="text-emerald-600 text-sm font-semibold whitespace-nowrap shrink-0">Save £{fmtNum(a.value_gbp)}</span>}
  </div>
@@ -1724,11 +1728,11 @@ export default function MoneyHubPage() {
  if (validDeals.length > 0) {
  return (
  <div className="mb-4">
- <div className="flex items-center justify-between mb-2">
+ <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-2">
  <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold flex items-center gap-1.5">
  <Zap className="h-3.5 w-3.5 text-green-400" /> Cheaper Alternatives Found
  </p>
- <span className="text-xs text-emerald-600 font-medium">Save £{fmtNum(filteredTotal)}/year</span>
+ <span className="text-xs text-emerald-600 font-medium whitespace-nowrap">Save £{fmtNum(filteredTotal)}/year</span>
  </div>
  <p className="text-xs text-slate-500 mb-3">We found cheaper deals for {validDeals.length} of your subscriptions. Click &quot;Switch&quot; to go directly to the provider.</p>
  <div className="max-h-[300px] overflow-y-auto space-y-2 custom-scrollbar">
@@ -1786,8 +1790,8 @@ export default function MoneyHubPage() {
  {priceIncreasAlerts.slice(0, 5).map((alert: any) => (
  <div key={alert.id} className="bg-slate-50/50 rounded-xl p-3 border border-slate-200 flex items-center justify-between gap-3">
  <div className="min-w-0 flex-1">
- <p className="text-sm text-slate-900 font-medium truncate">{alert.title || 'Price increase'}</p>
- <p className="text-xs text-slate-500 truncate">{alert.details || alert.description || ''}</p>
+ <p className="text-sm text-slate-900 font-medium line-clamp-2 sm:truncate">{alert.title || 'Price increase'}</p>
+ <p className="text-xs text-slate-500 line-clamp-2 sm:truncate">{alert.details || alert.description || ''}</p>
  </div>
  {alert.value_gbp > 0 && (
  <span className="text-red-400 text-sm font-semibold whitespace-nowrap shrink-0">+£{fmtNum(alert.value_gbp)}/yr</span>
@@ -1806,7 +1810,9 @@ export default function MoneyHubPage() {
 
  {/* Ask Paybacker about your money — MCP prompt strip */}
  <div className="card">
- <div className="flex items-start justify-between gap-4 mb-4">
+ {/* Stacked on phones: beside the button the copy was squeezed into a
+     ~170px column twelve lines tall. */}
+ <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4 mb-4">
  <div className="min-w-0">
  <h3 className="font-semibold text-lg flex items-center gap-2 flex-wrap">
  <MessageCircle className="h-5 w-5 text-emerald-600" />
@@ -1821,7 +1827,7 @@ export default function MoneyHubPage() {
  </div>
  <Link
  href={isPro ? '/dashboard/settings/mcp' : '/docs/paybacker-assistant'}
- className="whitespace-nowrap text-xs bg-emerald-500/10 border border-emerald-200 text-emerald-600 hover:bg-emerald-500/20 hover:text-emerald-500 px-3 py-1.5 rounded-full transition-colors"
+ className="self-start whitespace-nowrap text-xs bg-emerald-500/10 border border-emerald-200 text-emerald-600 hover:bg-emerald-500/20 hover:text-emerald-500 px-3 py-1.5 rounded-full transition-colors"
  >
  {isPro ? 'Generate token →' : 'Setup guide →'}
  </Link>
@@ -1858,8 +1864,8 @@ export default function MoneyHubPage() {
 
  {/* PRO UPGRADE NUDGE */}
  {!isPro && (
- <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4 flex items-center justify-between">
- <div className="flex items-center gap-3">
+ <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+ <div className="flex items-center gap-3 min-w-0">
  <MessageCircle className="h-5 w-5 text-purple-400" />
  <p className="text-slate-700 text-sm">Unlock the AI Financial Assistant, email scanning, and unlimited budgets & goals.</p>
  </div>

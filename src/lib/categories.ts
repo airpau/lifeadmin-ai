@@ -411,3 +411,16 @@ export function categoryListFormatted(): string {
   }
   return lines.join('\n');
 }
+
+/**
+ * Label and emoji for a category key as the Money Hub recategorise picker
+ * shows it. Accepts the aliased keys the Money Hub API returns ('loan',
+ * 'fee') as well as the picker ids. Null when the key is not in the picker.
+ */
+export function pickerCategoryMeta(key: string | null | undefined): { label: string; emoji: string } | null {
+  const k = String(key ?? '').toLowerCase().trim();
+  if (!k) return null;
+  const id = k === 'loan' ? 'loans' : k === 'fee' ? 'fees' : k;
+  const hit = CATEGORIES.find((c) => c.id === id);
+  return hit ? { label: hit.label, emoji: hit.emoji } : null;
+}

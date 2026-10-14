@@ -6,6 +6,7 @@ import {
   ShoppingCart, Coffee, ShoppingBag, Newspaper, CreditCard, Baby,
   Building2, Fuel, Briefcase, ArrowLeftRight, Wallet, HandCoins,
 } from 'lucide-react';
+import { normalizeSpendingCategoryKey } from '@/lib/money-hub-category-keys';
 
 interface CategoryConfig {
   label: string;
@@ -21,28 +22,17 @@ interface CategoryConfig {
   pickable?: boolean;
 }
 
-// ─── Alias normalisation (local copy — deliberate) ────────────────────
-// This mirrors `SPENDING_CATEGORY_ALIASES` in
-// src/lib/money-hub-classification.ts. It is duplicated rather than
-// imported because money-hub-classification.ts imports learning-engine.ts,
-// which imports @supabase/supabase-js — pulling that into this leaf module
-// would drag the Supabase client into every client bundle that renders a
-// category pill. Keep the two maps in lockstep: every VALUE here must be a
-// key in CATEGORY_CONFIG below.
-const CATEGORY_KEY_ALIASES: Record<string, string> = {
-  fees: 'fee',
-  loans: 'loan',
-  utilities: 'utility',
-  bill_payment: 'bills',
-  billpayment: 'bills',
-  'bill-payment': 'bills',
-  dining: 'eating_out',
-  restaurants: 'eating_out',
-  supermarkets: 'groceries',
-  supermarket: 'groceries',
-  // Seen in production `subscriptions.category` / `category_normalized`
-  // (2026-10-14) with no CATEGORY_CONFIG entry, so they rendered with the
-  // generic grey fallback and fell into the "Other" chip.
+// ─── Alias normalisation ──────────────────────────────────────────────
+// Shared with the server classifier via a leaf module (no Supabase import),
+// so the two copies can no longer drift. Every VALUE in the alias map must
+// be a key in CATEGORY_CONFIG below.
+//
+// RENDER_ONLY_ALIASES are applied after the shared map, for display only.
+// Seen in production `subscriptions.category` / `category_normalized`
+// (2026-10-14) with no CATEGORY_CONFIG entry, so they rendered with the
+// generic grey fallback and fell into the "Other" chip. Kept out of the
+// shared spending map so the Money Hub classifier is unchanged.
+const RENDER_ONLY_ALIASES: Record<string, string> = {
   mortgages: 'mortgage',
   internet: 'broadband',
   sports: 'fitness',
@@ -57,9 +47,8 @@ const CATEGORY_KEY_ALIASES: Record<string, string> = {
  * existed still render with the right label, icon and colour.
  */
 export function normalizeCategoryKey(value: string | null | undefined): string {
-  const key = String(value ?? '').toLowerCase().trim();
-  if (!key) return '';
-  return CATEGORY_KEY_ALIASES[key] || key;
+  const key = normalizeSpendingCategoryKey(value);
+  return RENDER_ONLY_ALIASES[key] || key;
 }
 
 // Every category returned anywhere in the backend (detectors, classifier
@@ -81,7 +70,7 @@ export const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   eating_out: { label: 'Eating Out', icon: Coffee, color: 'text-orange-700', bgColor: 'bg-orange-50' },
   insurance: { label: 'Insurance', icon: Shield, color: 'text-cyan-700', bgColor: 'bg-cyan-100' },
   // `loans` (plural, emitted by merchant-normalise) resolves here via
-  // CATEGORY_KEY_ALIASES rather than a duplicate entry — a second entry
+  // the shared alias map rather than a duplicate entry; a second entry
   // put "Loans" in the picker twice.
   loan: { label: 'Loans', icon: Banknote, color: 'text-red-700', bgColor: 'bg-red-100' },
   mobile: { label: 'Mobile', icon: Smartphone, color: 'text-violet-700', bgColor: 'bg-violet-100' },
