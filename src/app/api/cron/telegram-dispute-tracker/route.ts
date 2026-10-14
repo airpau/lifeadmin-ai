@@ -14,6 +14,8 @@ import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { loadUsersWithActiveWhatsApp } from '@/lib/telegram/whatsapp-dedup';
 import { sendWhatsAppText } from '@/lib/whatsapp';
+import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
+import { isSingleDailyDigestEnabled } from '@/lib/whatsapp/daily-digest';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -276,7 +278,26 @@ export async function GET(request: NextRequest) {
         // next day; once the user messages us or a template lands the
         // alert flows.
         const waEntry = waPhoneByUser.get(userId);
-        if (waEntry) {
+        if (waEntry && isSingleDailyDigestEnabled()) {
+          // Single daily digest: a weekly dispute nudge is never urgent,
+          // so it joins tomorrow's morning brief (in or out of the 24h
+          // window) instead of arriving as its own message.
+          const headline = (message.split('\n')[0] ?? '').replace(/\*/g, '').trim();
+          const outcome = await enqueueDigestItem(supabase, {
+            userId,
+            eventType: 'dispute_followup',
+            section: 'other',
+            line: headline || `${dispute.provider_name}: dispute update`,
+            provider: dispute.provider_name,
+            url: `paybacker.co.uk/dashboard/disputes/${dispute.id}`,
+            templateName: null,
+            dedupKey: `dispute_followup_${refKey}`,
+          });
+          if (outcome !== 'error') {
+            waSent++;
+            anyDelivered = true;
+          }
+        } else if (waEntry) {
           const insideWindow =
             waEntry.lastInbound &&
             Date.now() - new Date(waEntry.lastInbound).getTime() < 24 * 60 * 60 * 1000;

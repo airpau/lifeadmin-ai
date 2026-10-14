@@ -14,6 +14,8 @@ interface SheetsConnection {
   last_synced_at: string | null
   last_synced_timestamp: string | null
   email: string
+  status: string | null
+  last_error: string | null
 }
 
 // Captions shown while a sync is in flight. Full-history backfills are slow
@@ -54,6 +56,12 @@ function describeSyncError(code: string): SyncIssue {
       }
     case 'no_bank_connections':
       return { text: 'Connect a bank account to export transactions.', action: 'connect_bank' }
+    case 'sync_in_progress':
+      return { text: 'A sync is already running for your sheet. Give it a minute, then refresh this page.' }
+    case 'tabs_skipped':
+      return { text: 'Some account tabs could not be written last time. We will retry on the next sync.' }
+    case 'sheets_read_failed':
+      return { text: 'We could not read your Google Sheet, so nothing was written. We will retry automatically. If this keeps happening, reconnect.', action: 'reconnect' }
     default:
       return { text: 'Sync did not complete. Please try again shortly.' }
   }
@@ -82,11 +90,21 @@ export default function GoogleSheetsConnect() {
 
     const { data } = await supabase
       .from('google_sheets_connections')
-      .select('spreadsheet_url, spreadsheet_id, last_synced_at, last_synced_timestamp, email')
+      .select('spreadsheet_url, spreadsheet_id, last_synced_at, last_synced_timestamp, email, status, last_error')
       .eq('user_id', user.id)
       .maybeSingle()
 
     setConnection(data ?? null)
+    // Show the last background sync's problem straight away. Before this the
+    // panel only appeared after pressing Sync Now, so a connection that had
+    // been failing every night for months still looked Live.
+    if (data?.status === 'needs_reauth') {
+      setSyncIssue(describeSyncError('token_expired'))
+    } else if (data?.last_error) {
+      setSyncIssue(describeSyncError(data.last_error))
+    } else {
+      setSyncIssue(null)
+    }
     setLoading(false)
   }
 
@@ -144,12 +162,12 @@ export default function GoogleSheetsConnect() {
         if (rows === 0) {
           setSyncMessage({
             kind: 'success',
-            text: 'All caught up — no new transactions to sync.',
+            text: 'All caught up. No new transactions to sync.',
           })
         } else {
           const recreated = data?.recreated_spreadsheet === true
           const base = isBackfill
-            ? `Backfill complete — ${rows.toLocaleString()} rows written.`
+            ? `Backfill complete. ${rows.toLocaleString()} rows written.`
             : `Synced ${rows.toLocaleString()} new row${rows === 1 ? '' : 's'}.`
           setSyncMessage({
             kind: 'success',
@@ -201,12 +219,17 @@ export default function GoogleSheetsConnect() {
               : 'One-way export of every account to a Google Sheet, updated daily'}
           </p>
         </div>
-        {connection && (
+        {connection && (connection.status === 'needs_reauth' ? (
+          <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+            Reconnect needed
+          </span>
+        ) : (
           <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full flex-shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
             Live
           </span>
-        )}
+        ))}
       </div>
 
       {connection ? (

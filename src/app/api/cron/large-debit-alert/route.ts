@@ -31,6 +31,12 @@ import { createClient } from '@supabase/supabase-js';
 import { sendWhatsAppTemplate } from '@/lib/whatsapp';
 import { isPocketAgentEligible } from '@/lib/telegram/eligibility';
 import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
+import { deliverBriefLike } from '@/lib/whatsapp/morning-brief';
+import {
+  buildUrgentDebitsBody,
+  isSingleDailyDigestEnabled,
+  urgentDebitThresholdGbp,
+} from '@/lib/whatsapp/daily-digest';
 import { isFutureDated, endOfTodayLondonIso } from '@/lib/alerts/future-dated';
 
 export const runtime = 'nodejs';
@@ -46,9 +52,11 @@ function getAdmin() {
 const MIN_AMOUNT = 50; // pounds — cap below which we stay silent
 /**
  * A single debit at or above this is worth interrupting someone's day
- * for. Everything smaller waits for the 18:00 evening digest.
+ * for (possible fraud). Everything smaller waits for the digest (18:00
+ * evening, or the 07:30 morning brief in single-daily-digest mode).
+ * Default £500; WHATSAPP_URGENT_DEBIT_GBP overrides it.
  */
-const URGENT_AMOUNT = 500;
+const URGENT_AMOUNT = urgentDebitThresholdGbp();
 /**
  * Detection lookback. Runs twice daily (08:30 and 17:30 UTC), so the
  * longest gap is 15h; 16h gives slack. notification_log dedup makes the
@@ -190,6 +198,23 @@ export async function GET(request: NextRequest) {
   let queued = 0;
   const errors: string[] = [];
 
+  // Single daily digest mode: urgent debits found in this run are grouped
+  // per user and sent as ONE message after the loop.
+  const singleDaily = isSingleDailyDigestEnabled();
+  const urgentByUser = new Map<
+    string,
+    Array<{
+      phone: string;
+      refKey: string;
+      parameters: string[];
+      absAmount: number;
+      textFallback: string;
+      amount: string;
+      merchant: string;
+      category: string;
+    }>
+  >();
+
   for (const tx of eligible) {
     const refKey = `payment_outgoing_${tx.id}`;
     if (sentKeys.has(refKey)) continue;
@@ -244,7 +269,29 @@ export async function GET(request: NextRequest) {
       const absAmount = Math.abs(Number(tx.amount)) || 0;
       const digestLine = `${amount} to ${merchant} (${category})`;
 
-      if (absAmount >= URGENT_AMOUNT) {
+      const textFallback =
+        `💳 ${amount} just left your account to ${merchant}. ` +
+        `Your ${category} spend this month: ${monthTotal}. ` +
+        `Reply DISPUTE if this doesn't look right.`;
+
+      if (absAmount >= URGENT_AMOUNT && singleDaily) {
+        // Held until the end of the run so several big debits for the
+        // same user become one message. notification_log is written only
+        // once that message is sent, so a failure is retried next run.
+        const list = urgentByUser.get(tx.user_id) ?? [];
+        list.push({
+          phone: session.whatsapp_phone,
+          refKey,
+          parameters,
+          absAmount,
+          textFallback,
+          amount,
+          merchant,
+          category,
+        });
+        urgentByUser.set(tx.user_id, list);
+        continue;
+      } else if (absAmount >= URGENT_AMOUNT) {
         // Big single debit — send now. allowUrgent bypasses quiet hours
         // and the daily cap; textFallback lets the facade deliver it
         // FREE as in-window text when the user has messaged us recently.
@@ -260,10 +307,7 @@ export async function GET(request: NextRequest) {
             allowUrgent: true,
             amount: absAmount,
             dedupKey: refKey,
-            textFallback:
-              `💳 ${amount} just left your account to ${merchant}. ` +
-              `Your ${category} spend this month: ${monthTotal}. ` +
-              `Reply DISPUTE if this doesn't look right.`,
+            textFallback,
           },
         );
         sent += 1;
@@ -291,6 +335,51 @@ export async function GET(request: NextRequest) {
       });
     } catch (e: any) {
       errors.push(`${tx.id}: ${e?.message ?? 'unknown'}`);
+    }
+  }
+
+  for (const [userId, items] of urgentByUser) {
+    try {
+      if (items.length === 1) {
+        const it = items[0];
+        await sendWhatsAppTemplate(
+          {
+            to: it.phone,
+            templateName: 'paybacker_payment_outgoing',
+            parameters: it.parameters,
+          },
+          {
+            userId,
+            eventType: 'payment_outgoing',
+            allowUrgent: true,
+            amount: it.absAmount,
+            dedupKey: it.refKey,
+            textFallback: it.textFallback,
+          },
+        );
+      } else {
+        const outcome = await deliverBriefLike(
+          supabase,
+          userId,
+          items[0].phone,
+          buildUrgentDebitsBody(items),
+          { eventType: 'payment_outgoing', allowUrgent: true },
+        );
+        if (outcome.status !== 'sent') {
+          errors.push(`${userId}: grouped urgent debits ${outcome.status} ${outcome.reason ?? ''}`.trim());
+          continue;
+        }
+      }
+      sent += 1;
+      await supabase.from('notification_log').insert(
+        items.map((it) => ({
+          user_id: userId,
+          notification_type: 'payment_outgoing',
+          reference_key: it.refKey,
+        })),
+      );
+    } catch (e) {
+      errors.push(`${userId}: ${e instanceof Error ? e.message : 'unknown'}`);
     }
   }
 

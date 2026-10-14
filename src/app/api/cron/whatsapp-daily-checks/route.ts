@@ -62,6 +62,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { sendWhatsAppTemplate } from '@/lib/whatsapp';
 import { enqueueDigestItem } from '@/lib/whatsapp/alert-queue';
+import { isSingleDailyDigestEnabled } from '@/lib/whatsapp/daily-digest';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -291,6 +292,11 @@ async function runTrialEnding(sb: SupabaseClient, today: string): Promise<number
         {
           userId: s.user_id,
           eventType: 'trial_ending',
+          // Single daily digest mode: a trial that charges before the next
+          // 07:30 brief could warn about it (ends today or tomorrow) stays
+          // instant. Further-out trials wait for the brief. Flag off: as
+          // before (capped and window-routed, not urgent).
+          allowUrgent: isSingleDailyDigestEnabled() && daysLeft <= 1,
           dedupKey: refKey,
           amount: Number(s.amount) || 0,
           provider: s.provider_name,
