@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      properties: { title: `Paybacker — ${displayName}` },
+      properties: { title: `Paybacker transactions (${displayName})` },
       sheets: [{ properties: { title: 'Summary' } }], // placeholder; accounts added by export
     }),
   })
@@ -138,6 +138,16 @@ export async function GET(req: NextRequest) {
     spreadsheet_url: sheet.spreadsheetUrl,
     connected_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    // A (re)connect always starts a brand new spreadsheet, so the sync state
+    // from the old one must not carry over. Leaving last_synced_at set made
+    // every later Sync Now incremental, so if the backfill below failed the
+    // new sheet stayed half empty for good. It also clears a needs_reauth
+    // status so the daily cron picks the user up again.
+    last_synced_at: null,
+    last_synced_timestamp: null,
+    status: 'active',
+    last_error: null,
+    next_sync_at: null,
   }, { onConflict: 'user_id' })
 
   // 7. Trigger the initial full backfill AFTER the redirect response is sent.

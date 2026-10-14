@@ -1,9 +1,8 @@
 // src/app/api/cron/google-sheets-sync/route.ts
-// Daily cron — appends new transactions to every connected user's Google Sheet.
-// Schedule: add to vercel.json — "0 6 * * *" (6am UTC daily, after bank sync runs at 5am)
-//
-// Add to vercel.json:
-// { "path": "/api/cron/google-sheets-sync", "schedule": "0 6 * * *" }
+// Daily safety-net cron: appends new transactions to every connected user's
+// Google Sheet. Scheduled in vercel.json at "0 6 * * *". The export also runs
+// after every bank sync (triggerSheetsExport), so this catches anything missed.
+// Connections marked needs_reauth are skipped by the export until reconnected.
 
 import { NextResponse } from 'next/server'
 
@@ -53,7 +52,9 @@ export async function GET(req: Request) {
 
   // Count per-user hard failures. Previously this always returned ok:true, so a
   // run in which every single user failed looked identical to a clean run.
-  const failures = results.filter((r) => !!r.error)
+  // sync_in_progress means another run for that user held the lease and
+  // did the work; it is not a failure.
+  const failures = results.filter((r) => !!r.error && r.error !== 'sync_in_progress')
   const skipped = results.filter((r) => !r.error && (r.skipped_tabs ?? 0) > 0)
 
   const failuresByReason: Record<string, number> = {}

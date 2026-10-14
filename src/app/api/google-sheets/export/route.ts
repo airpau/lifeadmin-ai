@@ -3,15 +3,19 @@
 // Exports bank_transactions to a user's connected Google Sheet.
 //
 // Two modes:
-//   full_export: true  — considers ALL historical transactions (used on first connect)
-//   full_export: false — only considers transactions near/after last_synced_timestamp
-//                         (daily cron / Sync Now button)
+//   full_export: true  - considers ALL historical transactions (first connect,
+//                        recreated sheet, or a Sync Now with no previous sync)
+//   full_export: false - only transactions INGESTED (created_at) since the last
+//                        successful sync, minus a 2 day overlap
 //
 // In BOTH modes, writes are deduplicated against transaction IDs already present
-// in the sheet (column H). This makes the export idempotent — running it twice in
-// a row never produces duplicate rows, and it self-heals gaps from previous runs.
+// anywhere in the spreadsheet (column H of every tab), and only one run per user
+// can write at a time (lease on next_sync_at). Re-running never duplicates rows.
+// Pure selection logic lives in src/lib/export/transactions-export.ts.
 //
-// Sheet structure: one tab per bank account (account_display_name from bank_connections)
+// Sheet structure: one tab per bank account, including accounts that only
+// belong to a revoked or replaced bank connection (their history is still the
+// user's). Tab name "<bank> - <account name>".
 //   Columns: Date | Description | Merchant | Amount | Category | Type | Recurring | Transaction ID
 //
 // Called by:
@@ -21,6 +25,21 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import {
+  SHEET_HEADERS,
+  a1Range,
+  buildAccountMap,
+  connectionHealthUpdate,
+  groupByTab,
+  idsFromColumn,
+  incrementalCreatedSince,
+  nextNewestWatermark,
+  runSucceeded,
+  selectNewRows,
+  sheetRow,
+  type BankConnLike,
+  type ExportTx,
+} from '@/lib/export/transactions-export'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -31,19 +50,14 @@ const INTERNAL_KEY = process.env.INTERNAL_API_KEY ?? ''
 // function can be killed mid-export, leaving the sheet partially written
 // while the caller reports a sync that never completed.
 export const runtime = 'nodejs'
-export const maxDuration = 60
-
-const SHEET_HEADERS = [
-  'Date', 'Description', 'Merchant', 'Amount (£)', 'Category', 'Type', 'Recurring', 'Transaction ID',
-]
+// 300, not 60: the daily cron runs every connected user through one call.
+export const maxDuration = 300
 
 // Supabase PostgREST caps selects at 1000 rows by default. Paginate by this size.
 const DB_PAGE_SIZE = 1000
 
-// When running incrementally, how far back to look when re-fetching from the DB.
-// This is a safety overlap — bank syncs sometimes back-date transactions by a day
-// or two after initial settle. Dedup by transaction_id means overlap is harmless.
-const INCREMENTAL_OVERLAP_DAYS = 2
+// Rows per Sheets append request.
+const APPEND_CHUNK = 2000
 
 // ---------------------------------------------------------------------------
 // OAuth token refresh
@@ -54,7 +68,7 @@ const INCREMENTAL_OVERLAP_DAYS = 2
 // (Google 5xx, network blip — retrying tomorrow is fine). Collapsing all three
 // into `null` was why a dead refresh token looked like a no-op sync.
 type TokenResult =
-  | { ok: true; token: string }
+  | { ok: true; token: string; expiresIn?: number; refreshToken?: string }
   | { ok: false; reason: 'token_expired' | 'token_refresh_failed' }
 
 async function refreshAccessToken(refreshToken: string): Promise<TokenResult> {
@@ -86,7 +100,7 @@ async function refreshAccessToken(refreshToken: string): Promise<TokenResult> {
     return { ok: false, reason: 'token_refresh_failed' }
   }
 
-  let data: { access_token?: string }
+  let data: { access_token?: string; expires_in?: number; refresh_token?: string }
   try {
     data = JSON.parse(raw)
   } catch {
@@ -99,7 +113,13 @@ async function refreshAccessToken(refreshToken: string): Promise<TokenResult> {
     return { ok: false, reason: 'token_refresh_failed' }
   }
 
-  return { ok: true, token: data.access_token }
+  return {
+    ok: true,
+    token: data.access_token,
+    expiresIn: typeof data.expires_in === 'number' ? data.expires_in : undefined,
+    // Google may rotate the refresh token; keep the new one if it does.
+    refreshToken: data.refresh_token || undefined,
+  }
 }
 
 async function getOrRefreshToken(
@@ -129,7 +149,8 @@ async function getOrRefreshToken(
     .from('google_sheets_connections')
     .update({
       access_token: refreshed.token,
-      token_expiry: new Date(Date.now() + 3600_000).toISOString(),
+      token_expiry: new Date(Date.now() + (refreshed.expiresIn ?? 3600) * 1000).toISOString(),
+      ...(refreshed.refreshToken ? { refresh_token: refreshed.refreshToken } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', connection.user_id)
@@ -200,14 +221,48 @@ async function createSpreadsheet(
   return { spreadsheetId: sheet.spreadsheetId, spreadsheetUrl: sheet.spreadsheetUrl ?? '' }
 }
 
+/**
+ * Make sure the tab exists (with a header row). If only the legacy em dash
+ * name exists, rename it in place so its rows (and their transaction ids)
+ * are kept and nothing is written twice.
+ */
 async function ensureAccountTab(
   token: string,
   spreadsheetId: string,
-  accountName: string,
+  tabName: string,
+  legacyTabName: string | null,
   existingSheets: { title: string; sheetId: number }[]
 ): Promise<boolean> {
-  const exists = existingSheets.find(s => s.title === accountName)
-  if (exists) return true
+  if (existingSheets.find(s => s.title === tabName)) return true
+
+  const legacy = legacyTabName && legacyTabName !== tabName
+    ? existingSheets.find(s => s.title === legacyTabName)
+    : undefined
+  if (legacy) {
+    const renameRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [{
+            updateSheetProperties: {
+              properties: { sheetId: legacy.sheetId, title: tabName },
+              fields: 'title',
+            },
+          }],
+        }),
+      }
+    )
+    if (renameRes.ok) {
+      legacy.title = tabName
+      return true
+    }
+    // Rename failed: keep writing to the legacy tab rather than splitting history.
+    const body = await renameRes.text().catch(() => '')
+    console.error(`[sheets-export] rename "${legacyTabName}" ${renameRes.status}: ${body.slice(0, 300)}`)
+    return false
+  }
 
   const addRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
@@ -215,24 +270,22 @@ async function ensureAccountTab(
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        requests: [{ addSheet: { properties: { title: accountName } } }],
+        requests: [{ addSheet: { properties: { title: tabName } } }],
       }),
     }
   )
   if (!addRes.ok) {
     const body = await addRes.text().catch(() => '')
-    console.error(`[sheets-export] addSheet "${accountName}" ${addRes.status}: ${body.slice(0, 300)}`)
+    console.error(`[sheets-export] addSheet "${tabName}" ${addRes.status}: ${body.slice(0, 300)}`)
     return false
   }
 
   // Track the newly-created tab so subsequent lookups on the same run see it.
   const addData = await addRes.json().catch(() => null)
   const newSheetId = addData?.replies?.[0]?.addSheet?.properties?.sheetId ?? 0
-  existingSheets.push({ title: accountName, sheetId: newSheetId })
+  existingSheets.push({ title: tabName, sheetId: newSheetId })
 
-  // Write the header row.
-  const headerOk = await appendRows(token, spreadsheetId, accountName, [SHEET_HEADERS])
-  return headerOk
+  return appendRows(token, spreadsheetId, tabName, [SHEET_HEADERS])
 }
 
 async function appendRows(
@@ -244,7 +297,7 @@ async function appendRows(
   if (rows.length === 0) return true
 
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(a1Range(sheetName, 'A1'))}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -260,91 +313,79 @@ async function appendRows(
 }
 
 /**
- * Read column H (Transaction ID) from the given tab and return a Set of IDs
- * already present in the sheet. Returns null on read failure — callers must
- * treat null as "unsafe to write" and skip appending, otherwise we'd risk
- * creating duplicates.
+ * Read column H (Transaction ID) from EVERY tab in one batchGet and return
+ * the ids already in the spreadsheet. Dedup is spreadsheet-wide, so a row can
+ * never be written twice even if an account's tab name changes. Returns null
+ * on read failure: callers must treat that as "unsafe to write".
  */
-async function readExistingTransactionIds(
+async function readAllTransactionIds(
   token: string,
   spreadsheetId: string,
-  tabName: string
+  tabTitles: string[]
 ): Promise<Set<string> | null> {
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(tabName)}!H:H?majorDimension=COLUMNS`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  )
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    console.error(`[sheets-export] readExistingTransactionIds "${tabName}" ${res.status}: ${body.slice(0, 300)}`)
-    return null
-  }
-  const data = await res.json()
-  // values is an array of columns; with COLUMNS major dim and a single column
-  // request, values[0] is the list of cell values in column H.
-  const col: string[] = data.values?.[0] ?? []
   const ids = new Set<string>()
-  for (const v of col) {
-    if (v && v !== 'Transaction ID') ids.add(v)
+  // Keep URLs a sane length on workbooks with many tabs.
+  for (let i = 0; i < tabTitles.length; i += 50) {
+    const params = new URLSearchParams({ majorDimension: 'COLUMNS' })
+    for (const t of tabTitles.slice(i, i + 50)) params.append('ranges', a1Range(t, 'H:H'))
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[sheets-export] readAllTransactionIds ${res.status}: ${body.slice(0, 300)}`)
+      return null
+    }
+    const data = await res.json()
+    for (const vr of (data.valueRanges ?? []) as { values?: unknown }[]) {
+      for (const id of idsFromColumn(vr.values)) ids.add(id)
+    }
   }
   return ids
 }
 
 // ---------------------------------------------------------------------------
-// Transaction fetch (paginated — Supabase's default 1000-row cap would
-// otherwise silently truncate large accounts)
+// Transaction fetch (paginated with a stable order)
 // ---------------------------------------------------------------------------
 
-type TxRow = {
-  transaction_id: string
-  timestamp: string
-  description: string | null
-  merchant_name: string | null
-  amount: number
-  category: string | null
-  user_category: string | null
-  income_type: string | null
-  is_recurring: boolean | null
-  is_pending: boolean | null
-}
-
-async function fetchAllTransactions(
+/**
+ * Every live transaction for the user, across ALL accounts (including
+ * accounts that only belong to a revoked or replaced bank connection), that
+ * was ingested on or after createdSince (null = everything).
+ *
+ * Pending rows are included so the sheet stays current with the dashboard;
+ * the Type column marks them.
+ *
+ * Ordered by timestamp then id: id is unique, so offset pages never skip or
+ * repeat rows when many transactions share a timestamp. Returns null on a DB
+ * error so the caller does not stamp a sync that read nothing.
+ */
+async function fetchTransactions(
   supabase: SupabaseClient,
   userId: string,
-  accountId: string,
-  sinceTimestamp: string | null
-): Promise<TxRow[]> {
-  // Pending transactions are included so the sheet stays current with the
-  // dashboard. Previously this filtered to is_pending=false, which left
-  // multi-day gaps any time recent activity was unsettled (e.g. a card
-  // payment posted at 03:00 stays pending for 24-72h until the bank
-  // settles). Users were seeing "latest entry: 24 April" on 27 April
-  // because all of 25-27's activity was still in pending state.
-  //
-  // The Type column tags pending rows so the user can distinguish them
-  // from settled. The dedup-by-transaction_id in the calling export
-  // collapses the same row when it later appears as settled — accepting
-  // that the Type label may stay "Pending" until a full re-export.
-  const all: TxRow[] = []
+  createdSince: string | null
+): Promise<ExportTx[] | null> {
+  const all: ExportTx[] = []
   let from = 0
   while (true) {
     let q = supabase
       .from('bank_transactions')
-      .select('transaction_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring, is_pending')
+      .select('id, transaction_id, account_id, timestamp, created_at, description, merchant_name, amount, category, user_category, income_type, is_recurring, is_pending')
       .eq('user_id', userId)
-      .eq('account_id', accountId)
       .is('deleted_at', null)
-      .order('timestamp', { ascending: true })
-      .range(from, from + DB_PAGE_SIZE - 1)
-    if (sinceTimestamp) q = q.gte('timestamp', sinceTimestamp)
-
+    if (createdSince) q = q.gte('created_at', createdSince)
     const { data, error } = await q
+      .order('timestamp', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + DB_PAGE_SIZE - 1)
+
     if (error) {
-      console.error(`[sheets-export] fetchAllTransactions user=${userId} acct=${accountId}:`, error.message)
-      break
+      console.error(`[sheets-export] fetchTransactions user=${userId}:`, error.message)
+      return null
     }
     if (!data || data.length === 0) break
-    all.push(...(data as TxRow[]))
+    all.push(...(data as ExportTx[]))
     if (data.length < DB_PAGE_SIZE) break
     from += DB_PAGE_SIZE
   }
@@ -352,260 +393,281 @@ async function fetchAllTransactions(
 }
 
 // ---------------------------------------------------------------------------
-// Row formatting
+// Per-user run lease (no duplicate rows from overlapping runs)
 // ---------------------------------------------------------------------------
+//
+// The export is triggered after every bank sync, by Sync Now and by the daily
+// cron. Two runs for the same user at once would both read column H before
+// either appends, and both would write the same rows. next_sync_at (unused
+// until now) is used as a short lease: a run claims it only if it is empty or
+// in the past, and releases it when done. A crashed run frees itself after
+// LEASE_MS.
 
-function formatTransaction(tx: TxRow): (string | number)[] {
-  const date = new Date(tx.timestamp).toLocaleDateString('en-GB') // DD/MM/YYYY
-  const description = tx.description ?? ''
-  const merchant = tx.merchant_name ?? ''
-  const amount = Number(tx.amount.toFixed(2))
-  const category = tx.user_category ?? tx.category ?? ''
-  // Pending transactions are flagged in the Type column so the user can
-  // distinguish settled vs unsettled at a glance. The amount sign still
-  // tells them income/expense, the prefix tells them it's not final yet.
-  const baseType = tx.income_type ?? (tx.amount > 0 ? 'Income' : 'Expense')
-  const type = tx.is_pending ? `Pending ${baseType.toLowerCase()}` : baseType
-  const recurring = tx.is_recurring ? 'Yes' : 'No'
-  const ref = tx.transaction_id
+const LEASE_MS = 6 * 60 * 1000
 
-  return [date, description, merchant, amount, category, type, recurring, ref]
+async function claimLease(supabase: SupabaseClient, userId: string): Promise<boolean> {
+  const nowIso = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('google_sheets_connections')
+    .update({ next_sync_at: new Date(Date.now() + LEASE_MS).toISOString() })
+    .eq('user_id', userId)
+    .or(`next_sync_at.is.null,next_sync_at.lt.${nowIso}`)
+    .select('user_id')
+  if (error) {
+    // Fail open: a lease problem must not stop syncing altogether. Column H
+    // dedup still protects against everything except a true overlap.
+    console.error(`[sheets-export] claimLease user=${userId}:`, error.message)
+    return true
+  }
+  return (data?.length ?? 0) > 0
+}
+
+async function releaseLease(supabase: SupabaseClient, userId: string): Promise<void> {
+  await supabase
+    .from('google_sheets_connections')
+    .update({ next_sync_at: new Date().toISOString() })
+    .eq('user_id', userId)
 }
 
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 
+type UserResult = {
+  user_id: string
+  rows_written: number
+  skipped_tabs?: number
+  error?: string
+  recreated_spreadsheet?: boolean
+}
+
+type SheetsConn = {
+  user_id: string
+  email: string | null
+  access_token: string
+  refresh_token: string | null
+  token_expiry: string | null
+  spreadsheet_id: string | null
+  last_synced_at: string | null
+  last_synced_timestamp: string | null
+  status: string | null
+}
+
+async function exportForUser(
+  supabase: SupabaseClient,
+  conn: SheetsConn,
+  fullExportRequested: boolean,
+): Promise<UserResult> {
+  const tokenResult = await getOrRefreshToken(supabase, conn)
+  if (!tokenResult.ok) {
+    return { user_id: conn.user_id, rows_written: 0, error: tokenResult.reason }
+  }
+  const token = tokenResult.token
+
+  // Every bank connection, whatever its state. This export only reads cached
+  // rows from bank_transactions, so consent state is irrelevant; a revoked or
+  // replaced connection still names the accounts its history sits under.
+  const { data: allBankConns } = await supabase
+    .from('bank_connections')
+    .select('bank_name, account_ids, account_display_names, status')
+    .eq('user_id', conn.user_id)
+  const accounts = buildAccountMap((allBankConns ?? []) as BankConnLike[])
+
+  // Self-heal: if the stored spreadsheet no longer resolves (user deleted or
+  // trashed it), create a fresh one, repoint the connection, and treat the
+  // run as a full backfill so the new sheet isn't left half-empty.
+  let spreadsheetId: string = conn.spreadsheet_id ?? ''
+  let recreatedSpreadsheet = false
+  let forceFullExport = false
+
+  let meta: SheetsMetaResult = spreadsheetId
+    ? await getExistingSheets(token, spreadsheetId)
+    : { ok: false, missing: true }
+  if (!meta.ok && meta.missing) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name, first_name')
+      .eq('id', conn.user_id)
+      .maybeSingle()
+    const displayName =
+      profile?.first_name || profile?.full_name || conn.email || 'Your transactions'
+
+    const created = await createSpreadsheet(token, `Paybacker transactions (${displayName})`)
+    if (!created) {
+      return { user_id: conn.user_id, rows_written: 0, error: 'sheets_metadata_read_failed' }
+    }
+
+    await supabase
+      .from('google_sheets_connections')
+      .update({
+        spreadsheet_id: created.spreadsheetId,
+        spreadsheet_url: created.spreadsheetUrl,
+        last_synced_timestamp: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', conn.user_id)
+
+    spreadsheetId = created.spreadsheetId
+    recreatedSpreadsheet = true
+    forceFullExport = true
+    console.log(
+      `[sheets-export] user=${conn.user_id} spreadsheet missing, recreated as ${created.spreadsheetId}`
+    )
+
+    meta = await getExistingSheets(token, spreadsheetId)
+  }
+
+  const recreatedFlag = recreatedSpreadsheet ? { recreated_spreadsheet: true } : {}
+  if (!meta.ok) {
+    return { user_id: conn.user_id, rows_written: 0, error: 'sheets_metadata_read_failed', ...recreatedFlag }
+  }
+  const existingSheets = meta.sheets
+
+  // Incremental window on INGESTION time (created_at), not transaction date:
+  // a newly connected or reconnected bank backfills months of older-dated
+  // rows, and those must reach the sheet too. Column H dedup makes the
+  // overlap (and any re-run) harmless.
+  const fullExport = fullExportRequested || forceFullExport
+  const createdSince = incrementalCreatedSince(conn.last_synced_at, fullExport)
+  const startedAt = new Date().toISOString()
+
+  const transactions = await fetchTransactions(supabase, conn.user_id, createdSince)
+  if (transactions === null) {
+    return { user_id: conn.user_id, rows_written: 0, error: 'transactions_read_failed', ...recreatedFlag }
+  }
+
+  // A connection with no bank accounts and no history at all.
+  if (transactions.length === 0 && accounts.size === 0) {
+    return { user_id: conn.user_id, rows_written: 0, error: 'no_bank_connections', ...recreatedFlag }
+  }
+
+  // Ids already anywhere in the spreadsheet. If this read fails nothing is
+  // written, because writing blind is how duplicates happen.
+  const existingIds = await readAllTransactionIds(token, spreadsheetId, existingSheets.map(s => s.title))
+  if (existingIds === null) {
+    return { user_id: conn.user_id, rows_written: 0, error: 'sheets_read_failed', ...recreatedFlag }
+  }
+
+  let totalRows = 0
+  let skippedTabs = 0
+  const written: ExportTx[] = []
+
+  for (const batch of groupByTab(transactions, accounts)) {
+    const newTxs = selectNewRows(batch.txs, existingIds)
+    if (newTxs.length === 0) continue
+
+    const tabOk = await ensureAccountTab(token, spreadsheetId, batch.tabName, batch.legacyTabName, existingSheets)
+    if (!tabOk) {
+      console.error(`[sheets-export] skipping "${batch.tabName}": could not ensure tab`)
+      skippedTabs++
+      continue
+    }
+
+    // Large backfills go in chunks so one request never carries tens of
+    // thousands of cells.
+    let tabFailed = false
+    for (let i = 0; i < newTxs.length; i += APPEND_CHUNK) {
+      const chunk = newTxs.slice(i, i + APPEND_CHUNK)
+      const ok = await appendRows(token, spreadsheetId, batch.tabName, chunk.map(sheetRow))
+      if (!ok) { tabFailed = true; break }
+      totalRows += chunk.length
+      written.push(...chunk)
+      for (const tx of chunk) if (tx.transaction_id) existingIds.add(tx.transaction_id)
+    }
+    if (tabFailed) skippedTabs++
+  }
+
+  const outcome: UserResult = {
+    user_id: conn.user_id,
+    rows_written: totalRows,
+    skipped_tabs: skippedTabs,
+    ...recreatedFlag,
+  }
+
+  // Only stamp last_synced_at when every tab was written. It is the
+  // ingestion watermark for the next incremental run, so stamping a partial
+  // run would leave the skipped tab's rows outside every later window.
+  // last_synced_at is the time this run STARTED, so rows ingested while it
+  // ran fall inside the next window.
+  if (runSucceeded(outcome)) {
+    const updates: Record<string, string | null> = {
+      last_synced_at: startedAt,
+      updated_at: new Date().toISOString(),
+    }
+    const newest = nextNewestWatermark(conn.last_synced_timestamp, written)
+    if (newest !== conn.last_synced_timestamp) updates.last_synced_timestamp = newest
+    await supabase.from('google_sheets_connections').update(updates).eq('user_id', conn.user_id)
+  } else {
+    console.error(
+      `[sheets-export] user=${conn.user_id} skipped ${skippedTabs} tab(s), not stamping last_synced_at`
+    )
+  }
+
+  console.log(
+    `[sheets-export] user=${conn.user_id} wrote=${totalRows} skipped_tabs=${skippedTabs} full=${fullExport} since=${createdSince ?? 'all'} recreated=${recreatedSpreadsheet}`
+  )
+  return outcome
+}
+
 export async function POST(req: NextRequest) {
   // Auth: internal key only (called by cron, callback, or sync-now wrapper)
   const key = req.headers.get('x-internal-key')
-  if (key !== INTERNAL_KEY) {
+  if (!INTERNAL_KEY || key !== INTERNAL_KEY) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   }
 
-  const body = await req.json()
+  const body = await req.json().catch(() => ({}))
   const { user_id, full_export } = body as { user_id?: string; full_export?: boolean }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
   let query = supabase.from('google_sheets_connections').select('*')
-  if (user_id) query = query.eq('user_id', user_id)
-
-  const { data: connections, error } = await query
-  if (error || !connections?.length) {
-    return NextResponse.json({ synced: 0 })
+  if (user_id) {
+    query = query.eq('user_id', user_id)
+  } else {
+    // Batch (cron) runs skip connections that need the user to reconnect;
+    // retrying a dead refresh token every day only fails again. A user's own
+    // Sync Now (user_id set) still tries, and reconnecting resets the status.
+    query = query.neq('status', 'needs_reauth')
   }
 
-  const results: {
-    user_id: string
-    rows_written: number
-    skipped_tabs?: number
-    error?: string
-    recreated_spreadsheet?: boolean
-  }[] = []
+  const { data: connections, error } = await query
+  if (error) {
+    console.error('[sheets-export] could not load connections:', error.message)
+    return NextResponse.json({ error: 'connections_read_failed' }, { status: 500 })
+  }
+  if (!connections?.length) {
+    return NextResponse.json({ synced: 0, results: [] })
+  }
 
-  for (const conn of connections) {
+  const results: UserResult[] = []
+
+  for (const conn of connections as SheetsConn[]) {
+    let result: UserResult
+    const leased = await claimLease(supabase, conn.user_id)
+    if (!leased) {
+      results.push({ user_id: conn.user_id, rows_written: 0, error: 'sync_in_progress' })
+      continue
+    }
     try {
-      const tokenResult = await getOrRefreshToken(supabase, conn)
-      if (!tokenResult.ok) {
-        results.push({ user_id: conn.user_id, rows_written: 0, error: tokenResult.reason })
-        continue
-      }
-      const token = tokenResult.token
-
-      // Every bank connection EXCEPT permanently-dead ones. This export only
-      // reads cached rows from bank_transactions and never calls the bank API,
-      // so live consent state is irrelevant to it.
-      //
-      // Previously this filtered to ['active','token_expired'], which silently
-      // dropped every user in expiring_soon / expired / expired_legacy — states
-      // the daily consent-renewal cron routinely sets because Open Banking
-      // consent rolls every 90 days. Those users got rows_written: 0 with no
-      // error, so the UI reported "All caught up" forever.
-      const { data: allBankConns } = await supabase
-        .from('bank_connections')
-        .select('id, bank_name, account_ids, account_display_names, status')
-        .eq('user_id', conn.user_id)
-
-      const DEAD_STATUSES = ['revoked', 'revoked_duplicate', 'archived']
-      const bankConns = (allBankConns ?? []).filter(
-        (b) => !DEAD_STATUSES.includes(String(b.status ?? ''))
-      )
-
-      if (!bankConns.length) {
-        // Make this visible rather than reporting a clean zero-row sync.
-        results.push({ user_id: conn.user_id, rows_written: 0, error: 'no_bank_connections' })
-        continue
-      }
-
-      // Self-heal: if the stored spreadsheet no longer resolves (user deleted or
-      // trashed it), create a fresh one, repoint the connection, and treat the
-      // run as a full backfill so the new sheet isn't left half-empty.
-      let spreadsheetId: string = conn.spreadsheet_id
-      let recreatedSpreadsheet = false
-      let forceFullExport = false
-
-      let meta = await getExistingSheets(token, spreadsheetId)
-      if (!meta.ok && meta.missing) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, first_name')
-          .eq('id', conn.user_id)
-          .maybeSingle()
-        const displayName =
-          profile?.first_name || profile?.full_name || conn.email || 'Your transactions'
-
-        const created = await createSpreadsheet(token, `Paybacker — ${displayName}`)
-        if (!created) {
-          results.push({ user_id: conn.user_id, rows_written: 0, error: 'sheets_metadata_read_failed' })
-          continue
-        }
-
-        await supabase
-          .from('google_sheets_connections')
-          .update({
-            spreadsheet_id: created.spreadsheetId,
-            spreadsheet_url: created.spreadsheetUrl,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('user_id', conn.user_id)
-
-        spreadsheetId = created.spreadsheetId
-        recreatedSpreadsheet = true
-        forceFullExport = true
-        console.log(
-          `[sheets-export] user=${conn.user_id} spreadsheet missing — recreated as ${created.spreadsheetId}`
-        )
-
-        meta = await getExistingSheets(token, spreadsheetId)
-      }
-
-      if (!meta.ok) {
-        results.push({
-          user_id: conn.user_id,
-          rows_written: 0,
-          error: 'sheets_metadata_read_failed',
-          ...(recreatedSpreadsheet ? { recreated_spreadsheet: true } : {}),
-        })
-        continue
-      }
-      const existingSheets = meta.sheets
-
-      // Incremental: fetch rows from (last_synced - overlap) onwards. The sheet-side
-      // dedup (readExistingTransactionIds) catches anything we re-fetch.
-      // Full export: sinceTimestamp = null → pull every transaction for the account.
-      let sinceTimestamp: string | null = null
-      if (!full_export && !forceFullExport && conn.last_synced_timestamp) {
-        const lowerBound = new Date(
-          new Date(conn.last_synced_timestamp).getTime() - INCREMENTAL_OVERLAP_DAYS * 24 * 60 * 60 * 1000
-        )
-        sinceTimestamp = lowerBound.toISOString()
-      }
-
-      let totalRows = 0
-      let skippedTabs = 0
-      let latestTimestampWritten: string | null = conn.last_synced_timestamp ?? null
-
-      for (const bank of bankConns) {
-        const accountIds: string[] = bank.account_ids ?? []
-        const displayNames: string[] = bank.account_display_names ?? []
-
-        for (let i = 0; i < accountIds.length; i++) {
-          const accountId = accountIds[i]
-          const tabName = displayNames[i]
-            ? `${bank.bank_name} — ${displayNames[i]}`
-            : bank.bank_name
-
-          // Pull transactions (paginated) for this account.
-          const transactions = await fetchAllTransactions(
-            supabase,
-            conn.user_id,
-            accountId,
-            sinceTimestamp
-          )
-          if (transactions.length === 0) continue
-
-          // Make sure the tab (and header row) exist before we try to read column H.
-          const tabOk = await ensureAccountTab(token, spreadsheetId, tabName, existingSheets)
-          if (!tabOk) {
-            console.error(`[sheets-export] skipping "${tabName}" — could not ensure tab`)
-            skippedTabs++
-            continue
-          }
-
-          // Dedup by transaction_id. If we can't read the existing IDs, skip
-          // this tab rather than risk writing duplicates.
-          const existingIds = await readExistingTransactionIds(
-            token,
-            spreadsheetId,
-            tabName
-          )
-          if (existingIds === null) {
-            console.error(`[sheets-export] skipping "${tabName}" — could not read existing transaction IDs`)
-            skippedTabs++
-            continue
-          }
-
-          const newTxs = transactions.filter(tx => !existingIds.has(tx.transaction_id))
-          if (newTxs.length === 0) continue
-
-          const rows = newTxs.map(formatTransaction)
-          const appendOk = await appendRows(token, spreadsheetId, tabName, rows)
-          if (!appendOk) {
-            skippedTabs++
-            continue
-          }
-          totalRows += rows.length
-
-          // Track newest timestamp actually written across all accounts.
-          const newestTs = newTxs[newTxs.length - 1].timestamp
-          if (!latestTimestampWritten || newestTs > latestTimestampWritten) {
-            latestTimestampWritten = newestTs
-          }
-        }
-      }
-
-      // Only stamp the sync metadata when the run genuinely succeeded — either
-      // we wrote rows, or it was a clean pass with nothing new and no skipped
-      // tabs. Stamping last_synced_at on a failed run permanently downgrades
-      // every future Sync Now from full backfill to incremental, so the user
-      // can never recover from a bad first sync.
-      const runSucceeded = totalRows > 0 || skippedTabs === 0
-
-      if (runSucceeded) {
-        // We only bump last_synced_timestamp forward, never backwards — this is
-        // defensive against a partial-failure run where we only wrote a subset
-        // of accounts.
-        const updates: Record<string, string> = {
-          last_synced_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-        if (latestTimestampWritten && latestTimestampWritten !== conn.last_synced_timestamp) {
-          updates.last_synced_timestamp = latestTimestampWritten
-        }
-        await supabase
-          .from('google_sheets_connections')
-          .update(updates)
-          .eq('user_id', conn.user_id)
-      } else {
-        console.error(
-          `[sheets-export] user=${conn.user_id} skipped ${skippedTabs} tab(s) and wrote nothing — not stamping last_synced_at`
-        )
-      }
-
-      console.log(
-        `[sheets-export] user=${conn.user_id} wrote=${totalRows} skipped_tabs=${skippedTabs} full=${!!full_export || forceFullExport} recreated=${recreatedSpreadsheet}`
-      )
-      results.push({
-        user_id: conn.user_id,
-        rows_written: totalRows,
-        skipped_tabs: skippedTabs,
-        ...(recreatedSpreadsheet ? { recreated_spreadsheet: true } : {}),
-      })
+      result = await exportForUser(supabase, conn, full_export === true)
     } catch (err) {
       console.error(`[sheets-export] failed for user ${conn.user_id}:`, err)
-      results.push({ user_id: conn.user_id, rows_written: 0, error: String(err) })
+      result = { user_id: conn.user_id, rows_written: 0, error: 'export_failed' }
+    } finally {
+      await releaseLease(supabase, conn.user_id).catch(() => {})
     }
+
+    // Persist health so the Export page shows a broken connection on load,
+    // not only after the user happens to press Sync Now.
+    const health = connectionHealthUpdate(result)
+    if (health) {
+      await supabase
+        .from('google_sheets_connections')
+        .update(health)
+        .eq('user_id', conn.user_id)
+    }
+    results.push(result)
   }
 
   return NextResponse.json({ synced: results.length, results })

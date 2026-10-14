@@ -13,36 +13,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-
-const HEADERS = [
-  'Date',
-  'Description',
-  'Merchant',
-  'Amount (£)',
-  'Category',
-  'Type',
-  'Recurring',
-  'Bank',
-  'Account',
-  'Transaction ID',
-]
+import { buildCsv, buildAccountMap, type BankConnLike, type ExportTx } from '@/lib/export/transactions-export'
 
 // PostgREST caps a plain select at 1000 rows. Paginate by this size, otherwise
 // anyone with more than 1000 transactions silently gets only their OLDEST 1000.
 const DB_PAGE_SIZE = 1000
-
-function csvEscape(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return ''
-  let s = String(value)
-  // Neutralise spreadsheet formula injection: any cell whose first char is
-  // =, +, -, @, tab or CR could be parsed as a formula by Excel / Numbers /
-  // Sheets. Prefix a single quote to defang it. Merchant and description
-  // strings come straight from the bank feed, so they are untrusted input.
-  // Numbers are exempt — a negative amount must stay a number.
-  if (typeof value !== 'number' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
-  // Always quote; escape embedded quotes by doubling.
-  return '"' + s.replace(/"/g, '""') + '"'
-}
 
 export async function GET(_req: NextRequest) {
   const cookieStore = await cookies()
@@ -71,52 +46,30 @@ export async function GET(_req: NextRequest) {
     )
   }
 
-  // Pull the user's bank connections so we can map account_id -> bank/account name.
+  // Every bank connection, whatever its state, so history that sits under a
+  // revoked or replaced connection still gets its bank and account name.
   const { data: bankConns } = await supabase
     .from('bank_connections')
-    .select('bank_name, account_ids, account_display_names')
+    .select('bank_name, account_ids, account_display_names, status')
     .eq('user_id', user.id)
+  const accounts = buildAccountMap((bankConns ?? []) as BankConnLike[])
 
-  const accountMap = new Map<string, { bank: string; account: string }>()
-  for (const bank of bankConns ?? []) {
-    const ids: string[] = bank.account_ids ?? []
-    const names: string[] = bank.account_display_names ?? []
-    for (let i = 0; i < ids.length; i++) {
-      accountMap.set(ids[i], {
-        bank: bank.bank_name ?? '',
-        account: names[i] ?? '',
-      })
-    }
-  }
-
-  // Pull all the user's non-pending transactions, oldest first.
+  // All the user's live transactions, oldest first, pending included (marked
+  // in the Type column) so the file matches the dashboard and the Sheet.
   //
-  // Paginated: a plain .select() is capped at 1000 rows by PostgREST and
-  // returns the oldest first, so every user with a real transaction history
-  // was silently downloading a truncated ledger.
-  type CsvTx = {
-    transaction_id: string | null
-    account_id: string | null
-    timestamp: string
-    description: string | null
-    merchant_name: string | null
-    amount: number | null
-    category: string | null
-    user_category: string | null
-    income_type: string | null
-    is_recurring: boolean | null
-  }
-
-  const transactions: CsvTx[] = []
+  // Ordered by timestamp THEN id. Ordering by timestamp alone is not stable
+  // when many rows share a timestamp (banks often stamp a whole day at
+  // 00:00), so offset pages could skip some rows and repeat others.
+  const transactions: ExportTx[] = []
   let from = 0
   while (true) {
     const { data, error } = await supabase
       .from('bank_transactions')
-      .select('transaction_id, account_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring')
+      .select('id, transaction_id, account_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring, is_pending')
       .eq('user_id', user.id)
-      .eq('is_pending', false)
       .is('deleted_at', null)
       .order('timestamp', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, from + DB_PAGE_SIZE - 1)
 
     if (error) {
@@ -124,40 +77,12 @@ export async function GET(_req: NextRequest) {
       return NextResponse.json({ error: 'Export failed' }, { status: 500 })
     }
     if (!data || data.length === 0) break
-    transactions.push(...(data as CsvTx[]))
+    transactions.push(...(data as ExportTx[]))
     if (data.length < DB_PAGE_SIZE) break
     from += DB_PAGE_SIZE
   }
 
-  // Build CSV body.
-  const lines: string[] = []
-  lines.push(HEADERS.map(csvEscape).join(','))
-
-  for (const tx of transactions) {
-    const dateRaw = tx.timestamp ? new Date(tx.timestamp) : null
-    const date = dateRaw ? dateRaw.toLocaleDateString('en-GB') : ''
-    const amount = typeof tx.amount === 'number' ? Number(tx.amount.toFixed(2)) : ''
-    const category = tx.user_category ?? tx.category ?? ''
-    const type = tx.income_type ?? (typeof tx.amount === 'number' && tx.amount > 0 ? 'Income' : 'Expense')
-    const recurring = tx.is_recurring ? 'Yes' : 'No'
-    const acct = accountMap.get(tx.account_id ?? '') ?? { bank: '', account: '' }
-
-    lines.push([
-      csvEscape(date),
-      csvEscape(tx.description ?? ''),
-      csvEscape(tx.merchant_name ?? ''),
-      csvEscape(amount),
-      csvEscape(category),
-      csvEscape(type),
-      csvEscape(recurring),
-      csvEscape(acct.bank),
-      csvEscape(acct.account),
-      csvEscape(tx.transaction_id ?? ''),
-    ].join(','))
-  }
-
-  // UTF-8 BOM so Excel on Windows renders £ correctly.
-  const body = '\uFEFF' + lines.join('\r\n') + '\r\n'
+  const body = buildCsv(transactions, accounts)
 
   const filename = `paybacker-transactions-${new Date().toISOString().slice(0, 10)}.csv`
 
@@ -166,7 +91,7 @@ export async function GET(_req: NextRequest) {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="${filename}"`,
-      'Cache-Control': 'no-store',
+      'Cache-Control': 'no-store, max-age=0',
     },
   })
 }

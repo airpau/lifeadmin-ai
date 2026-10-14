@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import ExcelJS from 'exceljs'
+import { buildAccountMap, txType, type BankConnLike } from '@/lib/export/transactions-export'
 
 // Force Node runtime — exceljs is not edge-compatible.
 export const runtime = 'nodejs'
@@ -50,15 +51,14 @@ type Tx = {
   user_category: string | null
   income_type: string | null
   is_recurring: boolean | null
+  is_pending?: boolean | null
 }
 
 function rowFromTx(tx: Tx) {
   const dateRaw = tx.timestamp ? new Date(tx.timestamp) : null
   const amount = typeof tx.amount === 'number' ? Number(tx.amount.toFixed(2)) : null
   const category = tx.user_category ?? tx.category ?? ''
-  const type =
-    tx.income_type ??
-    (typeof tx.amount === 'number' && tx.amount > 0 ? 'Income' : 'Expense')
+  const type = txType(tx)
   const recurring = tx.is_recurring ? 'Yes' : 'No'
 
   return {
@@ -119,26 +119,16 @@ export async function GET(_req: NextRequest) {
     )
   }
 
-  // Load bank connections + build account_id -> {bank, account} map.
+  // Every bank connection, whatever its state, so history under a revoked or
+  // replaced connection keeps its bank and account name (live names win).
   const { data: bankConns } = await supabase
     .from('bank_connections')
-    .select('bank_name, account_ids, account_display_names')
+    .select('bank_name, account_ids, account_display_names, status')
     .eq('user_id', user.id)
 
   const accountMap = new Map<string, { bank: string; account: string; tabName: string }>()
-  for (const bank of bankConns ?? []) {
-    const ids: string[] = bank.account_ids ?? []
-    const names: string[] = bank.account_display_names ?? []
-    for (let i = 0; i < ids.length; i++) {
-      const bankName = bank.bank_name ?? 'Bank'
-      const accountName = names[i] ?? ''
-      const tabName = accountName ? `${bankName} — ${accountName}` : bankName
-      accountMap.set(ids[i], {
-        bank: bankName,
-        account: accountName,
-        tabName: sanitiseSheetName(tabName),
-      })
-    }
+  for (const [id, info] of buildAccountMap((bankConns ?? []) as BankConnLike[])) {
+    accountMap.set(id, { bank: info.bank, account: info.account, tabName: sanitiseSheetName(info.tabName) })
   }
 
   // Load transactions.
@@ -151,11 +141,13 @@ export async function GET(_req: NextRequest) {
   while (true) {
     const { data, error } = await supabase
       .from('bank_transactions')
-      .select('transaction_id, account_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring')
+      .select('id, transaction_id, account_id, timestamp, description, merchant_name, amount, category, user_category, income_type, is_recurring, is_pending')
       .eq('user_id', user.id)
-      .eq('is_pending', false)
       .is('deleted_at', null)
+      // timestamp alone is not a stable order (many rows share one), so add
+      // the unique id or offset pages can skip and repeat rows.
       .order('timestamp', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, from + DB_PAGE_SIZE - 1)
 
     if (error) {
