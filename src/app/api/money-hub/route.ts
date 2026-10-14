@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { calculateHealthScore } from '@/lib/financial-health-score';
-import { normalizeSpendingCategoryKey, findMatchingCategoryOverride, resolveMoneyHubTransaction, buildMoneyHubOverrideMaps, applyInternalTransferHeuristic } from '@/lib/money-hub-classification';
+import { normalizeSpendingCategoryKey, buildMoneyHubOverrideMaps, applyInternalTransferHeuristic, createMoneyHubResolver, type ResolvedMoneyHubTransaction } from '@/lib/money-hub-classification';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { pickRawMerchantSource } from '@/lib/merchant-utils';
 import { loadLearnedRules } from '@/lib/learning-engine';
@@ -50,7 +50,7 @@ function deduplicateTransactions(txns: any[]): any[] {
   });
 }
 
-function summariseTransactionsForMonth(txns: any[], overrides: any, monthKey: string, internalTransfers: Set<string>) {
+function summariseTransactionsForMonth(txns: any[], resolve: (txn: any) => ResolvedMoneyHubTransaction, monthKey: string) {
   const categoryTotals: Record<string, number> = {};
   const incomeRows: Record<string, number> = {};
   const spendingTransactions: any[] = [];
@@ -61,14 +61,9 @@ function summariseTransactionsForMonth(txns: any[], overrides: any, monthKey: st
   for (const txn of txns) {
     if (!isTransactionInMonth(txn.timestamp, monthKey)) continue;
 
-    const overrideCategory = findMatchingCategoryOverride(txn, overrides.transactionOverrides, overrides.merchantOverrides);
-    const resolved = resolveMoneyHubTransaction(txn, overrideCategory);
-
-    // Apply internal transfer heuristic override
-    if (internalTransfers.has(txn.id)) {
-      resolved.kind = 'transfer';
-      resolved.spendingCategory = 'transfers';
-    }
+    // Override, base rules, internal-transfer pairing and refund netting
+    // all live in the shared resolver so the drill-down agrees with this.
+    const resolved = resolve(txn);
 
     if (resolved.kind === 'income') {
       monthlyIncome += resolved.amount;
@@ -87,7 +82,7 @@ function summariseTransactionsForMonth(txns: any[], overrides: any, monthKey: st
 
       monthlyOutgoings += spendAmount;
       categoryTotals[category] = (categoryTotals[category] || 0) + spendAmount;
-      spendingTransactions.push({ ...txn, effectiveCategory: category });
+      spendingTransactions.push({ ...txn, effectiveCategory: category, spendAmount });
     }
   }
 
@@ -270,9 +265,10 @@ export async function GET(request: Request) {
     await loadLearnedRules();
     const overrides = buildMoneyHubOverrideMaps(categoryOverrides || []);
     const internalTransfers = applyInternalTransferHeuristic(allTxns);
+    const resolve = createMoneyHubResolver(allTxns, overrides, internalTransfers);
     
     // JS-based computation (used for trends, merchant analysis, and as fallback)
-    const currentSummary = summariseTransactionsForMonth(allTxns, overrides, selectedMonth, internalTransfers);
+    const currentSummary = summariseTransactionsForMonth(allTxns, resolve, selectedMonth);
 
     // Authoritative income/spending via JS computation (to support AI rule mapping and local recategorisation)
     const authSpending = currentSummary.monthlyOutgoings;
@@ -309,7 +305,9 @@ export async function GET(request: Request) {
       // Recompute from the filtered txn set used elsewhere in this response.
       let f = 0, v = 0, d = 0, t = 0;
       for (const tx of currentSummary.spendingTransactions) {
-        const amt = Math.abs(parseFloat(String(tx.amount)) || 0);
+        // Signed spend: a refund has a negative spendAmount and nets off its
+        // bucket instead of being added to it.
+        const amt = (tx as { spendAmount?: number }).spendAmount ?? -(parseFloat(String(tx.amount)) || 0);
         // Use the category the summariser ALREADY resolved, rather than
         // re-deriving it from the raw columns. The old line fell back to
         // tx.category, which on a Yapily row is the direction code 'DEBIT'
@@ -354,9 +352,12 @@ export async function GET(request: Request) {
       // "Top merchants" list doesn't collapse unrelated payments under a 2-
       // letter heading.
       const merchant = normaliseMerchantName(pickRawMerchantSource(t.merchant_name, t.description));
-      merchantTotals[merchant] = (merchantTotals[merchant] || 0) + Math.abs(parseFloat(String(t.amount)));
+      // Signed spend: a refund from the merchant reduces its total. Using
+      // Math.abs here added refunds ON TOP of the spend they reversed.
+      merchantTotals[merchant] = (merchantTotals[merchant] || 0) + t.spendAmount;
     }
     const topMerchants = Object.entries(merchantTotals)
+      .filter(([, total]) => total > 0)
       .map(([merchant, total]) => ({ merchant, total: parseFloat(total.toFixed(2)) }))
       .sort((a, b) => b.total - a.total).slice(0, 10);
 
@@ -367,7 +368,7 @@ export async function GET(request: Request) {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const mSum = summariseTransactionsForMonth(allTxns, overrides, mKey, internalTransfers);
+      const mSum = summariseTransactionsForMonth(allTxns, resolve, mKey);
       monthlyTrends.push({ month: mKey, income: mSum.monthlyIncome, outgoings: mSum.monthlyOutgoings });
       sumIncome += mSum.monthlyIncome;
       sumOutgoings += mSum.monthlyOutgoings;

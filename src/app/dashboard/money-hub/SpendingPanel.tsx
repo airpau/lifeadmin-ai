@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, Search } from 'lucide-react';
 import CategoryDrillDownModal from './CategoryDrillDownModal';
+import { pickerCategoryMeta } from '@/lib/categories';
 
 const CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
   mortgage: { label: 'Mortgage', icon: '🏠', color: '#8b5cf6' },
@@ -55,6 +56,8 @@ const CATEGORY_LABELS: Record<string, { label: string; icon: string; color: stri
   utilities: { label: 'Utilities', icon: '💡', color: '#f59e0b' },
   rent: { label: 'Rent', icon: '🏠', color: '#8b5cf6' },
   transfers: { label: 'Transfers', icon: '🔄', color: '#64748b' },
+  // Written by the auto_categorise_transactions SQL rules; not a picker id.
+  vat: { label: 'VAT', icon: '🏛️', color: '#dc2626' },
   other: { label: 'Other', icon: '📋', color: '#475569' },
 };
 
@@ -68,8 +71,17 @@ function titleCaseCategory(key: string): string {
     .join(' ');
 }
 
+// Fallback to the picker taxonomy (the list the user recategorises INTO
+// from this panel). Business keys such as marketing, wages, equipment, office_supplies,
+// payroll and legal_fees are real stored values (91 marketing rows alone on
+// 2026-10-14) but were missing from the map above, so they rendered as a
+// grey clipboard with a title-cased key. Fall back to the picker's own
+// label and emoji before the generic fallback.
 function getCatMeta(key: string) {
-  return CATEGORY_LABELS[key] || { label: titleCaseCategory(key), icon: '📋', color: '#475569' };
+  if (CATEGORY_LABELS[key]) return CATEGORY_LABELS[key];
+  const picker = pickerCategoryMeta(key);
+  if (picker) return { label: picker.label, icon: picker.emoji, color: '#475569' };
+  return { label: titleCaseCategory(key), icon: '📋', color: '#475569' };
 }
 
 export default function SpendingPanel({ data, isPro, refreshData, selectedMonth }: { data: any, isPro: boolean, refreshData: () => void, selectedMonth: string }) {
@@ -124,22 +136,25 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
             (showAll ? categories : categories.slice(0, 8)).map((c: any) => {
               const meta = getCatMeta(c.category);
               const pct = totalSpent > 0 ? (c.total / totalSpent) * 100 : 0;
+              // Refunds can net a category to zero or below; never draw a
+              // negative or over-full bar.
+              const barPct = Math.min(100, Math.max(0, pct));
               return (
                 <div 
                   key={c.category} 
                   className="mb-2 cursor-pointer hover:bg-slate-100 p-2 -mx-2 rounded-lg transition-colors group"
                   onClick={() => setDrillCategory(c.category)}
                 >
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-700 flex items-center gap-2 group-hover:text-mint-400 transition-colors">
-                      <span className="text-base">{meta.icon}</span>
-                      {meta.label}
-                      <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
+                  <div className="flex justify-between gap-2 text-sm mb-1">
+                    <span className="text-slate-700 flex items-center gap-2 min-w-0 group-hover:text-mint-400 transition-colors">
+                      <span className="text-base shrink-0">{meta.icon}</span>
+                      <span className="truncate">{meta.label}</span>
+                      <span className="text-slate-500 text-xs shrink-0">{pct.toFixed(1)}%</span>
                     </span>
-                    <span className="text-slate-900 font-medium group-hover:text-mint-400">£{fmtNum(c.total)}</span>
+                    <span className="text-slate-900 font-medium whitespace-nowrap shrink-0 group-hover:text-mint-400">£{fmtNum(c.total)}</span>
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-1.5">
-                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: meta.color }} />
+                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${barPct}%`, backgroundColor: meta.color }} />
                   </div>
                 </div>
               );
@@ -174,9 +189,9 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
           ) : (
             topMerchants.slice(0, 5).map((m: any) => (
               <div key={m.merchant} className="mb-2">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-700 capitalize">{m.merchant}</span>
-                  <span className="text-slate-900 font-medium">£{fmtNum(m.total)}</span>
+                <div className="flex justify-between gap-2 text-sm mb-1">
+                  <span className="text-slate-700 capitalize min-w-0 break-words">{m.merchant}</span>
+                  <span className="text-slate-900 font-medium whitespace-nowrap shrink-0">£{fmtNum(m.total)}</span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-1.5">
                   <div className="bg-blue-400 h-1.5 rounded-full" style={{ width: `${(m.total / (topMerchants[0]?.total || 1)) * 100}%` }} />

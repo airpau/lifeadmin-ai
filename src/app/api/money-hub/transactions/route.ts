@@ -9,10 +9,9 @@ import { matchesIncomeTypeFilter, normalizeIncomeTypeKey } from '@/lib/income-no
 import {
   applyInternalTransferHeuristic,
   buildMoneyHubOverrideMaps,
-  findMatchingCategoryOverride,
+  createMoneyHubResolver,
   getMoneyHubMonthBounds,
   normalizeSpendingCategoryKey,
-  resolveMoneyHubTransaction,
 } from '@/lib/money-hub-classification';
 
 export const runtime = 'nodejs';
@@ -40,13 +39,28 @@ export async function GET(request: NextRequest) {
   // changes Space context for every sub-query.
   const activeSpace = await resolveActiveSpaceFromRequest(supabase, user.id, request);
 
+  // Read the same history window /api/money-hub reads (24 months), not
+  // just the selected month. Refund netting and transfer pairing look
+  // across months (a refund in May for an April order), so a month-only
+  // read gave this drill-down different totals from the card the user
+  // clicked. Rows outside the month are dropped after resolution.
+  const now = new Date();
+  const historyStart = new Date(now.getFullYear(), now.getMonth() - 23, 1);
+  if (start < historyStart) historyStart.setTime(start.getTime());
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
   let query = admin.from('bank_transactions')
     .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type, account_id, connection_id')
     .eq('user_id', user.id)
-    .gte('timestamp', start.toISOString())
+    // Soft-deleted rows (bank disconnect "delete transactions") are
+    // already excluded from the Money Hub totals; without this filter
+    // they reappeared in the drill-down list.
+    .is('deleted_at', null)
+    .gte('timestamp', historyStart.toISOString())
     .lte('timestamp', end.toISOString())
     .order('timestamp', { ascending: false })
-    .limit(5000);
+    .limit(50000);
 
   if (searchQuery) {
     const term = `%${searchQuery.trim()}%`;
@@ -80,18 +94,14 @@ export async function GET(request: NextRequest) {
   
   const internalTransfers = applyInternalTransferHeuristic(dedupedTxns);
   
-  const resolvedTransactions = dedupedTxns.map((txn) => {
-    const overrideCategory = findMatchingCategoryOverride(
-      txn,
-      overrides.transactionOverrides,
-      overrides.merchantOverrides,
-    );
-    const resolved = resolveMoneyHubTransaction(txn, overrideCategory);
-
-    if (internalTransfers.has(txn.id)) {
-      resolved.kind = 'transfer';
-      resolved.spendingCategory = 'transfers';
-    }
+  // Same resolver as /api/money-hub, so a category's drill-down list and
+  // total agree with the figure on the breakdown card (refunds included).
+  const resolve = createMoneyHubResolver(dedupedTxns, overrides, internalTransfers);
+  const resolvedTransactions = dedupedTxns.filter((txn) => {
+    const ts = txn.timestamp ? new Date(txn.timestamp).getTime() : NaN;
+    return ts >= startMs && ts <= endMs;
+  }).map((txn) => {
+    const resolved = resolve(txn);
 
     return {
       ...txn,
@@ -177,16 +187,18 @@ export async function GET(request: NextRequest) {
     return normalizeSpendingCategoryKey(txn.resolved.spendingCategory) === targetCategory;
   });
 
+  // Signed spend (refunds resolved into this category net off), matching
+  // the category total on the Money Hub card.
   const merchantTotals: Record<string, { total: number; count: number }> = {};
   for (const t of filtered) {
-    if (t.amount >= 0) continue;
     const merchant = normaliseMerchantName(pickRawMerchantSource(t.merchant_name, t.description));
     if (!merchantTotals[merchant]) merchantTotals[merchant] = { total: 0, count: 0 };
-    merchantTotals[merchant].total += Math.abs(t.amount);
+    merchantTotals[merchant].total += -t.amount;
     merchantTotals[merchant].count++;
   }
 
   const merchants = Object.entries(merchantTotals)
+    .filter(([, data]) => data.total > 0)
     .map(([name, data]) => ({ merchant: name, total: parseFloat(data.total.toFixed(2)), count: data.count }))
     .sort((a, b) => b.total - a.total);
 
@@ -198,10 +210,11 @@ export async function GET(request: NextRequest) {
       amount: t.amount,
       category: normalizeSpendingCategoryKey(t.resolved.spendingCategory),
       timestamp: t.timestamp,
+      kind: t.resolved.kind,
     })),
     merchants,
     totalTransactions: filtered.length,
-    totalSpent: parseFloat(filtered.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0).toFixed(2)),
+    totalSpent: parseFloat(filtered.reduce((s, t) => s - t.amount, 0).toFixed(2)),
   });
   } catch (error: any) {
     console.error('Error fetching transactions:', error);

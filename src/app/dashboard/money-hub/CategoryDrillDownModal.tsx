@@ -3,6 +3,7 @@ import { X, Search, ChevronDown, CheckCircle2, Check, Loader2, ArrowRight, Plus 
 import { fmtNum } from '@/lib/format';
 import { cleanMerchantName, isGarbageMerchantName, pickRawMerchantSource } from '@/lib/merchant-utils';
 import { USER_SELECTABLE_CATEGORIES } from '@/lib/categories';
+import { normalizeSpendingCategoryKey } from '@/lib/money-hub-category-keys';
 import { createClient } from '@/lib/supabase/client';
 
 interface UserSubcategory {
@@ -417,7 +418,10 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
             <div key={group}>
               <p className="px-3 pt-2 pb-1 text-[10px] text-slate-400 uppercase tracking-wider font-semibold">{group}</p>
               {cats.map(c => {
-                const isCurrent = c.id === category;
+                // Compare canonical keys: the breakdown sends 'loan' / 'fee'
+                // (aliased) while the picker ids are 'loans' / 'fees', so a
+                // plain === never ticked the current category.
+                const isCurrent = !!category && normalizeSpendingCategoryKey(c.id) === normalizeSpendingCategoryKey(category);
                 return (
                   <button
                     key={c.id}
@@ -532,18 +536,18 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-4 font-semibold">Top Merchants</p>
                 <div className="space-y-3">
                   {data.merchants.slice(0, 5).map((m, idx) => (
-                    <div key={m.merchant} className="bg-white rounded-xl p-4 flex items-center justify-between group relative">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 font-bold text-slate-900 uppercase">
+                    <div key={m.merchant} className="bg-white rounded-xl p-4 flex items-center justify-between gap-3 group relative">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 shrink-0 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 font-bold text-slate-900 uppercase">
                           {m.merchant.substring(0, 2)}
                         </div>
-                        <div>
-                          <p className="text-slate-900 font-medium capitalize">{m.merchant}</p>
+                        <div className="min-w-0">
+                          <p className="text-slate-900 font-medium capitalize truncate">{m.merchant}</p>
                           <p className="text-slate-500 text-xs">{m.count} transactions</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-slate-900 font-bold">£{fmtNum(m.total)}</p>
+                      <div className="text-right shrink-0">
+                        <p className="text-slate-900 font-bold whitespace-nowrap">£{fmtNum(m.total)}</p>
                         <button 
                           onClick={() => setMerchantRecatIdx(merchantRecatIdx === idx ? null : idx)}
                           className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
@@ -590,7 +594,11 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-slate-900 text-sm font-medium">£{fmtNum(Math.abs(txn.amount))}</p>
+                          {/* A credit in a spending category is a refund that nets off the total. */}
+                          <p className={`text-sm font-medium whitespace-nowrap ${txn.amount > 0 && txn.kind === 'spending' ? 'text-emerald-700' : 'text-slate-900'}`}>
+                            {txn.amount > 0 && txn.kind === 'spending' ? '+' : ''}£{fmtNum(Math.abs(txn.amount))}
+                            {txn.amount > 0 && txn.kind === 'spending' && <span className="ml-1 text-[10px] font-normal text-emerald-600">refund</span>}
+                          </p>
                           <button 
                             onClick={() => setRecatDropdown(isRecatOpen ? null : txn.id)}
                             className="text-[10px] text-slate-500 hover:text-purple-400 transition-colors"

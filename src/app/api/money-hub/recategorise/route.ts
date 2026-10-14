@@ -8,6 +8,7 @@ import {
   voteMerchantCategoryWisdom,
   propagateMerchantWisdom,
 } from '@/lib/user-intelligence';
+import { toWhitespaceTolerantIlike } from '@/lib/merchant-rule-match';
 
 export const runtime = 'nodejs';
 
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (merchantPattern) {
-        const pattern = `%${merchantPattern.toLowerCase().trim()}%`;
+        const pattern = toWhitespaceTolerantIlike(merchantPattern) ?? `%${merchantPattern.toLowerCase().trim()}%`;
         const { data: matching } = await admin.from('bank_transactions')
           .select('id')
           .eq('user_id', user.id)
@@ -217,7 +218,9 @@ export async function POST(request: NextRequest) {
 
       // 2. Update matching transactions (last 6 months only, using ILIKE for reliability)
       if (applyToAll !== false) {
-        const ilikePattern = `%${overridePattern}%`;
+        // Whitespace-tolerant: bank descriptions pad columns with runs of
+        // spaces, the saved pattern has single spaces.
+        const ilikePattern = toWhitespaceTolerantIlike(overridePattern) ?? `%${overridePattern}%`;
         const { data: matching } = await admin.from('bank_transactions')
           .select('id, amount')
           .eq('user_id', user.id)
@@ -303,11 +306,12 @@ export async function POST(request: NextRequest) {
       // stores aligned regardless of which screen the user corrects
       // from.
       try {
+        const subPattern = toWhitespaceTolerantIlike(overridePattern) ?? `%${overridePattern}%`;
         const { error: subSyncErr } = await admin.from('subscriptions')
           .update({ category: newCategory })
           .eq('user_id', user.id)
           .is('dismissed_at', null)
-          .or(`provider_name.ilike.%${overridePattern}%,bank_description.ilike.%${overridePattern}%`);
+          .or(`provider_name.ilike.${subPattern},bank_description.ilike.${subPattern}`);
         if (subSyncErr) console.error('Sub reverse-sync failed (non-fatal):', subSyncErr.message);
       } catch (e) {
         console.error('Sub reverse-sync threw:', e);

@@ -4,6 +4,7 @@ import { fmtNum } from '@/lib/format';
 import { TrendingUp, TrendingDown, Target, Wallet, BarChart3 } from 'lucide-react';
 import { useState } from 'react';
 import CategoryDrillDownModal from './CategoryDrillDownModal';
+import { pickerCategoryMeta } from '@/lib/categories';
 
 const INCOME_LABELS: Record<string, { label: string; icon: string; color: string }> = {
   salary: { label: 'Salary', icon: '💼', color: '#22c55e' },
@@ -86,7 +87,13 @@ function titleCaseLabel(key: string): string {
 }
 
 function getSpendMeta(key: string) {
-  return SPEND_LABELS[key] || { label: titleCaseLabel(key), icon: '📋', color: '#475569' };
+  if (SPEND_LABELS[key]) return SPEND_LABELS[key];
+  // Keys the picker offers but this map lacks (marketing, wages,
+  // equipment, office_supplies...) take the picker's own label and emoji
+  // rather than a grey clipboard, so the row matches what the user chose.
+  const picker = pickerCategoryMeta(key);
+  if (picker) return { label: picker.label, icon: picker.emoji, color: '#475569' };
+  return { label: titleCaseLabel(key), icon: '📋', color: '#475569' };
 }
 
 export default function OverviewPanel({ data, refreshData, selectedMonth, activeSpaceId, activeSpaceType }: { data: any, refreshData?: () => void, selectedMonth?: string, activeSpaceId?: string | null, activeSpaceType?: 'personal' | 'business' | 'mixed' | null }) {
@@ -130,13 +137,15 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
   return (
     <div className="space-y-4">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      {/* Four across only from lg. At md (768px) each card was ~170px wide and
+          the headline figure truncated to "£48,2...". */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="card p-4 sm:p-5 min-w-0">
           <div className="flex items-center gap-2 mb-2 min-w-0">
             <TrendingUp className="h-4 w-4 shrink-0 text-green-400" />
             <span className="text-slate-500 text-xs truncate">Income this month</span>
           </div>
-          <p className="text-xl sm:text-2xl md:text-3xl font-bold text-green-400 tabular-nums truncate">£{fmtNum(monthlyIncome)}</p>
+          <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-400 tabular-nums truncate">£{fmtNum(monthlyIncome)}</p>
         </div>
 
         <div className="card p-4 sm:p-5 min-w-0">
@@ -144,7 +153,7 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
             <TrendingDown className="h-4 w-4 shrink-0 text-amber-400" />
             <span className="text-slate-500 text-xs truncate">Spent this month</span>
           </div>
-          <p className="text-xl sm:text-2xl md:text-3xl font-bold text-amber-400 tabular-nums truncate">£{fmtNum(monthlyOutgoings)}</p>
+          <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-amber-400 tabular-nums truncate">£{fmtNum(monthlyOutgoings)}</p>
           {/* Canonical bucket split — surfaced when the API returns a breakdown.
               Hidden gracefully on accounts where the RPC hasn't been built yet
               (the field is undefined). */}
@@ -154,21 +163,21 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
             // breakdown invisible against the white card background — user
             // reported "money hub hasn't changed".
             <div className="mt-3 pt-3 border-t border-slate-200 space-y-1">
-              <div className="flex items-center justify-between gap-2 text-[11px] min-w-0">
-                <span className="text-slate-500 truncate">Fixed</span>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[11px] min-w-0">
+                <span className="text-slate-500">Fixed</span>
                 <span className="text-slate-900 font-semibold tabular-nums shrink-0">£{fmtNum(spending.breakdown.fixedCost)}</span>
               </div>
-              <div className="flex items-center justify-between gap-2 text-[11px] min-w-0">
-                <span className="text-slate-500 truncate">Variable</span>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[11px] min-w-0">
+                <span className="text-slate-500">Variable</span>
                 <span className="text-slate-900 font-semibold tabular-nums shrink-0">£{fmtNum(spending.breakdown.variableCost)}</span>
               </div>
-              <div className="flex items-center justify-between gap-2 text-[11px] min-w-0">
-                <span className="text-slate-500 truncate">Discretionary</span>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[11px] min-w-0">
+                <span className="text-slate-500">Discretionary</span>
                 <span className="text-slate-900 font-semibold tabular-nums shrink-0">£{fmtNum(spending.breakdown.discretionary)}</span>
               </div>
               {spending.breakdown.internalTransfer > 0 && (
-                <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-100 mt-1 min-w-0">
-                  <span className="text-slate-400 truncate">Transfers (excluded)</span>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[11px] pt-1 border-t border-slate-100 mt-1 min-w-0">
+                  <span className="text-slate-400">Transfers (excluded)</span>
                   <span className="text-slate-500 tabular-nums shrink-0">£{fmtNum(spending.breakdown.internalTransfer)}</span>
                 </div>
               )}
@@ -181,7 +190,7 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
             <Wallet className="h-4 w-4 shrink-0 text-mint-400" />
             <span className="text-slate-500 text-xs truncate">Savings Rate</span>
           </div>
-          <p className={`text-xl sm:text-2xl md:text-3xl font-bold tabular-nums ${(savingsRate || 0) >= 0 ? 'text-mint-400' : 'text-red-400'}`}>
+          <p className={`text-xl sm:text-2xl lg:text-3xl font-bold tabular-nums ${(savingsRate || 0) >= 0 ? 'text-mint-400' : 'text-red-400'}`}>
             {(savingsRate || 0).toFixed(1)}%
           </p>
         </div>
@@ -234,7 +243,7 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
               </div>
             </span>
           </div>
-          <p className={`text-xl sm:text-2xl md:text-3xl font-bold tabular-nums ${data.score >= 80 ? 'text-green-400' : data.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+          <p className={`text-xl sm:text-2xl lg:text-3xl font-bold tabular-nums ${data.score >= 80 ? 'text-green-400' : data.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
             {data.score}
           </p>
           {/* Live pillar scores. Shown on hover (pointer) OR on tap
@@ -278,13 +287,13 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
                       className="group cursor-pointer hover:bg-slate-100 active:bg-slate-200 p-2 -mx-2 rounded-lg transition-colors"
                       onClick={() => setDrillIncomeType(entry.type)}
                     >
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-slate-700 flex items-center gap-2 group-hover:text-green-400 transition-colors">
-                          <span>{entry.icon}</span>
-                          {entry.label}
-                          <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
+                      <div className="flex items-center justify-between gap-2 text-sm mb-1">
+                        <span className="text-slate-700 flex items-center gap-2 min-w-0 group-hover:text-green-400 transition-colors">
+                          <span className="shrink-0">{entry.icon}</span>
+                          <span className="truncate">{entry.label}</span>
+                          <span className="text-slate-500 text-xs shrink-0">{pct.toFixed(1)}%</span>
                         </span>
-                        <span className="text-green-400 font-semibold">£{fmtNum(entry.amount)}</span>
+                        <span className="text-green-400 font-semibold whitespace-nowrap shrink-0">£{fmtNum(entry.amount)}</span>
                       </div>
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: entry.color }} />
@@ -334,16 +343,16 @@ export default function OverviewPanel({ data, refreshData, selectedMonth, active
                       className="group cursor-pointer hover:bg-slate-100 active:bg-slate-200 p-2 -mx-2 rounded-lg transition-colors"
                       onClick={() => setDrillSpendingCategory(c.category)}
                     >
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-slate-700 flex items-center gap-2 group-hover:text-amber-400 transition-colors">
-                          <span>{meta.icon}</span>
-                          {meta.label}
-                          <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
+                      <div className="flex items-center justify-between gap-2 text-sm mb-1">
+                        <span className="text-slate-700 flex items-center gap-2 min-w-0 group-hover:text-amber-400 transition-colors">
+                          <span className="shrink-0">{meta.icon}</span>
+                          <span className="truncate">{meta.label}</span>
+                          <span className="text-slate-500 text-xs shrink-0">{pct.toFixed(1)}%</span>
                         </span>
-                        <span className="text-amber-400 font-semibold">£{fmtNum(c.total)}</span>
+                        <span className="text-amber-400 font-semibold whitespace-nowrap shrink-0">£{fmtNum(c.total)}</span>
                       </div>
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
-                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: meta.color }} />
+                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, pct))}%`, backgroundColor: meta.color }} />
                       </div>
                     </div>
                   );
