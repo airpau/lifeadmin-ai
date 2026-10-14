@@ -300,6 +300,17 @@ templates submitted to Meta on 2026-04-27: 14 utility, 1 authentication
 (OTP — not Pro-gated), 1 marketing (`paybacker_better_deal_found` — needs
 separate marketing opt-in before send).
 
+**One WhatsApp message a day (2026-10-14, flag `WHATSAPP_SINGLE_DAILY_DIGEST`,
+default off).** When on, every non-urgent WhatsApp alert (facade sends,
+`dispatchPocketAgentAlert`, `sendNotification`, `enqueueDigestItem` crons) is
+queued in `whatsapp_alert_queue` ('digest:' keys, due 07:00 UTC) and folded
+into the 07:30 morning brief (`paybacker_morning_summary`, already approved).
+`/api/cron/whatsapp-evening-digest` then only sweeps rows for users who lost
+Pro. Instant only: OTP, replies to the user, the brief itself, `allowUrgent`
+sends (large debit at or over `WHATSAPP_URGENT_DEBIT_GBP`, default £500,
+grouped per run; a trial charging today or tomorrow) and opted-in marketing
+(never folded into the digest). Logic and tests: `src/lib/whatsapp/daily-digest.ts`.
+
 ### System rules (tier logic)
 - Paid tiers are **never auto-demoted**. `/api/stripe/sync` promotes
   only. Demotion is webhook-driven (`customer.subscription.deleted`).

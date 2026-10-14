@@ -24,6 +24,14 @@
  *   - The digest itself is sent with allowUrgent so the daily cap it
  *     exists to enforce can never suppress it.
  *
+ * Single daily digest mode (WHATSAPP_SINGLE_DAILY_DIGEST=1, 2026-10-14):
+ * this route SENDS NOTHING. Queued items roll into the next 07:30 morning
+ * brief (telegram-morning-summary) so each user gets one WhatsApp message
+ * a day. The route still runs as a sweeper: rows belonging to users who
+ * no longer have an active Pro WhatsApp session are cancelled so they
+ * stop holding dedup keys. Rows queued before the flag was flipped (due
+ * 18:00) are picked up by the next morning brief too.
+ *
  * Auth: Bearer CRON_SECRET (CLAUDE.md rule for every cron route).
  */
 
@@ -36,6 +44,7 @@ import {
 } from '@/lib/whatsapp/alert-queue';
 import { deliverBriefLike } from '@/lib/whatsapp/morning-brief';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
+import { isSingleDailyDigestEnabled } from '@/lib/whatsapp/daily-digest';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -74,6 +83,7 @@ export async function POST(request: NextRequest) {
 
 async function run() {
   const sb = getAdmin();
+  const singleDaily = isSingleDailyDigestEnabled();
   const nowIso = new Date().toISOString();
 
   const { data: due, error } = await sb
@@ -142,6 +152,11 @@ async function run() {
       !!profile &&
       isProPocketAgentEligible(profile as Parameters<typeof isProPocketAgentEligible>[0]);
 
+    if (singleDaily && eligible) {
+      // Delivered inside tomorrow's morning brief instead.
+      continue;
+    }
+
     if (!eligible) {
       // No active Pro WhatsApp session any more — retire the rows rather
       // than letting them block tomorrow's dedup keys.
@@ -194,11 +209,12 @@ async function run() {
   }
 
   console.log(
-    `[whatsapp-evening-digest] users=${userIds.length} items=${items} sent=${sent} cancelled=${cancelled} failed=${failed}`,
+    `[whatsapp-evening-digest] mode=${singleDaily ? 'single_daily_sweep' : 'evening'} users=${userIds.length} items=${items} sent=${sent} cancelled=${cancelled} failed=${failed}`,
   );
 
   return NextResponse.json({
     ok: true,
+    mode: singleDaily ? 'single_daily_sweep' : 'evening',
     users: userIds.length,
     items,
     sent,

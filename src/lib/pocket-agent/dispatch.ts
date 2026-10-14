@@ -325,6 +325,59 @@ export async function dispatchPocketAgentAlert(args: {
     }
     await recordAction(intelCtx);
 
+    // ── Single daily digest (WHATSAPP_SINGLE_DAILY_DIGEST) ───────────
+    // None of the Pocket Agent alert types is time-critical enough to
+    // interrupt the day (price rises, renewals, unusual charges, dispute
+    // updates, budget overruns, money recovered), so with the flag on
+    // they are queued straight into tomorrow's morning brief. Queuing here
+    // rather than in the send facade also covers templates Meta has not
+    // approved yet, which would otherwise be dropped below. Falls through
+    // to the normal path if the queue write fails, so nothing is lost.
+    const { isSingleDailyDigestEnabled } = await import('@/lib/whatsapp/daily-digest');
+    if (isSingleDailyDigestEnabled()) {
+      const { enqueueDigestItem, renderTemplatePreview } = await import(
+        '@/lib/whatsapp/alert-queue'
+      );
+      const providerForDigest =
+        whatsappVars['merchant'] ??
+        whatsappVars['service'] ??
+        whatsappVars['supplier'] ??
+        whatsappVars['provider'];
+      const line =
+        (telegram?.title?.trim() ? `${telegram.title.trim()}. ${telegram.detail.trim()}` : null) ??
+        buildInWindowAlertText(alertType, undefined, whatsappVars) ??
+        renderTemplatePreview(templateName, Object.values(whatsappVars).map(String)) ??
+        alertType.replace(/_/g, ' ');
+      const amountForDigest = Number(
+        whatsappVars['amount'] ??
+          whatsappVars['new_price'] ??
+          whatsappVars['amount_recovered'] ??
+          telegram?.amount_impact ??
+          0,
+      );
+      const outcome = await enqueueDigestItem(null, {
+        userId: session.user_id,
+        eventType: alertType,
+        line,
+        amount: Number.isFinite(amountForDigest) ? amountForDigest : undefined,
+        provider: providerForDigest != null ? String(providerForDigest) : null,
+        url: digestUrlForAlertType(alertType, detectedIssueId),
+        templateName,
+        dedupKey: `${alertType}_${detectedIssueId}`,
+      });
+      if (outcome !== 'error') {
+        const messageId = `deferred:single_daily_digest`;
+        await logWhatsAppDispatchOutcome({
+          session,
+          alertType,
+          ok: true,
+          templateName,
+          providerMessageId: messageId,
+        });
+        return { ok: true, channel: 'whatsapp', messageId };
+      }
+    }
+
     // ── In-window text attempt ───────────────────────────────────────
     const inWindow = await isInsideServiceWindow(session.user_id);
     if (inWindow) {

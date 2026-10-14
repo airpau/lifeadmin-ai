@@ -26,6 +26,12 @@
  *      template sends already today             → enqueue (unless allowUrgent).
  *   6. Otherwise                                → paid template send.
  *
+ * Single daily digest mode (WHATSAPP_SINGLE_DAILY_DIGEST=1, default off,
+ * added 2026-10-14): after the marketing gate, EVERY send that is not
+ * allowUrgent is enqueued for tomorrow's 07:30 morning brief, before the
+ * quiet-hours / in-window / cap checks. One WhatsApp message per user per
+ * day, plus only the genuinely urgent ones. See ./daily-digest.ts.
+ *
  * Enqueued items land in `whatsapp_alert_queue` with a 'digest:' dedup
  * prefix and are delivered as ONE sectioned message by
  * /api/cron/whatsapp-evening-digest at 18:00 UTC.
@@ -44,6 +50,7 @@ import {
   renderTemplatePreview,
   type DigestSection,
 } from './alert-queue';
+import { classifyWhatsAppSend, isSingleDailyDigestEnabled } from './daily-digest';
 
 /** Hard cap on PAID (out-of-window) template sends per user per calendar day. */
 export const MAX_PAID_TEMPLATES_PER_DAY = 2;
@@ -209,6 +216,9 @@ export async function countPaidTemplateSendsToday(
         continue;
       }
       const id = row.provider_message_id;
+      // Synthetic ids (deferred:/suppressed:/blocked:) are logged by some
+      // callers for sends that never reached Meta. They cost nothing.
+      if (id && /^(deferred|suppressed|blocked):/.test(id)) continue;
       if (id) {
         if (seen.has(id)) continue;
         seen.add(id);
@@ -304,6 +314,22 @@ export async function decideSend(input: SendPolicyInput): Promise<SendDecision> 
 
   const urgent = input.allowUrgent === true;
 
+  // 2b. Single daily digest: everything non-urgent waits for the morning
+  //     brief, even free in-window texts (the point is fatigue as well as
+  //     cost).
+  if (isSingleDailyDigestEnabled()) {
+    const cls = classifyWhatsAppSend({
+      templateName: input.templateName,
+      category,
+      allowUrgent: urgent,
+    });
+    if (cls === 'digest') {
+      return (await enqueue(sb, userId, input, 'single_daily_digest'))
+        ? { action: 'defer', reason: 'single_daily_digest', userId }
+        : { action: 'template', reason: 'single_daily_digest_enqueue_failed', userId };
+    }
+  }
+
   // 3. Quiet hours.
   if (!urgent && isQuietHours()) {
     return (await enqueue(sb, userId, input, 'quiet_hours'))
@@ -374,7 +400,9 @@ async function enqueue(
     .from('business_log')
     .insert({
       category: 'whatsapp_send_deferred',
-      title: `WhatsApp send deferred to evening digest: ${input.templateName}`,
+      title: `WhatsApp send deferred to ${
+        isSingleDailyDigestEnabled() ? 'morning brief' : 'evening digest'
+      }: ${input.templateName}`,
       content: JSON.stringify({
         user_id: userId,
         template_name: input.templateName,

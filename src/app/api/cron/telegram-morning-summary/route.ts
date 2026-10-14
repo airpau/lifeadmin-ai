@@ -26,7 +26,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
-import { dispatchWhatsAppMorningBrief } from '@/lib/whatsapp/morning-brief';
+import {
+  dispatchWhatsAppMorningBrief,
+  type DispatchOutcome,
+} from '@/lib/whatsapp/morning-brief';
+import { loadDueDigestRows, markDigestRows } from '@/lib/whatsapp/alert-queue';
+import { foldDigestIntoBrief, isSingleDailyDigestEnabled } from '@/lib/whatsapp/daily-digest';
 import { formatRenewalAmount } from '@/lib/subscriptions/renewal-digest';
 
 export const runtime = 'nodejs';
@@ -308,6 +313,45 @@ async function buildMorningBrief(
 // can fire the exact same per-user dispatch. The cron now imports from
 // the lib helper at the top of this file.
 
+/**
+ * WhatsApp morning brief with the queued daily digest folded in.
+ *
+ * With WHATSAPP_SINGLE_DAILY_DIGEST on, every non-urgent WhatsApp alert
+ * from the last 24h is sitting in whatsapp_alert_queue (dedup 'digest:').
+ * They go out HERE, inside the one morning message, instead of as their
+ * own messages or an 18:00 evening digest. Telegram is untouched: the
+ * Telegram body is built and sent before this runs.
+ *
+ * Flag off: identical to calling dispatchWhatsAppMorningBrief directly
+ * (returns 'skipped' for a null brief, which the callers already filter).
+ */
+async function dispatchWhatsAppBriefWithDigest(
+  supabase: AdminClient,
+  userId: string,
+  phone: string,
+  briefBody: string | null,
+): Promise<DispatchOutcome> {
+  if (!isSingleDailyDigestEnabled()) {
+    if (!briefBody) return { status: 'skipped', reason: 'no_brief' };
+    return dispatchWhatsAppMorningBrief(supabase, userId, phone, briefBody);
+  }
+  const rows = await loadDueDigestRows(supabase, userId);
+  const body = foldDigestIntoBrief(briefBody, rows);
+  if (!body) return { status: 'skipped', reason: 'no_brief' };
+  const outcome = await dispatchWhatsAppMorningBrief(supabase, userId, phone, body);
+  const ids = rows.map((r) => r.id);
+  if (outcome.status === 'sent') {
+    await markDigestRows(supabase, ids, 'sent');
+  } else if (outcome.status === 'skipped') {
+    // Intentional skip (template not approved). Retire the rows so the
+    // same items are not retried every morning, matching the evening
+    // digest's rule.
+    await markDigestRows(supabase, ids, 'cancelled');
+  }
+  // 'error': leave pending, tomorrow's brief retries them.
+  return outcome;
+}
+
 export async function GET(request: NextRequest) {
   const secret = request.headers.get('authorization')?.replace('Bearer ', '');
   if (secret !== process.env.CRON_SECRET) {
@@ -536,6 +580,9 @@ export async function GET(request: NextRequest) {
         const message = await buildMorningBrief(supabase, userId, briefCtx);
         if (!message) {
           skipped++;
+          // Single daily digest: a user with no bank data yet can still
+          // have queued WhatsApp alerts. Leave them to the WhatsApp-only
+          // loop below, which folds them into a digest-only body.
           continue;
         }
 
@@ -556,7 +603,7 @@ export async function GET(request: NextRequest) {
         const waPhone = whatsappByUserId.get(userId);
         if (waPhone) {
           try {
-            const waOutcome = await dispatchWhatsAppMorningBrief(
+            const waOutcome = await dispatchWhatsAppBriefWithDigest(
               supabase,
               userId,
               waPhone,
@@ -604,12 +651,13 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, whatsapp_phone: waPhone } = session;
     try {
       const message = await buildMorningBrief(supabase, userId, briefCtx);
-      if (!message) {
+      if (!message && !isSingleDailyDigestEnabled()) {
         // Either no bank transactions yet, or the helper bailed.
         whatsappSkipped++;
         continue;
       }
-      const waOutcome = await dispatchWhatsAppMorningBrief(
+      // Flag on: a null brief still carries any queued digest items.
+      const waOutcome = await dispatchWhatsAppBriefWithDigest(
         supabase,
         userId,
         waPhone,
