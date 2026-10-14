@@ -20,6 +20,13 @@ export interface ActiveSubscriptionLike {
   status?: string | null;
   dismissed_at?: string | null;
   category?: string | null;
+  /** 'dismissed_by_system' rows are hidden one-offs, not live subscriptions. */
+  detection_status?: string | null;
+}
+
+/** True when the bank detector has judged this row a one-off and hidden it. */
+export function isHiddenBySystem(s: { detection_status?: string | null }): boolean {
+  return s.detection_status === 'dismissed_by_system';
 }
 
 const DEBT_KEYWORDS = [
@@ -76,7 +83,11 @@ function amountBand(raw: number | string | null | undefined): number {
  */
 export function filterActiveSubscriptions<T extends ActiveSubscriptionLike>(subs: T[]): T[] {
   const active = subs.filter(
-    (s) => (s.status || 'active') === 'active' && !s.dismissed_at && !isFinanceProvider(s.provider_name),
+    (s) =>
+      (s.status || 'active') === 'active' &&
+      !s.dismissed_at &&
+      !isHiddenBySystem(s) &&
+      !isFinanceProvider(s.provider_name),
   );
 
   const seen = new Map<string, boolean>();

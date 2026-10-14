@@ -40,6 +40,14 @@ const CATEGORY_KEY_ALIASES: Record<string, string> = {
   restaurants: 'eating_out',
   supermarkets: 'groceries',
   supermarket: 'groceries',
+  // Seen in production `subscriptions.category` / `category_normalized`
+  // (2026-10-14) with no CATEGORY_CONFIG entry, so they rendered with the
+  // generic grey fallback and fell into the "Other" chip.
+  mortgages: 'mortgage',
+  internet: 'broadband',
+  sports: 'fitness',
+  sport: 'fitness',
+  gym: 'fitness',
 };
 
 /**
@@ -113,6 +121,9 @@ export const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   // eBay, Argos etc. Config previously lacked it, so those transactions
   // all rendered with a greyed-out "Shopping" from the generic fallback.
   shopping: { label: 'Shopping', icon: ShoppingBag, color: 'text-pink-700', bgColor: 'bg-pink-50' },
+  // `tv` is claimed by the "Broadband & TV" chip and is a provider_type
+  // value, but had no entry, so a TV row rendered as a grey "Tv" pill.
+  tv: { label: 'TV', icon: Tv, color: 'text-purple-700', bgColor: 'bg-purple-50' },
 
   // ── Keys emitted by real writers that had no entry until 2026-08-16.
   // Each of these rendered as a grey blob with the generic "…" icon.
@@ -129,6 +140,29 @@ export const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   credit: { label: 'Credit', icon: HandCoins, color: 'text-emerald-700', bgColor: 'bg-emerald-50', pickable: false },
   income: { label: 'Income', icon: HandCoins, color: 'text-emerald-800', bgColor: 'bg-emerald-100', pickable: false },
 };
+
+/**
+ * The category a subscription row should DISPLAY under.
+ *
+ * `subscriptions.category` is null or the generic 'other' on many rows
+ * where a writer only filled `category_normalized` (e.g. a mobile
+ * contract with category NULL, category_normalized 'mobile'). The page
+ * rendered those as "Uncategorised" and filed them under "Other".
+ * Prefer a specific category, fall back to category_normalized, and
+ * always return a canonical CATEGORY_CONFIG key (lowercased, aliased),
+ * so the pill, the filter chips, grouping, sorting and the edit form all
+ * agree.
+ */
+export function resolveSubscriptionCategory(
+  category: string | null | undefined,
+  categoryNormalized?: string | null,
+): string | null {
+  const primary = normalizeCategoryKey(category);
+  const fallback = normalizeCategoryKey(categoryNormalized);
+  if (primary && primary !== 'other') return primary;
+  if (fallback && fallback !== 'other') return fallback;
+  return primary || fallback || null;
+}
 
 export function getCategoryLabel(category: string): string {
   const key = normalizeCategoryKey(category);
