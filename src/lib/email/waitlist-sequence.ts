@@ -84,7 +84,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
 
     <div style="${box}">
       <p style="color:#059669;font-weight:700;margin:0 0 8px;font-size:14px;">🔍 STEP 1 — INBOX SCAN</p>
-      <p style="color:#6B7280;margin:0;line-height:1.7;font-size:14px;">The AI scans 2 years of billing emails — energy, broadband, mobile, streaming. It looks for overcharges, upcoming renewals, forgotten subscriptions, and missed refund windows.</p>
+      <p style="color:#6B7280;margin:0;line-height:1.7;font-size:14px;">The AI scans the last 90 days of billing emails — energy, broadband, mobile, streaming. It looks for overcharges, upcoming renewals, forgotten subscriptions, and missed refund windows.</p>
     </div>
 
     <div style="${box}">

@@ -26,7 +26,8 @@ import './styles.css';
  *   WhatsApp is Pro-gated because Meta charges per template send (£0.003-£0.06).
  * - Google Sheets sync is LIVE on Pro tier — daily 06:00 UTC cron + on-demand
  *   from /dashboard/export.
- * - Email inbox scanning (Gmail + Outlook) is LIVE — read-only, up to 2y history.
+ * - Email inbox scanning (Gmail + Outlook) is LIVE — read-only, last 90 days of
+ *   history on every tier (PLAN_LIMITS[*].emailScanDays, levelled 2026-08-21).
  * - "53+ UK partners" replaced with "UK partner network" (no specific count to commit to).
  * - Bank connection copy references Yapily (the Open Banking provider).
  */
@@ -257,9 +258,8 @@ function Section1Disputes() {
             <div>
               <strong>Bonus: we scan your inbox too.</strong> Paybacker reads Gmail or Outlook
               (read-only) for hidden refunds, forgotten subscriptions, flight-delay claims, and
-              debt disputes you&rsquo;d otherwise miss. The free plan scans the last{' '}
-              <strong>90 days</strong>; Essential and Pro scan up to <strong>2 years</strong>{' '}
-              of email history.
+              debt disputes you&rsquo;d otherwise miss. Every plan scans the last{' '}
+              <strong>90 days</strong> of email history.
             </div>
           </div>
         </div>
