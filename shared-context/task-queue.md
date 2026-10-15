@@ -42,6 +42,13 @@ _Added 2026-08-17 by dev-sprint-runner. The April Critical list is now fully clo
 - [ ] Phase 4: Provider T&C database for major UK companies
 - [ ] NOTE: Consumer product - no legal jargon, no "case management" language anywhere
 
+## Sprint findings 2026-09-17
+
+- [~PR#614] `plus` and `dispute_pro` are permitted by the `profiles.subscription_tier` CHECK constraint but have no `PLAN_LIMITS` entry, so `getEffectiveTier`'s `as PlanTier` cast let them reach `PLAN_LIMITS[tier].x` and throw TypeError (WhatsApp gate, Watchdog link limit, Spaces cap, all three email-connect caps). Latent — no row holds either value today. Fixed at source with `isPlanTier`. (PR created 2026-09-17)
+- [ ] Narrow the `profiles_subscription_tier_check` constraint to the four live tiers (free/essential/pro/household) so the DB and `PLAN_LIMITS` cannot drift apart again. Deliberately left out of PR#614 — it is a migration, see #605.
+- [ ] **The `content_drafts` item under "Claude Code (when blockers clear)" is STALE.** It describes `/api/cron/social-post` as the live daily job using `content_drafts` as its dedup gate. That route no longer exists on master and `vercel.json` schedules no social cron at all. Re-verify before actioning. CLAUDE.md's "Social Media Posting" section is stale in the same way.
+- [ ] **Two scheduled crons are dead against unapplied migrations** (same migration-drift root cause as #605): `/api/cron/legislation-reverify` (daily 08:00) reads `legislation_items` + `legislation_change_log`, and `/api/cron/weekly-newsletter` (Thu 11:00) reads the `newsletter_audience` view. **None of those three objects exist in any schema**, so both crons return HTTP 500 on every run and the weekly newsletter has sent zero emails. Migration files exist in the repo (`20260608120000_legislation_intelligence.sql`, `20260502120000_weekly_newsletter_audience.sql`) but were never applied. Note the newsletter's own comment claims a `profiles` fallback "keeps the cron functional" — no such fallback exists in the code, and `profiles` has none of the newsletter columns either, so applying the migration is the only fix.
+
 ## Outstanding
 
 ### Paul to do:
