@@ -202,11 +202,18 @@ export async function GET(request: Request) {
 
     // Fetch manual "mark as paid" overrides for this month
     const billMonth = `${year}-${String(month).padStart(2, '0')}`;
-    const { data: manualOverrides } = await admin
+    const { data: manualOverrides, error: manualOverridesError } = await admin
       .from('bill_paid_overrides')
       .select('bill_key')
       .eq('user_id', user.id)
       .eq('bill_month', billMonth);
+
+    // Supabase returns read failures in `error` rather than throwing. Left
+    // unchecked, a broken read looks identical to "nothing marked paid", so
+    // every bill the user ticked quietly reappears as unpaid.
+    if (manualOverridesError) {
+      console.error('expected-bills: failed to read bill_paid_overrides:', manualOverridesError.message);
+    }
 
     const manuallyPaidKeys = new Set((manualOverrides || []).map((o: any) => o.bill_key));
 
