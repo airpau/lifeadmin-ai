@@ -8,6 +8,15 @@
 --
 -- Strictly additive — no DROP / no ALTER on existing tables. RLS
 -- service_role-only so user clients can't read raw audit traffic.
+--
+-- RENAMED 2026-09-19 — was `20260502000000_legal_ref_freshness_audit.sql`.
+-- It shared the version prefix `20260502000000` with
+-- `20260502000000_legal_ref_freshness.sql`. Supabase records applied
+-- migrations by the 14-digit version, not the filename, so only one file
+-- per version is ever applied: the Phase 2 column migration won and this
+-- table was never created in production. Re-versioned past the current
+-- head so it actually applies. The DDL below is unchanged and fully
+-- idempotent, so re-running it anywhere is a no-op.
 
 CREATE TABLE IF NOT EXISTS legal_ref_freshness_audit (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

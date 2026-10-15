@@ -331,10 +331,26 @@ async function writeAuditRow(
   },
 ): Promise<void> {
   try {
-    await supabase.from('legal_ref_freshness_audit').insert(row);
-  } catch {
-    // Best-effort — audit table failures must never block the response.
+    const { error } = await supabase.from('legal_ref_freshness_audit').insert(row);
+    if (error) {
+      // supabase-js resolves with an `error` rather than throwing, so the
+      // catch below never sees a failed insert. Without this branch a
+      // missing table / RLS denial is indistinguishable from a successful
+      // write, which is exactly how this log stayed empty unnoticed.
+      console.error(
+        `[freshness-gate] legal_ref_freshness_audit insert FAILED for ref ${row.ref_id} ` +
+          `(caller=${row.caller}) — compliance audit row NOT persisted:`,
+        error,
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[freshness-gate] legal_ref_freshness_audit insert threw for ref ${row.ref_id} ` +
+        `(caller=${row.caller}) — compliance audit row NOT persisted:`,
+      err,
+    );
   }
+  // Best-effort either way — audit failures must never block the response.
 }
 
 /**
