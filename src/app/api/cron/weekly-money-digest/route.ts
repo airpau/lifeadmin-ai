@@ -165,11 +165,31 @@ export async function GET(request: NextRequest) {
         daysUntil: Math.ceil((new Date(r.next_billing_date).getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
       }));
 
-      // Budget alerts
-      const { data: budgets } = await admin
-        .from('budgets')
+      // Budget alerts.
+      //
+      // The table is `money_hub_budgets`. There is no `budgets` table — this
+      // read named one, so PostgREST returned an error, the discarded `data`
+      // came back null, and `budgetAlerts` below was always []. The budget
+      // section is rendered for every paid tier, so every Essential and Pro
+      // user has been getting a weekly digest with that section silently
+      // missing, however far over a limit they were.
+      //
+      // Nothing threw, because the error was never destructured. Every other
+      // caller in the codebase already uses `money_hub_budgets` (the Money Hub
+      // API, the chat tools, and the three Telegram budget crons), two of them
+      // carrying an explicit "NOT budgets" comment. This was the last reader
+      // left on the wrong name. Columns are identical, so only the table
+      // changes; the error is now surfaced rather than dropped.
+      const { data: budgets, error: budgetsErr } = await admin
+        .from('money_hub_budgets')
         .select('category, monthly_limit')
         .eq('user_id', userId);
+
+      if (budgetsErr) {
+        console.error(
+          `[weekly-money-digest] budget read failed for ${userId}: ${budgetsErr.message}`,
+        );
+      }
 
       // Get current month spending for budget comparison — same
       // exclusions apply (a user whose budget category is "loans"
