@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AI_LETTER_DISCLAIMER } from '@/lib/legal-disclaimer';
+import { logAnthropicCall } from '@/lib/cost-ledger';
 import { checkCitations, type CitationCheckResult } from './citation-guarantee';
 import { stripLetterFormatting } from './letter-formatting';
 export { stripLetterFormatting, stripMarkdownEmphasis, stripSenderAddressBlock, reorderHeaderToTop } from './letter-formatting';
@@ -336,7 +337,7 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
     // Append the explicit re-prompt and the previous draft so the
     // model can rewrite rather than start from scratch.
     const retryPrompt = `${userPrompt}${firstCheck.retryInstruction}\n\nYour previous draft (rewrite this, not from scratch):\n${result.letter}`;
-    const retried = await runEngineCall(retryPrompt);
+    const retried = await runEngineCall(retryPrompt, 'citation-retry');
     totalInputTokens += retried.usage?.input_tokens ?? 0;
     totalOutputTokens += retried.usage?.output_tokens ?? 0;
 
@@ -379,13 +380,29 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
   };
 
   /** Single Claude call → parsed engine output. */
-  async function runEngineCall(prompt: string): Promise<ComplaintOutput> {
+  async function runEngineCall(
+    prompt: string,
+    pass: 'first' | 'citation-retry' = 'first',
+  ): Promise<ComplaintOutput> {
     const message = await anthropic.messages.create({
       model: COMPLAINT_MODEL,
       max_tokens: 4096,
       system: COMPLAINTS_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt }],
     });
+
+    // Log the spend BEFORE parsing. The call is billed the moment it
+    // returns, so a malformed-response throw below must not lose the
+    // cost — that is exactly the case worth seeing on the billing page.
+    // Fire-and-forget: logAnthropicCall never throws and never awaits.
+    logAnthropicCall({
+      model: COMPLAINT_MODEL,
+      inputTokens: message.usage?.input_tokens || 0,
+      outputTokens: message.usage?.output_tokens || 0,
+      endpoint: 'complaints-agent/generateComplaintLetter',
+      metadata: { pass, letter_type: input.letterType ?? null, voice },
+    });
+
     const content = message.content[0];
     if (content.type !== 'text') throw new Error('Unexpected response type from Claude');
     let raw = content.text.trim();
