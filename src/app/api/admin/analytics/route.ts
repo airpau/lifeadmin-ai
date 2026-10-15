@@ -123,9 +123,13 @@ export async function GET() {
       .is('dismissed_at', null),
     admin.from('disputes')
       .select('user_id, provider_name, issue_type, status, disputed_amount, money_recovered, created_at, resolved_at'),
-    admin.from('price_alerts')
-      .select('user_id, amount_change, status')
-      .is('dismissed_at', null),
+    // The table is `price_increase_alerts` (14 other call sites agree);
+    // `price_alerts` has never existed, so this query 400'd and `?? []`
+    // below turned the whole panel into zeros. Dismissal lives on
+    // `status`, not a `dismissed_at` column — the status filter further
+    // down already does that job.
+    admin.from('price_increase_alerts')
+      .select('user_id, old_amount, new_amount, increase_amount, status'),
     admin.from('telegram_sessions')
       .select('user_id, is_active'),
     admin.from('tasks')
@@ -376,11 +380,19 @@ export async function GET() {
   const totalMonthlySubSpend = [...subProviderAgg.values()].reduce((s, b) => s + b.total, 0);
 
   // ── Price increases ──────────────────────────────────────────────
+  // `increase_amount` is only populated by some of the writers — it is
+  // NULL on most rows — so fall back to the delta, which is derived from
+  // two NOT NULL columns. Where both are present they agree exactly.
+  const hikeAmount = (a: { increase_amount?: number | null; new_amount?: number | null; old_amount?: number | null }) =>
+    a.increase_amount != null
+      ? Number(a.increase_amount) || 0
+      : (Number(a.new_amount) || 0) - (Number(a.old_amount) || 0);
+
   const priceAlertsActive = priceAlerts.filter((a) => a.status !== 'dismissed' && a.status !== 'actioned');
   const priceAffectedUsers = new Set(priceAlertsActive.map((a) => a.user_id)).size;
-  const totalExtraSpendPa = priceAlertsActive.reduce((s, a) => s + (Number(a.amount_change) || 0) * 12, 0);
+  const totalExtraSpendPa = priceAlertsActive.reduce((s, a) => s + hikeAmount(a) * 12, 0);
   const avgHikeAmount = priceAlertsActive.length > 0
-    ? priceAlertsActive.reduce((s, a) => s + (Number(a.amount_change) || 0), 0) / priceAlertsActive.length
+    ? priceAlertsActive.reduce((s, a) => s + hikeAmount(a), 0) / priceAlertsActive.length
     : 0;
 
   // ── Retention & connections ──────────────────────────────────────
